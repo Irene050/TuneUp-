@@ -1,9 +1,29 @@
+import {
+  Fredoka_300Light,
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
+} from '@expo-google-fonts/fredoka';
+import { useFonts } from 'expo-font';
 import { router, Slot, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function RootLayout() {
   const pathname = usePathname();
   const showBackButton = pathname !== '/login';
+
+  const [fontsLoaded] = useFonts({
+    FredokaLight: Fredoka_300Light,
+    FredokaRegular: Fredoka_400Regular,
+    FredokaMedium: Fredoka_500Medium,
+    FredokaSemiBold: Fredoka_600SemiBold,
+    FredokaBold: Fredoka_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
