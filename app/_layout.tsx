@@ -11,7 +11,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function RootLayout() {
   const pathname = usePathname();
-  const showBackButton = pathname !== '/login';
+
+  const showBackButton =
+    pathname === '/register' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password';
 
   const [fontsLoaded] = useFonts({
     FredokaLight: Fredoka_300Light,
