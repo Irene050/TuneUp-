@@ -1,5 +1,18 @@
 import AppHeader from '@/components/appheader';
-import { StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+    Image,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
+
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const LIGHT_GRAY = '#F7F7F7';
+const WHITE = '#FFFFFF';
+const RED = '#FF5A5F';
 
 export default function ProfileScreen() {
   return (
@@ -7,12 +20,80 @@ export default function ProfileScreen() {
       <AppHeader />
 
       <View style={styles.content}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>User</Text>
+
+        {/* PROFILE */}
+        <View style={styles.profileSection}>
+          <Image
+            source={require('@/assets/images/tabIcons/profile.png')}
+            style={styles.avatar}
+            resizeMode="cover"
+          />
+
+          <Text style={styles.name}>
+            User
+          </Text>
+
+          <Pressable style={styles.editButton}>
+            <Text style={styles.editText}>
+              Edit Profile
+            </Text>
+          </Pressable>
         </View>
 
-        <Text style={styles.name}>User</Text>
-        <Text style={styles.email}>user@email.com</Text>
+        {/* SETTINGS */}
+        <View style={styles.optionsContainer}>
+
+          {/* ACCOUNT SETTINGS */}
+          <Pressable style={styles.optionCard}>
+            <View style={styles.optionIcon}>
+              <Ionicons
+                name="settings"
+                size={28}
+                color="#A5A5A5"
+              />
+            </View>
+
+            <Text style={styles.optionText}>
+              Account Settings
+            </Text>
+
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color="#A5A5A5"
+            />
+          </Pressable>
+
+          {/* VIEW PROGRESS */}
+          <Pressable style={styles.optionCard}>
+            <View style={styles.progressIcon}>
+              <Ionicons
+                name="bar-chart"
+                size={28}
+                color="#52B788"
+              />
+            </View>
+
+            <Text style={styles.optionText}>
+              View Progress
+            </Text>
+
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color="#A5A5A5"
+            />
+          </Pressable>
+
+        </View>
+
+        {/* LOG OUT */}
+        <Pressable style={styles.logoutButton}>
+          <Text style={styles.logoutText}>
+            Log out
+          </Text>
+        </Pressable>
+
       </View>
     </View>
   );
@@ -21,42 +102,164 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: WHITE,
   },
 
   content: {
     flex: 1,
+
     alignItems: 'center',
+
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 70,
+    paddingBottom: 120,
+  },
+
+  // PROFILE
+  profileSection: {
+    alignItems: 'center',
+
+    marginBottom: 36,
   },
 
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FCD6DD',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    width: 94,
+    height: 94,
 
-  avatarText: {
-    color: '#4E2F1F',
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
+    borderRadius: 47,
+
+    backgroundColor: PINK,
+
+    marginBottom: 10,
   },
 
   name: {
-    marginTop: 16,
     fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: '#4E2F1F',
+    fontSize: 21,
+
+    color: BROWN,
+
+    marginBottom: 8,
   },
 
-  email: {
-    marginTop: 4,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: '#4E2F1F',
+  editButton: {
+    minWidth: 84,
+    height: 22,
+
+    paddingHorizontal: 14,
+
+    borderRadius: 12,
+
+    backgroundColor: PINK,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+
+    elevation: 2,
+  },
+
+  editText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 8,
+
+    color: BROWN,
+  },
+
+  // OPTIONS
+  optionsContainer: {
+    width: '100%',
+
+    gap: 18,
+  },
+
+  optionCard: {
+    width: '100%',
+    height: 68,
+
+    backgroundColor: LIGHT_GRAY,
+
+    borderRadius: 17,
+
+    paddingHorizontal: 24,
+
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+
+    elevation: 3,
+  },
+
+  optionIcon: {
+    width: 38,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 20,
+  },
+
+  progressIcon: {
+    width: 38,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 20,
+  },
+
+  optionText: {
+    flex: 1,
+
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+
+    color: BROWN,
+  },
+
+  // LOG OUT
+  logoutButton: {
+    width: 107,
+    height: 38,
+
+    borderRadius: 20,
+
+    backgroundColor: RED,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginTop: 70,
+
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+
+    elevation: 3,
+  },
+
+  logoutText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+
+    color: WHITE,
   },
 });
