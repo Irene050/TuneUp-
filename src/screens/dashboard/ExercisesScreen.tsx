@@ -146,11 +146,6 @@ export default function ExercisesScreen() {
 
   const [search, setSearch] = useState('');
 
-  /*
-   * Filter exercises based on:
-   * 1. Selected category
-   * 2. Search text
-   */
   const filteredExercises = useMemo(() => {
     return exercises.filter((exercise) => {
       const matchesCategory =
@@ -176,10 +171,8 @@ export default function ExercisesScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* SEARCH + FILTER */}
         <View style={styles.searchRow}>
 
-          {/* SEARCH */}
           <View style={styles.searchContainer}>
             <Ionicons
               name="search-outline"
@@ -196,26 +189,12 @@ export default function ExercisesScreen() {
             />
           </View>
 
-          {/* FILTER BUTTON */}
-          <Pressable
-            style={styles.filterIconButton}
-            onPress={() => setFilterOpen(!filterOpen)}
-          >
-            <Ionicons
-              name="options-outline"
-              size={22}
-              color="#F06F9B"
-            />
-          </Pressable>
-
         </View>
 
-        {/* TITLE */}
         <Text style={styles.title}>
           Vocal Exercises
         </Text>
 
-        {/* RECOMMENDED */}
         <View style={styles.recommendedHeader}>
           <View>
             <Text style={styles.recommendedTitle}>
@@ -228,7 +207,6 @@ export default function ExercisesScreen() {
           </View>
         </View>
 
-        {/* RECOMMENDED CARDS */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}

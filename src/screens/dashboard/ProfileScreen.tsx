@@ -21,7 +21,6 @@ export default function ProfileScreen() {
 
       <View style={styles.content}>
 
-        {/* PROFILE */}
         <View style={styles.profileSection}>
           <Image
             source={require('@/assets/images/tabIcons/profile.png')}
@@ -40,7 +39,6 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* SETTINGS */}
         <View style={styles.optionsContainer}>
 
           {/* ACCOUNT SETTINGS */}
@@ -64,7 +62,6 @@ export default function ProfileScreen() {
             />
           </Pressable>
 
-          {/* VIEW PROGRESS */}
           <Pressable style={styles.optionCard}>
             <View style={styles.progressIcon}>
               <Ionicons
@@ -115,7 +112,6 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
 
-  // PROFILE
   profileSection: {
     alignItems: 'center',
 
@@ -173,7 +169,6 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // OPTIONS
   optionsContainer: {
     width: '100%',
 
@@ -231,7 +226,6 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // LOG OUT
   logoutButton: {
     width: 107,
     height: 38,
