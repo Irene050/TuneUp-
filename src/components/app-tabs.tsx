@@ -151,8 +151,8 @@ const styles = StyleSheet.create({
 
     backgroundColor: WHITE,
 
-    borderTopLeftRadius: 60,
-    borderTopRightRadius: 60,
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
 
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
@@ -243,8 +243,8 @@ const styles = StyleSheet.create({
 
   // Gray circle shown ON TOP of pink when active
   centerActiveCircle: {
-    width: 65,
-    height: 65,
+    width: 60,
+    height: 60,
 
     borderRadius: 999,
 
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   },
 
   centerIcon: {
-    width: 40,
-    height: 40,
+    width: 35,
+    height: 35,
   },
 });
