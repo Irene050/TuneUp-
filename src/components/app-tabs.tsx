@@ -140,57 +140,46 @@ export default function AppTabs() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    position: 'absolute',
-
-    left: 0,
-    right: 0,
-    bottom: 0,
-
-    height: 95,
-
-    backgroundColor: WHITE,
-
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
-
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-
-    flexDirection: 'row',
+  tabBar: { 
+    position: 'absolute', 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    height: 95, 
+    backgroundColor: WHITE, 
+    borderTopLeftRadius: 50, 
+    borderTopRightRadius: 50, 
+    flexDirection: 'row', 
     alignItems: 'center',
-
-    paddingHorizontal: 30,
-
-    elevation: 20,
-
-    shadowColor: '#000000',
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-
-    shadowOffset: {
-      width: 0,
-      height: -6,
-    },
-
-    overflow: 'visible',
+    paddingHorizontal: 0, 
+    elevation: 20, 
+    shadowColor: '#000000', 
+    shadowOpacity: 0.25, 
+    shadowRadius: 18, 
+    shadowOffset: { 
+      width: 0, 
+      height: -6, 
+    }, 
+    
+    overflow: 'visible', 
   },
+  
+tabButton: { 
+  flex: 1, 
+  height: 95, 
+  alignItems: 'center', 
+  justifyContent: 'center',
+  marginHorizontal: 0, 
+},
 
-  tabButton: {
-    flex: 1,
-
-    height: 85,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  centerTabButton: {
-    marginHorizontal: 8,
-
-    zIndex: 100,
-    elevation: 100,
-  },
+centerTabButton: { 
+  flex: 1, 
+  height: 95, 
+  alignItems: 'center', 
+  justifyContent: 'center',
+  zIndex: 100, 
+  elevation: 100, 
+},
 
   iconContainer: {
     width: 50,

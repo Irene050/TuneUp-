@@ -4,30 +4,30 @@
     "slug": "TuneUp",
     "version": "1.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/images/tuneup-logo.png",
-
     "scheme": "tuneup",
-
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "icon": "./assets/images/tuneup-logo.png"
     },
-
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/tuneup-logo.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.fmadera.TuneUp",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -38,12 +38,20 @@
           "imageWidth": 180
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-audio",
+      "expo-asset",
+      "react-native-audio-api"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4eb68170-e9ea-400f-bc03-61fba0b2f47d"
+      }
     }
   }
 }

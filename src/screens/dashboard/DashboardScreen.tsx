@@ -2,11 +2,11 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -39,7 +39,12 @@ export default function DashboardScreen() {
         </View>
 
         {/* ASSESSMENT */}
-        <Pressable style={styles.assessmentCard}>
+        <Pressable
+          style={styles.assessmentCard}
+          onPress={() =>
+            router.push('/assessment')
+          }
+        >
           <View style={styles.assessmentIcon}>
             <Ionicons
               name="mic"
@@ -72,8 +77,26 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
 
-        {/* VOCAL EXERCISES HEADER */}
-        <View style={styles.sectionHeader}></View>
+        <Pressable
+          onPress={() => router.push('/audio-test')}
+          style={{
+            backgroundColor: '#4E2F1F',
+            paddingVertical: 14,
+            paddingHorizontal: 25,
+            borderRadius: 25,
+            marginTop: 20,
+          }}
+        >
+          <Text
+            style={{
+              color: '#FFFFFF',
+              fontFamily: 'FredokaBold',
+              textAlign: 'center',
+            }}
+          >
+            Test Audio
+          </Text>
+        </Pressable>
 
         {/* VOCAL EXERCISES HEADER */}
         <View style={styles.sectionHeader}>
