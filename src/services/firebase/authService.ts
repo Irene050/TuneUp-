@@ -11,7 +11,7 @@ import {
 import {
   doc,
   serverTimestamp,
-  setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 
 import { auth, db } from './config';
@@ -20,6 +20,8 @@ type RegistrationProfile = {
   birthdate: string;
   gender: string;
 };
+
+const ALL_COMPONENT_IDS = ['breathControl', 'pitch', 'tone', 'volume', 'agility'] as const;
 
 /* =========================================================
    REGISTER USER
@@ -66,8 +68,9 @@ export async function registerUser(
     displayName: trimmedName,
   });
 
-  // Save additional information in Firestore
-  await setDoc(doc(db, 'users', user.uid), {
+  const batch = writeBatch(db);
+
+  batch.set(doc(db, 'users', user.uid), {
     uid: user.uid,
     name: trimmedName,
     email: trimmedEmail,
@@ -75,6 +78,17 @@ export async function registerUser(
     gender: profile.gender,
     createdAt: serverTimestamp(),
   });
+
+  for (const componentId of ALL_COMPONENT_IDS) {
+    batch.set(doc(db, 'users', user.uid, 'progress', componentId), {
+      componentId,
+      currentTier: 'beginner',
+      exercisesCompleted: 0,
+      averageRecentScorePct: 0,
+    });
+  }
+
+  await batch.commit();
 
   return user;
 }
