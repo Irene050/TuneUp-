@@ -1,14 +1,15 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
 import { useState } from 'react';
+
 import {
     Pressable,
+    ScrollView,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
 
 import {
+    LiveAudioFrame,
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 
@@ -17,12 +18,13 @@ const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
+const LIGHT_GRAY = '#F2F2F2';
 
 export default function AudioTestScreen() {
-  const [lastSampleCount, setLastSampleCount] =
-    useState(0);
+  const [liveData, setLiveData] =
+    useState<LiveAudioFrame | null>(null);
 
-  const [lastFFTCount, setLastFFTCount] =
+  const [recordedSamples, setRecordedSamples] =
     useState(0);
 
   const {
@@ -30,169 +32,202 @@ export default function AudioTestScreen() {
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame: (
-      samples,
-      sampleRate
-    ) => {
-      console.log(
-        '🎤 AUDIO FRAME:',
-        samples.length,
-        'samples |',
-        sampleRate,
-        'Hz'
-      );
+    onFrame: (frame: LiveAudioFrame) => {
+      /*
+       * This receives ONE live audio frame.
+       *
+       * The recorder is still keeping the complete
+       * recording internally for onStop().
+       */
+      setLiveData(frame);
     },
 
     onStop: (
-      samples,
-      sampleRate,
-      fftFrames
+      samples: Float32Array,
+      sampleRate: number
     ) => {
       console.log(
-        '🛑 RECORDING STOPPED'
+        'FINAL RECORDING:',
+        samples.length,
+        'samples'
       );
 
       console.log(
-        'Total samples:',
-        samples.length
-      );
-
-      console.log(
-        'Sample rate:',
+        'SAMPLE RATE:',
         sampleRate
       );
 
-      console.log(
-        'FFT frames:',
-        fftFrames.length
-      );
-
-      setLastSampleCount(
+      setRecordedSamples(
         samples.length
-      );
-
-      setLastFFTCount(
-        fftFrames.length
       );
     },
   });
 
+  const handleStart = async () => {
+    try {
+      setLiveData(null);
+      setRecordedSamples(0);
+
+      await startRecording();
+    } catch (error) {
+      console.error(
+        'Failed to start recording:',
+        error
+      );
+    }
+  };
+
+  const handleStop = async () => {
+    try {
+      await stopRecording();
+    } catch (error) {
+      console.error(
+        'Failed to stop recording:',
+        error
+      );
+    }
+  };
+
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+    >
+      <Text style={styles.title}>
+        Audio Test
+      </Text>
 
-      {/* BACK BUTTON */}
-      <Pressable
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={22}
-          color={BROWN}
-        />
-      </Pressable>
+      <Text style={styles.subtitle}>
+        Speak or sing into the microphone and
+        watch the audio data update in real time.
+      </Text>
 
+      {/* LIVE DATA */}
 
-      {/* CONTENT */}
-      <View style={styles.content}>
-
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="mic"
-            size={36}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.title}>
-          Audio Test
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>
+          Live Audio
         </Text>
 
-        <Text style={styles.description}>
-          Test your microphone and make sure
-          TuneUp! can receive audio correctly.
-        </Text>
-
-
-        {/* STATUS */}
-        <View style={styles.statusCard}>
-
-          <Text style={styles.statusTitle}>
-            Microphone Status
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Pitch
           </Text>
 
-          <Text
-            style={[
-              styles.statusText,
-              isRecording &&
-                styles.recordingText,
-            ]}
-          >
-            {isRecording
-              ? '🎤 Recording...'
-              : 'Ready to record'}
+          <Text style={styles.value}>
+            {liveData
+              ? `${liveData.pitch.toFixed(1)} Hz`
+              : '--'}
           </Text>
-
         </View>
 
-
-        {/* RECORD BUTTON */}
-        <Pressable
-          style={[
-            styles.recordButton,
-            isRecording &&
-              styles.stopButton,
-          ]}
-          onPress={
-            isRecording
-              ? stopRecording
-              : startRecording
-          }
-        >
-          <Ionicons
-            name={
-              isRecording
-                ? 'stop'
-                : 'mic'
-            }
-            size={28}
-            color={WHITE}
-          />
-
-          <Text style={styles.recordButtonText}>
-            {isRecording
-              ? 'Stop Recording'
-              : 'Start Recording'}
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Note
           </Text>
-        </Pressable>
 
+          <Text style={styles.value}>
+            {liveData?.note ?? '--'}
+          </Text>
+        </View>
 
-        {/* RESULTS */}
-        {lastSampleCount > 0 && (
-          <View style={styles.resultCard}>
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Clarity
+          </Text>
 
-            <Text style={styles.resultTitle}>
-              Audio Received ✓
-            </Text>
+          <Text style={styles.value}>
+            {liveData
+              ? `${(
+                  liveData.clarity * 100
+                ).toFixed(1)}%`
+              : '--'}
+          </Text>
+        </View>
 
-            <Text style={styles.resultText}>
-              Samples: {lastSampleCount}
-            </Text>
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Volume
+          </Text>
 
-            <Text style={styles.resultText}>
-              Sample Rate: 44,100 Hz
-            </Text>
+          <Text style={styles.value}>
+            {liveData
+              ? `${liveData.volume.toFixed(1)} dB`
+              : '--'}
+          </Text>
+        </View>
 
-            <Text style={styles.resultText}>
-              FFT Frames: {lastFFTCount}
-            </Text>
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Stability
+          </Text>
 
-          </View>
-        )}
-
+          <Text style={styles.value}>
+            {liveData
+              ? `${liveData.stability.toFixed(1)}%`
+              : '--'}
+          </Text>
+        </View>
       </View>
 
-    </View>
+      {/* RAW AUDIO INFORMATION */}
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>
+          Recording
+        </Text>
+
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Status
+          </Text>
+
+          <Text style={styles.value}>
+            {isRecording
+              ? 'Recording'
+              : 'Stopped'}
+          </Text>
+        </View>
+
+        <View style={styles.dataRow}>
+          <Text style={styles.label}>
+            Samples captured
+          </Text>
+
+          <Text style={styles.value}>
+            {recordedSamples.toLocaleString()}
+          </Text>
+        </View>
+      </View>
+
+      {/* BUTTON */}
+
+      <Pressable
+        style={[
+          styles.button,
+          isRecording &&
+            styles.stopButton,
+        ]}
+        onPress={
+          isRecording
+            ? handleStop
+            : handleStart
+        }
+      >
+        <Text style={styles.buttonText}>
+          {isRecording
+            ? 'Stop Recording'
+            : 'Start Recording'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.helper}>
+        The live values are calculated from
+        incoming microphone frames while the
+        complete audio recording is preserved
+        for final assessment processing.
+      </Text>
+    </ScrollView>
   );
 }
 
@@ -202,160 +237,89 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  backButton: {
-    position: 'absolute',
-
-    top: 55,
-    left: 24,
-
-    zIndex: 10,
-
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    gap: 6,
-
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-
   content: {
-    flex: 1,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    paddingHorizontal: 24,
-  },
-
-  iconCircle: {
-    width: 80,
-    height: 80,
-
-    borderRadius: 40,
-
-    backgroundColor: PINK,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginBottom: 20,
+    padding: 24,
+    paddingTop: 50,
+    paddingBottom: 80,
   },
 
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
-
     color: BROWN,
-
-    marginBottom: 10,
+    textAlign: 'center',
+    marginBottom: 8,
   },
 
-  description: {
+  subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-
     lineHeight: 21,
-
     color: MUTED,
-
     textAlign: 'center',
-
     marginBottom: 25,
   },
 
-  statusCard: {
-    width: '100%',
-
+  card: {
     backgroundColor: LIGHT_PINK,
-
-    borderRadius: 18,
-
+    borderRadius: 20,
     padding: 20,
-
-    alignItems: 'center',
-
-    marginBottom: 20,
+    marginBottom: 18,
   },
 
-  statusTitle: {
+  cardTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 17,
-
+    fontSize: 19,
     color: BROWN,
-
-    marginBottom: 6,
+    marginBottom: 15,
   },
 
-  statusText: {
+  dataRow: {
+    minHeight: 45,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: LIGHT_GRAY,
+  },
+
+  label: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-
     color: MUTED,
   },
 
-  recordingText: {
-    color: BROWN,
+  value: {
     fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
   },
 
-  recordButton: {
-    width: '100%',
-    height: 58,
-
-    borderRadius: 29,
-
+  button: {
+    height: 56,
+    borderRadius: 28,
     backgroundColor: BROWN,
-
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-
-    gap: 10,
+    marginTop: 10,
   },
 
   stopButton: {
     opacity: 0.75,
   },
 
-  recordButtonText: {
+  buttonText: {
     fontFamily: 'FredokaBold',
-    fontSize: 16,
-
+    fontSize: 17,
     color: WHITE,
   },
 
-  resultCard: {
-    width: '100%',
-
-    backgroundColor: PINK,
-
-    borderRadius: 18,
-
-    padding: 20,
-
-    marginTop: 20,
-  },
-
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-
-    color: BROWN,
-
-    marginBottom: 10,
-
-    textAlign: 'center',
-  },
-
-  resultText: {
+  helper: {
     fontFamily: 'FredokaRegular',
-    fontSize: 13,
-
-    color: BROWN,
-
-    marginBottom: 4,
-
+    fontSize: 11,
+    lineHeight: 17,
+    color: MUTED,
     textAlign: 'center',
+    marginTop: 18,
   },
 });

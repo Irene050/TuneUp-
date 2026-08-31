@@ -1,5 +1,3 @@
-// src/services/assessment/assessmentModule.ts
-
 import {
     calcJitterStability,
     filterByClarity,
@@ -36,29 +34,12 @@ import {
 } from '@/utils/dsp/onsetOffset';
 
 
-// ============================================================
-// COMPONENT TYPES
-// ============================================================
-
-/**
- * The five vocal fundamentals used throughout TuneUp.
- *
- * IMPORTANT:
- * progressModule.ts imports ComponentId from this file.
- *
- * Do not rename these IDs unless progressModule.ts is also changed.
- */
 export type ComponentId =
   | 'breathControl'
   | 'pitch'
   | 'tone'
   | 'volume'
   | 'agility';
-
-
-// ============================================================
-// ASSESSMENT TYPES
-// ============================================================
 
 export interface ComponentScore {
   componentId: ComponentId;
@@ -587,6 +568,7 @@ function measureAgility(
 // VOCAL RANGE
 // ============================================================
 
+
 interface ComfortableNoteMeasurement {
   frequency: number;
   clarity: number;
@@ -594,18 +576,41 @@ interface ComfortableNoteMeasurement {
 }
 
 
+// ============================================================
+// DETECT COMFORTABLE NOTE
+// ============================================================
+
 function detectComfortableNote(
   samples: Float32Array,
   sampleRate: number
 ): ComfortableNoteMeasurement | null {
+
   if (
     sampleRate <= 0 ||
-    samples.length <
-      sampleRate *
-      0.75
+    samples.length === 0
   ) {
     return null;
   }
+
+  /*
+   * The user should sing for at least approximately
+   * 0.75 seconds.
+   */
+  const minimumSamples =
+    Math.floor(
+      sampleRate * 0.75
+    );
+
+  if (
+    samples.length < minimumSamples
+  ) {
+    return null;
+  }
+
+
+  // ----------------------------------------------------------
+  // PITCH TRACKING
+  // ----------------------------------------------------------
 
   const frames =
     trackPitchOverTime(
@@ -614,40 +619,102 @@ function detectComfortableNote(
       sampleRate
     );
 
-  const voiced =
-    filterByClarity(
-      frames,
-      0.8
-    );
-
   if (
-    voiced.length < 5
+    frames.length === 0
   ) {
     return null;
   }
 
+
+  /*
+   * Do NOT use filterByClarity() here.
+   *
+   * For vocal-range detection, we want to inspect
+   * all detected frequencies first and only reject
+   * obviously invalid values.
+   *
+   * This is more tolerant of phone microphone recordings.
+   */
   const validFrames =
-    voiced.filter(
+    frames.filter(
       frame =>
         Number.isFinite(
           frame.frequency
         ) &&
-        frame.frequency > 0
+        frame.frequency >= 80 &&
+        frame.frequency <= 1500 &&
+        Number.isFinite(
+        frame.clarity
+        ) &&
+        frame.clarity >= 0.6
     );
 
+
+  /*
+   * We need enough frames to determine whether
+   * the note is actually stable.
+   */
   if (
     validFrames.length < 5
   ) {
     return null;
   }
 
+
+  // ----------------------------------------------------------
+  // FREQUENCY
+  // ----------------------------------------------------------
+
+  /*
+   * Sort frequencies and use the median instead of
+   * the average.
+   *
+   * The median is more resistant to occasional
+   * incorrect pitch detections.
+   */
+  const sortedFrequencies =
+    validFrames
+      .map(
+        frame =>
+          frame.frequency
+      )
+      .sort(
+        (a, b) => a - b
+      );
+
+  const middle =
+    Math.floor(
+      sortedFrequencies.length / 2
+    );
+
   const frequency =
-    validFrames.reduce(
-      (sum, frame) =>
-        sum + frame.frequency,
-      0
-    ) /
-    validFrames.length;
+    sortedFrequencies.length % 2 === 0
+      ? (
+          sortedFrequencies[
+            middle - 1
+          ] +
+          sortedFrequencies[
+            middle
+          ]
+        ) / 2
+      : sortedFrequencies[
+          middle
+        ];
+
+
+  if (
+    !Number.isFinite(
+      frequency
+    ) ||
+    frequency <= 0
+  ) {
+    return null;
+  }
+
+
+  // ----------------------------------------------------------
+  // CLARITY
+  // ----------------------------------------------------------
 
   const clarity =
     validFrames.reduce(
@@ -657,48 +724,55 @@ function detectComfortableNote(
     ) /
     validFrames.length;
 
-  /*
-   * Convert frequency variation into cents.
-   *
-   * 50 cents is treated as the maximum
-   * acceptable deviation.
-   */
-  const averageCentsDeviation =
-    validFrames.reduce(
-      (sum, frame) => {
-        if (
-          frame.frequency <= 0 ||
-          frequency <= 0
-        ) {
-          return sum;
-        }
 
-        const cents =
+  // ----------------------------------------------------------
+  // PITCH STABILITY
+  // ----------------------------------------------------------
+
+  /*
+   * Calculate the average pitch deviation
+   * from the median frequency in cents.
+   */
+  const centsDeviations =
+    validFrames.map(
+      frame =>
+        Math.abs(
           1200 *
           Math.log2(
             frame.frequency /
-            frequency
-          );
+              frequency
+          )
+        )
+    );
 
-        return (
-          sum +
-          Math.abs(cents)
-        );
-      },
+
+  const averageCentsDeviation =
+    centsDeviations.reduce(
+      (sum, value) =>
+        sum + value,
       0
     ) /
-    validFrames.length;
+    centsDeviations.length;
 
+
+  /*
+   * 75 cents = maximum expected variation
+   * for a usable comfortable-note recording.
+   */
   const stabilityPct =
     Math.max(
       0,
-      100 -
-        (
-          averageCentsDeviation /
-          50
-        ) *
-          100
+      Math.min(
+        100,
+        100 -
+          (
+            averageCentsDeviation /
+            75
+          ) *
+            100
+      )
     );
+
 
   return {
     frequency,
@@ -708,9 +782,14 @@ function detectComfortableNote(
 }
 
 
+// ============================================================
+// VOCAL RANGE
+// ============================================================
+
 export function getVocalRange(
   audio: AssessmentAudioBundle
 ): VocalRange {
+
   const low =
     detectComfortableNote(
       audio.lowestComfortableNoteSamples,
@@ -723,33 +802,51 @@ export function getVocalRange(
       audio.sampleRate
     );
 
-  const hasStrictQuality = (
-    note:
-      ComfortableNoteMeasurement | null
-  ): note is ComfortableNoteMeasurement =>
-    note !== null &&
-    note.frequency >= 40 &&
-    note.frequency <= 1500 &&
-    note.clarity >= 0.9 &&
-    note.stabilityPct >= 85;
+
+  /*
+   * Debug information.
+   *
+   * This will tell us whether the problem is
+   * the LOW recording or the HIGH recording.
+   */
+  console.log(
+    '🎵 VOCAL RANGE LOW:',
+    low
+  );
+
+  console.log(
+    '🎵 VOCAL RANGE HIGH:',
+    high
+  );
+
 
   if (
-    !hasStrictQuality(low) ||
-    !hasStrictQuality(high)
+    !low ||
+    !high
   ) {
     throw new Error(
-      'Both notes must be clear, steady, and comfortable for at least 0.75 seconds.'
+      'We could not detect both comfortable notes. Please sing each note steadily and clearly, then try again.'
     );
   }
+
+
+  // ----------------------------------------------------------
+  // LOW MUST BE LOWER THAN HIGH
+  // ----------------------------------------------------------
 
   if (
     low.frequency >=
     high.frequency
   ) {
     throw new Error(
-      'The highest comfortable note must be above the lowest comfortable note.'
+      'The highest comfortable note must be above the lowest comfortable note. Please try again.'
     );
   }
+
+
+  // ----------------------------------------------------------
+  // MINIMUM RANGE
+  // ----------------------------------------------------------
 
   const semitoneSpan =
     12 *
@@ -758,20 +855,24 @@ export function getVocalRange(
         low.frequency
     );
 
+
   if (
     semitoneSpan < 3
   ) {
     throw new Error(
-      'The measured range must span at least three semitones.'
+      'The two notes are too close together. Please choose a clearly lower note and a clearly higher note.'
     );
   }
 
+
   return {
-    lowHz: low.frequency,
-    highHz: high.frequency,
+    lowHz:
+      low.frequency,
+
+    highHz:
+      high.frequency,
   };
 }
-
 
 // ============================================================
 // RUN ASSESSMENT
