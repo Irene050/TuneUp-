@@ -84,7 +84,8 @@ export default function DashboardScreen() {
             paddingVertical: 14,
             paddingHorizontal: 25,
             borderRadius: 25,
-            marginTop: 20,
+            marginTop: -10,
+            marginBottom: 18
           }}
         >
           <Text
