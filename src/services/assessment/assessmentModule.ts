@@ -1,36 +1,36 @@
 import {
-    calcJitterStability,
-    filterByClarity,
-    trackPitchOverTime,
+  calcJitterStability,
+  filterByClarity,
+  trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
 import {
-    calcAirflowStability,
+  calcAirflowStability,
 } from '@/utils/dsp/airflow';
 
 import {
-    computeFFTMagnitudes,
+  computeFFTMagnitudes,
 } from '@/utils/dsp/fft';
 
 import {
-    calcSmoothness,
-    computeSpectralCentroid,
+  calcSmoothness,
+  computeSpectralCentroid,
 } from '@/utils/dsp/spectral';
 
 import {
-    calcRampConsistency,
-    calcRMSWindows,
-    calcVolumeConsistency,
-    toDbArray,
+  calcRampConsistency,
+  calcRMSWindows,
+  calcVolumeConsistency,
+  toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
 
 import {
-    calcTransitionSpeed,
-    detectPitchChanges,
+  calcTransitionSpeed,
+  detectPitchChanges,
 } from '@/utils/dsp/agility';
 
 import {
-    detectOnsetOffset,
+  detectOnsetOffset,
 } from '@/utils/dsp/onsetOffset';
 
 
@@ -625,6 +625,13 @@ function detectComfortableNote(
     return null;
   }
 
+  console.log(
+  '🔍 RAW FRAMES (low/high):',
+  frames.map(f => ({
+    freq: f.frequency.toFixed(1),
+    clarity: f.clarity.toFixed(2),
+  }))
+);
 
   /*
    * Do NOT use filterByClarity() here.
@@ -636,18 +643,18 @@ function detectComfortableNote(
    * This is more tolerant of phone microphone recordings.
    */
   const validFrames =
-    frames.filter(
-      frame =>
-        Number.isFinite(
-          frame.frequency
-        ) &&
-        frame.frequency >= 80 &&
-        frame.frequency <= 1500 &&
-        Number.isFinite(
+  frames.filter(
+    frame =>
+      Number.isFinite(
+        frame.frequency
+      ) &&
+      frame.frequency >= 60 &&      // was 80
+      frame.frequency <= 1500 &&
+      Number.isFinite(
         frame.clarity
-        ) &&
-        frame.clarity >= 0.6
-    );
+      ) &&
+      frame.clarity >= 0.45          // was 0.6
+  );
 
 
   /*

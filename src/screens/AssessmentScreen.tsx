@@ -572,9 +572,18 @@ export default function AssessmentScreen() {
         );
 
 
-        setStep(
-          'highest'
-        );
+        setSections(
+  previous => {
+    const updated = { ...previous };
+    delete updated.lowest;
+    delete updated.highest;
+    return updated;
+  }
+);
+
+setStep(
+  'lowest'
+);
       }
     };
 
