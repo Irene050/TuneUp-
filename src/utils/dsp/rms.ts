@@ -1,4 +1,5 @@
 export function calcRMS(frame: Float32Array): number {
+  if (frame.length === 0) return 0;
   const sumSquares = frame.reduce((sum, v) => sum + v * v, 0);
   return Math.sqrt(sumSquares / frame.length);
 }
@@ -25,6 +26,6 @@ export function calcRMSVariance(
 }
 
 export function rmsToDb(rmsValue: number, refLevel = 1): number {
-  if (rmsValue <= 0) return -Infinity;
+  if (!Number.isFinite(rmsValue) || rmsValue <= 0) return -Infinity;
   return 20 * Math.log10(rmsValue / refLevel);
 }

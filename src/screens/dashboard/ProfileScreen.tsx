@@ -1,11 +1,12 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import {
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -62,7 +63,10 @@ export default function ProfileScreen() {
             />
           </Pressable>
 
-          <Pressable style={styles.optionCard}>
+          <Pressable
+            style={styles.optionCard}
+            onPress={() => router.push('/progress' as any)}
+          >
             <View style={styles.progressIcon}>
               <Ionicons
                 name="bar-chart"
