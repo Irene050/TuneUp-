@@ -1,22 +1,27 @@
 import {
-    useCallback,
-    useRef,
-    useState,
+  useCallback,
+  useRef,
+  useState,
 } from 'react';
 
 import {
-    AudioContext,
-    AudioManager,
-    AudioRecorder,
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
 } from 'react-native-audio-api';
 
 import {
-    analyzePitchFrame,
-    calcLiveStability,
+  createHighPassFilter,
+  HighPassFilter,
+} from '@/utils/dsp/filters';
+
+import {
+  analyzePitchFrame,
+  calcLiveStability,
 } from '@/utils/dsp/pitch';
 
 import {
-    computeFFTMagnitudes,
+  computeFFTMagnitudes,
 } from '@/utils/dsp/fft';
 
 const DEFAULT_SAMPLE_RATE = 44100;
@@ -171,6 +176,9 @@ export function useAudioRecorder(
   // PHASE AUDIO
   // ----------------------------------------------------------
 
+  const highPassFilterRef =
+    useRef<HighPassFilter | null>(null);
+
   const phaseBuffersRef =
     useRef<
       Record<
@@ -258,6 +266,9 @@ export function useAudioRecorder(
           // --------------------------------------------------
           // RESET
           // --------------------------------------------------
+
+          highPassFilterRef.current =
+            createHighPassFilter(80, DEFAULT_SAMPLE_RATE);
 
           bufferChunksRef.current =
             [];
@@ -357,6 +368,9 @@ export function useAudioRecorder(
                 new Float32Array(
                   channelData
                 );
+
+                const filteredSamples =
+               highPassFilterRef.current!.process(samples);
 
 
               // =================================================

@@ -1,16 +1,18 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useState } from 'react';
 
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    LiveAudioFrame,
-    useAudioRecorder,
+  LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 
 const BROWN = '#4E2F1F';
@@ -93,6 +95,21 @@ export default function AudioTestScreen() {
       style={styles.screen}
       contentContainerStyle={styles.content}
     >
+<Pressable
+          style={
+            styles.backButton
+          }
+          onPress={() =>
+            router.back()
+          }
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={BROWN}
+          />
+        </Pressable>
+
       <Text style={styles.title}>
         Audio Test
       </Text>
@@ -236,6 +253,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
+  
+  backButton: {
+      position: 'absolute',
+      top: 55,
+      left: 24,
+      zIndex: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
 
   content: {
     padding: 24,
