@@ -55,27 +55,33 @@ const exercises = [
   templateId: 'controlledBreathRelease',
 },
 
-  // PITCH
-  {
-    name: 'Note Matching Exercise',
-    category: 'Pitch',
-  },
-  {
-    name: 'Scale Accuracy Drill',
-    category: 'Pitch',
-  },
-  {
-    name: 'Interval Recognition Task',
-    category: 'Pitch',
-  },
-  {
-    name: 'Sustained Note Stability',
-    category: 'Pitch',
-  },
-  {
-    name: 'Melodic Pattern Matching',
-    category: 'Pitch',
-  },
+
+// PITCH
+{
+  name: 'Note Matching Exercise',
+  category: 'Pitch',
+  templateId: 'noteMatchingExercise',
+},
+{
+  name: 'Scale Accuracy Drill',
+  category: 'Pitch',
+  templateId: 'scaleAccuracyDrill',
+},
+{
+  name: 'Interval Recognition Task',
+  category: 'Pitch',
+  templateId: 'intervalRecognitionTask',
+},
+{
+  name: 'Sustained Note Stability',
+  category: 'Pitch',
+  templateId: 'sustainedNoteStability',
+},
+{
+  name: 'Melodic Pattern Matching',
+  category: 'Pitch',
+  templateId: 'melodicPatternMatching',
+},
 
   // TONE
   {
@@ -349,17 +355,30 @@ export default function ExercisesScreen() {
     key={exercise.name}
     style={styles.exerciseCard}
     onPress={() => {
-      if (
-        exercise.category === 'Breath Control' &&
+  if (
+    exercise.category === 'Breath Control' &&
+    exercise.templateId
+  ) {
+    router.push(
+      `/exercises/breath-control?templateId=${encodeURIComponent(
         exercise.templateId
-      ) {
-        router.push(
-          `/exercises/breath-control?templateId=${encodeURIComponent(
-            exercise.templateId
-          )}` as any
-        );
-      }
-    }}
+      )}` as any
+    );
+
+    return;
+  }
+
+  if (
+    exercise.category === 'Pitch' &&
+    exercise.templateId
+  ) {
+    router.push(
+      `/exercises/pitch?templateId=${encodeURIComponent(
+        exercise.templateId
+      )}` as any
+    );
+  }
+}}
   >
     <View style={styles.exerciseNameContainer}>
       <Text style={styles.exerciseName}>
