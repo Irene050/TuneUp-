@@ -33,7 +33,7 @@ export default function SteadyAirflowMaintenanceScreen({
     <View style={styles.screen}>
       <Pressable
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={() => router.replace('/dashboard/exercises')}
       >
         <Ionicons
           name="arrow-back"

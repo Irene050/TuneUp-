@@ -32,7 +32,7 @@ export default function SustainedSSSSScreen({
     <View style={styles.screen}>
       <Pressable
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={() => router.replace('/dashboard/exercises')}
       >
         <Ionicons
           name="arrow-back"
