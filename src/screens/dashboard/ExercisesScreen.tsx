@@ -1,13 +1,14 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -29,25 +30,30 @@ const categories = [
 const exercises = [
   // BREATH CONTROL
   {
-    name: 'Sustained Exhale',
-    category: 'Breath Control',
-  },
-  {
-    name: 'Sustained "SSSS" Sound',
-    category: 'Breath Control',
-  },
-  {
-    name: 'Diaphragmatic Breathing',
-    category: 'Breath Control',
-  },
-  {
-    name: 'Steady Airflow Maintenance',
-    category: 'Breath Control',
-  },
-  {
-    name: 'Controlled Breath Release',
-    category: 'Breath Control',
-  },
+  name: 'Sustained Exhale',
+  category: 'Breath Control',
+  templateId: 'sustainedExhale',
+},
+{
+  name: 'Sustained "SSSS" Sound',
+  category: 'Breath Control',
+  templateId: 'sustainedSSSS',
+},
+{
+  name: 'Diaphragmatic Breathing',
+  category: 'Breath Control',
+  templateId: 'diaphragmaticBreathing',
+},
+{
+  name: 'Steady Airflow Maintenance',
+  category: 'Breath Control',
+  templateId: 'steadyAirflowMaintenance',
+},
+{
+  name: 'Controlled Breath Release',
+  category: 'Breath Control',
+  templateId: 'controlledBreathRelease',
+},
 
   // PITCH
   {
@@ -338,42 +344,48 @@ export default function ExercisesScreen() {
         {/* EXERCISE LIST */}
         <View style={styles.exerciseList}>
 
-          {filteredExercises.map((exercise) => (
-            <Pressable
-              key={exercise.name}
-              style={styles.exerciseCard}
-            >
+{filteredExercises.map((exercise) => (
+  <Pressable
+    key={exercise.name}
+    style={styles.exerciseCard}
+    onPress={() => {
+      if (
+        exercise.category === 'Breath Control' &&
+        exercise.templateId
+      ) {
+        router.push(
+          `/exercises/breath-control?templateId=${encodeURIComponent(
+            exercise.templateId
+          )}` as any
+        );
+      }
+    }}
+  >
+    <View style={styles.exerciseNameContainer}>
+      <Text style={styles.exerciseName}>
+        {exercise.name}
+      </Text>
+    </View>
 
-              {/* NAME */}
-              <View style={styles.exerciseNameContainer}>
-                <Text style={styles.exerciseName}>
-                  {exercise.name}
-                </Text>
-              </View>
+    <View style={styles.levelBadge}>
+      <Text style={styles.levelText}>
+        Beginner
+      </Text>
+    </View>
 
-              {/* DIFFICULTY */}
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>
-                  Beginner
-                </Text>
-              </View>
+    <Text style={styles.exerciseCategory}>
+      {exercise.category}
+    </Text>
 
-              {/* CATEGORY */}
-              <Text style={styles.exerciseCategory}>
-                {exercise.category}
-              </Text>
-
-              {/* PLAY */}
-              <View style={styles.listPlayButton}>
-                <Ionicons
-                  name="play"
-                  size={16}
-                  color={BROWN}
-                />
-              </View>
-
-            </Pressable>
-          ))}
+    <View style={styles.listPlayButton}>
+      <Ionicons
+        name="play"
+        size={16}
+        color={BROWN}
+      />
+    </View>
+  </Pressable>
+))}
 
           {/* NO RESULTS */}
           {filteredExercises.length === 0 && (
