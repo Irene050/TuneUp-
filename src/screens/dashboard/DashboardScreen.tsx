@@ -1,6 +1,10 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import {
+  useCallback,
+  useState,
+} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +13,14 @@ import {
   View,
 } from 'react-native';
 
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import type {
+  SavedAssessmentResult,
+} from '@/services/assessment/assessmentRepository';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -16,25 +28,188 @@ const LIGHT_GRAY = '#F2F2F2';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 
+/* =========================================================
+   FREQUENCY → NOTE NAME
+========================================================= */
+
+/**
+ * Converts a frequency in Hz into the nearest
+ * musical note name.
+ *
+ * Examples:
+ *
+ * 130.81 Hz → C3
+ * 261.63 Hz → C4
+ * 392.00 Hz → G4
+ */
+function frequencyToNoteName(
+  frequency: number,
+): string {
+  if (
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
+    return '--';
+  }
+
+  const noteNames = [
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
+  ];
+
+  /*
+   * A4 = 440 Hz = MIDI note 69.
+   */
+  const midi = Math.round(
+    69 +
+      12 *
+        Math.log2(
+          frequency / 440,
+        ),
+  );
+
+  const noteIndex =
+    ((midi % 12) + 12) % 12;
+
+  const octave =
+    Math.floor(midi / 12) - 1;
+
+  return `${noteNames[noteIndex]}${octave}`;
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
 export default function DashboardScreen() {
+  const [
+    latestAssessment,
+    setLatestAssessment,
+  ] = useState<SavedAssessmentResult | null>(
+    null,
+  );
+
+  const [
+    assessmentLoading,
+    setAssessmentLoading,
+  ] = useState(true);
+
+  /* =======================================================
+     LOAD LATEST ASSESSMENT
+  ======================================================= */
+
+  /*
+   * useFocusEffect is intentional here.
+   *
+   * When the user:
+   *
+   * Dashboard
+   *    ↓
+   * Assessment
+   *    ↓
+   * completes assessment
+   *    ↓
+   * Dashboard
+   *
+   * the dashboard gets focused again and reloads
+   * the newest assessment from Firebase.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+
+      const loadAssessment =
+        async () => {
+          try {
+            setAssessmentLoading(
+              true,
+            );
+
+            const assessment =
+              await getLatestAssessment();
+
+            if (mounted) {
+              setLatestAssessment(
+                assessment,
+              );
+            }
+          } catch (error) {
+            console.error(
+              '❌ Failed to load latest assessment:',
+              error,
+            );
+
+            if (mounted) {
+              setLatestAssessment(
+                null,
+              );
+            }
+          } finally {
+            if (mounted) {
+              setAssessmentLoading(
+                false,
+              );
+            }
+          }
+        };
+
+      loadAssessment();
+
+      return () => {
+        mounted = false;
+      };
+    }, []),
+  );
+
+  /* =======================================================
+     DASHBOARD UI
+  ======================================================= */
+
   return (
     <View style={styles.screen}>
       <AppHeader />
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.content
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
         {/* USER INTRO */}
         <View style={styles.userSection}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>U</Text>
+            <Text
+              style={styles.avatarText}
+            >
+              U
+            </Text>
           </View>
 
           <View>
-            <Text style={styles.userName}>User</Text>
-            <Text style={styles.userLevel}>lvl. 0</Text>
+            <Text
+              style={styles.userName}
+            >
+              User
+            </Text>
+
+            <Text
+              style={styles.userLevel}
+            >
+              lvl. 0
+            </Text>
           </View>
         </View>
 
@@ -45,7 +220,9 @@ export default function DashboardScreen() {
             router.push('/assessment')
           }
         >
-          <View style={styles.assessmentIcon}>
+          <View
+            style={styles.assessmentIcon}
+          >
             <Ionicons
               name="mic"
               size={25}
@@ -53,18 +230,32 @@ export default function DashboardScreen() {
             />
           </View>
 
-          <View style={styles.assessmentContent}>
-            <Text style={styles.assessmentTitle}>
+          <View
+            style={styles.assessmentContent}
+          >
+            <Text
+              style={styles.assessmentTitle}
+            >
               Find your vocal strengths!
             </Text>
 
-            <Text style={styles.assessmentDescription}>
-              Take a quick assessment to personalize
-              your exercises.
+            <Text
+              style={
+                styles.assessmentDescription
+              }
+            >
+              Take a quick assessment to
+              personalize your exercises.
             </Text>
 
-            <View style={styles.assessmentButton}>
-              <Text style={styles.assessmentButtonText}>
+            <View
+              style={styles.assessmentButton}
+            >
+              <Text
+                style={
+                  styles.assessmentButtonText
+                }
+              >
                 Assess Me!
               </Text>
 
@@ -77,66 +268,143 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
 
+        {/* =================================================
+            VOCAL RANGE
+        ================================================= */}
+
+        <View style={styles.rangeCard}>
+          <View style={styles.rangeIcon}>
+            <Ionicons
+              name="musical-notes"
+              size={24}
+              color={BROWN}
+            />
+          </View>
+
+          <View style={styles.rangeContent}>
+            <Text style={styles.rangeLabel}>
+              Your Vocal Range
+            </Text>
+
+            {assessmentLoading ? (
+              <Text
+                style={styles.rangeText}
+              >
+                Loading...
+              </Text>
+            ) : latestAssessment ? (
+              <Text
+                style={styles.rangeText}
+              >
+                {frequencyToNoteName(
+                  latestAssessment.vocalRangeLowHz,
+                )}
+                {' – '}
+                {frequencyToNoteName(
+                  latestAssessment.vocalRangeHighHz,
+                )}
+              </Text>
+            ) : (
+              <Text
+                style={styles.rangeEmptyText}
+              >
+                Complete an assessment to
+                discover your range.
+              </Text>
+            )}
+
+            {latestAssessment && (
+              <Text
+                style={styles.rangeSubtext}
+              >
+                Based on your latest assessment
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* AUDIO TEST */}
         <Pressable
-          onPress={() => router.push('/audio-test')}
-          style={{
-            backgroundColor: '#4E2F1F',
-            paddingVertical: 14,
-            paddingHorizontal: 25,
-            borderRadius: 25,
-            marginTop: -10,
-            marginBottom: 18
-          }}
+          onPress={() =>
+            router.push('/audio-test')
+          }
+          style={styles.audioTestButton}
         >
           <Text
-            style={{
-              color: '#FFFFFF',
-              fontFamily: 'FredokaBold',
-              textAlign: 'center',
-            }}
+            style={styles.audioTestText}
           >
             Test Audio
           </Text>
         </Pressable>
 
         {/* VOCAL EXERCISES HEADER */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.sectionHeader}
+        >
+          <Text
+            style={styles.sectionTitle}
+          >
             Vocal Components
           </Text>
 
           <Pressable
-            onPress={() => router.push('/dashboard/exercises')}
+            onPress={() =>
+              router.push(
+                '/dashboard/exercises',
+              )
+            }
+          >
+            <Text
+              style={styles.viewMore}
             >
-            <Text style={styles.viewMore}>
-                view more
+              view more
             </Text>
-        </Pressable>
+          </Pressable>
         </View>
 
         {/* RECOMMENDED EXERCISES */}
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.exerciseScroll}
+          showsHorizontalScrollIndicator={
+            false
+          }
+          contentContainerStyle={
+            styles.exerciseScroll
+          }
         >
           {/* CARD 1 */}
-          <Pressable style={styles.exerciseCard}>
-            <View style={styles.exerciseImage}>
-            </View>
+          <Pressable
+            style={styles.exerciseCard}
+          >
+            <View
+              style={styles.exerciseImage}
+            />
 
-            <View style={styles.exerciseBottom}>
-              <View style={styles.exerciseText}>
-                <Text style={styles.exerciseName}>
+            <View
+              style={styles.exerciseBottom}
+            >
+              <View
+                style={styles.exerciseText}
+              >
+                <Text
+                  style={styles.exerciseName}
+                >
                   Breath Control
                 </Text>
 
-                <Text style={styles.exerciseDescription}>
-                  Breath Control Exercises Available Here!
+                <Text
+                  style={
+                    styles.exerciseDescription
+                  }
+                >
+                  Breath Control Exercises
+                  Available Here!
                 </Text>
               </View>
 
-              <View style={styles.playButton}>
+              <View
+                style={styles.playButton}
+              >
                 <Ionicons
                   name="play"
                   size={20}
@@ -147,22 +415,38 @@ export default function DashboardScreen() {
           </Pressable>
 
           {/* CARD 2 */}
-          <Pressable style={styles.exerciseCard}>
-            <View style={styles.exerciseImage}>
-            </View>
+          <Pressable
+            style={styles.exerciseCard}
+          >
+            <View
+              style={styles.exerciseImage}
+            />
 
-            <View style={styles.exerciseBottom}>
-              <View style={styles.exerciseText}>
-                <Text style={styles.exerciseName}>
+            <View
+              style={styles.exerciseBottom}
+            >
+              <View
+                style={styles.exerciseText}
+              >
+                <Text
+                  style={styles.exerciseName}
+                >
                   Pitch
                 </Text>
 
-                <Text style={styles.exerciseDescription}>
-                  Pitch Exercises Available Here!
+                <Text
+                  style={
+                    styles.exerciseDescription
+                  }
+                >
+                  Pitch Exercises Available
+                  Here!
                 </Text>
               </View>
 
-              <View style={styles.playButton}>
+              <View
+                style={styles.playButton}
+              >
                 <Ionicons
                   name="play"
                   size={20}
@@ -173,22 +457,38 @@ export default function DashboardScreen() {
           </Pressable>
 
           {/* CARD 3 */}
-          <Pressable style={styles.exerciseCard}>
-            <View style={styles.exerciseImage}>
-            </View>
+          <Pressable
+            style={styles.exerciseCard}
+          >
+            <View
+              style={styles.exerciseImage}
+            />
 
-            <View style={styles.exerciseBottom}>
-              <View style={styles.exerciseText}>
-                <Text style={styles.exerciseName}>
+            <View
+              style={styles.exerciseBottom}
+            >
+              <View
+                style={styles.exerciseText}
+              >
+                <Text
+                  style={styles.exerciseName}
+                >
                   Tone
                 </Text>
 
-                <Text style={styles.exerciseDescription}>
-                  Tone Exercises Available Here!
+                <Text
+                  style={
+                    styles.exerciseDescription
+                  }
+                >
+                  Tone Exercises Available
+                  Here!
                 </Text>
               </View>
 
-              <View style={styles.playButton}>
+              <View
+                style={styles.playButton}
+              >
                 <Ionicons
                   name="play"
                   size={20}
@@ -199,22 +499,38 @@ export default function DashboardScreen() {
           </Pressable>
 
           {/* CARD 4 */}
-          <Pressable style={styles.exerciseCard}>
-            <View style={styles.exerciseImage}>
-            </View>
+          <Pressable
+            style={styles.exerciseCard}
+          >
+            <View
+              style={styles.exerciseImage}
+            />
 
-            <View style={styles.exerciseBottom}>
-              <View style={styles.exerciseText}>
-                <Text style={styles.exerciseName}>
+            <View
+              style={styles.exerciseBottom}
+            >
+              <View
+                style={styles.exerciseText}
+              >
+                <Text
+                  style={styles.exerciseName}
+                >
                   Volume
                 </Text>
 
-                <Text style={styles.exerciseDescription}>
-                  Volume Exercises Available Here!
+                <Text
+                  style={
+                    styles.exerciseDescription
+                  }
+                >
+                  Volume Exercises Available
+                  Here!
                 </Text>
               </View>
 
-              <View style={styles.playButton}>
+              <View
+                style={styles.playButton}
+              >
                 <Ionicons
                   name="play"
                   size={20}
@@ -225,22 +541,38 @@ export default function DashboardScreen() {
           </Pressable>
 
           {/* CARD 5 */}
-          <Pressable style={styles.exerciseCard}>
-            <View style={styles.exerciseImage}>
-            </View>
+          <Pressable
+            style={styles.exerciseCard}
+          >
+            <View
+              style={styles.exerciseImage}
+            />
 
-            <View style={styles.exerciseBottom}>
-              <View style={styles.exerciseText}>
-                <Text style={styles.exerciseName}>
+            <View
+              style={styles.exerciseBottom}
+            >
+              <View
+                style={styles.exerciseText}
+              >
+                <Text
+                  style={styles.exerciseName}
+                >
                   Agility
                 </Text>
 
-                <Text style={styles.exerciseDescription}>
-                  Agility Exercises Available Here!
+                <Text
+                  style={
+                    styles.exerciseDescription
+                  }
+                >
+                  Agility Exercises Available
+                  Here!
                 </Text>
               </View>
 
-              <View style={styles.playButton}>
+              <View
+                style={styles.playButton}
+              >
                 <Ionicons
                   name="play"
                   size={20}
@@ -252,34 +584,52 @@ export default function DashboardScreen() {
         </ScrollView>
 
         {/* MY PROGRESS */}
-        <View style={styles.progressHeader}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.progressHeader}
+        >
+          <Text
+            style={styles.sectionTitle}
+          >
             My Progress
           </Text>
         </View>
 
-        <View style={styles.progressCard}>
+        <View
+          style={styles.progressCard}
+        >
           <View style={styles.progressTop}>
             <View>
-              <Text style={styles.progressTitle}>
+              <Text
+                style={styles.progressTitle}
+              >
                 Keep practicing!
               </Text>
 
-              <Text style={styles.progressSubtitle}>
-                Complete exercises to improve your skills.
+              <Text
+                style={
+                  styles.progressSubtitle
+                }
+              >
+                Complete exercises to improve
+                your skills.
               </Text>
             </View>
           </View>
 
-            <Text style={styles.progressPercent}>
-              0%
-            </Text>
-
+          <Text
+            style={styles.progressPercent}
+          >
+            0%
+          </Text>
         </View>
       </ScrollView>
     </View>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = StyleSheet.create({
   screen: {
@@ -297,6 +647,8 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
 
+  /* USER */
+
   userSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,12 +659,9 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-
     backgroundColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginRight: 14,
   },
 
@@ -335,11 +684,12 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
 
+  /* SECTION */
+
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-
     marginBottom: 14,
   },
 
@@ -354,6 +704,160 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
+
+  /* ASSESSMENT */
+
+  assessmentCard: {
+    width: '100%',
+    minHeight: 140,
+    backgroundColor: PINK,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    marginBottom: 18,
+
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 7,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+
+    elevation: 4,
+  },
+
+  assessmentIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  assessmentContent: {
+    flex: 1,
+  },
+
+  assessmentTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 18,
+    color: BROWN,
+    marginBottom: 5,
+  },
+
+  assessmentDescription: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 15,
+    color: BROWN,
+    marginBottom: 13,
+  },
+
+  assessmentButton: {
+    alignSelf: 'flex-start',
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  assessmentButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: WHITE,
+  },
+
+  /* VOCAL RANGE */
+
+  rangeCard: {
+    width: '100%',
+    minHeight: 86,
+
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    backgroundColor: LIGHT_PINK,
+
+    borderRadius: 18,
+
+    padding: 16,
+
+    marginBottom: 18,
+
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  rangeIcon: {
+    width: 48,
+    height: 48,
+
+    borderRadius: 24,
+
+    backgroundColor: PINK,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 14,
+  },
+
+  rangeContent: {
+    flex: 1,
+  },
+
+  rangeLabel: {
+    fontFamily: 'FredokaMedium',
+    fontSize: 13,
+    color: MUTED,
+    marginBottom: 1,
+  },
+
+  rangeText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+  },
+
+  rangeSubtext: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    marginTop: 1,
+  },
+
+  rangeEmptyText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 17,
+    color: BROWN,
+  },
+
+  /* AUDIO TEST */
+
+  audioTestButton: {
+    backgroundColor: BROWN,
+    paddingVertical: 14,
+    paddingHorizontal: 25,
+    borderRadius: 25,
+    marginTop: 0,
+    marginBottom: 18,
+  },
+
+  audioTestText: {
+    color: WHITE,
+    fontFamily: 'FredokaBold',
+    textAlign: 'center',
+  },
+
+  /* EXERCISES */
 
   exerciseScroll: {
     paddingBottom: 35,
@@ -427,7 +931,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 20,
     color: BROWN,
-
     marginBottom: 4,
   },
 
@@ -461,12 +964,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // PROGRESS
+  /* PROGRESS */
+
   progressHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-
     marginBottom: 14,
   },
 
@@ -498,7 +1001,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-
     marginTop: 3,
   },
 
@@ -543,94 +1045,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 50,
     color: BROWN,
-    marginLeft: 30
-  },
-
-  assessmentCard: {
-    width: '100%',
-    minHeight: 140,
-
-    backgroundColor: PINK,
-
-    borderRadius: 20,
-
-    padding: 20,
-
-    flexDirection: 'row',
-
-    marginBottom: 30,
-
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 7,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-
-    elevation: 4,
-  },
-
-  assessmentIcon: {
-    width: 48,
-    height: 48,
-
-    borderRadius: 24,
-
-    backgroundColor: LIGHT_GRAY,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginRight: 14,
-  },
-
-  assessmentContent: {
-    flex: 1,
-  },
-
-  assessmentTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-
-    color: BROWN,
-
-    marginBottom: 5,
-  },
-
-  assessmentDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-
-    lineHeight: 15,
-
-    color: BROWN,
-
-    marginBottom: 13,
-  },
-
-  assessmentButton: {
-    alignSelf: 'flex-start',
-
-    height: 34,
-
-    paddingHorizontal: 14,
-
-    borderRadius: 17,
-
-    backgroundColor: BROWN,
-
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    gap: 4,
-  },
-
-  assessmentButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-
-    color: WHITE,
+    marginLeft: 30,
   },
 });

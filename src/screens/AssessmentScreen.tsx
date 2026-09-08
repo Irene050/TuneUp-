@@ -27,6 +27,10 @@ import {
 } from '@/services/assessment/assessmentModule';
 
 import {
+  saveAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
@@ -172,10 +176,75 @@ function getStepDuration(
 
 
 // ============================================================
+// FREQUENCY → NOTE NAME
+// ============================================================
+
+function frequencyToNoteName(
+  frequency: number
+): string {
+
+  if (
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
+    return '--';
+  }
+
+
+  const noteNames = [
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
+  ];
+
+
+  /*
+   * MIDI note formula:
+   *
+   * A4 = MIDI 69 = 440 Hz
+   */
+  const midi =
+    Math.round(
+      69 +
+      12 *
+        Math.log2(
+          frequency / 440
+        )
+    );
+
+
+  const noteIndex =
+    (
+      midi % 12 +
+      12
+    ) % 12;
+
+
+  const octave =
+    Math.floor(
+      midi / 12
+    ) - 1;
+
+
+  return `${noteNames[noteIndex]}${octave}`;
+}
+
+
+// ============================================================
 // SCREEN
 // ============================================================
 
 export default function AssessmentScreen() {
+
   const [
     step,
     setStep,
@@ -257,6 +326,7 @@ export default function AssessmentScreen() {
       (
         currentStep: AssessmentStep
       ) => {
+
         const index =
           STEP_ORDER.indexOf(
             currentStep
@@ -299,6 +369,7 @@ export default function AssessmentScreen() {
   const recorderOptions =
     useMemo(
       () => ({
+
         // ------------------------------------------------------
         // LIVE DATA
         // ------------------------------------------------------
@@ -320,10 +391,6 @@ export default function AssessmentScreen() {
           samples: Float32Array,
           _sampleRate: number
         ) => {
-          /*
-           * Save the complete recording for
-           * the current assessment section.
-           */
 
           const currentStep =
             step;
@@ -344,17 +411,11 @@ export default function AssessmentScreen() {
           );
 
 
-          /*
-           * Reset live display after recording.
-           */
           setLiveAudio(
             null
           );
 
 
-          /*
-           * Continue automatically.
-           */
           setTimeout(
             () => {
               moveToNextStep(
@@ -364,6 +425,7 @@ export default function AssessmentScreen() {
             150
           );
         },
+
       }),
       [
         step,
@@ -388,9 +450,11 @@ export default function AssessmentScreen() {
 
   const beginSection =
     async () => {
+
       setError(
         null
       );
+
 
       setLiveAudio(
         null
@@ -411,9 +475,11 @@ export default function AssessmentScreen() {
 
 
       try {
+
         setRemainingSeconds(
           duration
         );
+
 
         setIsRecordingSection(
           true
@@ -430,6 +496,7 @@ export default function AssessmentScreen() {
         const interval =
           setInterval(
             () => {
+
               remaining -=
                 1;
 
@@ -443,6 +510,7 @@ export default function AssessmentScreen() {
                 remaining <=
                 0
               ) {
+
                 clearInterval(
                   interval
                 );
@@ -450,12 +518,15 @@ export default function AssessmentScreen() {
 
                 stopRecording();
               }
+
             },
             1000
           );
+
       } catch (
         err
       ) {
+
         console.error(
           'Assessment recording error:',
           err
@@ -485,6 +556,7 @@ export default function AssessmentScreen() {
 
   const createAssessmentBundle =
     (): AssessmentAudioBundle => {
+
       const empty =
         new Float32Array(
           0
@@ -492,6 +564,7 @@ export default function AssessmentScreen() {
 
 
       return {
+
         breathControlSamples:
           sections.breathControl ??
           empty,
@@ -531,8 +604,10 @@ export default function AssessmentScreen() {
   // ==========================================================
 
   const processAssessment =
-    () => {
+    async () => {
+
       try {
+
         setError(
           null
         );
@@ -542,23 +617,66 @@ export default function AssessmentScreen() {
           createAssessmentBundle();
 
 
+        /*
+         * Your existing DSP assessment
+         * remains completely unchanged.
+         */
         const assessmentResult =
           runAssessment(
             audio
           );
 
 
+        /*
+         * Display the result immediately.
+         */
         setResult(
           assessmentResult
         );
 
 
+        /*
+         * Save the completed assessment
+         * to the signed-in user's Firebase account.
+         *
+         * If Firebase fails, the local result
+         * is still shown to the user.
+         */
+        try {
+
+          await saveAssessment(
+            assessmentResult
+          );
+
+
+          console.log(
+            'Assessment successfully saved.'
+          );
+
+        } catch (
+          saveError
+        ) {
+
+          console.error(
+            'Could not save assessment to Firebase:',
+            saveError
+          );
+
+
+          setError(
+            'Your assessment was completed, but we could not save it to your account. Please check your internet connection and try again later.'
+          );
+        }
+
+
         setStep(
           'results'
         );
+
       } catch (
         err
       ) {
+
         console.error(
           'Assessment processing error:',
           err
@@ -572,18 +690,32 @@ export default function AssessmentScreen() {
         );
 
 
+        /*
+         * Only reset the range recordings.
+         *
+         * The five fundamental recordings
+         * remain available.
+         */
         setSections(
-  previous => {
-    const updated = { ...previous };
-    delete updated.lowest;
-    delete updated.highest;
-    return updated;
-  }
-);
+          previous => {
 
-setStep(
-  'lowest'
-);
+            const updated = {
+              ...previous,
+            };
+
+
+            delete updated.lowest;
+            delete updated.highest;
+
+
+            return updated;
+          }
+        );
+
+
+        setStep(
+          'lowest'
+        );
       }
     };
 
@@ -595,12 +727,14 @@ setStep(
   if (
     step === 'processing'
   ) {
+
     return (
       <View
         style={
           styles.centerScreen
         }
       >
+
         <ActivityIndicator
           size="large"
           color={BROWN}
@@ -632,6 +766,7 @@ setStep(
               styles.errorCard
             }
           >
+
             <Text
               style={
                 styles.errorText
@@ -639,6 +774,7 @@ setStep(
             >
               {error}
             </Text>
+
           </View>
         )}
 
@@ -651,6 +787,7 @@ setStep(
             processAssessment
           }
         >
+
           <Text
             style={
               styles.primaryButtonText
@@ -658,7 +795,9 @@ setStep(
           >
             Analyze My Voice
           </Text>
+
         </Pressable>
+
       </View>
     );
   }
@@ -672,6 +811,7 @@ setStep(
     step === 'results' &&
     result
   ) {
+
     return (
       <ScrollView
         style={
@@ -680,7 +820,11 @@ setStep(
         contentContainerStyle={
           styles.resultsContent
         }
+        showsVerticalScrollIndicator={
+          false
+        }
       >
+
         <Text
           style={
             styles.resultsTitle
@@ -699,6 +843,27 @@ setStep(
         </Text>
 
 
+        {/* SAVE WARNING */}
+
+        {error && (
+          <View
+            style={
+              styles.errorCard
+            }
+          >
+
+            <Text
+              style={
+                styles.errorText
+              }
+            >
+              {error}
+            </Text>
+
+          </View>
+        )}
+
+
         {/* VOCAL RANGE */}
 
         <View
@@ -706,6 +871,7 @@ setStep(
             styles.rangeCard
           }
         >
+
           <Text
             style={
               styles.cardTitle
@@ -720,16 +886,44 @@ setStep(
               styles.rangeText
             }
           >
-            {result.vocalRangeLowHz.toFixed(
-              1
-            )}
-            {' Hz'}
+            {
+              frequencyToNoteName(
+                result.vocalRangeLowHz
+              )
+            }
+
             {'  –  '}
-            {result.vocalRangeHighHz.toFixed(
-              1
-            )}
+
+            {
+              frequencyToNoteName(
+                result.vocalRangeHighHz
+              )
+            }
+          </Text>
+
+
+          <Text
+            style={
+              styles.rangeHzText
+            }
+          >
+            {
+              result.vocalRangeLowHz.toFixed(
+                1
+              )
+            }
+
+            {' Hz  –  '}
+
+            {
+              result.vocalRangeHighHz.toFixed(
+                1
+              )
+            }
+
             {' Hz'}
           </Text>
+
         </View>
 
 
@@ -737,10 +931,27 @@ setStep(
 
         {result.scores.map(
           score => {
+
             const recommendation =
               result.recommendations[
                 score.componentId
               ];
+
+
+            const componentName =
+              score.componentId ===
+              'breathControl'
+                ? 'Breath Control'
+                : score.componentId ===
+                  'pitch'
+                ? 'Pitch'
+                : score.componentId ===
+                  'tone'
+                ? 'Tone'
+                : score.componentId ===
+                  'volume'
+                ? 'Volume'
+                : 'Agility';
 
 
             return (
@@ -752,21 +963,20 @@ setStep(
                   styles.scoreCard
                 }
               >
+
                 <View
                   style={
                     styles.scoreHeader
                   }
                 >
+
                   <Text
                     style={
                       styles.scoreName
                     }
                   >
                     {
-                      score.componentId ===
-                      'breathControl'
-                        ? 'Breath Control'
-                        : score.componentId
+                      componentName
                     }
                   </Text>
 
@@ -780,6 +990,7 @@ setStep(
                       score.scorePct
                     }%
                   </Text>
+
                 </View>
 
 
@@ -788,15 +999,23 @@ setStep(
                     styles.progressBackground
                   }
                 >
+
                   <View
                     style={[
                       styles.progressFill,
                       {
                         width:
-                          `${score.scorePct}%`,
+                          `${Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              score.scorePct
+                            )
+                          )}%`,
                       },
                     ]}
                   />
+
                 </View>
 
 
@@ -815,6 +1034,7 @@ setStep(
                       : 'Good foundation'
                   }
                 </Text>
+
               </View>
             );
           }
@@ -828,27 +1048,39 @@ setStep(
             styles.primaryButton
           }
           onPress={() => {
+
             setSections(
               {}
             );
+
 
             setResult(
               null
             );
 
+
             setError(
               null
             );
+
 
             setLiveAudio(
               null
             );
 
+
+            setRemainingSeconds(
+              0
+            );
+
+
             setStep(
               'intro'
             );
+
           }}
         >
+
           <Text
             style={
               styles.primaryButtonText
@@ -856,7 +1088,26 @@ setStep(
           >
             Retake Assessment
           </Text>
+
         </Pressable>
+
+        <Pressable
+          style={
+            styles.backButton
+          }
+          onPress={() =>
+            router.back()
+          }
+        >
+
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={BROWN}
+          />
+
+        </Pressable>
+
       </ScrollView>
     );
   }
@@ -869,6 +1120,7 @@ setStep(
   if (
     step === 'intro'
   ) {
+
     return (
       <ScrollView
         style={
@@ -878,6 +1130,7 @@ setStep(
           styles.content
         }
       >
+
         {/* BACK BUTTON */}
 
         <Pressable
@@ -888,11 +1141,13 @@ setStep(
             router.back()
           }
         >
+
           <Ionicons
             name="arrow-back"
             size={22}
             color={BROWN}
           />
+
         </Pressable>
 
 
@@ -901,11 +1156,13 @@ setStep(
             styles.iconCircle
           }
         >
+
           <Ionicons
             name="mic"
             size={32}
             color={BROWN}
           />
+
         </View>
 
 
@@ -933,6 +1190,7 @@ setStep(
             styles.infoCard
           }
         >
+
           <Text
             style={
               styles.cardTitle
@@ -994,6 +1252,7 @@ setStep(
           >
             • Vocal Range
           </Text>
+
         </View>
 
 
@@ -1017,6 +1276,7 @@ setStep(
             )
           }
         >
+
           <Text
             style={
               styles.primaryButtonText
@@ -1031,7 +1291,9 @@ setStep(
             size={18}
             color={WHITE}
           />
+
         </Pressable>
+
       </ScrollView>
     );
   }
@@ -1056,6 +1318,7 @@ setStep(
   if (
     isSection
   ) {
+
     const stepIndex =
       STEP_ORDER.indexOf(
         step
@@ -1081,6 +1344,7 @@ setStep(
           false
         }
       >
+
         {/* PROGRESS */}
 
         <View
@@ -1088,6 +1352,7 @@ setStep(
             styles.progressHeader
           }
         >
+
           <Text
             style={
               styles.progressText
@@ -1102,10 +1367,13 @@ setStep(
               styles.progressText
             }
           >
-            {Math.round(
-              progress * 100
-            )}%
+            {
+              Math.round(
+                progress * 100
+              )
+            }%
           </Text>
+
         </View>
 
 
@@ -1114,6 +1382,7 @@ setStep(
             styles.progressBackground
           }
         >
+
           <View
             style={[
               styles.progressFill,
@@ -1123,6 +1392,7 @@ setStep(
               },
             ]}
           />
+
         </View>
 
 
@@ -1133,6 +1403,7 @@ setStep(
             styles.sectionIcon
           }
         >
+
           <Ionicons
             name={
               step ===
@@ -1143,6 +1414,7 @@ setStep(
             size={30}
             color={BROWN}
           />
+
         </View>
 
 
@@ -1151,9 +1423,11 @@ setStep(
             styles.title
           }
         >
-          {getStepTitle(
-            step
-          )}
+          {
+            getStepTitle(
+              step
+            )
+          }
         </Text>
 
 
@@ -1162,9 +1436,11 @@ setStep(
             styles.description
           }
         >
-          {getStepInstruction(
-            step
-          )}
+          {
+            getStepInstruction(
+              step
+            )
+          }
         </Text>
 
 
@@ -1175,6 +1451,7 @@ setStep(
             styles.timerCircle
           }
         >
+
           <Text
             style={
               styles.timerText
@@ -1195,12 +1472,11 @@ setStep(
           >
             seconds
           </Text>
+
         </View>
 
 
-        {/* ================================================== */}
-        {/* LIVE AUDIO DATA */}
-        {/* ================================================== */}
+        {/* LIVE AUDIO */}
 
         {isRecordingSection && (
           <View
@@ -1208,6 +1484,7 @@ setStep(
               styles.liveCard
             }
           >
+
             <Text
               style={
                 styles.liveTitle
@@ -1222,6 +1499,7 @@ setStep(
                 styles.liveGrid
               }
             >
+
               {/* PITCH */}
 
               <View
@@ -1229,6 +1507,7 @@ setStep(
                   styles.liveItem
                 }
               >
+
                 <Text
                   style={
                     styles.liveLabel
@@ -1250,6 +1529,7 @@ setStep(
                       : '--'
                   }
                 </Text>
+
               </View>
 
 
@@ -1260,6 +1540,7 @@ setStep(
                   styles.liveItem
                 }
               >
+
                 <Text
                   style={
                     styles.liveLabel
@@ -1279,6 +1560,7 @@ setStep(
                     '--'
                   }
                 </Text>
+
               </View>
 
 
@@ -1289,6 +1571,7 @@ setStep(
                   styles.liveItem
                 }
               >
+
                 <Text
                   style={
                     styles.liveLabel
@@ -1312,6 +1595,7 @@ setStep(
                       : '--'
                   }
                 </Text>
+
               </View>
 
 
@@ -1322,6 +1606,7 @@ setStep(
                   styles.liveItem
                 }
               >
+
                 <Text
                   style={
                     styles.liveLabel
@@ -1342,6 +1627,7 @@ setStep(
                       : '--'
                   }
                 </Text>
+
               </View>
 
 
@@ -1352,6 +1638,7 @@ setStep(
                   styles.liveItem
                 }
               >
+
                 <Text
                   style={
                     styles.liveLabel
@@ -1372,8 +1659,11 @@ setStep(
                       : '--'
                   }
                 </Text>
+
               </View>
+
             </View>
+
           </View>
         )}
 
@@ -1394,6 +1684,7 @@ setStep(
             beginSection
           }
         >
+
           <Ionicons
             name={
               isRecordingSection
@@ -1416,6 +1707,7 @@ setStep(
                 : 'Record'
             }
           </Text>
+
         </Pressable>
 
 
@@ -1427,6 +1719,7 @@ setStep(
               styles.errorCard
             }
           >
+
             <Text
               style={
                 styles.errorText
@@ -1434,6 +1727,7 @@ setStep(
             >
               {error}
             </Text>
+
           </View>
         )}
 
@@ -1446,6 +1740,7 @@ setStep(
           Recording will automatically stop when
           the timer reaches zero.
         </Text>
+
       </ScrollView>
     );
   }
@@ -1461,6 +1756,7 @@ setStep(
 
 const styles =
   StyleSheet.create({
+
     screen: {
       flex: 1,
       backgroundColor: WHITE,
@@ -1582,7 +1878,7 @@ const styles =
 
 
     primaryButton: {
-      height: 52,
+      minHeight: 52,
       borderRadius: 26,
       backgroundColor: BROWN,
       paddingHorizontal: 22,
@@ -1747,11 +2043,16 @@ const styles =
     },
 
 
+    // ========================================================
+    // ERROR
+    // ========================================================
+
     errorCard: {
       backgroundColor: '#FFF0F0',
       borderRadius: 14,
       padding: 15,
       marginTop: 20,
+      marginBottom: 10,
     },
 
 
@@ -1763,6 +2064,10 @@ const styles =
       textAlign: 'center',
     },
 
+
+    // ========================================================
+    // PROCESSING
+    // ========================================================
 
     processingTitle: {
       fontFamily: 'FredokaBold',
@@ -1783,6 +2088,10 @@ const styles =
       marginBottom: 20,
     },
 
+
+    // ========================================================
+    // RESULTS
+    // ========================================================
 
     resultsTitle: {
       fontFamily: 'FredokaBold',
@@ -1813,8 +2122,17 @@ const styles =
 
     rangeText: {
       fontFamily: 'FredokaBold',
-      fontSize: 24,
+      fontSize: 28,
       color: BROWN,
+      marginTop: 2,
+    },
+
+
+    rangeHzText: {
+      fontFamily: 'FredokaRegular',
+      fontSize: 11,
+      color: MUTED,
+      marginTop: 6,
     },
 
 
@@ -1854,4 +2172,5 @@ const styles =
       color: MUTED,
       marginTop: 8,
     },
+
   });
