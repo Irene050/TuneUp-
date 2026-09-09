@@ -26,8 +26,8 @@ export default function AudioTestScreen() {
   const [liveData, setLiveData] =
     useState<LiveAudioFrame | null>(null);
 
-  const [recordedSamples, setRecordedSamples] =
-    useState(0);
+  const [isReceivingAudio, setIsReceivingAudio] =
+    useState(false);
 
   const {
     startRecording,
@@ -35,45 +35,39 @@ export default function AudioTestScreen() {
     isRecording,
   } = useAudioRecorder({
     onFrame: (frame: LiveAudioFrame) => {
+  console.log('🎤 AUDIO TEST FRAME:', frame);
+
+  setLiveData(frame);
+
       /*
-       * This receives ONE live audio frame.
-       *
-       * The recorder is still keeping the complete
-       * recording internally for onStop().
+       * A volume value above -95 dB means
+       * the recorder is currently receiving
+       * a meaningful audio signal.
        */
-      setLiveData(frame);
+      if (
+        Number.isFinite(frame.volume) &&
+        frame.volume > -95
+      ) {
+        setIsReceivingAudio(true);
+      } else {
+        setIsReceivingAudio(false);
+      }
     },
 
-    onStop: (
-      samples: Float32Array,
-      sampleRate: number
-    ) => {
-      console.log(
-        'FINAL RECORDING:',
-        samples.length,
-        'samples'
-      );
-
-      console.log(
-        'SAMPLE RATE:',
-        sampleRate
-      );
-
-      setRecordedSamples(
-        samples.length
-      );
+    onStop: () => {
+      setIsReceivingAudio(false);
     },
   });
 
   const handleStart = async () => {
     try {
       setLiveData(null);
-      setRecordedSamples(0);
+      setIsReceivingAudio(false);
 
       await startRecording();
     } catch (error) {
       console.error(
-        'Failed to start recording:',
+        '❌ FAILED TO START AUDIO TEST:',
         error
       );
     }
@@ -84,137 +78,205 @@ export default function AudioTestScreen() {
       await stopRecording();
     } catch (error) {
       console.error(
-        'Failed to stop recording:',
+        '❌ FAILED TO STOP AUDIO TEST:',
         error
       );
     }
   };
+
+  const detectedNote =
+    liveData?.note &&
+    liveData.note !== '--'
+      ? liveData.note
+      : '--';
+
+  const clarity =
+    liveData &&
+    Number.isFinite(liveData.clarity)
+      ? `${(
+          liveData.clarity * 100
+        ).toFixed(1)}%`
+      : '--';
+
+  const volume =
+    liveData &&
+    Number.isFinite(liveData.volume)
+      ? `${liveData.volume.toFixed(1)} dB`
+      : '--';
+
+  const stability =
+    liveData &&
+    Number.isFinite(liveData.stability)
+      ? `${liveData.stability.toFixed(1)}%`
+      : '--';
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
     >
-<Pressable
-          style={
-            styles.backButton
-          }
-          onPress={() =>
-            router.back()
-          }
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
+      {/* BACK BUTTON */}
+
+      <Pressable
+        style={styles.backButton}
+        onPress={() => router.back()}
+      >
+        <Ionicons
+          name="arrow-back"
+          size={22}
+          color={BROWN}
+        />
+      </Pressable>
+
+      {/* TITLE */}
 
       <Text style={styles.title}>
         Audio Test
       </Text>
 
       <Text style={styles.subtitle}>
-        Speak or sing into the microphone and
-        watch the audio data update in real time.
+        Sing or speak into the microphone to see
+        your detected vocal information.
       </Text>
 
-      {/* LIVE DATA */}
+      {/* DETECTED NOTE */}
+
+      <View style={styles.noteCard}>
+        <Text style={styles.noteLabel}>
+          Detected Note
+        </Text>
+
+        <Text style={styles.noteValue}>
+          {detectedNote}
+        </Text>
+
+        {isRecording && (
+          <View style={styles.listeningContainer}>
+            <View
+              style={[
+                styles.listeningDot,
+                isReceivingAudio &&
+                  styles.listeningDotActive,
+              ]}
+            />
+
+            <Text style={styles.listeningText}>
+              {isReceivingAudio
+                ? 'Listening'
+                : 'Waiting for your voice'}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* VOCAL INFORMATION */}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
-          Live Audio
+          Vocal Information
         </Text>
 
+        {/* PITCH / FREQUENCY */}
+
+<View style={styles.dataRow}>
+  <View style={styles.rowLabelContainer}>
+    <Ionicons
+      name="musical-note-outline"
+      size={20}
+      color={BROWN}
+    />
+
+    <Text style={styles.label}>
+      Pitch
+    </Text>
+  </View>
+
+  <Text style={styles.value}>
+    {liveData &&
+    Number.isFinite(liveData.pitch) &&
+    liveData.pitch > 0
+      ? `${liveData.pitch.toFixed(1)} Hz`
+      : '--'}
+  </Text>
+</View>
+
+        {/* CLARITY */}
+
         <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Pitch
-          </Text>
+          <View style={styles.rowLabelContainer}>
+            <Ionicons
+              name="scan-outline"
+              size={20}
+              color={BROWN}
+            />
+
+            <Text style={styles.label}>
+              Clarity
+            </Text>
+          </View>
 
           <Text style={styles.value}>
-            {liveData
-              ? `${liveData.pitch.toFixed(1)} Hz`
-              : '--'}
+            {clarity}
           </Text>
         </View>
 
+        {/* VOLUME */}
+
         <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Note
-          </Text>
+          <View style={styles.rowLabelContainer}>
+            <Ionicons
+              name="volume-medium-outline"
+              size={20}
+              color={BROWN}
+            />
+
+            <Text style={styles.label}>
+              Volume
+            </Text>
+          </View>
 
           <Text style={styles.value}>
-            {liveData?.note ?? '--'}
+            {volume}
           </Text>
         </View>
 
-        <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Clarity
-          </Text>
-
-          <Text style={styles.value}>
-            {liveData
-              ? `${(
-                  liveData.clarity * 100
-                ).toFixed(1)}%`
-              : '--'}
-          </Text>
-        </View>
+        {/* STABILITY */}
 
         <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Volume
-          </Text>
+          <View style={styles.rowLabelContainer}>
+            <Ionicons
+              name="pulse-outline"
+              size={20}
+              color={BROWN}
+            />
+
+            <Text style={styles.label}>
+              Stability
+            </Text>
+          </View>
 
           <Text style={styles.value}>
-            {liveData
-              ? `${liveData.volume.toFixed(1)} dB`
-              : '--'}
-          </Text>
-        </View>
-
-        <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Stability
-          </Text>
-
-          <Text style={styles.value}>
-            {liveData
-              ? `${liveData.stability.toFixed(1)}%`
-              : '--'}
+            {stability}
           </Text>
         </View>
       </View>
 
-      {/* RAW AUDIO INFORMATION */}
+      {/* RECORDING STATE */}
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          Recording
+      <View style={styles.recordingState}>
+        <View
+          style={[
+            styles.recordingDot,
+            isRecording &&
+              styles.recordingDotActive,
+          ]}
+        />
+
+        <Text style={styles.recordingText}>
+          {isRecording
+            ? 'Recording'
+            : 'Ready to record'}
         </Text>
-
-        <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Status
-          </Text>
-
-          <Text style={styles.value}>
-            {isRecording
-              ? 'Recording'
-              : 'Stopped'}
-          </Text>
-        </View>
-
-        <View style={styles.dataRow}>
-          <Text style={styles.label}>
-            Samples captured
-          </Text>
-
-          <Text style={styles.value}>
-            {recordedSamples.toLocaleString()}
-          </Text>
-        </View>
       </View>
 
       {/* BUTTON */}
@@ -231,6 +293,16 @@ export default function AudioTestScreen() {
             : handleStart
         }
       >
+        <Ionicons
+          name={
+            isRecording
+              ? 'stop'
+              : 'mic'
+          }
+          size={22}
+          color={WHITE}
+        />
+
         <Text style={styles.buttonText}>
           {isRecording
             ? 'Stop Recording'
@@ -239,10 +311,8 @@ export default function AudioTestScreen() {
       </Pressable>
 
       <Text style={styles.helper}>
-        The live values are calculated from
-        incoming microphone frames while the
-        complete audio recording is preserved
-        for final assessment processing.
+        Sing a comfortable note and hold it steadily
+        for the most accurate detection.
       </Text>
     </ScrollView>
   );
@@ -253,24 +323,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-  
-  backButton: {
-      position: 'absolute',
-      top: 55,
-      left: 24,
-      zIndex: 10,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingVertical: 8,
-      paddingHorizontal: 4,
-    },
 
   content: {
     padding: 24,
     paddingTop: 50,
     paddingBottom: 80,
   },
+
+  /* BACK BUTTON */
+
+  backButton: {
+    position: 'absolute',
+    top: 55,
+    left: 24,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+
+  /* TITLE */
 
   title: {
     fontFamily: 'FredokaBold',
@@ -289,6 +363,60 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
 
+  /* NOTE CARD */
+
+  noteCard: {
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 24,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+
+  noteLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 16,
+    color: MUTED,
+    marginBottom: 4,
+  },
+
+  noteValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 64,
+    lineHeight: 76,
+    color: BROWN,
+  },
+
+  /* LISTENING */
+
+  listeningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+
+  listeningDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: LIGHT_GRAY,
+    marginRight: 7,
+  },
+
+  listeningDotActive: {
+    backgroundColor: PINK,
+  },
+
+  listeningText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+  },
+
+  /* VOCAL INFORMATION */
+
   card: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 20,
@@ -300,16 +428,22 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 19,
     color: BROWN,
-    marginBottom: 15,
+    marginBottom: 10,
   },
 
   dataRow: {
-    minHeight: 45,
+    minHeight: 55,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: LIGHT_GRAY,
+  },
+
+  rowLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 
   label: {
@@ -324,13 +458,45 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
+  /* RECORDING STATE */
+
+  recordingState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    marginBottom: 12,
+  },
+
+  recordingDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: LIGHT_GRAY,
+    marginRight: 8,
+  },
+
+  recordingDotActive: {
+    backgroundColor: PINK,
+  },
+
+  recordingText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    color: MUTED,
+  },
+
+  /* BUTTON */
+
   button: {
     height: 56,
     borderRadius: 28,
     backgroundColor: BROWN,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    gap: 9,
+    marginTop: 5,
   },
 
   stopButton: {
@@ -342,6 +508,8 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: WHITE,
   },
+
+  /* HELPER */
 
   helper: {
     fontFamily: 'FredokaRegular',
