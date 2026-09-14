@@ -42,7 +42,8 @@
       "expo-audio",
       "expo-asset",
       "react-native-audio-api",
-      "expo-image"
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
