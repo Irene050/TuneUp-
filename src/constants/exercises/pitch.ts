@@ -11,17 +11,32 @@ export type Tier =
 // ============================================================
 
 export interface NoteMatchingParams {
-  // Example fields to be filled according to your
-  // actual pitch exercise design.
+  tolerancePct: number;
+  minClarity: number;
+  minVoicedFrames: number;
 }
 
 export const NOTE_MATCHING_PARAMS: Record<
   Tier,
   NoteMatchingParams
 > = {
-  beginner: {},
-  intermediate: {},
-  advanced: {},
+  beginner: {
+    tolerancePct: 5,
+    minClarity: 0.70,
+    minVoicedFrames: 3,
+  },
+
+  intermediate: {
+    tolerancePct: 3,
+    minClarity: 0.75,
+    minVoicedFrames: 4,
+  },
+
+  advanced: {
+    tolerancePct: 2,
+    minClarity: 0.80,
+    minVoicedFrames: 5,
+  },
 };
 
 
@@ -30,18 +45,41 @@ export const NOTE_MATCHING_PARAMS: Record<
 // ============================================================
 
 export interface ScaleAccuracyParams {
-  // Example:
-  // scaleSize: number;
-  // toleranceCents: number;
+  tolerancePct: number;
+  minClarity: number;
+  noteCount: number;
+
+  /**
+   * Minimum percentage of notes that must be
+   * accurately matched for the exercise to pass.
+   */
+  scaleAccuracyThreshold: number;
 }
 
 export const SCALE_ACCURACY_PARAMS: Record<
   Tier,
   ScaleAccuracyParams
 > = {
-  beginner: {},
-  intermediate: {},
-  advanced: {},
+  beginner: {
+    tolerancePct: 5,
+    minClarity: 0.70,
+    noteCount: 5,
+    scaleAccuracyThreshold: 60,
+  },
+
+  intermediate: {
+    tolerancePct: 3,
+    minClarity: 0.75,
+    noteCount: 7,
+    scaleAccuracyThreshold: 70,
+  },
+
+  advanced: {
+    tolerancePct: 2,
+    minClarity: 0.80,
+    noteCount: 8,
+    scaleAccuracyThreshold: 80,
+  },
 };
 
 
@@ -50,18 +88,36 @@ export const SCALE_ACCURACY_PARAMS: Record<
 // ============================================================
 
 export interface IntervalRecognitionParams {
-  // Example:
-  // intervalCount: number;
-  // toleranceCents: number;
+  tolerancePct: number;
+  minClarity: number;
+  repetitions: number;
+  totalDurationSec: number;
 }
 
 export const INTERVAL_RECOGNITION_PARAMS: Record<
   Tier,
   IntervalRecognitionParams
 > = {
-  beginner: {},
-  intermediate: {},
-  advanced: {},
+  beginner: {
+    tolerancePct: 7,
+    minClarity: 0.70,
+    repetitions: 2,
+    totalDurationSec: 5,
+  },
+
+  intermediate: {
+    tolerancePct: 5,
+    minClarity: 0.75,
+    repetitions: 2,
+    totalDurationSec: 4,
+  },
+
+  advanced: {
+    tolerancePct: 3,
+    minClarity: 0.80,
+    repetitions: 2,
+    totalDurationSec: 3,
+  },
 };
 
 
@@ -70,18 +126,32 @@ export const INTERVAL_RECOGNITION_PARAMS: Record<
 // ============================================================
 
 export interface SustainedNoteStabilityParams {
-  // Example:
-  // durationSec: number;
-  // stabilityThreshold: number;
+  durationSec: number;
+  stabilityThresholdCents: number;
+  minClarity: number;
 }
 
 export const SUSTAINED_NOTE_STABILITY_PARAMS: Record<
   Tier,
   SustainedNoteStabilityParams
 > = {
-  beginner: {},
-  intermediate: {},
-  advanced: {},
+  beginner: {
+    durationSec: 3,
+    stabilityThresholdCents: 50,
+    minClarity: 0.70,
+  },
+
+  intermediate: {
+    durationSec: 4,
+    stabilityThresholdCents: 35,
+    minClarity: 0.75,
+  },
+
+  advanced: {
+    durationSec: 5,
+    stabilityThresholdCents: 25,
+    minClarity: 0.80,
+  },
 };
 
 
@@ -90,16 +160,30 @@ export const SUSTAINED_NOTE_STABILITY_PARAMS: Record<
 // ============================================================
 
 export interface MelodicPatternMatchingParams {
-  // Example:
-  // noteCount: number;
-  // toleranceCents: number;
+  noteCount: number;
+  tolerancePct: number;
+  minClarity: number;
 }
 
 export const MELODIC_PATTERN_MATCHING_PARAMS: Record<
   Tier,
   MelodicPatternMatchingParams
 > = {
-  beginner: {},
-  intermediate: {},
-  advanced: {},
+  beginner: {
+    noteCount: 3,
+    tolerancePct: 5,
+    minClarity: 0.70,
+  },
+
+  intermediate: {
+    noteCount: 5,
+    tolerancePct: 3,
+    minClarity: 0.75,
+  },
+
+  advanced: {
+    noteCount: 7,
+    tolerancePct: 2,
+    minClarity: 0.80,
+  },
 };
