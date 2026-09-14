@@ -1,16 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    SUSTAINED_EXHALE_PARAMS,
-    Tier,
+  SUSTAINED_EXHALE_PARAMS,
+  Tier,
 } from '@/constants/exercises/breathControl';
 
 const BROWN = '#4E2F1F';
@@ -62,6 +62,61 @@ export default function SustainedExhaleScreen({
         </Text>
 
         <View style={styles.instructionCard}>
+
+          <View style={styles.prepareCard}>
+  <View style={styles.prepareHeader}>
+    <Ionicons
+      name="mic-outline"
+      size={21}
+      color={BROWN}
+    />
+
+    <Text style={styles.prepareTitle}>
+      Before You Begin
+    </Text>
+  </View>
+
+  <View style={styles.prepareItem}>
+    <Ionicons
+      name="volume-mute-outline"
+      size={17}
+      color={BROWN}
+    />
+
+    <Text style={styles.prepareText}>
+      Find a quiet room or area with minimal
+      background noise.
+    </Text>
+  </View>
+
+  <View style={styles.prepareItem}>
+    <Ionicons
+      name="body-outline"
+      size={17}
+      color={BROWN}
+    />
+
+    <Text style={styles.prepareText}>
+      Sit upright or stand with your back straight
+      and your shoulders relaxed.
+    </Text>
+  </View>
+
+  <View style={styles.prepareItem}>
+    <Ionicons
+      name="mic-outline"
+      size={17}
+      color={BROWN}
+    />
+
+    <Text style={styles.prepareText}>
+      If available, using an external microphone or
+      audio recording equipment is recommended for
+      clearer audio capture.
+    </Text>
+  </View>
+</View>
+
           <Text style={styles.cardTitle}>
             Instructions
           </Text>
@@ -208,6 +263,54 @@ const styles = StyleSheet.create({
 
     marginBottom: 14,
   },
+
+  prepareCard: {
+  width: '100%',
+
+  backgroundColor: PINK,
+
+  borderRadius: 18,
+
+  padding: 16,
+
+  marginBottom: 14,
+
+  borderWidth: 1,
+  borderColor: '#F2DDE5',
+},
+
+prepareHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+
+  marginBottom: 12,
+},
+
+prepareTitle: {
+  fontFamily: 'FredokaBold',
+  fontSize: 16,
+  color: BROWN,
+
+  marginLeft: 9,
+},
+
+prepareItem: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+
+  marginTop: 8,
+},
+
+prepareText: {
+  flex: 1,
+
+  fontFamily: 'FredokaRegular',
+  fontSize: 11,
+  lineHeight: 17,
+  color: BROWN,
+
+  marginLeft: 9,
+},
 
   instruction: {
     fontFamily: 'FredokaRegular',
