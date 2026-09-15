@@ -53,6 +53,10 @@ import {
   segmentIntoNotes,
 } from '@/utils/dsp/pitch';
 
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -304,7 +308,7 @@ export default function ScaleAccuracyDrillScreen({
 
   const handleRecordingStop =
     useCallback(
-      (
+      async (
         samples: Float32Array,
         sampleRate: number
       ) => {
@@ -373,6 +377,13 @@ export default function ScaleAccuracyDrillScreen({
               measurement,
               tier
             );
+
+            await saveCompletedExercise(
+  'pitch',
+  'scaleAccuracyDrill',
+  tier,
+  score.score,
+);
 
           if (
             !mountedRef.current
