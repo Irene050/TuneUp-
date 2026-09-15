@@ -3,50 +3,54 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from 'react-native';
 
 import {
-    NOTE_MATCHING_PARAMS,
-    Tier,
+  NOTE_MATCHING_PARAMS,
+  Tier,
 } from '@/constants/exercises/pitch';
 
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 import {
-    measureNoteMatching,
+  measureNoteMatching,
 } from '@/services/measurement/pitch/noteMatching';
 
 import {
-    scoreNoteMatching,
+  scoreNoteMatching,
 } from '@/services/scoring/pitch/noteMatching';
 
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/services/assessment/notePlayer';
 
 import {
-    calcLiveStability,
-    calcPitchAccuracy,
-    frequencyToNote,
+  calcLiveStability,
+  calcPitchAccuracy,
+  frequencyToNote,
 } from '@/utils/dsp/pitch';
 
 import {
-    getRandomPitchNote,
+  getRandomPitchNote,
 } from '@/utils/music/notes';
+
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
 
 // ============================================================
 // COLORS
@@ -371,7 +375,7 @@ export default function NoteMatchingScreen({
 
   const handleRecordingStop =
     useCallback(
-      (
+      async (
         samples: Float32Array,
         sampleRate: number
       ) => {
@@ -403,6 +407,13 @@ export default function NoteMatchingScreen({
               targetFrequency,
               tier
             );
+
+            await saveCompletedExercise(
+  'pitch',
+  'noteMatchingExercise',
+  tier,
+  scored.score,
+);
 
           if (
             !mountedRef.current

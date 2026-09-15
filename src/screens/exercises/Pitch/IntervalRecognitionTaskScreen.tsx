@@ -50,6 +50,10 @@ import {
   frequencyToNote,
 } from '@/utils/dsp/pitch';
 
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -362,7 +366,7 @@ export default function IntervalRecognitionTaskScreen({
 
   const handleRecordingStop =
     useCallback(
-      (
+      async (
         samples: Float32Array,
         sampleRate: number
       ) => {
@@ -419,6 +423,13 @@ export default function IntervalRecognitionTaskScreen({
               exercise.interval.name,
               tier
             );
+
+            await saveCompletedExercise(
+  'pitch',
+  'intervalRecognitionTask',
+  tier,
+  score.score,
+);
 
           console.log(
             '🎯 INTERVAL EXERCISE',

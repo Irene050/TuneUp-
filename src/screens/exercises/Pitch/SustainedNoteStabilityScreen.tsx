@@ -51,6 +51,10 @@ import {
   frequencyToNote,
 } from '@/utils/dsp/pitch';
 
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -192,7 +196,7 @@ export default function SustainedNoteStabilityScreen({
 
   const handleRecordingStop =
     useCallback(
-      (
+      async (
         samples: Float32Array,
         sampleRate: number
       ) => {
@@ -229,6 +233,13 @@ export default function SustainedNoteStabilityScreen({
               measurement,
               tier
             );
+
+          await saveCompletedExercise(
+            'pitch',
+            'sustainedNoteStability',
+            tier,
+            score.score
+          );
 
           setResult(score);
 

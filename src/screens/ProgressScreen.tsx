@@ -1,3 +1,5 @@
+// src/screens/ProgressScreen.tsx
+
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -31,6 +33,13 @@ import type {
   SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
 
+import {
+  fetchAllProgress,
+} from '@/services/firebase/progressRepo';
+
+import type {
+  ComponentProgressSummary,
+} from '@/services/progress/progressModule';
 
 // ============================================================
 // COLORS
@@ -43,7 +52,6 @@ const LIGHT_GRAY = '#F2F2F2';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 
-
 // ============================================================
 // TYPES
 // ============================================================
@@ -52,7 +60,6 @@ type Period =
   | 'daily'
   | 'weekly'
   | 'monthly';
-
 
 // ============================================================
 // COMPONENT INFORMATION
@@ -81,15 +88,13 @@ const components = [
   },
 ] as const;
 
-
 // ============================================================
 // HELPERS
 // ============================================================
 
 function formatAssessmentDate(
-  timestamp: number
+  timestamp: number,
 ): string {
-
   if (
     !Number.isFinite(timestamp) ||
     timestamp <= 0
@@ -97,144 +102,209 @@ function formatAssessmentDate(
     return 'Date unavailable';
   }
 
-
-  const date =
-    new Date(timestamp);
-
-
-  return date.toLocaleDateString(
+  return new Date(
+    timestamp,
+  ).toLocaleDateString(
     undefined,
     {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-    }
+    },
   );
 }
 
+function clampPercentage(
+  value: number,
+): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      value,
+    ),
+  );
+}
 
 // ============================================================
 // SCREEN
 // ============================================================
 
 export default function ProgressScreen() {
+  // ==========================================================
+  // PERIOD
+  // ==========================================================
 
   const [
     period,
     setPeriod,
-  ] =
-    useState<Period>(
-      'daily'
-    );
+  ] = useState<Period>(
+    'daily',
+  );
 
+  // ==========================================================
+  // ASSESSMENT STATE
+  // ==========================================================
 
   const [
     latestAssessment,
     setLatestAssessment,
   ] =
     useState<SavedAssessmentResult | null>(
-      null
+      null,
     );
-
 
   const [
     assessmentLoading,
     setAssessmentLoading,
-  ] =
-    useState(true);
-
+  ] = useState(true);
 
   // ==========================================================
-  // LOAD LATEST ASSESSMENT
+  // EXERCISE PROGRESS STATE
+  // ==========================================================
+
+  const [
+    exerciseProgress,
+    setExerciseProgress,
+  ] =
+    useState<ComponentProgressSummary[]>(
+      [],
+    );
+
+  const [
+    progressLoading,
+    setProgressLoading,
+  ] = useState(true);
+
+  // ==========================================================
+  // LOAD DATA WHEN SCREEN GETS FOCUS
   // ==========================================================
 
   useFocusEffect(
-    useCallback(
-      () => {
+    useCallback(() => {
+      let isMounted = true;
 
-        let isMounted =
-          true;
+      const loadProgressData =
+        async () => {
+          const user =
+            auth.currentUser;
 
+          /*
+           * No authenticated user.
+           */
+          if (!user) {
+            if (isMounted) {
+              setLatestAssessment(
+                null,
+              );
 
-        const loadAssessment =
-          async () => {
-
-            try {
+              setExerciseProgress(
+                [],
+              );
 
               setAssessmentLoading(
-                true
+                false,
               );
 
+              setProgressLoading(
+                false,
+              );
+            }
 
-              const user =
-                auth.currentUser;
+            return;
+          }
 
+          /*
+           * Load both assessment and exercise
+           * progress independently.
+           */
+          setAssessmentLoading(
+            true,
+          );
 
-              if (!user) {
+          setProgressLoading(
+            true,
+          );
 
-                if (isMounted) {
-                  setLatestAssessment(
-                    null
-                  );
-                }
+          const [
+            assessmentResult,
+            progressResult,
+          ] =
+            await Promise.allSettled([
+              getLatestAssessment(),
+              fetchAllProgress(
+                user.uid,
+              ),
+            ]);
 
-                return;
-              }
+          // ----------------------------------------------
+          // ASSESSMENT
+          // ----------------------------------------------
 
-
-              const assessment =
-                await getLatestAssessment();
-
-
-              if (isMounted) {
-
-                setLatestAssessment(
-                  assessment
-                );
-              }
-
-            } catch (
-              error
+          if (isMounted) {
+            if (
+              assessmentResult.status ===
+              'fulfilled'
             ) {
-
+              setLatestAssessment(
+                assessmentResult.value,
+              );
+            } else {
               console.error(
                 'Unable to load latest assessment:',
-                error
+                assessmentResult.reason,
               );
 
-
-              if (isMounted) {
-
-                setLatestAssessment(
-                  null
-                );
-              }
-
-            } finally {
-
-              if (isMounted) {
-
-                setAssessmentLoading(
-                  false
-                );
-              }
+              setLatestAssessment(
+                null,
+              );
             }
-          };
 
+            setAssessmentLoading(
+              false,
+            );
+          }
 
-        loadAssessment();
+          // ----------------------------------------------
+          // EXERCISE PROGRESS
+          // ----------------------------------------------
 
+          if (isMounted) {
+            if (
+              progressResult.status ===
+              'fulfilled'
+            ) {
+              setExerciseProgress(
+                progressResult.value,
+              );
+            } else {
+              console.error(
+                'Unable to load exercise progress:',
+                progressResult.reason,
+              );
 
-        return () => {
-          isMounted =
-            false;
+              setExerciseProgress(
+                [],
+              );
+            }
+
+            setProgressLoading(
+              false,
+            );
+          }
         };
 
-      },
-      []
-    )
-  );
+      loadProgressData();
 
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
 
   // ==========================================================
   // PERIOD LABEL
@@ -247,34 +317,27 @@ export default function ProgressScreen() {
       ? 'This Week'
       : 'This Month';
 
-
   // ==========================================================
-  // ASSESSMENT SCORE HELPER
+  // ASSESSMENT SCORE
   // ==========================================================
 
   const getAssessmentScore =
     (
-      componentId: string
+      componentId: string,
     ): number => {
-
-      if (
-        !latestAssessment
-      ) {
+      if (!latestAssessment) {
         return 0;
       }
-
 
       const score =
         latestAssessment.scores.find(
           item =>
             item.componentId ===
-            componentId
+            componentId,
         );
-
 
       return score?.scorePct ?? 0;
     };
-
 
   // ==========================================================
   // ASSESSMENT OVERALL SCORE
@@ -282,35 +345,93 @@ export default function ProgressScreen() {
 
   const assessmentAverage =
     latestAssessment &&
-    latestAssessment.scores.length > 0
+    latestAssessment.scores.length >
+      0
       ? Math.round(
           latestAssessment.scores.reduce(
             (
               sum,
-              score
+              score,
             ) =>
               sum +
               score.scorePct,
-            0
+            0,
           ) /
-            latestAssessment.scores.length
+            latestAssessment.scores
+              .length,
         )
       : 0;
 
+  // ==========================================================
+  // EXERCISE PROGRESS HELPER
+  // ==========================================================
+
+  const getExerciseProgress =
+    (
+      componentId: string,
+    ): ComponentProgressSummary => {
+      return (
+        exerciseProgress.find(
+          item =>
+            item.componentId ===
+            componentId,
+        ) ?? {
+          componentId:
+            componentId as ComponentProgressSummary['componentId'],
+          currentTier: 'beginner',
+          exercisesCompleted: 0,
+          averageRecentScorePct: 0,
+        }
+      );
+    };
+
+  // ==========================================================
+  // OVERALL EXERCISE SUMMARY
+  // ==========================================================
+
+  const totalExercises =
+    exerciseProgress.reduce(
+      (
+        total,
+        item,
+      ) =>
+        total +
+        item.exercisesCompleted,
+      0,
+    );
+
+  const componentsWithExercises =
+    exerciseProgress.filter(
+      item =>
+        item.exercisesCompleted >
+        0,
+    );
+
+  const overallExerciseAverage =
+    componentsWithExercises.length >
+    0
+      ? Math.round(
+          componentsWithExercises.reduce(
+            (
+              total,
+              item,
+            ) =>
+              total +
+              item.averageRecentScorePct,
+            0,
+          ) /
+            componentsWithExercises
+              .length,
+        )
+      : 0;
 
   // ==========================================================
   // RENDER
   // ==========================================================
 
   return (
-    <View
-      style={
-        styles.screen
-      }
-    >
-
+    <View style={styles.screen}>
       <AppHeader />
-
 
       {/* ================================================== */}
       {/* BACK BUTTON */}
@@ -324,15 +445,12 @@ export default function ProgressScreen() {
           router.back()
         }
       >
-
         <Ionicons
           name="arrow-back"
           size={22}
           color={BROWN}
         />
-
       </Pressable>
-
 
       <ScrollView
         showsVerticalScrollIndicator={
@@ -342,28 +460,21 @@ export default function ProgressScreen() {
           styles.content
         }
       >
-
         {/* ================================================= */}
         {/* TITLE */}
         {/* ================================================= */}
 
         <Text
-          style={
-            styles.title
-          }
+          style={styles.title}
         >
           My Progress
         </Text>
 
-
         <Text
-          style={
-            styles.subtitle
-          }
+          style={styles.subtitle}
         >
           Track your vocal improvement.
         </Text>
-
 
         {/* ================================================= */}
         {/* DAILY / WEEKLY / MONTHLY */}
@@ -374,86 +485,81 @@ export default function ProgressScreen() {
             styles.periodSelector
           }
         >
-
           <Pressable
             style={[
               styles.periodButton,
-              period === 'daily' &&
+              period ===
+                'daily' &&
                 styles.periodButtonActive,
             ]}
             onPress={() =>
               setPeriod(
-                'daily'
+                'daily',
               )
             }
           >
-
             <Text
               style={[
                 styles.periodText,
-                period === 'daily' &&
+                period ===
+                  'daily' &&
                   styles.periodTextActive,
               ]}
             >
               Daily
             </Text>
-
           </Pressable>
-
 
           <Pressable
             style={[
               styles.periodButton,
-              period === 'weekly' &&
+              period ===
+                'weekly' &&
                 styles.periodButtonActive,
             ]}
             onPress={() =>
               setPeriod(
-                'weekly'
+                'weekly',
               )
             }
           >
-
             <Text
               style={[
                 styles.periodText,
-                period === 'weekly' &&
+                period ===
+                  'weekly' &&
                   styles.periodTextActive,
               ]}
             >
               Weekly
             </Text>
-
           </Pressable>
-
 
           <Pressable
             style={[
               styles.periodButton,
-              period === 'monthly' &&
+              period ===
+                'monthly' &&
                 styles.periodButtonActive,
             ]}
             onPress={() =>
               setPeriod(
-                'monthly'
+                'monthly',
               )
             }
           >
-
             <Text
               style={[
                 styles.periodText,
-                period === 'monthly' &&
+                period ===
+                  'monthly' &&
                   styles.periodTextActive,
               ]}
             >
               Monthly
             </Text>
-
           </Pressable>
-
         </View>
-
 
         {/* ================================================= */}
         {/* PERIOD SUMMARY */}
@@ -464,7 +570,6 @@ export default function ProgressScreen() {
             styles.summaryCard
           }
         >
-
           <Text
             style={
               styles.summaryTitle
@@ -473,27 +578,25 @@ export default function ProgressScreen() {
             {periodLabel}
           </Text>
 
-
           <View
             style={
               styles.summaryRow
             }
           >
-
             <View
               style={
                 styles.summaryItem
               }
             >
-
               <Text
                 style={
                   styles.summaryValue
                 }
               >
-                0
+                {progressLoading
+                  ? '...'
+                  : totalExercises}
               </Text>
-
 
               <Text
                 style={
@@ -502,9 +605,7 @@ export default function ProgressScreen() {
               >
                 Exercises
               </Text>
-
             </View>
-
 
             <View
               style={
@@ -512,21 +613,20 @@ export default function ProgressScreen() {
               }
             />
 
-
             <View
               style={
                 styles.summaryItem
               }
             >
-
               <Text
                 style={
                   styles.summaryValue
                 }
               >
-                0%
+                {progressLoading
+                  ? '...'
+                  : `${overallExerciseAverage}%`}
               </Text>
-
 
               <Text
                 style={
@@ -535,13 +635,9 @@ export default function ProgressScreen() {
               >
                 Average Score
               </Text>
-
             </View>
-
           </View>
-
         </View>
-
 
         {/* ================================================= */}
         {/* LATEST ASSESSMENT */}
@@ -552,7 +648,6 @@ export default function ProgressScreen() {
             styles.assessmentSectionHeader
           }
         >
-
           <View>
             <Text
               style={
@@ -570,18 +665,14 @@ export default function ProgressScreen() {
               Your most recent vocal assessment scores.
             </Text>
           </View>
-
         </View>
 
-
         {assessmentLoading ? (
-
           <View
             style={
               styles.assessmentEmptyCard
             }
           >
-
             <Text
               style={
                 styles.emptyText
@@ -589,11 +680,8 @@ export default function ProgressScreen() {
             >
               Loading your assessment...
             </Text>
-
           </View>
-
         ) : latestAssessment ? (
-
           <>
             {/* =========================================== */}
             {/* ASSESSMENT SUMMARY */}
@@ -604,13 +692,11 @@ export default function ProgressScreen() {
                 styles.assessmentSummaryCard
               }
             >
-
               <View
                 style={
                   styles.assessmentSummaryLeft
                 }
               >
-
                 <Text
                   style={
                     styles.assessmentSummaryLabel
@@ -618,7 +704,6 @@ export default function ProgressScreen() {
                 >
                   Overall Assessment
                 </Text>
-
 
                 <Text
                   style={
@@ -628,39 +713,30 @@ export default function ProgressScreen() {
                   {assessmentAverage}%
                 </Text>
 
-
                 <Text
                   style={
                     styles.assessmentDate
                   }
                 >
                   Assessed on{' '}
-                  {
-                    formatAssessmentDate(
-                      latestAssessment.timestamp
-                    )
-                  }
+                  {formatAssessmentDate(
+                    latestAssessment.timestamp,
+                  )}
                 </Text>
-
               </View>
-
 
               <View
                 style={
                   styles.assessmentIconCircle
                 }
               >
-
                 <Ionicons
                   name="mic"
                   size={25}
                   color={BROWN}
                 />
-
               </View>
-
             </View>
-
 
             {/* =========================================== */}
             {/* ASSESSMENT COMPONENT SCORES */}
@@ -671,18 +747,15 @@ export default function ProgressScreen() {
                 styles.assessmentScoresCard
               }
             >
-
               {components.map(
                 (
                   component,
-                  index
+                  index,
                 ) => {
-
                   const score =
                     getAssessmentScore(
-                      component.id
+                      component.id,
                     );
-
 
                   return (
                     <View
@@ -692,17 +765,16 @@ export default function ProgressScreen() {
                       style={[
                         styles.assessmentScoreItem,
                         index ===
-                          components.length - 1 &&
+                          components.length -
+                            1 &&
                           styles.assessmentScoreItemLast,
                       ]}
                     >
-
                       <View
                         style={
                           styles.assessmentScoreHeader
                         }
                       >
-
                         <Text
                           style={
                             styles.assessmentComponentName
@@ -713,7 +785,6 @@ export default function ProgressScreen() {
                           }
                         </Text>
 
-
                         <Text
                           style={
                             styles.assessmentComponentScore
@@ -721,44 +792,32 @@ export default function ProgressScreen() {
                         >
                           {score}%
                         </Text>
-
                       </View>
-
 
                       <View
                         style={
                           styles.assessmentProgressBackground
                         }
                       >
-
                         <View
                           style={[
                             styles.assessmentProgressFill,
                             {
-                              width:
-                                `${Math.max(
-                                  0,
-                                  Math.min(
-                                    100,
-                                    score
-                                  )
-                                )}%`,
+                              width: `${clampPercentage(
+                                score,
+                              )}%`,
                             },
                           ]}
                         />
-
                       </View>
-
                     </View>
                   );
-                }
+                },
               )}
-
             </View>
 
-
             {/* =========================================== */}
-            {/* VIEW ASSESSMENT */}
+            {/* RETAKE ASSESSMENT */}
             {/* =========================================== */}
 
             <Pressable
@@ -767,11 +826,10 @@ export default function ProgressScreen() {
               }
               onPress={() =>
                 router.push(
-                  '/assessment'
+                  '/assessment',
                 )
               }
             >
-
               <Text
                 style={
                   styles.viewAssessmentText
@@ -780,19 +838,14 @@ export default function ProgressScreen() {
                 Retake Assessment
               </Text>
 
-
               <Ionicons
                 name="arrow-forward"
                 size={17}
                 color={BROWN}
               />
-
             </Pressable>
-
           </>
-
         ) : (
-
           /* ============================================= */
           /* NO ASSESSMENT YET */
           /* ============================================= */
@@ -802,21 +855,17 @@ export default function ProgressScreen() {
               styles.assessmentEmptyCard
             }
           >
-
             <View
               style={
                 styles.emptyIconCircle
               }
             >
-
               <Ionicons
                 name="mic-outline"
                 size={25}
                 color={BROWN}
               />
-
             </View>
-
 
             <Text
               style={
@@ -825,7 +874,6 @@ export default function ProgressScreen() {
             >
               No Assessment Yet
             </Text>
-
 
             <Text
               style={
@@ -837,18 +885,16 @@ export default function ProgressScreen() {
               Volume, and Agility scores here.
             </Text>
 
-
             <Pressable
               style={
                 styles.startAssessmentButton
               }
               onPress={() =>
                 router.push(
-                  '/assessment'
+                  '/assessment',
                 )
               }
             >
-
               <Text
                 style={
                   styles.startAssessmentText
@@ -857,19 +903,14 @@ export default function ProgressScreen() {
                 Take Assessment
               </Text>
 
-
               <Ionicons
                 name="arrow-forward"
                 size={17}
                 color={WHITE}
               />
-
             </Pressable>
-
           </View>
-
         )}
-
 
         {/* ================================================= */}
         {/* EXERCISE PROGRESS */}
@@ -883,7 +924,6 @@ export default function ProgressScreen() {
           Exercise Progress
         </Text>
 
-
         <Text
           style={
             styles.sectionSubtitle
@@ -892,78 +932,116 @@ export default function ProgressScreen() {
           Your progress from completed vocal exercises.
         </Text>
 
-
-        {components.map(
-          (
-            component
-          ) => (
-
-            <View
-              key={
-                `exercise-${component.id}`
-              }
+        {progressLoading ? (
+          <View
+            style={
+              styles.loadingCard
+            }
+          >
+            <Text
               style={
-                styles.componentCard
+                styles.emptyText
               }
             >
+              Loading your exercise progress...
+            </Text>
+          </View>
+        ) : (
+          components.map(
+            component => {
+              const progress =
+                getExerciseProgress(
+                  component.id,
+                );
 
-              <View
-                style={
-                  styles.componentHeader
-                }
-              >
+              const score =
+                clampPercentage(
+                  progress.averageRecentScorePct,
+                );
 
-                <Text
-                  style={
-                    styles.componentName
-                  }
-                >
-                  {
-                    component.name
-                  }
-                </Text>
-
-
-                <Text
-                  style={
-                    styles.componentScore
-                  }
-                >
-                  0%
-                </Text>
-
-              </View>
-
-
-              <View
-                style={
-                  styles.progressBackground
-                }
-              >
-
+              return (
                 <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width:
-                        '0%',
-                    },
-                  ]}
-                />
+                  key={`exercise-${component.id}`}
+                  style={
+                    styles.componentCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.componentHeader
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.componentName
+                      }
+                    >
+                      {
+                        component.name
+                      }
+                    </Text>
 
-              </View>
+                    <Text
+                      style={
+                        styles.componentScore
+                      }
+                    >
+                      {score}%
+                    </Text>
+                  </View>
 
-            </View>
+                  <View
+                    style={
+                      styles.progressBackground
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: `${score}%`,
+                        },
+                      ]}
+                    />
+                  </View>
 
+                  <View
+                    style={
+                      styles.componentMeta
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.componentMetaText
+                      }
+                    >
+                      {
+                        progress.exercisesCompleted
+                      }{' '}
+                      {progress.exercisesCompleted ===
+                      1
+                        ? 'exercise'
+                        : 'exercises'}{' '}
+                      completed
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.componentMetaText
+                      }
+                    >
+                      {progress.currentTier}
+                    </Text>
+                  </View>
+                </View>
+              );
+            },
           )
         )}
-
       </ScrollView>
-
     </View>
   );
 }
-
 
 // ============================================================
 // STYLES
@@ -971,12 +1049,11 @@ export default function ProgressScreen() {
 
 const styles =
   StyleSheet.create({
-
     screen: {
       flex: 1,
-      backgroundColor: WHITE,
+      backgroundColor:
+        WHITE,
     },
-
 
     content: {
       paddingHorizontal: 24,
@@ -984,165 +1061,145 @@ const styles =
       paddingBottom: 140,
     },
 
-
     // ========================================================
     // BACK BUTTON
     // ========================================================
 
     backButton: {
       position: 'absolute',
-
       top: 55,
       left: 24,
-
       zIndex: 10,
 
       width: 40,
       height: 40,
 
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
     },
-
 
     // ========================================================
     // TITLE
     // ========================================================
 
     title: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 30,
-
       color: BROWN,
-
       marginTop: 30,
     },
 
-
     subtitle: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 12,
-
       color: MUTED,
-
       marginTop: 3,
       marginBottom: 20,
     },
-
 
     // ========================================================
     // PERIOD SELECTOR
     // ========================================================
 
     periodSelector: {
-      flexDirection: 'row',
+      flexDirection:
+        'row',
 
-      backgroundColor: LIGHT_GRAY,
+      backgroundColor:
+        LIGHT_GRAY,
 
       borderRadius: 14,
-
       padding: 4,
-
       marginBottom: 20,
     },
 
-
     periodButton: {
       flex: 1,
-
       height: 36,
-
       borderRadius: 11,
 
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
     },
-
 
     periodButtonActive: {
-      backgroundColor: PINK,
+      backgroundColor:
+        PINK,
     },
 
-
     periodText: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 11,
-
       color: MUTED,
     },
 
-
     periodTextActive: {
-      fontFamily: 'FredokaBold',
-
+      fontFamily:
+        'FredokaBold',
       color: BROWN,
     },
-
 
     // ========================================================
     // SUMMARY
     // ========================================================
 
     summaryCard: {
-      backgroundColor: PINK,
-
+      backgroundColor:
+        PINK,
       borderRadius: 20,
-
       padding: 20,
-
       marginBottom: 30,
     },
 
-
     summaryTitle: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 18,
-
       color: BROWN,
-
       marginBottom: 15,
     },
 
-
     summaryRow: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
     },
-
 
     summaryItem: {
       flex: 1,
-
-      alignItems: 'center',
+      alignItems:
+        'center',
     },
 
-
     summaryValue: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 30,
-
       color: BROWN,
     },
 
-
     summaryLabel: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 10,
-
       color: MUTED,
-
       marginTop: 2,
     },
-
 
     divider: {
       width: 1,
       height: 42,
-
-      backgroundColor: '#E8C7D0',
+      backgroundColor:
+        '#E8C7D0',
     },
-
 
     // ========================================================
     // ASSESSMENT SECTION
@@ -1152,169 +1209,147 @@ const styles =
       marginBottom: 14,
     },
 
-
     sectionTitle: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 22,
-
       color: BROWN,
     },
 
-
     sectionSubtitle: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 11,
-
       color: MUTED,
-
       marginTop: 3,
       marginBottom: 14,
     },
 
-
     assessmentSummaryCard: {
-      backgroundColor: PINK,
-
+      backgroundColor:
+        PINK,
       borderRadius: 20,
-
       padding: 20,
-
       marginBottom: 12,
 
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'space-between',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-between',
     },
-
 
     assessmentSummaryLeft: {
       flex: 1,
     },
 
-
     assessmentSummaryLabel: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 11,
-
       color: MUTED,
-
       marginBottom: 2,
     },
 
-
     assessmentAverage: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 34,
-
       color: BROWN,
     },
 
-
     assessmentDate: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 10,
-
       color: MUTED,
-
       marginTop: 2,
     },
-
 
     assessmentIconCircle: {
       width: 56,
       height: 56,
-
       borderRadius: 28,
+      backgroundColor:
+        WHITE,
 
-      backgroundColor: WHITE,
-
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
     },
-
 
     // ========================================================
     // ASSESSMENT SCORES
     // ========================================================
 
     assessmentScoresCard: {
-      backgroundColor: LIGHT_PINK,
-
+      backgroundColor:
+        LIGHT_PINK,
       borderRadius: 18,
 
       paddingHorizontal: 17,
       paddingVertical: 6,
 
       borderWidth: 1,
-      borderColor: '#F2DDE5',
+      borderColor:
+        '#F2DDE5',
 
       marginBottom: 12,
     },
-
 
     assessmentScoreItem: {
       paddingVertical: 14,
 
       borderBottomWidth: 1,
-      borderBottomColor: '#F2DDE5',
+      borderBottomColor:
+        '#F2DDE5',
     },
-
 
     assessmentScoreItemLast: {
       borderBottomWidth: 0,
     },
 
-
     assessmentScoreHeader: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'space-between',
-
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-between',
       marginBottom: 7,
     },
 
-
     assessmentComponentName: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 14,
-
       color: BROWN,
     },
-
 
     assessmentComponentScore: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 15,
-
       color: BROWN,
     },
-
 
     assessmentProgressBackground: {
       height: 8,
-
       width: '100%',
-
-      backgroundColor: WHITE,
-
+      backgroundColor:
+        WHITE,
       borderRadius: 10,
-
       overflow: 'hidden',
     },
 
-
     assessmentProgressFill: {
       height: '100%',
-
-      backgroundColor: BROWN,
-
+      backgroundColor:
+        BROWN,
       borderRadius: 10,
     },
-
 
     // ========================================================
     // ASSESSMENT BUTTON
@@ -1322,84 +1357,84 @@ const styles =
 
     viewAssessmentButton: {
       height: 44,
-
       borderRadius: 22,
 
-      backgroundColor: LIGHT_PINK,
+      backgroundColor:
+        LIGHT_PINK,
 
       borderWidth: 1,
-      borderColor: '#E8D4DB',
+      borderColor:
+        '#E8D4DB',
 
-      flexDirection: 'row',
-
-      alignItems: 'center',
-      justifyContent: 'center',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
 
       gap: 7,
 
       marginBottom: 30,
     },
 
-
     viewAssessmentText: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 13,
-
       color: BROWN,
     },
-
 
     // ========================================================
     // EMPTY ASSESSMENT
     // ========================================================
 
     assessmentEmptyCard: {
-      backgroundColor: LIGHT_PINK,
-
+      backgroundColor:
+        LIGHT_PINK,
       borderRadius: 18,
 
       padding: 22,
 
-      alignItems: 'center',
+      alignItems:
+        'center',
 
       borderWidth: 1,
-      borderColor: '#F2DDE5',
+      borderColor:
+        '#F2DDE5',
 
       marginBottom: 30,
     },
 
-
     emptyIconCircle: {
       width: 54,
       height: 54,
-
       borderRadius: 27,
 
-      backgroundColor: PINK,
+      backgroundColor:
+        PINK,
 
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
 
       marginBottom: 12,
     },
 
-
     emptyTitle: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 18,
-
       color: BROWN,
-
       marginBottom: 6,
     },
 
-
     emptyText: {
-      fontFamily: 'FredokaRegular',
+      fontFamily:
+        'FredokaRegular',
       fontSize: 11,
-
       lineHeight: 17,
-
       color: MUTED,
 
       textAlign: 'center',
@@ -1407,49 +1442,63 @@ const styles =
       marginBottom: 15,
     },
 
-
     startAssessmentButton: {
       height: 44,
-
       borderRadius: 22,
 
-      backgroundColor: BROWN,
+      backgroundColor:
+        BROWN,
 
       paddingHorizontal: 20,
 
-      flexDirection: 'row',
-
-      alignItems: 'center',
-      justifyContent: 'center',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
 
       gap: 7,
     },
 
-
     startAssessmentText: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 13,
-
       color: WHITE,
     },
-
 
     // ========================================================
     // EXERCISE PROGRESS
     // ========================================================
 
     exerciseSectionTitle: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 22,
-
       color: BROWN,
-
       marginBottom: 0,
     },
 
+    loadingCard: {
+      backgroundColor:
+        LIGHT_PINK,
+      borderRadius: 18,
+
+      paddingVertical: 24,
+      paddingHorizontal: 20,
+
+      borderWidth: 1,
+      borderColor:
+        '#F2DDE5',
+
+      alignItems:
+        'center',
+    },
 
     componentCard: {
-      backgroundColor: LIGHT_PINK,
+      backgroundColor:
+        LIGHT_PINK,
 
       borderRadius: 16,
 
@@ -1458,56 +1507,70 @@ const styles =
       marginBottom: 12,
 
       borderWidth: 1,
-      borderColor: '#F2DDE5',
+      borderColor:
+        '#F2DDE5',
     },
 
-
     componentHeader: {
-      flexDirection: 'row',
+      flexDirection:
+        'row',
 
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
 
-      alignItems: 'center',
+      alignItems:
+        'center',
 
       marginBottom: 8,
     },
 
-
     componentName: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 15,
-
       color: BROWN,
     },
-
 
     componentScore: {
-      fontFamily: 'FredokaBold',
+      fontFamily:
+        'FredokaBold',
       fontSize: 14,
-
       color: BROWN,
     },
-
 
     progressBackground: {
       height: 9,
-
       width: '100%',
-
-      backgroundColor: WHITE,
-
+      backgroundColor:
+        WHITE,
       borderRadius: 10,
-
       overflow: 'hidden',
     },
 
-
     progressFill: {
       height: '100%',
-
-      backgroundColor: BROWN,
-
+      backgroundColor:
+        BROWN,
       borderRadius: 10,
     },
 
+    componentMeta: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-between',
+
+      marginTop: 8,
+    },
+
+    componentMetaText: {
+      fontFamily:
+        'FredokaRegular',
+      fontSize: 10,
+      color: MUTED,
+      textTransform:
+        'capitalize',
+    },
   });
