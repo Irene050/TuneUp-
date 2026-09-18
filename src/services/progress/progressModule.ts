@@ -1,13 +1,15 @@
+// src/services/progress/progressModule.ts
+
 import type {
-    ComponentId,
+  ComponentId,
 } from '@/services/assessment/assessmentModule';
 
 export type {
-    ComponentId
+  ComponentId
 } from '@/services/assessment/assessmentModule';
 
 import type {
-    Tier,
+  Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 
 export interface ExerciseRecord {
@@ -27,7 +29,10 @@ export interface ComponentProgressSummary {
 
 export function summarizeProgress(
   records: ExerciseRecord[],
-  currentTiers: Record<ComponentId, Tier>,
+  currentTiers: Record<
+    ComponentId,
+    Tier
+  >
 ): ComponentProgressSummary[] {
   const componentIds: ComponentId[] = [
     'breathControl',
@@ -43,18 +48,21 @@ export function summarizeProgress(
         records.filter(
           (r) =>
             r.componentId ===
-            componentId,
+            componentId
         );
 
       const recentFive =
-        componentRecords.slice(-5);
+        componentRecords.slice(
+          -5
+        );
 
       const averageRecentScorePct =
         recentFive.length
           ? recentFive.reduce(
               (sum, r) =>
-                sum + r.scorePct,
-              0,
+                sum +
+                r.scorePct,
+              0
             ) /
             recentFive.length
           : 0;
@@ -62,14 +70,16 @@ export function summarizeProgress(
       return {
         componentId,
         currentTier:
-          currentTiers[componentId],
+          currentTiers[
+            componentId
+          ],
         exercisesCompleted:
           componentRecords.length,
         averageRecentScorePct:
           Math.round(
-            averageRecentScorePct,
+            averageRecentScorePct
           ),
       };
-    },
+    }
   );
 }
