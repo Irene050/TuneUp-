@@ -84,26 +84,32 @@ const exercises = [
 },
 
   // TONE
-  {
-    name: 'Vowel Consistency Exercise',
-    category: 'Tone',
-  },
-  {
-    name: 'Waveform Smoothness Drill',
-    category: 'Tone',
-  },
-  {
-    name: 'Resonance Stabilization Task',
-    category: 'Tone',
-  },
-  {
-    name: 'Tone Consistency Exercise',
-    category: 'Tone',
-  },
-  {
-    name: 'Steady Tone Holding',
-    category: 'Tone',
-  },
+  // TONE
+{
+  name: 'Vowel Consistency Exercise',
+  category: 'Tone',
+  templateId: 'vowelConsistencyExercise',
+},
+{
+  name: 'Waveform Smoothness Drill',
+  category: 'Tone',
+  templateId: 'waveformSmoothnessDrill',
+},
+{
+  name: 'Resonance Stabilization Task',
+  category: 'Tone',
+  templateId: 'resonanceStabilizationTask',
+},
+{
+  name: 'Tone Consistency Exercise',
+  category: 'Tone',
+  templateId: 'toneConsistencyExercise',
+},
+{
+  name: 'Steady Tone Holding',
+  category: 'Tone',
+  templateId: 'steadyToneHolding',
+},
 
   // VOLUME
   {
@@ -377,6 +383,21 @@ export default function ExercisesScreen() {
         exercise.templateId
       )}` as any
     );
+
+    return;
+  }
+
+  if (
+    exercise.category === 'Tone' &&
+    exercise.templateId
+  ) {
+    router.push(
+      `/exercises/tone?templateId=${encodeURIComponent(
+        exercise.templateId
+      )}` as any
+    );
+
+    return;
   }
 }}
   >

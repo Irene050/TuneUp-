@@ -1,3 +1,5 @@
+// src/services/firebase/progressRepo.ts
+
 import {
   addDoc,
   collection,
@@ -9,7 +11,9 @@ import {
   setDoc,
 } from 'firebase/firestore';
 
-import { db } from '@/services/firebase/config';
+import {
+  db,
+} from '@/services/firebase/config';
 
 import type {
   ComponentId,
@@ -31,7 +35,7 @@ import type {
 
 export async function saveComponentProgress(
   userId: string,
-  summary: ComponentProgressSummary,
+  summary: ComponentProgressSummary
 ): Promise<void> {
   await setDoc(
     doc(
@@ -39,9 +43,9 @@ export async function saveComponentProgress(
       'users',
       userId,
       'progress',
-      summary.componentId,
+      summary.componentId
     ),
-    summary,
+    summary
   );
 }
 
@@ -50,20 +54,21 @@ export async function saveComponentProgress(
 ============================================================ */
 
 export async function fetchAllProgress(
-  userId: string,
+  userId: string
 ): Promise<ComponentProgressSummary[]> {
-  const snapshot = await getDocs(
-    collection(
-      db,
-      'users',
-      userId,
-      'progress',
-    ),
-  );
+  const snapshot =
+    await getDocs(
+      collection(
+        db,
+        'users',
+        userId,
+        'progress'
+      )
+    );
 
   return snapshot.docs.map(
     (documentSnapshot) =>
-      documentSnapshot.data() as ComponentProgressSummary,
+      documentSnapshot.data() as ComponentProgressSummary
   );
 }
 
@@ -73,17 +78,18 @@ export async function fetchAllProgress(
 
 export async function fetchComponentProgress(
   userId: string,
-  componentId: ComponentId,
+  componentId: ComponentId
 ): Promise<ComponentProgressSummary | null> {
-  const snapshot = await getDoc(
-    doc(
-      db,
-      'users',
-      userId,
-      'progress',
-      componentId,
-    ),
-  );
+  const snapshot =
+    await getDoc(
+      doc(
+        db,
+        'users',
+        userId,
+        'progress',
+        componentId
+      )
+    );
 
   if (!snapshot.exists()) {
     return null;
@@ -98,26 +104,28 @@ export async function fetchComponentProgress(
 
 export async function saveExerciseRecord(
   userId: string,
-  record: ExerciseRecord,
+  record: ExerciseRecord
 ): Promise<string> {
-  const exercisesRef = collection(
-    db,
-    'users',
-    userId,
-    'progress',
-    record.componentId,
-    'exercises',
-  );
+  const exercisesRef =
+    collection(
+      db,
+      'users',
+      userId,
+      'progress',
+      record.componentId,
+      'exercises'
+    );
 
-  const exerciseDoc = await addDoc(
-    exercisesRef,
-    record,
-  );
+  const exerciseDoc =
+    await addDoc(
+      exercisesRef,
+      record
+    );
 
   console.log(
     '✅ Exercise record saved:',
     exerciseDoc.id,
-    record,
+    record
   );
 
   return exerciseDoc.id;
@@ -129,29 +137,35 @@ export async function saveExerciseRecord(
 
 export async function fetchExerciseRecords(
   userId: string,
-  componentId: ComponentId,
+  componentId: ComponentId
 ): Promise<ExerciseRecord[]> {
-  const exercisesRef = collection(
-    db,
-    'users',
-    userId,
-    'progress',
-    componentId,
-    'exercises',
-  );
+  const exercisesRef =
+    collection(
+      db,
+      'users',
+      userId,
+      'progress',
+      componentId,
+      'exercises'
+    );
 
-  const exerciseQuery = query(
-    exercisesRef,
-    orderBy('timestamp', 'asc'),
-  );
+  const exerciseQuery =
+    query(
+      exercisesRef,
+      orderBy(
+        'timestamp',
+        'asc'
+      )
+    );
 
-  const snapshot = await getDocs(
-    exerciseQuery,
-  );
+  const snapshot =
+    await getDocs(
+      exerciseQuery
+    );
 
   return snapshot.docs.map(
     (documentSnapshot) =>
-      documentSnapshot.data() as ExerciseRecord,
+      documentSnapshot.data() as ExerciseRecord
   );
 }
 
@@ -161,99 +175,76 @@ export async function fetchExerciseRecords(
 
 export async function saveExerciseAndUpdateProgress(
   userId: string,
-  record: ExerciseRecord,
+  record: ExerciseRecord
 ): Promise<ComponentProgressSummary> {
-  /*
-   * 1. Save the individual completed exercise.
-   */
   await saveExerciseRecord(
     userId,
-    record,
+    record
   );
 
-  /*
-   * 2. Get the component's existing summary.
-   */
   const existingSummary =
     await fetchComponentProgress(
       userId,
-      record.componentId,
+      record.componentId
     );
 
-  /*
-   * Keep the tier already stored in Firebase.
-   * If no summary exists yet, use the tier from
-   * the exercise that was just completed.
-   */
   const currentTier: Tier =
     existingSummary?.currentTier ??
     record.tier;
 
-  /*
-   * 3. Get all exercise attempts for this
-   *    component.
-   */
   const records =
     await fetchExerciseRecords(
       userId,
-      record.componentId,
+      record.componentId
     );
 
-  /*
-   * 4. Build the current tier map.
-   *
-   * Only the current component matters here,
-   * but summarizeProgress expects all five
-   * ComponentId values.
-   */
   const currentTiers: Record<
     ComponentId,
     Tier
   > = {
-    breathControl: 'beginner',
-    pitch: 'beginner',
-    tone: 'beginner',
-    volume: 'beginner',
-    agility: 'beginner',
+    breathControl:
+      'beginner',
+    pitch:
+      'beginner',
+    tone:
+      'beginner',
+    volume:
+      'beginner',
+    agility:
+      'beginner',
   };
 
   currentTiers[
     record.componentId
   ] = currentTier;
 
-  /*
-   * 5. Recalculate this component's summary.
-   */
   const summaries =
     summarizeProgress(
       records,
-      currentTiers,
+      currentTiers
     );
 
   const summary =
     summaries.find(
       (item) =>
         item.componentId ===
-        record.componentId,
+        record.componentId
     );
 
   if (!summary) {
     throw new Error(
-      `Unable to create progress summary for ${record.componentId}.`,
+      `Unable to create progress summary for ${record.componentId}.`
     );
   }
 
-  /*
-   * 6. Save the updated summary.
-   */
   await saveComponentProgress(
     userId,
-    summary,
+    summary
   );
 
   console.log(
     '✅ Component progress updated:',
-    summary,
+    summary
   );
 
   return summary;

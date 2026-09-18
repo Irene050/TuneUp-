@@ -1,20 +1,23 @@
+// src/services/progress/exerciseProgressService.ts
+
 import { auth } from '@/services/firebase/config';
 
 import type {
-    ExerciseRecord,
+  ExerciseRecord,
 } from '@/services/progress/progressModule';
 
 import type {
-    ComponentId,
+  ComponentId,
 } from '@/services/assessment/assessmentModule';
 
 import {
-    saveExerciseAndUpdateProgress,
+  saveExerciseAndUpdateProgress,
 } from '@/services/firebase/progressRepo';
 
 import type {
-    Tier,
+  Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
+
 /* ============================================================
    SAVE COMPLETED EXERCISE
 ============================================================ */
@@ -25,48 +28,46 @@ export async function saveCompletedExercise(
   tier: Tier,
   scorePct: number,
 ): Promise<void> {
-  const user = auth.currentUser;
+  const user =
+    auth.currentUser;
 
-  /*
-   * The exercise can still finish locally even if
-   * there is no authenticated Firebase user.
-   */
   if (!user) {
     console.warn(
-      '⚠️ No authenticated user. Exercise result was not saved.',
+      '⚠️ No authenticated user. Exercise result was not saved.'
     );
+
     return;
   }
 
-  const safeScore = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(scorePct),
-    ),
-  );
+  const safeScore =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(scorePct)
+      )
+    );
 
-  const record: ExerciseRecord = {
-    componentId,
-    templateId,
-    tier,
-    scorePct: safeScore,
-    timestamp: Date.now(),
-  };
+  const record: ExerciseRecord =
+    {
+      componentId,
+      templateId,
+      tier,
+      scorePct:
+        safeScore,
+      timestamp:
+        Date.now(),
+    };
 
   try {
     await saveExerciseAndUpdateProgress(
       user.uid,
-      record,
+      record
     );
   } catch (error) {
-    /*
-     * Do not break the exercise result screen
-     * merely because Firebase failed.
-     */
     console.error(
       '❌ Failed to save exercise progress:',
-      error,
+      error
     );
   }
 }
