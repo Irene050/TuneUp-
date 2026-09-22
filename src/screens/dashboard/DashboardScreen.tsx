@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import {
+  getAssessmentByType,
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
@@ -104,6 +105,11 @@ export default function DashboardScreen() {
     setAssessmentLoading,
   ] = useState(true);
 
+  const [
+  hasInitialAssessment,
+  setHasInitialAssessment,
+] = useState(false);
+
   /* =======================================================
      LOAD LATEST ASSESSMENT
   ======================================================= */
@@ -135,14 +141,23 @@ export default function DashboardScreen() {
               true,
             );
 
-            const assessment =
-              await getLatestAssessment();
+            const [
+  assessment,
+  initialAssessment,
+] = await Promise.all([
+  getLatestAssessment(),
+  getAssessmentByType('initial'),
+]);
 
-            if (mounted) {
-              setLatestAssessment(
-                assessment,
-              );
-            }
+if (mounted) {
+  setLatestAssessment(
+    assessment,
+  );
+
+  setHasInitialAssessment(
+    initialAssessment !== null
+  );
+}
           } catch (error) {
             console.error(
               '❌ Failed to load latest assessment:',
@@ -150,10 +165,9 @@ export default function DashboardScreen() {
             );
 
             if (mounted) {
-              setLatestAssessment(
-                null,
-              );
-            }
+  setLatestAssessment(null);
+  setHasInitialAssessment(false);
+}
           } finally {
             if (mounted) {
               setAssessmentLoading(
@@ -215,11 +229,25 @@ export default function DashboardScreen() {
 
         {/* ASSESSMENT */}
         <Pressable
-          style={styles.assessmentCard}
-          onPress={() =>
-            router.push('/assessment')
-          }
-        >
+  style={[
+    styles.assessmentCard,
+    assessmentLoading && {
+      opacity: 0.7,
+    },
+  ]}
+  disabled={assessmentLoading}
+  onPress={() =>
+    router.push({
+      pathname: '/assessment',
+      params: {
+        type:
+          hasInitialAssessment
+            ? 'followUp'
+            : 'initial',
+      },
+    })
+  }
+>
           <View
             style={styles.assessmentIcon}
           >
@@ -240,13 +268,16 @@ export default function DashboardScreen() {
             </Text>
 
             <Text
-              style={
-                styles.assessmentDescription
-              }
-            >
-              Take a quick assessment to
-              personalize your exercises.
-            </Text>
+  style={
+    styles.assessmentDescription
+  }
+>
+  {assessmentLoading
+    ? 'Checking your assessment status...'
+    : hasInitialAssessment
+    ? 'Complete your follow-up assessment to track changes in your vocal performance.'
+    : 'Take an initial assessment to establish your vocal baseline.'}
+</Text>
 
             <View
               style={styles.assessmentButton}
@@ -256,7 +287,11 @@ export default function DashboardScreen() {
                   styles.assessmentButtonText
                 }
               >
-                Assess Me!
+                {assessmentLoading
+  ? 'Loading...'
+  : hasInitialAssessment
+  ? 'Take Follow-up'
+  : 'Assess Me!'}
               </Text>
 
               <Ionicons

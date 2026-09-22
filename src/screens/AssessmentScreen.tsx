@@ -1,5 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import {
+  router,
+  useLocalSearchParams,
+} from 'expo-router';
+
 import {
   useCallback,
   useEffect,
@@ -21,6 +25,7 @@ import {
   ASSESSMENT_DURATION,
   AssessmentAudioBundle,
   AssessmentResult,
+  AssessmentType,
   computeTargetNotes,
   detectVocalRangeFromHums,
   runAssessment,
@@ -333,6 +338,23 @@ function hasUsableAudio(
 // ============================================================
 
 export default function AssessmentScreen() {
+
+  const {
+  type,
+} = useLocalSearchParams<{
+  type?: string | string[];
+}>();
+
+const rawAssessmentType =
+  Array.isArray(type)
+    ? type[0]
+    : type;
+
+const assessmentType: AssessmentType =
+  rawAssessmentType === 'followUp'
+    ? 'followUp'
+    : 'initial';
+
   const [step, setStep] =
     useState<AssessmentStep>('intro');
 
@@ -1049,8 +1071,9 @@ export default function AssessmentScreen() {
          */
         try {
           await saveAssessment(
-            assessmentResult
-          );
+  assessmentResult,
+  assessmentType
+);
 
           console.log(
             '✅ Assessment successfully saved.'
@@ -1093,6 +1116,7 @@ export default function AssessmentScreen() {
     }, [
       sections,
       createAssessmentBundle,
+      assessmentType,
     ]);
 
   // ==========================================================
@@ -1178,12 +1202,16 @@ export default function AssessmentScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.resultsTitle}>
-          Your Vocal Assessment
-        </Text>
+  {assessmentType === 'initial'
+    ? 'Initial Vocal Assessment'
+    : 'Follow-up Vocal Assessment'}
+</Text>
 
-        <Text style={styles.resultsSubtitle}>
-          Here's your current vocal foundation.
-        </Text>
+<Text style={styles.resultsSubtitle}>
+  {assessmentType === 'initial'
+    ? 'Here’s your starting vocal foundation.'
+    : 'Here’s your current vocal foundation after the study period.'}
+</Text>
 
         {error && (
           <View style={styles.errorCard}>

@@ -1,19 +1,20 @@
 import {
-    addDoc,
-    collection,
-    getDocs,
-    limit,
-    orderBy,
-    query,
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
 } from 'firebase/firestore';
 
 import {
-    auth,
-    db,
+  auth,
+  db,
 } from '@/services/firebase/config';
 
 import type {
-    AssessmentResult,
+  AssessmentResult,
+  AssessmentType,
 } from '@/services/assessment/assessmentModule';
 
 
@@ -24,7 +25,27 @@ import type {
 export type SavedAssessmentResult =
   AssessmentResult & {
     id: string;
+    assessmentType?: AssessmentType;
   };
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function parseAssessmentType(
+  value: unknown
+): AssessmentType | undefined {
+  if (value === 'initial') {
+    return 'initial';
+  }
+
+  if (value === 'followUp') {
+    return 'followUp';
+  }
+
+  return undefined;
+}
 
 
 // ============================================================
@@ -32,7 +53,8 @@ export type SavedAssessmentResult =
 // ============================================================
 
 export async function saveAssessment(
-  result: AssessmentResult
+  result: AssessmentResult,
+  assessmentType: AssessmentType
 ): Promise<string> {
   const user =
     auth.currentUser;
@@ -43,7 +65,6 @@ export async function saveAssessment(
     );
   }
 
-
   const assessmentsRef =
     collection(
       db,
@@ -52,11 +73,12 @@ export async function saveAssessment(
       'assessments'
     );
 
-
   const assessmentDoc =
     await addDoc(
       assessmentsRef,
       {
+        assessmentType,
+
         vocalRange: {
           lowHz:
             result.vocalRange.lowHz,
@@ -82,12 +104,13 @@ export async function saveAssessment(
       }
     );
 
-
   console.log(
     'Assessment saved to Firebase:',
-    assessmentDoc.id
+    {
+      id: assessmentDoc.id,
+      assessmentType,
+    }
   );
-
 
   return assessmentDoc.id;
 }
@@ -103,11 +126,9 @@ export async function getLatestAssessment():
   const user =
     auth.currentUser;
 
-
   if (!user) {
     return null;
   }
-
 
   const assessmentsRef =
     collection(
@@ -116,7 +137,6 @@ export async function getLatestAssessment():
       user.uid,
       'assessments'
     );
-
 
   const latestQuery =
     query(
@@ -128,12 +148,10 @@ export async function getLatestAssessment():
       limit(1)
     );
 
-
   const snapshot =
     await getDocs(
       latestQuery
     );
-
 
   if (
     snapshot.empty
@@ -141,13 +159,11 @@ export async function getLatestAssessment():
     return null;
   }
 
-
   const documentSnapshot =
     snapshot.docs[0];
 
   const data =
     documentSnapshot.data();
-
 
   const lowHz =
     Number(
@@ -156,7 +172,6 @@ export async function getLatestAssessment():
       0
     );
 
-
   const highHz =
     Number(
       data.vocalRange?.highHz ??
@@ -164,10 +179,14 @@ export async function getLatestAssessment():
       0
     );
 
-
   return {
     id:
       documentSnapshot.id,
+
+    assessmentType:
+      parseAssessmentType(
+        data.assessmentType
+      ),
 
     vocalRange: {
       lowHz,
@@ -197,4 +216,115 @@ export async function getLatestAssessment():
         0
       ),
   };
+}
+
+
+// ============================================================
+// GET LATEST ASSESSMENT BY TYPE
+// ============================================================
+
+export async function getAssessmentByType(
+  assessmentType: AssessmentType
+): Promise<SavedAssessmentResult | null> {
+
+  const user =
+    auth.currentUser;
+
+  if (!user) {
+    return null;
+  }
+
+  const assessmentsRef =
+    collection(
+      db,
+      'users',
+      user.uid,
+      'assessments'
+    );
+
+  const assessmentQuery =
+    query(
+      assessmentsRef,
+      orderBy(
+        'timestamp',
+        'desc'
+      )
+    );
+
+  const snapshot =
+    await getDocs(
+      assessmentQuery
+    );
+
+  for (
+    const documentSnapshot
+    of snapshot.docs
+  ) {
+    const data =
+      documentSnapshot.data();
+
+    const storedType =
+      parseAssessmentType(
+        data.assessmentType
+      );
+
+    if (
+      storedType !==
+      assessmentType
+    ) {
+      continue;
+    }
+
+    const lowHz =
+      Number(
+        data.vocalRange?.lowHz ??
+        data.vocalRangeLowHz ??
+        0
+      );
+
+    const highHz =
+      Number(
+        data.vocalRange?.highHz ??
+        data.vocalRangeHighHz ??
+        0
+      );
+
+    return {
+      id:
+        documentSnapshot.id,
+
+      assessmentType:
+        storedType,
+
+      vocalRange: {
+        lowHz,
+        highHz,
+      },
+
+      vocalRangeLowHz:
+        lowHz,
+
+      vocalRangeHighHz:
+        highHz,
+
+      scores:
+        Array.isArray(
+          data.scores
+        )
+          ? data.scores
+          : [],
+
+      recommendations:
+        data.recommendations ??
+        {},
+
+      timestamp:
+        Number(
+          data.timestamp ??
+          0
+        ),
+    };
+  }
+
+  return null;
 }
