@@ -27,91 +27,103 @@ const categories = [
   'Agility',
 ];
 
-const exercises = [
+type Exercise = {
+  name: string;
+  category: string;
+  templateId?: string;
+};
+
+const exercises: Exercise[] = [
+  // =========================================================
   // BREATH CONTROL
+  // =========================================================
   {
-  name: 'Sustained Exhale',
-  category: 'Breath Control',
-  templateId: 'sustainedExhale',
-},
-{
-  name: 'Sustained "SSSS" Sound',
-  category: 'Breath Control',
-  templateId: 'sustainedSSSS',
-},
-{
-  name: 'Diaphragmatic Breathing',
-  category: 'Breath Control',
-  templateId: 'diaphragmaticBreathing',
-},
-{
-  name: 'Steady Airflow Maintenance',
-  category: 'Breath Control',
-  templateId: 'steadyAirflowMaintenance',
-},
-{
-  name: 'Controlled Breath Release',
-  category: 'Breath Control',
-  templateId: 'controlledBreathRelease',
-},
+    name: 'Sustained Exhale',
+    category: 'Breath Control',
+    templateId: 'sustainedExhale',
+  },
+  {
+    name: 'Sustained "SSSS" Sound',
+    category: 'Breath Control',
+    templateId: 'sustainedSSSS',
+  },
+  {
+    name: 'Diaphragmatic Breathing',
+    category: 'Breath Control',
+    templateId: 'diaphragmaticBreathing',
+  },
+  {
+    name: 'Steady Airflow Maintenance',
+    category: 'Breath Control',
+    templateId: 'steadyAirflowMaintenance',
+  },
+  {
+    name: 'Controlled Breath Release',
+    category: 'Breath Control',
+    templateId: 'controlledBreathRelease',
+  },
 
+  // =========================================================
+  // PITCH
+  // =========================================================
+  {
+    name: 'Note Matching Exercise',
+    category: 'Pitch',
+    templateId: 'noteMatchingExercise',
+  },
+  {
+    name: 'Scale Accuracy Drill',
+    category: 'Pitch',
+    templateId: 'scaleAccuracyDrill',
+  },
+  {
+    name: 'Interval Recognition Task',
+    category: 'Pitch',
+    templateId: 'intervalRecognitionTask',
+  },
+  {
+    name: 'Sustained Note Stability',
+    category: 'Pitch',
+    templateId: 'sustainedNoteStability',
+  },
+  {
+    name: 'Melodic Pattern Matching',
+    category: 'Pitch',
+    templateId: 'melodicPatternMatching',
+  },
 
-// PITCH
-{
-  name: 'Note Matching Exercise',
-  category: 'Pitch',
-  templateId: 'noteMatchingExercise',
-},
-{
-  name: 'Scale Accuracy Drill',
-  category: 'Pitch',
-  templateId: 'scaleAccuracyDrill',
-},
-{
-  name: 'Interval Recognition Task',
-  category: 'Pitch',
-  templateId: 'intervalRecognitionTask',
-},
-{
-  name: 'Sustained Note Stability',
-  category: 'Pitch',
-  templateId: 'sustainedNoteStability',
-},
-{
-  name: 'Melodic Pattern Matching',
-  category: 'Pitch',
-  templateId: 'melodicPatternMatching',
-},
-
+  // =========================================================
   // TONE
-  // TONE
-{
-  name: 'Vowel Consistency Exercise',
-  category: 'Tone',
-  templateId: 'vowelConsistencyExercise',
-},
-{
-  name: 'Waveform Smoothness Drill',
-  category: 'Tone',
-  templateId: 'waveformSmoothnessDrill',
-},
-{
-  name: 'Resonance Stabilization Task',
-  category: 'Tone',
-  templateId: 'resonanceStabilizationTask',
-},
-{
-  name: 'Tone Consistency Exercise',
-  category: 'Tone',
-  templateId: 'toneConsistencyExercise',
-},
-{
-  name: 'Steady Tone Holding',
-  category: 'Tone',
-  templateId: 'steadyToneHolding',
-},
+  // =========================================================
+  {
+    name: 'Vowel Consistency Exercise',
+    category: 'Tone',
+    templateId: 'vowelConsistencyExercise',
+  },
+  {
+    name: 'Waveform Smoothness Drill',
+    category: 'Tone',
+    templateId: 'waveformSmoothnessDrill',
+  },
+  {
+    name: 'Resonance Stabilization Task',
+    category: 'Tone',
+    templateId: 'resonanceStabilizationTask',
+  },
+  {
+    name: 'Tone Consistency Exercise',
+    category: 'Tone',
+    templateId: 'toneConsistencyExercise',
+  },
+  {
+    name: 'Steady Tone Holding',
+    category: 'Tone',
+    templateId: 'steadyToneHolding',
+  },
 
+  // =========================================================
   // VOLUME
+  // =========================================================
   {
     name: 'Dynamic Range Exercise',
     category: 'Volume',
@@ -133,26 +145,56 @@ const exercises = [
     category: 'Volume',
   },
 
+  // =========================================================
   // AGILITY
+  // =========================================================
   {
     name: 'Rapid Note-Transition Exercise',
     category: 'Agility',
+    templateId: 'rapidNoteTransition',
   },
   {
     name: 'Arpeggio Speed Drill',
     category: 'Agility',
+    templateId: 'arpeggioSpeed',
   },
   {
     name: 'Vocal Run Accuracy Task',
     category: 'Agility',
+    templateId: 'vocalRunAccuracy',
   },
   {
     name: 'Quick Interval Jump',
     category: 'Agility',
+    templateId: 'quickIntervalJump',
   },
   {
     name: 'Rapid Scale Trill',
     category: 'Agility',
+    templateId: 'rapidScaleTrill',
+  },
+];
+
+const recommendedComponents = [
+  {
+    name: 'Breath Control',
+    route: '/exercises/breath-control',
+  },
+  {
+    name: 'Pitch',
+    route: '/exercises/pitch',
+  },
+  {
+    name: 'Tone',
+    route: '/exercises/tone',
+  },
+  {
+    name: 'Volume',
+    route: '/exercises/volume',
+  },
+  {
+    name: 'Agility',
+    route: '/exercises/agility',
   },
 ];
 
@@ -160,9 +202,15 @@ export default function ExercisesScreen() {
   const [selectedCategory, setSelectedCategory] =
     useState('All');
 
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterOpen, setFilterOpen] =
+    useState(false);
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] =
+    useState('');
+
+  // =========================================================
+  // FILTER
+  // =========================================================
 
   const filteredExercises = useMemo(() => {
     return exercises.filter((exercise) => {
@@ -175,9 +223,160 @@ export default function ExercisesScreen() {
           .toLowerCase()
           .includes(search.toLowerCase());
 
-      return matchesCategory && matchesSearch;
+      return (
+        matchesCategory &&
+        matchesSearch
+      );
     });
   }, [selectedCategory, search]);
+
+  // =========================================================
+  // RECOMMENDED CARD NAVIGATION
+  // =========================================================
+
+  const handleRecommendedPress = (
+    route: string,
+  ) => {
+    router.push(route as any);
+  };
+
+  // =========================================================
+  // EXERCISE NAVIGATION
+  // =========================================================
+
+  const handleExercisePress = (
+    exercise: Exercise,
+  ) => {
+    // ---------------------------------------------------------
+    // BREATH CONTROL
+    // ---------------------------------------------------------
+
+    if (
+      exercise.category === 'Breath Control' &&
+      exercise.templateId
+    ) {
+      router.push(
+        `/exercises/breath-control?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // PITCH
+    // ---------------------------------------------------------
+
+    if (
+      exercise.category === 'Pitch' &&
+      exercise.templateId
+    ) {
+      router.push(
+        `/exercises/pitch?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // TONE
+    // ---------------------------------------------------------
+
+    if (
+      exercise.category === 'Tone' &&
+      exercise.templateId
+    ) {
+      router.push(
+        `/exercises/tone?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // VOLUME
+    // ---------------------------------------------------------
+
+    if (exercise.category === 'Volume') {
+      if (
+        exercise.name ===
+        'Dynamic Range Exercise'
+      ) {
+        router.push(
+          '/exercises/volume/dynamic-range' as any,
+        );
+        return;
+      }
+
+      if (
+        exercise.name ===
+        'Controlled Crescendo Drill'
+      ) {
+        router.push(
+          '/exercises/volume/controlled-crescendo' as any,
+        );
+        return;
+      }
+
+      if (
+        exercise.name ===
+        'Controlled Decrescendo Drill'
+      ) {
+        router.push(
+          '/exercises/volume/controlled-decrescendo' as any,
+        );
+        return;
+      }
+
+      if (
+        exercise.name ===
+        'Volume Band Targeting'
+      ) {
+        router.push(
+          '/exercises/volume/volume-band-targeting' as any,
+        );
+        return;
+      }
+
+      if (
+        exercise.name ===
+        'Volume Control Stability'
+      ) {
+        router.push(
+          '/exercises/volume/volume-control-stability' as any,
+        );
+        return;
+      }
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // AGILITY
+    // ---------------------------------------------------------
+
+    if (
+      exercise.category === 'Agility' &&
+      exercise.templateId
+    ) {
+      router.push(
+        `/exercises/agility?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
+  };
+
+  // =========================================================
+  // UI
+  // =========================================================
 
   return (
     <View style={styles.screen}>
@@ -189,8 +388,9 @@ export default function ExercisesScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        <View style={styles.searchRow}>
+        {/* SEARCH */}
 
+        <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Ionicons
               name="search-outline"
@@ -206,12 +406,15 @@ export default function ExercisesScreen() {
               onChangeText={setSearch}
             />
           </View>
-
         </View>
+
+        {/* TITLE */}
 
         <Text style={styles.title}>
           Vocal Exercises
         </Text>
+
+        {/* RECOMMENDED */}
 
         <View style={styles.recommendedHeader}>
           <View>
@@ -228,70 +431,76 @@ export default function ExercisesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recommendedScroll}
+          contentContainerStyle={
+            styles.recommendedScroll
+          }
         >
 
-          {/* CARD 1 */}
-          <Pressable style={styles.recommendedCard}>
-            <View style={styles.recommendedImage}>
-              <View style={styles.recommendedDifficulty}>
-                <Text style={styles.difficultyText}>
-                  Beginner
-                </Text>
+          {recommendedComponents.map(
+            (component) => (
+              <View
+                key={component.name}
+                style={styles.recommendedCard}
+              >
+
+                {/* IMAGE AREA */}
+
+                <View
+                  style={styles.recommendedImage}
+                >
+                  <View
+                    style={styles.recommendedDifficulty}
+                  >
+                    <Text style={styles.difficultyText}>
+                      Beginner
+                    </Text>
+                  </View>
+                </View>
+
+                {/* CARD BOTTOM */}
+
+                <View
+                  style={styles.recommendedBottom}
+                >
+                  <Text
+                    style={styles.categoryText}
+                    numberOfLines={1}
+                  >
+                    {component.name}
+                  </Text>
+
+                  <Pressable
+                    style={styles.smallPlayButton}
+                    onPress={() =>
+                      handleRecommendedPress(
+                        component.route,
+                      )
+                    }
+                  >
+                    <Ionicons
+                      name="play"
+                      size={16}
+                      color={BROWN}
+                    />
+                  </Pressable>
+                </View>
+
               </View>
-            </View>
-
-            <View style={styles.recommendedBottom}>
-              <Text style={styles.categoryText}>
-                Breath Control
-              </Text>
-
-              <View style={styles.smallPlayButton}>
-                <Ionicons
-                  name="play"
-                  size={16}
-                  color={BROWN}
-                />
-              </View>
-            </View>
-          </Pressable>
-
-          {/* CARD 2 */}
-          <Pressable style={styles.recommendedCard}>
-            <View style={styles.recommendedImage}>
-              <View style={styles.recommendedDifficulty}>
-                <Text style={styles.difficultyText}>
-                  Beginner
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.recommendedBottom}>
-              <Text style={styles.categoryText}>
-                Pitch Accuracy
-              </Text>
-
-              <View style={styles.smallPlayButton}>
-                <Ionicons
-                  name="play"
-                  size={16}
-                  color={BROWN}
-                />
-              </View>
-            </View>
-          </Pressable>
+            ),
+          )}
 
         </ScrollView>
 
         {/* EXERCISES HEADER */}
+
         <View style={styles.exerciseHeader}>
           <Text style={styles.exerciseTitle}>
             Exercises
           </Text>
 
           {/* FILTER DROPDOWN */}
-          <View style={styles.dropdownWrapper}>
 
+          <View style={styles.dropdownWrapper}>
             <Pressable
               style={styles.dropdown}
               onPress={() =>
@@ -320,18 +529,25 @@ export default function ExercisesScreen() {
                     key={category}
                     style={[
                       styles.dropdownItem,
-                      selectedCategory === category &&
+                      selectedCategory ===
+                        category &&
                         styles.selectedDropdownItem,
                     ]}
                     onPress={() => {
-                      setSelectedCategory(category);
+                      setSelectedCategory(
+                        category,
+                      );
+
                       setFilterOpen(false);
+
+                      setSearch('');
                     }}
                   >
                     <Text
                       style={[
                         styles.dropdownItemText,
-                        selectedCategory === category &&
+                        selectedCategory ===
+                          category &&
                           styles.selectedDropdownText,
                       ]}
                     >
@@ -341,11 +557,11 @@ export default function ExercisesScreen() {
                 ))}
               </View>
             )}
-
           </View>
         </View>
 
         {/* EXERCISE COUNT */}
+
         <Text style={styles.resultCount}>
           {filteredExercises.length}{' '}
           {filteredExercises.length === 1
@@ -354,80 +570,65 @@ export default function ExercisesScreen() {
         </Text>
 
         {/* EXERCISE LIST */}
+
         <View style={styles.exerciseList}>
 
-{filteredExercises.map((exercise) => (
-  <Pressable
-    key={exercise.name}
-    style={styles.exerciseCard}
-    onPress={() => {
-  if (
-    exercise.category === 'Breath Control' &&
-    exercise.templateId
-  ) {
-    router.push(
-      `/exercises/breath-control?templateId=${encodeURIComponent(
-        exercise.templateId
-      )}` as any
-    );
+          {filteredExercises.map(
+            (exercise) => (
+              <Pressable
+                key={exercise.name}
+                style={({ pressed }) => [
+                  styles.exerciseCard,
+                  pressed &&
+                    styles.exercisePressed,
+                ]}
+                onPress={() =>
+                  handleExercisePress(
+                    exercise,
+                  )
+                }
+              >
 
-    return;
-  }
+                <View
+                  style={styles.exerciseNameContainer}
+                >
+                  <Text
+                    style={styles.exerciseName}
+                    numberOfLines={2}
+                  >
+                    {exercise.name}
+                  </Text>
+                </View>
 
-  if (
-    exercise.category === 'Pitch' &&
-    exercise.templateId
-  ) {
-    router.push(
-      `/exercises/pitch?templateId=${encodeURIComponent(
-        exercise.templateId
-      )}` as any
-    );
+                <View style={styles.levelBadge}>
+                  <Text style={styles.levelText}>
+                    Beginner
+                  </Text>
+                </View>
 
-    return;
-  }
+                <Text
+                  style={styles.exerciseCategory}
+                  numberOfLines={1}
+                >
+                  {exercise.category}
+                </Text>
 
-  if (
-    exercise.category === 'Tone' &&
-    exercise.templateId
-  ) {
-    router.push(
-      `/exercises/tone?templateId=${encodeURIComponent(
-        exercise.templateId
-      )}` as any
-    );
+                <View
+                  style={styles.listPlayButton}
+                >
+                  <Ionicons
+                    name="play"
+                    size={16}
+                    color={BROWN}
+                  />
+                </View>
 
-    return;
-  }
-}}
-  >
-    <View style={styles.exerciseNameContainer}>
-      <Text style={styles.exerciseName}>
-        {exercise.name}
-      </Text>
-    </View>
-
-    <View style={styles.levelBadge}>
-      <Text style={styles.levelText}>
-        Beginner
-      </Text>
-    </View>
-
-    <Text style={styles.exerciseCategory}>
-      {exercise.category}
-    </Text>
-
-    <View style={styles.listPlayButton}>
-      <Ionicons
-        name="play"
-        size={16}
-        color={BROWN}
-      />
-    </View>
-  </Pressable>
-))}
+              </Pressable>
+            ),
+          )}
 
           {/* NO RESULTS */}
+
           {filteredExercises.length === 0 && (
             <View style={styles.noResults}>
               <Ionicons
@@ -469,7 +670,10 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
 
+  // =========================================================
   // SEARCH
+  // =========================================================
+
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -507,19 +711,10 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
-  filterIconButton: {
-    width: 42,
-    height: 44,
-
-    borderRadius: 10,
-
-    backgroundColor: PINK,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
+  // =========================================================
   // TITLE
+  // =========================================================
+
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
@@ -528,7 +723,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  // =========================================================
   // RECOMMENDED
+  // =========================================================
+
   recommendedHeader: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -644,7 +842,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
+  // =========================================================
   // EXERCISES HEADER
+  // =========================================================
+
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -659,7 +860,10 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
+  // =========================================================
   // DROPDOWN
+  // =========================================================
+
   dropdownWrapper: {
     position: 'relative',
     zIndex: 100,
@@ -734,7 +938,10 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
   },
 
+  // =========================================================
   // RESULT COUNT
+  // =========================================================
+
   resultCount: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -743,7 +950,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+  // =========================================================
   // EXERCISE LIST
+  // =========================================================
+
   exerciseList: {
     gap: 7,
   },
@@ -760,6 +970,10 @@ const styles = StyleSheet.create({
 
     flexDirection: 'row',
     alignItems: 'center',
+  },
+
+  exercisePressed: {
+    opacity: 0.7,
   },
 
   exerciseNameContainer: {
@@ -825,7 +1039,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
+  // =========================================================
   // NO RESULTS
+  // =========================================================
+
   noResults: {
     alignItems: 'center',
     justifyContent: 'center',
