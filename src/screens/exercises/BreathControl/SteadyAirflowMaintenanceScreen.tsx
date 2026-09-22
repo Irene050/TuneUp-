@@ -1,3 +1,5 @@
+// src/screens/exercises/BreathControl/SteadyAirflowMaintenanceScreen.tsx
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -26,8 +28,7 @@ interface Props {
 export default function SteadyAirflowMaintenanceScreen({
   tier,
 }: Props) {
-  const params =
-    STEADY_AIRFLOW_PARAMS[tier];
+  const params = STEADY_AIRFLOW_PARAMS[tier];
 
   return (
     <View style={styles.screen}>
@@ -64,67 +65,84 @@ export default function SteadyAirflowMaintenanceScreen({
 
         <View style={styles.instructionCard}>
 
+          {/* BEFORE YOU BEGIN */}
           <View style={styles.prepareCard}>
-  <View style={styles.prepareHeader}>
-    <Ionicons
-      name="mic-outline"
-      size={21}
-      color={BROWN}
-    />
+            <View style={styles.prepareHeader}>
+              <Ionicons
+                name="mic-outline"
+                size={21}
+                color={BROWN}
+              />
 
-    <Text style={styles.prepareTitle}>
-      Before You Begin
-    </Text>
-  </View>
+              <Text style={styles.prepareTitle}>
+                Before You Begin
+              </Text>
+            </View>
 
-  <View style={styles.prepareItem}>
-    <Ionicons
-      name="volume-mute-outline"
-      size={17}
-      color={BROWN}
-    />
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
 
-    <Text style={styles.prepareText}>
-      Find a quiet room or area with minimal
-      background noise.
-    </Text>
-  </View>
+              <Text style={styles.prepareText}>
+                Find a quiet room or area with minimal
+                background noise.
+              </Text>
+            </View>
 
-  <View style={styles.prepareItem}>
-    <Ionicons
-      name="body-outline"
-      size={17}
-      color={BROWN}
-    />
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
 
-    <Text style={styles.prepareText}>
-      Sit upright or stand with your back straight
-      and your shoulders relaxed.
-    </Text>
-  </View>
+              <Text style={styles.prepareText}>
+                Sit upright or stand with your back straight
+                and your shoulders relaxed.
+              </Text>
+            </View>
 
-  <View style={styles.prepareItem}>
-    <Ionicons
-      name="mic-outline"
-      size={17}
-      color={BROWN}
-    />
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="mic-outline"
+                size={17}
+                color={BROWN}
+              />
 
-    <Text style={styles.prepareText}>
-      If available, using an external microphone or
-      audio recording equipment is recommended for
-      clearer audio capture.
-    </Text>
-  </View>
-</View>
+              <Text style={styles.prepareText}>
+                Hold your phone's microphone about 10–15 cm
+                from your mouth. Direct your exhale toward
+                the microphone so the app can detect the
+                strength and consistency of your airflow.
+              </Text>
+            </View>
 
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="resize-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Keep the microphone at a consistent distance
+                from your mouth throughout the exercise.
+              </Text>
+            </View>
+          </View>
+
+          {/* INSTRUCTIONS */}
           <Text style={styles.cardTitle}>
             Instructions
           </Text>
 
           <Text style={styles.instruction}>
-            Maintain a smooth and steady airflow
-            throughout the entire exercise.
+            Take a comfortable breath, then gently exhale
+            toward the microphone. Maintain a smooth and
+            steady airflow throughout the entire exercise.
           </Text>
 
           <Text style={styles.instruction}>
@@ -138,12 +156,12 @@ export default function SteadyAirflowMaintenanceScreen({
           </View>
 
           <Text style={styles.helperText}>
-            Imagine gently blowing on hot soup.
-            Try not to increase or decrease the
-            strength of your airflow.
+            Imagine gently blowing on hot soup. Try not to
+            increase or decrease the strength of your airflow.
           </Text>
         </View>
 
+        {/* TIP */}
         <View style={styles.tipCard}>
           <Ionicons
             name="bulb-outline"
@@ -152,11 +170,13 @@ export default function SteadyAirflowMaintenanceScreen({
           />
 
           <Text style={styles.tipText}>
-            Aim for an even airflow from the
-            beginning to the end.
+            Aim for an even airflow from the beginning
+            to the end. Avoid sudden changes in breath
+            strength.
           </Text>
         </View>
 
+        {/* DIFFICULTY */}
         <View style={styles.difficultyRow}>
           <Text style={styles.difficultyLabel}>
             Difficulty
@@ -167,6 +187,7 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
         </View>
 
+        {/* START */}
         <Pressable
           style={styles.startButton}
           onPress={() => {
@@ -244,54 +265,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  prepareCard: {
-  width: '100%',
-
-  backgroundColor: PINK,
-
-  borderRadius: 18,
-
-  padding: 16,
-
-  marginBottom: 14,
-
-  borderWidth: 1,
-  borderColor: '#F2DDE5',
-},
-
-prepareHeader: {
-  flexDirection: 'row',
-  alignItems: 'center',
-
-  marginBottom: 12,
-},
-
-prepareTitle: {
-  fontFamily: 'FredokaBold',
-  fontSize: 16,
-  color: BROWN,
-
-  marginLeft: 9,
-},
-
-prepareItem: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-
-  marginTop: 8,
-},
-
-prepareText: {
-  flex: 1,
-
-  fontFamily: 'FredokaRegular',
-  fontSize: 11,
-  lineHeight: 17,
-  color: BROWN,
-
-  marginLeft: 9,
-},
-
   instructionCard: {
     width: '100%',
 
@@ -311,6 +284,54 @@ prepareText: {
     color: BROWN,
 
     marginBottom: 14,
+  },
+
+  prepareCard: {
+    width: '100%',
+
+    backgroundColor: PINK,
+
+    borderRadius: 18,
+
+    padding: 16,
+
+    marginBottom: 18,
+
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    marginBottom: 12,
+  },
+
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+
+    marginLeft: 9,
+  },
+
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    marginTop: 8,
+  },
+
+  prepareText: {
+    flex: 1,
+
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+
+    marginLeft: 9,
   },
 
   instruction: {
