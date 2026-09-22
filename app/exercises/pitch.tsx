@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 import IntervalRecognitionTaskScreen from '../../src/screens/exercises/Pitch/IntervalRecognitionTaskScreen';
 import MelodicPatternMatchingScreen from '../../src/screens/exercises/Pitch/MelodicPatternMatchingScreen';
-import NoteMatchingExerciseScreen from '../../src/screens/exercises/Pitch/NoteMatchingScreen';
+import NoteMatchingScreen from '../../src/screens/exercises/Pitch/NoteMatchingScreen';
 import ScaleAccuracyDrillScreen from '../../src/screens/exercises/Pitch/ScaleAccuracyDrillScreen';
 import SustainedNoteStabilityScreen from '../../src/screens/exercises/Pitch/SustainedNoteStabilityScreen';
 
@@ -15,7 +15,7 @@ export default function PitchRoute() {
   switch (templateId) {
     case 'noteMatchingExercise':
       return (
-        <NoteMatchingExerciseScreen
+        <NoteMatchingScreen
           tier="beginner"
         />
       );

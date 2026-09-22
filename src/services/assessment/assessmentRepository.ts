@@ -1,21 +1,20 @@
 import {
-    addDoc,
-    collection,
-    getDocs,
-    limit,
-    orderBy,
-    query,
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
 } from 'firebase/firestore';
 
 import {
-    auth,
-    db,
+  auth,
+  db,
 } from '@/services/firebase/config';
 
 import type {
-    AssessmentResult,
+  AssessmentResult,
 } from '@/services/assessment/assessmentModule';
-
 
 // ============================================================
 // TYPES
@@ -25,7 +24,6 @@ export type SavedAssessmentResult =
   AssessmentResult & {
     id: string;
   };
-
 
 // ============================================================
 // SAVE ASSESSMENT
@@ -43,7 +41,6 @@ export async function saveAssessment(
     );
   }
 
-
   const assessmentsRef =
     collection(
       db,
@@ -51,7 +48,6 @@ export async function saveAssessment(
       user.uid,
       'assessments'
     );
-
 
   const assessmentDoc =
     await addDoc(
@@ -60,38 +56,29 @@ export async function saveAssessment(
         vocalRange: {
           lowHz:
             result.vocalRange.lowHz,
-
           highHz:
             result.vocalRange.highHz,
         },
-
         vocalRangeLowHz:
           result.vocalRangeLowHz,
-
         vocalRangeHighHz:
           result.vocalRangeHighHz,
-
         scores:
           result.scores,
-
         recommendations:
           result.recommendations,
-
         timestamp:
           result.timestamp,
       }
     );
-
 
   console.log(
     'Assessment saved to Firebase:',
     assessmentDoc.id
   );
 
-
   return assessmentDoc.id;
 }
-
 
 // ============================================================
 // GET LATEST ASSESSMENT
@@ -99,15 +86,12 @@ export async function saveAssessment(
 
 export async function getLatestAssessment():
   Promise<SavedAssessmentResult | null> {
-
   const user =
     auth.currentUser;
-
 
   if (!user) {
     return null;
   }
-
 
   const assessmentsRef =
     collection(
@@ -116,7 +100,6 @@ export async function getLatestAssessment():
       user.uid,
       'assessments'
     );
-
 
   const latestQuery =
     query(
@@ -128,12 +111,10 @@ export async function getLatestAssessment():
       limit(1)
     );
 
-
   const snapshot =
     await getDocs(
       latestQuery
     );
-
 
   if (
     snapshot.empty
@@ -141,13 +122,11 @@ export async function getLatestAssessment():
     return null;
   }
 
-
   const documentSnapshot =
     snapshot.docs[0];
 
   const data =
     documentSnapshot.data();
-
 
   const lowHz =
     Number(
@@ -156,14 +135,12 @@ export async function getLatestAssessment():
       0
     );
 
-
   const highHz =
     Number(
       data.vocalRange?.highHz ??
       data.vocalRangeHighHz ??
       0
     );
-
 
   return {
     id:

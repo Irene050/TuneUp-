@@ -33,7 +33,6 @@ import {
   detectOnsetOffset,
 } from '@/utils/dsp/onsetOffset';
 
-
 // ============================================================
 // TYPES
 // ============================================================
@@ -44,6 +43,10 @@ export type ComponentId =
   | 'tone'
   | 'volume'
   | 'agility';
+
+export type AssessmentType =
+  | 'initial'
+  | 'followUp';
 
 export interface ComponentScore {
   componentId: ComponentId;
@@ -93,7 +96,6 @@ export interface AssessmentAudioBundle {
   sampleRate: number;
 }
 
-
 // ============================================================
 // ASSESSMENT CONFIGURATION
 // ============================================================
@@ -107,50 +109,80 @@ export const ASSESSMENT_DURATION = {
   comfortableNote: 2,
 } as const;
 
-
 // ============================================================
-// DETECTION CONFIGURATION
+// VOCAL RANGE DETECTION CONFIGURATION
 // ============================================================
 
 /*
- * These values are deliberately kept separate from the
- * normal Pitch/Agility detector.
+ * These limits are used only for vocal-range calibration.
  *
- * Comfortable-note detection is a range-calibration task,
- * not a normal live-tuner task.
+ * 60 Hz ≈ B1
+ * 1200 Hz ≈ D6
  */
-
 const COMFORTABLE_NOTE_MIN_HZ = 60;
 const COMFORTABLE_NOTE_MAX_HZ = 1200;
 
 /*
- * Do not interpret extremely quiet microphone data as a
- * musical note.
+ * Reject recordings that are essentially silence/noise.
  *
- * Your previous test produced approximately:
- *
- * RMS  = 0.00013
- * Peak = 0.00024
- *
- * That is far below this threshold.
- *
- * This is intentional: bad/near-silent microphone data
- * must result in "could not detect note", not "100 Hz".
+ * Your current microphone logs show valid singing signals
+ * substantially above this threshold.
  */
 const MIN_VOCAL_RMS = 0.002;
 
+/*
+ * A comfortable note should contain enough sustained audio
+ * for several independent pitch measurements.
+ */
 const MIN_NOTE_DURATION_SEC = 0.75;
 
+/*
+ * Four thousand-ish samples gives enough cycles for low notes
+ * while still allowing several independent windows.
+ */
 const ANALYSIS_WINDOW_SIZE = 4096;
 
-const PITCHY_MIN_CLARITY = 0.45;
+/*
+ * Pitchy confidence requirement for comfortable-note detection.
+ *
+ * We intentionally use a higher threshold here than a generic
+ * live tuner because vocal-range calibration must be reliable.
+ */
+const PITCHY_MIN_CLARITY = 0.80;
 
-const PITCH_CLUSTER_CENTS = 150;
+/*
+ * At least five stable Pitchy frames are required.
+ */
+const MIN_PITCHY_FRAMES = 5;
 
+/*
+ * Individual Pitchy estimates should remain within 50 cents
+ * of the Pitchy median.
+ */
+const MAX_PITCHY_SPREAD_CENTS = 50;
+
+/*
+ * Autocorrelation is an independent validation source.
+ */
 const MIN_AUTOCORRELATION_CONFIDENCE = 0.55;
 
-const MIN_AUTOCORRELATION_RESULTS = 2;
+const MIN_AUTOCORRELATION_RESULTS = 3;
 
+/*
+ * Autocorrelation does not need to equal Pitchy perfectly.
+ * 75 cents gives enough room for estimation differences
+ * without accepting very different pitches.
+ */
+const MAX_AUTOCORRELATION_AGREEMENT_CENTS = 75;
+
+/*
+ * Pitchy and autocorrelation may disagree by exactly an
+ * octave because of harmonic ambiguity.
+ *
+ * In that case, the autocorrelation result can correct Pitchy's
+ * octave error when the waveform evidence consistently supports it.
+ */
+const OCTAVE_AGREEMENT_CENTS = 75;
 
 // ============================================================
 // GENERAL HELPERS
@@ -172,7 +204,6 @@ function clampScore(
   );
 }
 
-
 function classifyBand(
   scorePct: number
 ): RecommendationBand {
@@ -187,7 +218,6 @@ function classifyBand(
   return 'goodFoundation';
 }
 
-
 // ============================================================
 // SAFE NUMBER HELPERS
 // ============================================================
@@ -201,7 +231,6 @@ function isValidFrequency(
   );
 }
 
-
 function isValidSampleRate(
   sampleRate: number
 ): boolean {
@@ -210,7 +239,6 @@ function isValidSampleRate(
     sampleRate > 0
   );
 }
-
 
 // ============================================================
 // FREQUENCY HELPERS
@@ -235,6 +263,37 @@ function centsDifference(
   );
 }
 
+function frequencyToMidi(
+  frequency: number
+): number {
+  if (!isValidFrequency(frequency)) {
+    return NaN;
+  }
+
+  return (
+    69 +
+    12 *
+    Math.log2(
+      frequency / 440
+    )
+  );
+}
+
+function midiToFrequency(
+  midi: number
+): number {
+  if (!Number.isFinite(midi)) {
+    return NaN;
+  }
+
+  return (
+    440 *
+    Math.pow(
+      2,
+      (midi - 69) / 12
+    )
+  );
+}
 
 function median(
   values: number[]
@@ -244,16 +303,25 @@ function median(
       .filter(value =>
         Number.isFinite(value)
       )
-      .sort((a, b) => a - b);
+      .sort(
+        (a, b) =>
+          a - b
+      );
 
-  if (valid.length === 0) {
+  if (
+    valid.length === 0
+  ) {
     return null;
   }
 
   const middle =
-    Math.floor(valid.length / 2);
+    Math.floor(
+      valid.length / 2
+    );
 
-  if (valid.length % 2 === 0) {
+  if (
+    valid.length % 2 === 0
+  ) {
     return (
       valid[middle - 1] +
       valid[middle]
@@ -262,7 +330,6 @@ function median(
 
   return valid[middle];
 }
-
 
 // ============================================================
 // TARGET NOTE GENERATION
@@ -282,13 +349,52 @@ export function computeTargetNotes(
     );
   }
 
-  const rootHz =
-    Math.sqrt(
-      lowHz * highHz
+  const lowMidi =
+    Math.ceil(
+      frequencyToMidi(
+        lowHz
+      )
     );
 
-  const clamp =
-    (hz: number) =>
+  const highMidi =
+    Math.floor(
+      frequencyToMidi(
+        highHz
+      )
+    );
+
+  if (
+    !Number.isFinite(lowMidi) ||
+    !Number.isFinite(highMidi) ||
+    lowMidi >= highMidi
+  ) {
+    throw new Error(
+      'The detected vocal range is too narrow for target note generation.'
+    );
+  }
+
+  /*
+   * Choose the nearest practical center pitch
+   * inside the detected range.
+   */
+  const centerMidi =
+    Math.max(
+      lowMidi,
+      Math.min(
+        highMidi,
+        Math.round(
+          (lowMidi + highMidi) / 2
+        )
+      )
+    );
+
+  const rootHz =
+    midiToFrequency(
+      centerMidi
+    );
+
+  const clampToRange =
+    (hz: number): number =>
       Math.max(
         lowHz,
         Math.min(
@@ -298,8 +404,8 @@ export function computeTargetNotes(
       );
 
   const semitone =
-    (offset: number) =>
-      clamp(
+    (offset: number): number =>
+      clampToRange(
         rootHz *
         Math.pow(
           2,
@@ -322,7 +428,6 @@ export function computeTargetNotes(
   };
 }
 
-
 // ============================================================
 // BREATH CONTROL
 // ============================================================
@@ -335,7 +440,9 @@ function measureBreathControl(
   if (
     !isValidSampleRate(sampleRate) ||
     samples.length === 0 ||
-    !Number.isFinite(targetDurationSec) ||
+    !Number.isFinite(
+      targetDurationSec
+    ) ||
     targetDurationSec <= 0
   ) {
     return 0;
@@ -352,7 +459,9 @@ function measureBreathControl(
     onsetOffset.durationSeconds;
 
   if (
-    !Number.isFinite(actualDurationSec) ||
+    !Number.isFinite(
+      actualDurationSec
+    ) ||
     actualDurationSec <= 0
   ) {
     return 0;
@@ -361,10 +470,15 @@ function measureBreathControl(
   const durationScore =
     Math.min(
       actualDurationSec /
-      targetDurationSec,
+        targetDurationSec,
       1
     ) * 100;
 
+  /*
+   * Smartphone microphones do not directly measure airflow.
+   * The waveform amplitude stability is therefore used as an
+   * acoustic proxy for controlled sustained airflow.
+   */
   const stability =
     calcAirflowStability(
       samples,
@@ -378,28 +492,45 @@ function measureBreathControl(
   );
 }
 
-
 // ============================================================
 // PITCH
 // ============================================================
 
 function measurePitch(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  targetFrequency: number
 ): number {
   if (
     !isValidSampleRate(sampleRate) ||
-    samples.length === 0
+    samples.length === 0 ||
+    !isValidFrequency(
+      targetFrequency
+    )
   ) {
     return 0;
   }
 
-  const frames =
-    trackPitchOverTime(
-      samples,
-      30,
-      sampleRate
+  let frames:
+    ReturnType<
+      typeof trackPitchOverTime
+    >;
+
+  try {
+    frames =
+      trackPitchOverTime(
+        samples,
+        30,
+        sampleRate
+      );
+  } catch (error) {
+    console.error(
+      '❌ Pitch tracking failed:',
+      error
     );
+
+    return 0;
+  }
 
   if (
     !Array.isArray(frames) ||
@@ -421,60 +552,115 @@ function measurePitch(
     return 0;
   }
 
-  const validFrequencies =
-    voicedFrames
-      .map(frame =>
-        frame.frequency
-      )
-      .filter(
-        isValidFrequency
-      );
+  const validFrames =
+    voicedFrames.filter(
+      frame =>
+        isValidFrequency(
+          frame.frequency
+        )
+    );
 
   if (
-    validFrequencies.length === 0
+    validFrames.length === 0
   ) {
     return 0;
   }
 
-  const stability =
-    calcJitterStability(
-      validFrequencies
+  /*
+   * ----------------------------------------------------------
+   * Target accuracy
+   * ----------------------------------------------------------
+   */
+  const accuracyValues =
+    validFrames.map(
+      frame => {
+        const errorCents =
+          Math.abs(
+            centsDifference(
+              frame.frequency,
+              targetFrequency
+            )
+          );
+
+        /*
+         * 100 cents = one semitone.
+         */
+        return clampScore(
+          100 - errorCents
+        );
+      }
     );
 
-  const validClarityValues =
-    voicedFrames
-      .map(frame =>
-        frame.clarity
+  const accuracy =
+    accuracyValues.reduce(
+      (sum, value) =>
+        sum + value,
+      0
+    ) /
+    accuracyValues.length;
+
+  /*
+   * ----------------------------------------------------------
+   * Pitch stability
+   * ----------------------------------------------------------
+   */
+  const frequencies =
+    validFrames.map(
+      frame =>
+        frame.frequency
+    );
+
+  const stability =
+    calcJitterStability(
+      frequencies
+    );
+
+  /*
+   * ----------------------------------------------------------
+   * Clarity
+   * ----------------------------------------------------------
+   */
+  const clarityValues =
+    validFrames
+      .map(
+        frame =>
+          frame.clarity
       )
-      .filter(value =>
-        Number.isFinite(value)
+      .filter(
+        value =>
+          Number.isFinite(value)
       );
 
   if (
-    validClarityValues.length === 0
+    clarityValues.length === 0
   ) {
     return 0;
   }
 
   const clarity =
-    validClarityValues.reduce(
+    clarityValues.reduce(
       (sum, value) =>
         sum + value,
       0
     ) /
-    validClarityValues.length;
+    clarityValues.length;
 
   const clarityScore =
     clampScore(
       clarity * 100
     );
 
+  /*
+   * Accuracy is weighted most heavily because the assessment
+   * is evaluating whether the user matched the generated
+   * target note.
+   */
   return clampScore(
-    stability * 0.5 +
-    clarityScore * 0.5
+    accuracy * 0.60 +
+    stability * 0.20 +
+    clarityScore * 0.20
   );
 }
-
 
 // ============================================================
 // TONE
@@ -491,23 +677,27 @@ function measureTone(
     return 0;
   }
 
+  /*
+   * 50 ms analysis frames.
+   */
   const frameSize =
     Math.floor(
-      0.05 *
-      sampleRate
+      0.05 * sampleRate
     );
 
   if (
-    frameSize <= 0
+    frameSize <= 1
   ) {
     return 0;
   }
 
-  const centroids: number[] = [];
+  const centroids: number[] =
+    [];
 
   for (
     let i = 0;
-    i + frameSize <= samples.length;
+    i + frameSize <=
+      samples.length;
     i += frameSize
   ) {
     const frame =
@@ -522,6 +712,12 @@ function measureTone(
       continue;
     }
 
+    /*
+     * Use the largest power-of-two FFT
+     * that fits inside the frame.
+     *
+     * At 44.1 kHz / 50 ms, this is 2048.
+     */
     let fftSize = 1;
 
     while (
@@ -586,7 +782,9 @@ function measureTone(
     }
 
     if (
-      Number.isFinite(centroid) &&
+      Number.isFinite(
+        centroid
+      ) &&
       centroid > 0
     ) {
       centroids.push(
@@ -621,7 +819,6 @@ function measureTone(
     smoothness
   );
 }
-
 
 // ============================================================
 // VOLUME
@@ -664,11 +861,6 @@ function measureVolume(
     return 0;
   }
 
-  /*
-   * If the recording is essentially silent,
-   * don't allow the volume DSP to turn -Infinity
-   * values into a misleading score.
-   */
   const finiteDbValues =
     dbValues.filter(
       value =>
@@ -697,28 +889,43 @@ function measureVolume(
   );
 }
 
-
 // ============================================================
 // AGILITY
 // ============================================================
 
 function measureAgility(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  targetNotes: number[]
 ): number {
   if (
     !isValidSampleRate(sampleRate) ||
-    samples.length === 0
+    samples.length === 0 ||
+    targetNotes.length === 0
   ) {
     return 0;
   }
 
-  const frames =
-    trackPitchOverTime(
-      samples,
-      30,
-      sampleRate
+  let frames:
+    ReturnType<
+      typeof trackPitchOverTime
+    >;
+
+  try {
+    frames =
+      trackPitchOverTime(
+        samples,
+        30,
+        sampleRate
+      );
+  } catch (error) {
+    console.error(
+      '❌ Agility pitch tracking failed:',
+      error
     );
+
+    return 0;
+  }
 
   if (
     !Array.isArray(frames) ||
@@ -754,6 +961,230 @@ function measureAgility(
     return 0;
   }
 
+  /*
+   * ----------------------------------------------------------
+   * Detect active singing region
+   * ----------------------------------------------------------
+   */
+  const onsetOffset =
+    detectOnsetOffset(
+      samples,
+      0.02,
+      sampleRate
+    );
+
+  let activeStart =
+    onsetOffset.onsetIndex;
+
+  let activeEnd =
+    onsetOffset.offsetIndex;
+
+  /*
+   * If onset/offset detection is inconclusive,
+   * use the entire recording.
+   */
+  if (
+    activeEnd <= activeStart
+  ) {
+    activeStart = 0;
+    activeEnd =
+      samples.length;
+  }
+
+  if (
+    activeEnd <= activeStart
+  ) {
+    return 0;
+  }
+
+  const activeLength =
+    activeEnd -
+    activeStart;
+
+  /*
+   * ----------------------------------------------------------
+   * Target pattern accuracy
+   * ----------------------------------------------------------
+   *
+   * The assessment reference note player uses a fixed duration
+   * per agility note. Equal-duration segmentation therefore
+   * matches the structure of the recorded diagnostic task.
+   */
+  const segmentLength =
+    activeLength /
+    targetNotes.length;
+
+  const noteAccuracies: number[] =
+    [];
+
+  const noteStabilities: number[] =
+    [];
+
+  for (
+    let noteIndex = 0;
+    noteIndex <
+      targetNotes.length;
+    noteIndex++
+  ) {
+    const segmentStart =
+      Math.floor(
+        activeStart +
+        noteIndex *
+          segmentLength
+      );
+
+    const segmentEnd =
+      Math.floor(
+        activeStart +
+        (noteIndex + 1) *
+          segmentLength
+      );
+
+    if (
+      segmentEnd <=
+      segmentStart
+    ) {
+      continue;
+    }
+
+    const segment =
+      samples.subarray(
+        segmentStart,
+        segmentEnd
+      );
+
+    if (
+      segment.length < 2048
+    ) {
+      continue;
+    }
+
+    let segmentFrames:
+      ReturnType<
+        typeof trackPitchOverTime
+      >;
+
+    try {
+      segmentFrames =
+        trackPitchOverTime(
+          segment,
+          30,
+          sampleRate
+        );
+    } catch {
+      continue;
+    }
+
+    const segmentVoiced =
+      filterByClarity(
+        segmentFrames,
+        0.8
+      ).filter(
+        frame =>
+          isValidFrequency(
+            frame.frequency
+          )
+      );
+
+    if (
+      segmentVoiced.length === 0
+    ) {
+      continue;
+    }
+
+    const frequencies =
+      segmentVoiced.map(
+        frame =>
+          frame.frequency
+      );
+
+    const targetFrequency =
+      targetNotes[
+        noteIndex
+      ];
+
+    /*
+     * Use median detected frequency
+     * to reduce transient errors.
+     */
+    const detectedMedian =
+      median(
+        frequencies
+      );
+
+    if (
+      !detectedMedian
+    ) {
+      continue;
+    }
+
+    const errorCents =
+      Math.abs(
+        centsDifference(
+          detectedMedian,
+          targetFrequency
+        )
+      );
+
+    const accuracy =
+      clampScore(
+        100 -
+        errorCents
+      );
+
+    noteAccuracies.push(
+      accuracy
+    );
+
+    const stability =
+      calcJitterStability(
+        frequencies
+      );
+
+    noteStabilities.push(
+      stability
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * Pattern accuracy
+   * ----------------------------------------------------------
+   */
+  if (
+    noteAccuracies.length === 0
+  ) {
+    return 0;
+  }
+
+  const patternAccuracy =
+    noteAccuracies.reduce(
+      (sum, value) =>
+        sum + value,
+      0
+    ) /
+    noteAccuracies.length;
+
+  /*
+   * ----------------------------------------------------------
+   * Within-note stability
+   * ----------------------------------------------------------
+   */
+  const withinNoteStability =
+    noteStabilities.length > 0
+      ? noteStabilities.reduce(
+          (sum, value) =>
+            sum + value,
+          0
+        ) /
+        noteStabilities.length
+      : 0;
+
+  /*
+   * ----------------------------------------------------------
+   * Transition speed
+   * ----------------------------------------------------------
+   */
   const transitions =
     detectPitchChanges(
       validVoicedFrames,
@@ -761,15 +1192,11 @@ function measureAgility(
     );
 
   const durationSec =
-    samples.length /
-    sampleRate;
-
-  if (
-    !Number.isFinite(durationSec) ||
-    durationSec <= 0
-  ) {
-    return 0;
-  }
+    Math.max(
+      samples.length /
+        sampleRate,
+      0.001
+    );
 
   const speed =
     calcTransitionSpeed(
@@ -777,42 +1204,46 @@ function measureAgility(
       durationSec
     );
 
-  const speedScore =
-    Math.min(
-      speed / 5,
+  /*
+   * The target agility pattern has six meaningful
+   * pitch transitions for seven notes.
+   */
+  const expectedTransitions =
+    Math.max(
+      targetNotes.length - 1,
       1
-    ) * 100;
-
-  const frequencies =
-    validVoicedFrames.map(
-      frame =>
-        frame.frequency
     );
 
-  const stability =
-    calcJitterStability(
-      frequencies
+  const expectedTransitionRate =
+    expectedTransitions /
+    durationSec;
+
+  const speedRatio =
+    expectedTransitionRate > 0
+      ? speed /
+        expectedTransitionRate
+      : 0;
+
+  /*
+   * Treat 100% or faster as the top speed score.
+   *
+   * Unlike the earlier implementation, speed alone cannot
+   * produce a high agility score if the notes are inaccurate.
+   */
+  const speedScore =
+    clampScore(
+      Math.min(
+        speedRatio,
+        1
+      ) * 100
     );
 
   return clampScore(
-    speedScore * 0.5 +
-    stability * 0.5
+    patternAccuracy * 0.60 +
+    withinNoteStability * 0.20 +
+    speedScore * 0.20
   );
 }
-
-
-// ============================================================
-// COMFORTABLE NOTE DETECTION
-// ============================================================
-
-interface ComfortableNoteMeasurement {
-  frequency: number;
-  clarity: number;
-  stabilityPct: number;
-  rms: number;
-  confidence: number;
-}
-
 
 // ============================================================
 // AUDIO SIGNAL HELPERS
@@ -828,6 +1259,8 @@ function calculateRMS(
   }
 
   let sumSquares = 0;
+
+  let finiteCount = 0;
 
   for (
     let i = 0;
@@ -845,14 +1278,21 @@ function calculateRMS(
 
     sumSquares +=
       value * value;
+
+    finiteCount++;
+  }
+
+  if (
+    finiteCount === 0
+  ) {
+    return 0;
   }
 
   return Math.sqrt(
     sumSquares /
-    samples.length
+    finiteCount
   );
 }
-
 
 function calculatePeak(
   samples: Float32Array
@@ -880,7 +1320,6 @@ function calculatePeak(
   return peak;
 }
 
-
 function removeDCOffset(
   input: Float32Array
 ): Float32Array {
@@ -892,16 +1331,35 @@ function removeDCOffset(
 
   let sum = 0;
 
+  let finiteCount = 0;
+
   for (
     let i = 0;
     i < input.length;
     i++
   ) {
-    sum += input[i];
+    const value =
+      input[i];
+
+    if (
+      Number.isFinite(value)
+    ) {
+      sum += value;
+      finiteCount++;
+    }
+  }
+
+  if (
+    finiteCount === 0
+  ) {
+    return new Float32Array(
+      input.length
+    );
   }
 
   const mean =
-    sum / input.length;
+    sum /
+    finiteCount;
 
   const output =
     new Float32Array(
@@ -913,13 +1371,17 @@ function removeDCOffset(
     i < input.length;
     i++
   ) {
+    const value =
+      input[i];
+
     output[i] =
-      input[i] - mean;
+      Number.isFinite(value)
+        ? value - mean
+        : 0;
   }
 
   return output;
 }
-
 
 function applyHannWindow(
   input: Float32Array
@@ -964,7 +1426,6 @@ function applyHannWindow(
   return output;
 }
 
-
 // ============================================================
 // AUTOCORRELATION PITCH DETECTOR
 // ============================================================
@@ -974,20 +1435,24 @@ interface AutocorrelationResult {
   confidence: number;
 }
 
-
 /**
- * Finds the fundamental frequency of a single waveform
- * window using normalized autocorrelation.
+ * Detects a periodic frequency using normalized
+ * autocorrelation.
  *
- * This detector is used ONLY by vocal-range calibration.
+ * IMPORTANT:
  *
- * It is intentionally independent of pitch.ts so that
- * changing range detection does not accidentally change
- * the Pitch or Agility assessment.
+ * This function no longer blindly chooses the globally
+ * strongest periodicity.
+ *
+ * When a reference frequency is provided, candidates are
+ * searched around that reference and its octave-equivalent
+ * possibilities. This prevents a strong lower subharmonic
+ * from replacing the actual sung fundamental.
  */
 function detectFundamentalByAutocorrelation(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  referenceFrequency?: number
 ): AutocorrelationResult | null {
   if (
     !isValidSampleRate(sampleRate) ||
@@ -1047,11 +1512,6 @@ function detectFundamentalByAutocorrelation(
       maxLag + 1
     );
 
-  let bestCorrelation =
-    -Infinity;
-
-  let bestLag = -1;
-
   /*
    * Calculate normalized autocorrelation.
    */
@@ -1065,7 +1525,8 @@ function detectFundamentalByAutocorrelation(
     let energyB = 0;
 
     const limit =
-      windowed.length - lag;
+      windowed.length -
+      lag;
 
     for (
       let i = 0;
@@ -1076,7 +1537,9 @@ function detectFundamentalByAutocorrelation(
         windowed[i];
 
       const b =
-        windowed[i + lag];
+        windowed[
+          i + lag
+        ];
 
       numerator +=
         a * b;
@@ -1103,56 +1566,22 @@ function detectFundamentalByAutocorrelation(
       );
 
     if (
-      !Number.isFinite(
+      Number.isFinite(
         correlation
       )
     ) {
-      continue;
-    }
-
-    correlations[lag] =
-      correlation;
-
-    if (
-      correlation >
-      bestCorrelation
-    ) {
-      bestCorrelation =
+      correlations[lag] =
         correlation;
-
-      bestLag =
-        lag;
     }
   }
 
-  if (
-    bestLag <= 0 ||
-    !Number.isFinite(
-      bestCorrelation
-    )
-  ) {
-    return null;
-  }
-
   /*
-   * Reject weak periodic structure.
-   *
-   * This is particularly important for microphone noise,
-   * quantization noise, and silence.
-   */
-  if (
-    bestCorrelation <
-    MIN_AUTOCORRELATION_CONFIDENCE
-  ) {
-    return null;
-  }
-
-  /*
-   * Find local peaks.
+   * Collect local maxima instead of only the global maximum.
    */
   const candidates:
     Array<{
       lag: number;
+      frequency: number;
       correlation: number;
     }> = [];
 
@@ -1165,20 +1594,41 @@ function detectFundamentalByAutocorrelation(
       correlations[lag];
 
     const previous =
-      correlations[lag - 1];
+      correlations[
+        lag - 1
+      ];
 
     const next =
-      correlations[lag + 1];
+      correlations[
+        lag + 1
+      ];
 
     if (
       current >= previous &&
       current >= next &&
-      current > 0
+      current >=
+        MIN_AUTOCORRELATION_CONFIDENCE
     ) {
-      candidates.push({
-        lag,
-        correlation: current,
-      });
+      const frequency =
+        sampleRate /
+        lag;
+
+      if (
+        isValidFrequency(
+          frequency
+        ) &&
+        frequency >=
+          COMFORTABLE_NOTE_MIN_HZ &&
+        frequency <=
+          COMFORTABLE_NOTE_MAX_HZ
+      ) {
+        candidates.push({
+          lag,
+          frequency,
+          correlation:
+            current,
+        });
+      }
     }
   }
 
@@ -1189,7 +1639,177 @@ function detectFundamentalByAutocorrelation(
   }
 
   /*
-   * Sort by correlation.
+   * ----------------------------------------------------------
+   * GUIDED MODE
+   * ----------------------------------------------------------
+   *
+   * When Pitchy supplies a strong reference, search candidates
+   * around:
+   *
+   *   reference / 2
+   *   reference
+   *   reference * 2
+   *
+   * This specifically addresses octave ambiguity.
+   */
+  if (
+    referenceFrequency &&
+    isValidFrequency(
+      referenceFrequency
+    )
+  ) {
+    const octaveCandidates =
+      [
+        referenceFrequency / 2,
+        referenceFrequency,
+        referenceFrequency * 2,
+      ].filter(
+        frequency =>
+          frequency >=
+            COMFORTABLE_NOTE_MIN_HZ &&
+          frequency <=
+            COMFORTABLE_NOTE_MAX_HZ
+      );
+
+    const guidedCandidates =
+      candidates.filter(
+        candidate => {
+          return octaveCandidates.some(
+            target =>
+              Math.abs(
+                centsDifference(
+                  candidate.frequency,
+                  target
+                )
+              ) <=
+                MAX_AUTOCORRELATION_AGREEMENT_CENTS
+          );
+        }
+      );
+
+    if (
+      guidedCandidates.length === 0
+    ) {
+      return null;
+    }
+
+    /*
+     * Rank primarily by closeness to the exact Pitchy
+     * reference frequency.
+     *
+     * Correlation is only a secondary factor.
+     *
+     * This means a strong 100 Hz subharmonic will not
+     * outrank an actual ~400 Hz candidate merely because
+     * its correlation peak happens to be larger.
+     */
+    guidedCandidates.sort(
+      (a, b) => {
+        const directDistanceA =
+          Math.abs(
+            centsDifference(
+              a.frequency,
+              referenceFrequency
+            )
+          );
+
+        const directDistanceB =
+          Math.abs(
+            centsDifference(
+              b.frequency,
+              referenceFrequency
+            )
+          );
+
+        /*
+         * Exact-reference candidates get priority over
+         * octave candidates when both are available.
+         */
+        const isDirectA =
+          directDistanceA <=
+          MAX_AUTOCORRELATION_AGREEMENT_CENTS;
+
+        const isDirectB =
+          directDistanceB <=
+          MAX_AUTOCORRELATION_AGREEMENT_CENTS;
+
+        if (
+          isDirectA &&
+          !isDirectB
+        ) {
+          return -1;
+        }
+
+        if (
+          !isDirectA &&
+          isDirectB
+        ) {
+          return 1;
+        }
+
+        /*
+         * Otherwise use distance to the closest octave
+         * reference.
+         */
+        const distanceA =
+          Math.min(
+            ...octaveCandidates.map(
+              target =>
+                Math.abs(
+                  centsDifference(
+                    a.frequency,
+                    target
+                  )
+                )
+            )
+          );
+
+        const distanceB =
+          Math.min(
+            ...octaveCandidates.map(
+              target =>
+                Math.abs(
+                  centsDifference(
+                    b.frequency,
+                    target
+                  )
+                )
+            )
+          );
+
+        if (
+          distanceA !== distanceB
+        ) {
+          return (
+            distanceA -
+            distanceB
+          );
+        }
+
+        return (
+          b.correlation -
+          a.correlation
+        );
+      }
+    );
+
+    return {
+      frequency:
+        guidedCandidates[0]
+          .frequency,
+
+      confidence:
+        guidedCandidates[0]
+          .correlation,
+    };
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * UNGUIDED MODE
+   * ----------------------------------------------------------
+   *
+   * Used only when there is no Pitchy reference available.
    */
   candidates.sort(
     (a, b) =>
@@ -1197,152 +1817,16 @@ function detectFundamentalByAutocorrelation(
       a.correlation
   );
 
-  /*
-   * We want to avoid an octave error.
-   *
-   * If several peaks have nearly the same strength,
-   * prefer the lower-frequency fundamental.
-   */
-  const strongCandidates =
-    candidates.filter(
-      candidate =>
-        candidate.correlation >=
-        bestCorrelation * 0.94
-    );
-
-  let selected =
-    strongCandidates.length > 0
-      ? strongCandidates.reduce(
-          (lowest, candidate) =>
-            candidate.lag >
-            lowest.lag
-              ? candidate
-              : lowest
-        )
-      : candidates[0];
-
-  /*
-   * Examine octave relationships.
-   *
-   * If a lower-frequency candidate is also strongly
-   * supported, prefer it over the octave-up candidate.
-   */
-  const candidateLag =
-    selected.lag;
-
-  const doubleLag =
-    candidateLag * 2;
-
-  if (
-    doubleLag <= maxLag
-  ) {
-    const lowerCorrelation =
-      correlations[
-        doubleLag
-      ];
-
-    if (
-      Number.isFinite(
-        lowerCorrelation
-      ) &&
-      lowerCorrelation >=
-        selected.correlation * 0.90
-    ) {
-      selected = {
-        lag: doubleLag,
-        correlation:
-          lowerCorrelation,
-      };
-    }
-  }
-
-  /*
-   * Parabolic interpolation improves frequency precision.
-   */
-  let refinedLag =
-    selected.lag;
-
-  if (
-    selected.lag > minLag &&
-    selected.lag < maxLag
-  ) {
-    const y1 =
-      correlations[
-        selected.lag - 1
-      ];
-
-    const y2 =
-      correlations[
-        selected.lag
-      ];
-
-    const y3 =
-      correlations[
-        selected.lag + 1
-      ];
-
-    const denominator =
-      y1 -
-      2 * y2 +
-      y3;
-
-    if (
-      Number.isFinite(
-        denominator
-      ) &&
-      Math.abs(
-        denominator
-      ) > 1e-9
-    ) {
-      const offset =
-        0.5 *
-        (
-          y1 - y3
-        ) /
-        denominator;
-
-      if (
-        Number.isFinite(offset) &&
-        Math.abs(offset) <= 1
-      ) {
-        refinedLag +=
-          offset;
-      }
-    }
-  }
-
-  if (
-    !Number.isFinite(
-      refinedLag
-    ) ||
-    refinedLag <= 0
-  ) {
-    return null;
-  }
-
-  const frequency =
-    sampleRate /
-    refinedLag;
-
-  if (
-    !isValidFrequency(
-      frequency
-    ) ||
-    frequency <
-      COMFORTABLE_NOTE_MIN_HZ ||
-    frequency >
-      COMFORTABLE_NOTE_MAX_HZ
-  ) {
-    return null;
-  }
-
   return {
-    frequency,
+    frequency:
+      candidates[0]
+        .frequency,
+
     confidence:
-      selected.correlation,
+      candidates[0]
+        .correlation,
   };
 }
-
 
 // ============================================================
 // AUTOCORRELATION MULTI-WINDOW ANALYSIS
@@ -1350,10 +1834,12 @@ function detectFundamentalByAutocorrelation(
 
 function analyzeAutocorrelationWindows(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  referenceFrequency?: number
 ): AutocorrelationResult[] {
   const results:
-    AutocorrelationResult[] = [];
+    AutocorrelationResult[] =
+      [];
 
   const durationSec =
     samples.length /
@@ -1367,29 +1853,28 @@ function analyzeAutocorrelationWindows(
   }
 
   /*
-   * Analyze the middle portions of the recording.
-   *
-   * We intentionally avoid the first and final portions
-   * because those often contain attack/release noise.
+   * Analyze stable middle portions of the recording.
    */
-  const analysisTimes = [
-    0.45,
-    0.75,
-    1.05,
-    1.35,
-    1.65,
-  ];
+  const normalizedTimes =
+    [
+      0.30,
+      0.50,
+      0.70,
+      0.80,
+    ];
 
   for (
-    const timeSec
-    of analysisTimes
+    const normalizedTime
+      of normalizedTimes
   ) {
-    if (
-      timeSec >=
-      durationSec - 0.20
-    ) {
-      continue;
-    }
+    const timeSec =
+      Math.min(
+        durationSec * normalizedTime,
+        Math.max(
+          0,
+          durationSec - 0.35
+        )
+      );
 
     const center =
       Math.floor(
@@ -1397,24 +1882,27 @@ function analyzeAutocorrelationWindows(
         sampleRate
       );
 
+    const halfWindow =
+      Math.floor(
+        ANALYSIS_WINDOW_SIZE /
+        2
+      );
+
     const start =
       Math.max(
         0,
-        center -
-        Math.floor(
-          ANALYSIS_WINDOW_SIZE / 2
-        )
+        center - halfWindow
       );
 
     const end =
       Math.min(
         samples.length,
         start +
-        ANALYSIS_WINDOW_SIZE
+          ANALYSIS_WINDOW_SIZE
       );
 
     if (
-      end - start < 1024
+      end - start < 2048
     ) {
       continue;
     }
@@ -1428,7 +1916,8 @@ function analyzeAutocorrelationWindows(
     const detected =
       detectFundamentalByAutocorrelation(
         frame,
-        sampleRate
+        sampleRate,
+        referenceFrequency
       );
 
     if (
@@ -1440,13 +1929,24 @@ function analyzeAutocorrelationWindows(
     }
   }
 
+  /*
+   * Remove duplicated detections that can happen
+   * because the normalized windows overlap.
+   */
   return results;
 }
-
 
 // ============================================================
 // COMFORTABLE NOTE DETECTION
 // ============================================================
+
+interface ComfortableNoteMeasurement {
+  frequency: number;
+  clarity: number;
+  stabilityPct: number;
+  rms: number;
+  confidence: number;
+}
 
 function detectComfortableNote(
   samples: Float32Array,
@@ -1477,11 +1977,9 @@ function detectComfortableNote(
     return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 1 — Check the actual waveform level
-   * ==========================================================
-   */
+  // ==========================================================
+  // STEP 1 — WAVEFORM VALIDATION
+  // ==========================================================
 
   const peak =
     calculatePeak(
@@ -1498,25 +1996,27 @@ function detectComfortableNote(
     {
       durationSec:
         Number(
-          durationSec.toFixed(3)
+          durationSec.toFixed(
+            3
+          )
         ),
 
       rms:
         Number(
-          overallRms.toFixed(6)
+          overallRms.toFixed(
+            6
+          )
         ),
 
       peak:
         Number(
-          peak.toFixed(6)
+          peak.toFixed(
+            6
+          )
         ),
     }
   );
 
-  /*
-   * This prevents tiny residual microphone data from
-   * becoming a fake pitch.
-   */
   if (
     !Number.isFinite(
       overallRms
@@ -1530,8 +2030,7 @@ function detectComfortableNote(
         rms:
           overallRms,
 
-        peak:
-          peak,
+        peak,
 
         requiredMinimumRms:
           MIN_VOCAL_RMS,
@@ -1541,11 +2040,9 @@ function detectComfortableNote(
     return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 2 — Pitchy analysis
-   * ==========================================================
-   */
+  // ==========================================================
+  // STEP 2 — PITCHY ANALYSIS
+  // ==========================================================
 
   let pitchyFrames:
     ReturnType<
@@ -1569,7 +2066,8 @@ function detectComfortableNote(
   const usablePitchyFrames =
     pitchyFrames.filter(
       frame =>
-        frame.timestamp >= 0.30 &&
+        frame.timestamp >=
+          0.30 &&
         frame.timestamp <=
           durationSec - 0.20
     );
@@ -1591,13 +2089,6 @@ function detectComfortableNote(
           PITCHY_MIN_CLARITY
     );
 
-  /*
-   * We don't require Pitchy to succeed.
-   *
-   * Autocorrelation can still detect the note if Pitchy
-   * struggles.
-   */
-
   const pitchyFrequencies =
     validPitchyFrames.map(
       frame =>
@@ -1609,112 +2100,205 @@ function detectComfortableNote(
       pitchyFrequencies
     );
 
-  /*
-   * ==========================================================
-   * STEP 3 — Autocorrelation analysis
-   * ==========================================================
-   */
+  if (
+    !pitchyMedian ||
+    !isValidFrequency(
+      pitchyMedian
+    ) ||
+    validPitchyFrames.length <
+      MIN_PITCHY_FRAMES
+  ) {
+    console.warn(
+      '⚠️ Comfortable note rejected: insufficient Pitchy evidence.',
+      {
+        pitchyFrames:
+          validPitchyFrames.length,
+
+        pitchyMedian:
+          pitchyMedian,
+      }
+    );
+
+    return null;
+  }
+
+  // ==========================================================
+  // STEP 3 — PITCHY STABILITY
+  // ==========================================================
+
+  const pitchyConsistentCount =
+    pitchyFrequencies.filter(
+      frequency =>
+        Math.abs(
+          centsDifference(
+            frequency,
+            pitchyMedian
+          )
+        ) <=
+          MAX_PITCHY_SPREAD_CENTS
+    ).length;
+
+  const pitchyConsistency =
+    pitchyConsistentCount /
+    pitchyFrequencies.length;
+
+  if (
+    pitchyConsistency <
+    0.80
+  ) {
+    console.warn(
+      '⚠️ Comfortable note rejected: Pitchy pitch is unstable.',
+      {
+        pitchyMedian:
+          Number(
+            pitchyMedian.toFixed(
+              2
+            )
+          ),
+
+        pitchyConsistency:
+          Number(
+            pitchyConsistency.toFixed(
+              2
+            )
+          ),
+      }
+    );
+
+    return null;
+  }
+
+  // ==========================================================
+  // STEP 4 — AUTOCORRELATION VALIDATION
+  // ==========================================================
 
   const autocorrelationResults =
     analyzeAutocorrelationWindows(
       samples,
-      sampleRate
+      sampleRate,
+      pitchyMedian
     );
-
-  const autocorrelationFrequencies =
-    autocorrelationResults.map(
-      result =>
-        result.frequency
-    );
-
-  const autocorrelationMedian =
-    median(
-      autocorrelationFrequencies
-    );
-
-  /*
-   * ==========================================================
-   * STEP 4 — Require actual waveform pitch evidence
-   * ==========================================================
-   */
 
   if (
     autocorrelationResults.length <
     MIN_AUTOCORRELATION_RESULTS
   ) {
     console.warn(
-      '⚠️ Comfortable note rejected: not enough waveform pitch evidence.',
+      '⚠️ Comfortable note rejected: not enough independent waveform evidence.',
       {
-        pitchyFrames:
-          validPitchyFrames.length,
+        pitchyMedian:
+          Number(
+            pitchyMedian.toFixed(
+              2
+            )
+          ),
 
         autocorrelationResults:
           autocorrelationResults.length,
-
-        autocorrelationFrequencies:
-          autocorrelationFrequencies.map(
-            value =>
-              Number(
-                value.toFixed(2)
-              )
-          ),
       }
     );
 
     return null;
   }
 
-  if (
-    !autocorrelationMedian ||
-    !isValidFrequency(
-      autocorrelationMedian
-    )
-  ) {
-    return null;
-  }
+  // ==========================================================
+  // STEP 5 — AUTOCORRELATION AGREEMENT
+  // ==========================================================
 
-  /*
-   * ==========================================================
-   * STEP 5 — Check consistency between autocorrelation
-   * windows
-   * ==========================================================
-   */
-
-  const consistentAutoResults =
+  const directAgreementResults =
     autocorrelationResults.filter(
       result =>
         Math.abs(
           centsDifference(
             result.frequency,
-            autocorrelationMedian
+            pitchyMedian
           )
-        ) <= 100
+        ) <=
+          MAX_AUTOCORRELATION_AGREEMENT_CENTS
     );
 
-  const autoConsistency =
-    consistentAutoResults.length /
+  const directAgreement =
+    directAgreementResults.length /
     autocorrelationResults.length;
 
   /*
-   * A sustained comfortable note should not jump
-   * dramatically between analysis windows.
+   * Allow one-octave agreement as an alternative.
+   *
+   * Example:
+   * Pitchy = 200 Hz
+   * Auto    = 100 Hz
+   *
+   * This can mean Pitchy selected the second harmonic.
+   */
+  const octaveAgreementResults =
+    autocorrelationResults.filter(
+      result =>
+        Math.abs(
+          centsDifference(
+            result.frequency,
+            pitchyMedian / 2
+          )
+        ) <=
+          OCTAVE_AGREEMENT_CENTS ||
+        Math.abs(
+          centsDifference(
+            result.frequency,
+            pitchyMedian * 2
+          )
+        ) <=
+          OCTAVE_AGREEMENT_CENTS
+    );
+
+  const octaveAgreement =
+    octaveAgreementResults.length /
+    autocorrelationResults.length;
+
+  /*
+   * Direct agreement is preferred.
+   *
+   * A two-octave disagreement, such as:
+   *
+   * Pitchy ≈ 400 Hz
+   * Auto   ≈ 100 Hz
+   *
+   * is NOT accepted as agreement.
    */
   if (
-    autoConsistency < 0.60
+    directAgreement < 0.60 &&
+    octaveAgreement < 0.60
   ) {
     console.warn(
-      '⚠️ Comfortable note rejected: waveform pitch is unstable.',
+      '⚠️ Comfortable note rejected: waveform pitch disagrees with Pitchy.',
       {
-        autocorrelationMedian,
+        pitchyMedian:
+          Number(
+            pitchyMedian.toFixed(
+              2
+            )
+          ),
 
-        autoConsistency,
-
-        frequencies:
-          autocorrelationFrequencies.map(
-            value =>
+        autocorrelationFrequencies:
+          autocorrelationResults.map(
+            result =>
               Number(
-                value.toFixed(2)
+                result.frequency.toFixed(
+                  2
+                )
               )
+          ),
+
+        directAgreement:
+          Number(
+            directAgreement.toFixed(
+              2
+            )
+          ),
+
+        octaveAgreement:
+          Number(
+            octaveAgreement.toFixed(
+              2
+            )
           ),
       }
     );
@@ -1722,106 +2306,124 @@ function detectComfortableNote(
     return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 6 — Combine Pitchy and waveform evidence
-   * ==========================================================
-   */
+  // ==========================================================
+  // STEP 6 — CHOOSE FINAL FREQUENCY
+  // ==========================================================
 
   let finalFrequency =
-    autocorrelationMedian;
+    pitchyMedian;
 
   /*
-   * If Pitchy agrees with the waveform estimate,
-   * calculate the final frequency using both sources.
+   * ----------------------------------------------------------
+   * Direct agreement
+   * ----------------------------------------------------------
    */
   if (
-    pitchyMedian &&
-    isValidFrequency(
-      pitchyMedian
-    )
+    directAgreement >=
+    0.60
   ) {
-    const difference =
-      Math.abs(
-        centsDifference(
-          pitchyMedian,
-          autocorrelationMedian
+    const directMedian =
+      median(
+        directAgreementResults.map(
+          result =>
+            result.frequency
         )
       );
 
-    /*
-     * Normal agreement.
-     */
     if (
-      difference <= 100
+      directMedian &&
+      isValidFrequency(
+        directMedian
+      )
     ) {
+      /*
+       * Average Pitchy and independent waveform estimate.
+       */
       finalFrequency =
         (
           pitchyMedian +
-          autocorrelationMedian
+          directMedian
         ) / 2;
-    }
-
-    /*
-     * One-octave disagreement.
-     *
-     * Never blindly trust Pitchy here.
-     *
-     * The waveform estimate remains the primary
-     * source because it is calculated directly from
-     * the recorded samples.
-     */
-    else {
-      const octaveUp =
-        pitchyMedian * 2;
-
-      const octaveDown =
-        pitchyMedian / 2;
-
-      const autoVsOctaveUp =
-        Math.abs(
-          centsDifference(
-            autocorrelationMedian,
-            octaveUp
-          )
-        );
-
-      const autoVsOctaveDown =
-        Math.abs(
-          centsDifference(
-            autocorrelationMedian,
-            octaveDown
-          )
-        );
-
-      if (
-        autoVsOctaveUp > 100 &&
-        autoVsOctaveDown > 100
-      ) {
-        /*
-         * They disagree by something other than
-         * an octave, so trust the waveform detector.
-         */
-        finalFrequency =
-          autocorrelationMedian;
-      } else {
-        /*
-         * They are octave-related.
-         *
-         * Use the waveform-derived frequency rather
-         * than manufacturing a correction from Pitchy.
-         */
-        finalFrequency =
-          autocorrelationMedian;
-      }
     }
   }
 
   /*
-   * ==========================================================
-   * STEP 7 — Final frequency validation
-   * ==========================================================
+   * ----------------------------------------------------------
+   * Octave correction
+   * ----------------------------------------------------------
    */
+  else {
+    const octaveMedian =
+      median(
+        octaveAgreementResults.map(
+          result =>
+            result.frequency
+        )
+      );
+
+    if (
+      octaveMedian &&
+      isValidFrequency(
+        octaveMedian
+      )
+    ) {
+      const distanceToPitchy =
+        Math.abs(
+          centsDifference(
+            octaveMedian,
+            pitchyMedian
+          )
+        );
+
+      const distanceToPitchyHalf =
+        Math.abs(
+          centsDifference(
+            octaveMedian,
+            pitchyMedian / 2
+          )
+        );
+
+      const distanceToPitchyDouble =
+        Math.abs(
+          centsDifference(
+            octaveMedian,
+            pitchyMedian * 2
+          )
+        );
+
+      /*
+       * If autocorrelation consistently supports one octave
+       * below Pitchy, use that lower fundamental.
+       */
+      if (
+        distanceToPitchyHalf <
+          distanceToPitchy &&
+        distanceToPitchyHalf <=
+          OCTAVE_AGREEMENT_CENTS
+      ) {
+        finalFrequency =
+          octaveMedian;
+      }
+
+      /*
+       * If autocorrelation supports an octave above Pitchy,
+       * use that higher fundamental.
+       */
+      else if (
+        distanceToPitchyDouble <
+          distanceToPitchy &&
+        distanceToPitchyDouble <=
+          OCTAVE_AGREEMENT_CENTS
+      ) {
+        finalFrequency =
+          octaveMedian;
+      }
+    }
+  }
+
+  // ==========================================================
+  // STEP 7 — FINAL FREQUENCY VALIDATION
+  // ==========================================================
 
   if (
     !isValidFrequency(
@@ -1832,51 +2434,45 @@ function detectComfortableNote(
     finalFrequency >
       COMFORTABLE_NOTE_MAX_HZ
   ) {
+    console.warn(
+      '⚠️ Comfortable note rejected: final frequency is outside supported range.',
+      {
+        finalFrequency,
+      }
+    );
+
     return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 8 — Calculate clarity
-   * ==========================================================
-   */
+  // ==========================================================
+  // STEP 8 — CLARITY
+  // ==========================================================
 
-  let clarity = 0;
+  const clarityValues =
+    validPitchyFrames
+      .map(
+        frame =>
+          frame.clarity
+      )
+      .filter(
+        value =>
+          Number.isFinite(value)
+      );
 
-  if (
-    validPitchyFrames.length > 0
-  ) {
-    const clarityValues =
-      validPitchyFrames
-        .map(
-          frame =>
-            frame.clarity
-        )
-        .filter(
-          value =>
-            Number.isFinite(
-              value
-            )
-        );
-
-    if (
-      clarityValues.length > 0
-    ) {
-      clarity =
-        clarityValues.reduce(
+  const pitchyClarity =
+    clarityValues.length > 0
+      ? clarityValues.reduce(
           (sum, value) =>
             sum + value,
           0
         ) /
-        clarityValues.length;
-    }
-  }
+        clarityValues.length
+      : 0;
 
-  /*
-   * If Pitchy did not produce a usable clarity value,
-   * use autocorrelation confidence as the confidence
-   * measure rather than returning an artificial 100%.
-   */
+  // ==========================================================
+  // STEP 9 — AUTOCORRELATION CONFIDENCE
+  // ==========================================================
+
   const autoConfidence =
     autocorrelationResults.reduce(
       (sum, result) =>
@@ -1886,136 +2482,128 @@ function detectComfortableNote(
     ) /
     autocorrelationResults.length;
 
+  /*
+   * A strong result should have reasonably strong evidence
+   * from both methods.
+   */
   if (
-    clarity <= 0
+    autoConfidence <
+      MIN_AUTOCORRELATION_CONFIDENCE
   ) {
-    clarity =
-      autoConfidence;
+    console.warn(
+      '⚠️ Comfortable note rejected: autocorrelation confidence is too low.',
+      {
+        autoConfidence,
+      }
+    );
+
+    return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 9 — Stability
-   * ==========================================================
-   */
-
-  const stabilityFrequencies =
-    autocorrelationResults
-      .map(
-        result =>
-          result.frequency
-      )
-      .filter(
-        isValidFrequency
-      );
-
-  let stabilityPct = 0;
-
   if (
-    stabilityFrequencies.length >= 2
+    pitchyClarity <
+    PITCHY_MIN_CLARITY
   ) {
-    const deviations =
-      stabilityFrequencies.map(
-        frequency =>
-          Math.abs(
-            centsDifference(
-              frequency,
-              finalFrequency
-            )
-          )
-      );
+    console.warn(
+      '⚠️ Comfortable note rejected: Pitchy clarity is too low.',
+      {
+        pitchyClarity,
+      }
+    );
 
-    const averageDeviation =
-      deviations.reduce(
-        (sum, value) =>
-          sum + value,
-        0
-      ) /
-      deviations.length;
-
-    stabilityPct =
-      Math.max(
-        0,
-        Math.min(
-          100,
-          100 -
-          (
-            averageDeviation /
-            75
-          ) *
-          100
-        )
-      );
+    return null;
   }
 
-  /*
-   * ==========================================================
-   * STEP 10 — Final diagnostic
-   * ==========================================================
-   */
+  // ==========================================================
+  // STEP 10 — FINAL STABILITY
+  // ==========================================================
+
+  const stabilityPct =
+    clampScore(
+      pitchyConsistency *
+        100
+    );
+
+  // ==========================================================
+  // FINAL DIAGNOSTIC
+  // ==========================================================
 
   console.log(
     '🎵 COMFORTABLE NOTE ANALYSIS:',
     {
       finalFrequency:
         Number(
-          finalFrequency.toFixed(2)
+          finalFrequency.toFixed(
+            2
+          )
         ),
 
       pitchyMedian:
-        pitchyMedian
-          ? Number(
-              pitchyMedian.toFixed(2)
-            )
-          : null,
-
-      autocorrelationMedian:
         Number(
-          autocorrelationMedian.toFixed(2)
+          pitchyMedian.toFixed(
+            2
+          )
         ),
 
       autocorrelationFrequencies:
-        autocorrelationFrequencies.map(
-          value =>
+        autocorrelationResults.map(
+          result =>
             Number(
-              value.toFixed(2)
+              result.frequency.toFixed(
+                2
+              )
             )
         ),
 
-      autocorrelationConfidence:
+      directAgreement:
         Number(
-          autoConfidence.toFixed(3)
+          directAgreement.toFixed(
+            2
+          )
         ),
 
-      clarity:
+      octaveAgreement:
         Number(
-          clarity.toFixed(3)
+          octaveAgreement.toFixed(
+            2
+          )
         ),
 
-      stabilityPct:
+      pitchyClarity:
         Number(
-          stabilityPct.toFixed(1)
+          pitchyClarity.toFixed(
+            3
+          )
         ),
+
+      autoConfidence:
+        Number(
+          autoConfidence.toFixed(
+            3
+          )
+        ),
+
+      pitchyConsistency:
+        Number(
+          pitchyConsistency.toFixed(
+            2
+          )
+        ),
+
+      stabilityPct,
 
       rms:
         Number(
-          overallRms.toFixed(6)
+          overallRms.toFixed(
+            6
+          )
         ),
 
       peak:
         Number(
-          peak.toFixed(6)
-        ),
-
-      pitchyFrames:
-        validPitchyFrames.length,
-
-      autocorrelationFrames:
-        autocorrelationResults.length,
-
-      autoConsistency:
-        Number(
-          autoConsistency.toFixed(2)
+          peak.toFixed(
+            6
+          )
         ),
     }
   );
@@ -2029,7 +2617,7 @@ function detectComfortableNote(
         0,
         Math.min(
           1,
-          clarity
+          pitchyClarity
         )
       ),
 
@@ -2042,7 +2630,6 @@ function detectComfortableNote(
       autoConfidence,
   };
 }
-
 
 // ============================================================
 // VOCAL RANGE
@@ -2082,23 +2669,21 @@ export function getVocalRange(
   );
 
   /*
-   * If either recording is bad, stop here.
-   *
-   * Most importantly, we do NOT substitute a default
-   * frequency such as 100 Hz.
+   * Never substitute a fake/default frequency.
    */
   if (
     !low ||
     !high
   ) {
     throw new Error(
-      'We could not detect both comfortable notes. Please sing each note steadily and clearly, then try again.'
+      'We could not detect both comfortable notes accurately. Please sing each note steadily and clearly, without changing pitch, then try again.'
     );
   }
 
-  /*
-   * High note must be higher than low note.
-   */
+  // ----------------------------------------------------------
+  // HIGHER NOTE MUST BE HIGHER
+  // ----------------------------------------------------------
+
   if (
     low.frequency >=
     high.frequency
@@ -2119,6 +2704,10 @@ export function getVocalRange(
     );
   }
 
+  // ----------------------------------------------------------
+  // MINIMUM RANGE WIDTH
+  // ----------------------------------------------------------
+
   const semitoneSpan =
     12 *
     Math.log2(
@@ -2131,9 +2720,6 @@ export function getVocalRange(
     semitoneSpan
   );
 
-  /*
-   * Three semitones is the minimum acceptable separation.
-   */
   if (
     !Number.isFinite(
       semitoneSpan
@@ -2153,7 +2739,6 @@ export function getVocalRange(
       high.frequency,
   };
 }
-
 
 // ============================================================
 // VOCAL RANGE FROM HUMS
@@ -2185,7 +2770,6 @@ export function detectVocalRangeFromHums(
   });
 }
 
-
 // ============================================================
 // SAFE METRIC EXECUTION
 // ============================================================
@@ -2199,7 +2783,9 @@ function safeMetric(
       calculate();
 
     if (
-      !Number.isFinite(score)
+      !Number.isFinite(
+        score
+      )
     ) {
       console.warn(
         `⚠️ ${name} returned an invalid score.`
@@ -2220,7 +2806,6 @@ function safeMetric(
     return 0;
   }
 }
-
 
 // ============================================================
 // RUN ASSESSMENT
@@ -2286,9 +2871,65 @@ export function runAssessment(
     audio.highestComfortableNoteSamples.length
   );
 
+  // ==========================================================
+  // STEP 1 — VOCAL RANGE FIRST
+  // ==========================================================
+  //
+  // The detected range determines the generated reference
+  // notes for Pitch/Tone/Volume/Agility.
+  //
+  // ==========================================================
+
+  console.log(
+    '🧪 Detecting vocal range first...'
+  );
+
+  const vocalRange =
+    getVocalRange(
+      audio
+    );
+
+  console.log(
+    '🧪 Vocal range:',
+    vocalRange.lowHz,
+    '-',
+    vocalRange.highHz
+  );
 
   // ==========================================================
-  // COMPONENT SCORES
+  // STEP 2 — GENERATE TARGET NOTES
+  // ==========================================================
+
+  const targetNotes =
+    computeTargetNotes(
+      vocalRange.lowHz,
+      vocalRange.highHz
+    );
+
+  console.log(
+    '🎯 Generated assessment targets:',
+    {
+      rootHz:
+        Number(
+          targetNotes.rootHz.toFixed(
+            2
+          )
+        ),
+
+      agilityRun:
+        targetNotes.agilityRun.map(
+          frequency =>
+            Number(
+              frequency.toFixed(
+                2
+              )
+            )
+        ),
+    }
+  );
+
+  // ==========================================================
+  // STEP 3 — COMPONENT SCORES
   // ==========================================================
 
   console.log(
@@ -2312,6 +2953,7 @@ export function runAssessment(
     breathScore
   );
 
+  // ----------------------------------------------------------
 
   console.log(
     '🧪 Measuring pitch...'
@@ -2323,7 +2965,8 @@ export function runAssessment(
       () =>
         measurePitch(
           audio.pitchSamples,
-          audio.sampleRate
+          audio.sampleRate,
+          targetNotes.rootHz
         )
     );
 
@@ -2332,6 +2975,7 @@ export function runAssessment(
     pitchScore
   );
 
+  // ----------------------------------------------------------
 
   console.log(
     '🧪 Measuring tone...'
@@ -2352,6 +2996,7 @@ export function runAssessment(
     toneScore
   );
 
+  // ----------------------------------------------------------
 
   console.log(
     '🧪 Measuring volume...'
@@ -2372,6 +3017,7 @@ export function runAssessment(
     volumeScore
   );
 
+  // ----------------------------------------------------------
 
   console.log(
     '🧪 Measuring agility...'
@@ -2383,7 +3029,8 @@ export function runAssessment(
       () =>
         measureAgility(
           audio.agilitySamples,
-          audio.sampleRate
+          audio.sampleRate,
+          targetNotes.agilityRun
         )
     );
 
@@ -2391,7 +3038,6 @@ export function runAssessment(
     '🧪 Agility score:',
     agilityScore
   );
-
 
   // ==========================================================
   // SCORE ARRAY
@@ -2441,7 +3087,6 @@ export function runAssessment(
       },
     ];
 
-
   // ==========================================================
   // RECOMMENDATIONS
   // ==========================================================
@@ -2460,33 +3105,6 @@ export function runAssessment(
       ComponentId,
       RecommendationBand
     >;
-
-
-  // ==========================================================
-  // VOCAL RANGE
-  // ==========================================================
-
-  console.log(
-    '🧪 Detecting vocal range...'
-  );
-
-  /*
-   * Range remains outside safeMetric because a failed
-   * range calibration should produce an actual user-facing
-   * error instead of silently becoming 0.
-   */
-  const vocalRange =
-    getVocalRange(
-      audio
-    );
-
-  console.log(
-    '🧪 Vocal range:',
-    vocalRange.lowHz,
-    '-',
-    vocalRange.highHz
-  );
-
 
   // ==========================================================
   // RESULT
@@ -2512,12 +3130,12 @@ export function runAssessment(
     };
 
   console.log(
-    '✅ VOICE ASSESSMENT COMPLETE'
+    '✅ VOICE ASSESSMENT COMPLETE',
+    result
   );
 
   return result;
 }
-
 
 // ============================================================
 // COMPARE ASSESSMENTS
@@ -2530,6 +3148,15 @@ export function compareAssessments(
   ComponentId,
   number
 > {
+  if (
+    !previous ||
+    !current
+  ) {
+    throw new Error(
+      'Both previous and current assessment results are required.'
+    );
+  }
+
   const result =
     {} as Record<
       ComponentId,
@@ -2538,7 +3165,7 @@ export function compareAssessments(
 
   for (
     const currentScore
-    of current.scores
+      of current.scores
   ) {
     const previousScore =
       previous.scores.find(
@@ -2547,14 +3174,23 @@ export function compareAssessments(
           currentScore.componentId
       );
 
+    /*
+     * Never silently treat a missing previous component
+     * as zero because that would create a false improvement.
+     */
+    if (
+      !previousScore
+    ) {
+      throw new Error(
+        `Previous assessment is missing the ${currentScore.componentId} component score.`
+      );
+    }
+
     result[
       currentScore.componentId
     ] =
       currentScore.scorePct -
-      (
-        previousScore?.scorePct ??
-        0
-      );
+      previousScore.scorePct;
   }
 
   return result;
