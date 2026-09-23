@@ -1,5 +1,11 @@
-import { SUSTAINED_EXHALE_PARAMS, Tier } from '@/constants/exercises/breathControl';
-import { SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
+import {
+    SUSTAINED_EXHALE_PARAMS,
+    type Tier,
+} from '@/constants/exercises/breathControl';
+
+import type {
+    SustainedExhaleMeasurement,
+} from '@/services/measurement/breathControl/sustainedExhale';
 
 export interface SustainedExhaleScoreResult {
   score: number;
@@ -9,20 +15,92 @@ export interface SustainedExhaleScoreResult {
 
 export function scoreSustainedExhale(
   measurement: SustainedExhaleMeasurement,
-  tier: Tier
+  tier: Tier,
+  targetDurationSec?: number
 ): SustainedExhaleScoreResult {
+  // ----------------------------------------------------------
+  // NO SOUND DETECTED
+  // ----------------------------------------------------------
+
   if (!measurement.detected) {
-    return { score: 0, passed: false, detected: false };
+    return {
+      score: 0,
+      passed: false,
+      detected: false,
+    };
   }
 
-  const params = SUSTAINED_EXHALE_PARAMS[tier];
-  const targetDurationSec = (params.durationRangeSec[0] + params.durationRangeSec[1]) / 2;
+  const params =
+    SUSTAINED_EXHALE_PARAMS[tier];
 
-  const durationRatio = targetDurationSec > 0
-    ? Math.min(measurement.actualDurationSec / targetDurationSec, 1)
-    : 0;
-  const consistencyFactor = measurement.consistencyPct / 100;
-  const score = Math.round(durationRatio * 100 * consistencyFactor);
+  // ----------------------------------------------------------
+  // TARGET DURATION
+  // ----------------------------------------------------------
 
-  return { score, passed: measurement.consistencyPct >= params.consistencyThreshold, detected: true };
+  const target =
+    targetDurationSec ??
+    (
+      params.durationRangeSec[0] +
+      params.durationRangeSec[1]
+    ) / 2;
+
+  // ----------------------------------------------------------
+  // DURATION SCORE
+  // ----------------------------------------------------------
+
+  const durationRatio =
+    target > 0
+      ? Math.min(
+          Math.max(
+            measurement.actualDurationSec /
+              target,
+            0
+          ),
+          1
+        )
+      : 0;
+
+  // ----------------------------------------------------------
+  // CONSISTENCY SCORE
+  // ----------------------------------------------------------
+
+  const safeConsistency = Math.min(
+    Math.max(
+      measurement.consistencyPct,
+      0
+    ),
+    100
+  );
+
+  const consistencyFactor =
+    safeConsistency / 100;
+
+  // ----------------------------------------------------------
+  // FINAL SCORE
+  // ----------------------------------------------------------
+
+  const rawScore =
+    durationRatio *
+    100 *
+    consistencyFactor;
+
+  const score = Math.round(
+    Math.min(
+      Math.max(
+        rawScore,
+        0
+      ),
+      100
+    )
+  );
+
+  return {
+    score,
+
+    passed:
+      safeConsistency >=
+      params.consistencyThreshold,
+
+    detected: true,
+  };
 }

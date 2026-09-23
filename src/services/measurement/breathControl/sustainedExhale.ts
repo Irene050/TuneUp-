@@ -12,17 +12,59 @@ export function measureSustainedExhale(
   threshold: number,
   sampleRate: number
 ): SustainedExhaleMeasurement {
-  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(samples, threshold, sampleRate);
+  const {
+    onsetIndex,
+    offsetIndex,
+    durationSeconds,
+  } = detectOnsetOffset(
+    samples,
+    threshold,
+    sampleRate
+  );
 
-  if (durationSeconds === 0) {
-    return { actualDurationSec: 0, consistencyPct: 0, detected: false };
+  // No sustained sound detected.
+  if (
+    durationSeconds <= 0 ||
+    offsetIndex <= onsetIndex
+  ) {
+    return {
+      actualDurationSec: 0,
+      consistencyPct: 0,
+      detected: false,
+    };
   }
 
-  const exhaleSegment = samples.subarray(onsetIndex, offsetIndex);
+  const exhaleSegment =
+    samples.subarray(
+      onsetIndex,
+      offsetIndex + 1
+    );
+
+  // Prevent invalid/negative consistency values
+  // from reaching the scoring system.
+  const rawConsistency =
+    calcRMSVariance(
+      exhaleSegment,
+      50,
+      sampleRate
+    );
+
+  const consistencyPct = Math.min(
+    100,
+    Math.max(
+      0,
+      Number.isFinite(rawConsistency)
+        ? rawConsistency
+        : 0
+    )
+  );
 
   return {
-    actualDurationSec: durationSeconds,
-    consistencyPct: calcRMSVariance(exhaleSegment, 50, sampleRate),
+    actualDurationSec: Math.max(
+      0,
+      durationSeconds
+    ),
+    consistencyPct,
     detected: true,
   };
 }

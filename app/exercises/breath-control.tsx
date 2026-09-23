@@ -1,4 +1,6 @@
-import { useLocalSearchParams } from 'expo-router';
+import {
+  useLocalSearchParams,
+} from 'expo-router';
 
 import ControlledBreathReleaseScreen from '../../src/screens/exercises/BreathControl/ControlledBreathReleaseScreen';
 import DiaphragmaticBreathingScreen from '../../src/screens/exercises/BreathControl/DiaphragmaticBreathingScreen';
@@ -6,45 +8,79 @@ import SteadyAirflowMaintenanceScreen from '../../src/screens/exercises/BreathCo
 import SustainedExhaleScreen from '../../src/screens/exercises/BreathControl/SustainedExhaleScreen';
 import SustainedSSSSScreen from '../../src/screens/exercises/BreathControl/SustainedSSSSScreen';
 
+import type {
+  Tier,
+} from '@/constants/exercises/breathControl';
+
+import {
+  generateSustainedExhaleParams,
+} from '@/services/exerciseSession/generateParams/breathControl';
+
 export default function BreathControlRoute() {
-  const { templateId } =
+  const {
+    templateId,
+    tier: tierParam,
+  } =
     useLocalSearchParams<{
       templateId?: string;
+      tier?: string;
     }>();
 
+  const validTiers: Tier[] = [
+    'beginner',
+    'intermediate',
+    'advanced',
+  ];
+
+  const tier: Tier =
+    validTiers.includes(
+      tierParam as Tier
+    )
+      ? (tierParam as Tier)
+      : 'beginner';
+
   switch (templateId) {
-    case 'sustainedExhale':
+    case 'sustainedExhale': {
+      const generatedParams =
+        generateSustainedExhaleParams(
+          tier
+        );
+
       return (
         <SustainedExhaleScreen
-          tier="beginner"
+          tier={tier}
+          generatedParams={
+            generatedParams
+          }
         />
       );
+    }
 
     case 'sustainedSSSS':
       return (
         <SustainedSSSSScreen
-          tier="beginner"
+          tier={tier}
         />
       );
 
     case 'diaphragmaticBreathing':
       return (
         <DiaphragmaticBreathingScreen
-          tier="beginner"
+          tier={tier}
         />
       );
 
-    case 'steadyAirflowMaintenance':
+    case 'steadyAirflow':
       return (
         <SteadyAirflowMaintenanceScreen
-          tier="beginner"
+          tier={tier}
         />
       );
 
     case 'controlledBreathRelease':
       return (
         <ControlledBreathReleaseScreen
-          tier="beginner"
+          tier={tier}
         />
       );
 
