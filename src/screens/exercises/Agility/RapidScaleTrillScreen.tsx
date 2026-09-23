@@ -33,6 +33,8 @@ import {
   frequencyToNoteName,
 } from '@/utils/music/notes';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -445,86 +447,106 @@ export default function RapidScaleTrillScreen({
   // ----------------------------------------------------------
 
   const processRecording =
-    async () => {
-      if (processingRef.current) {
-        return;
-      }
+  async () => {
+    if (processingRef.current) {
+      return;
+    }
 
-      processingRef.current = true;
+    processingRef.current = true;
 
-      stopRecording();
+    stopRecording();
 
-      setPhase('processing');
+    setPhase('processing');
 
-      await sleep(500);
+    await sleep(500);
 
-      try {
-        const samples =
-          new Float32Array(
-            samplesRef.current,
-          );
-
-        const measurement =
-          measureRapidScaleTrill(
-            samples,
-            SAMPLE_RATE,
-            config.frequencies,
-          );
-
-        const scored =
-          scoreRapidScaleTrill(
-            measurement,
-          );
-
-        setResult({
-          overall: scored.overall,
-          pitchScore:
-            scored.pitchScore,
-          sequenceScore:
-            scored.sequenceScore,
-          transitionScore:
-            scored.transitionScore,
-          speedScore:
-            scored.speedScore,
-          passed: scored.passed,
-          feedback:
-            scored.feedback,
-
-          noteCount:
-            measurement.noteCount,
-
-          correctNoteCount:
-            measurement.correctNoteCount,
-
-          transitionCount:
-            measurement.transitionCount,
-
-          correctTransitionCount:
-            measurement.correctTransitionCount,
-
-          averageTransitionTimeMs:
-            measurement.averageTransitionTimeMs,
-
-          notesPerSecond:
-            measurement.notesPerSecond,
-
-          durationMs:
-            measurement.durationMs,
-        });
-
-        setPhase('results');
-      } catch (error) {
-        console.warn(
-          'Processing failed:',
-          error,
+    try {
+      const samples =
+        new Float32Array(
+          samplesRef.current,
         );
 
-        processingRef.current =
-          false;
+      const measurement =
+        measureRapidScaleTrill(
+          samples,
+          SAMPLE_RATE,
+          config.frequencies,
+        );
 
-        setPhase('instructions');
+      const scored =
+        scoreRapidScaleTrill(
+          measurement,
+        );
+
+      // Save completed exercise progress
+      try {
+        await saveCompletedExercise(
+          'agility',
+          'rapidScaleTrill',
+          tier,
+          scored.overall,
+        );
+
+        console.log(
+          '💾 Rapid Scale Trill progress saved:',
+          scored.overall,
+        );
+      } catch (saveError) {
+        console.error(
+          '❌ Failed to save Rapid Scale Trill progress:',
+          saveError,
+        );
       }
-    };
+
+      setResult({
+        overall: scored.overall,
+        pitchScore:
+          scored.pitchScore,
+        sequenceScore:
+          scored.sequenceScore,
+        transitionScore:
+          scored.transitionScore,
+        speedScore:
+          scored.speedScore,
+        passed: scored.passed,
+        feedback:
+          scored.feedback,
+
+        noteCount:
+          measurement.noteCount,
+
+        correctNoteCount:
+          measurement.correctNoteCount,
+
+        transitionCount:
+          measurement.transitionCount,
+
+        correctTransitionCount:
+          measurement.correctTransitionCount,
+
+        averageTransitionTimeMs:
+          measurement.averageTransitionTimeMs,
+
+        notesPerSecond:
+          measurement.notesPerSecond,
+
+        durationMs:
+          measurement.durationMs,
+      });
+
+      setPhase('results');
+    } catch (error) {
+      console.warn(
+        'Processing failed:',
+        error,
+      );
+
+      processingRef.current =
+        false;
+
+      setPhase('instructions');
+    }
+  };
 
   // ----------------------------------------------------------
   // RESET

@@ -41,6 +41,8 @@ import {
   createMusicalNote,
 } from '@/utils/music/notes';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -448,93 +450,129 @@ export default function RapidNoteTransitionExerciseScreen({
     );
 
   // ----------------------------------------------------------
-  // PROCESS COMPLETED RECORDING
-  // ----------------------------------------------------------
+// PROCESS COMPLETED RECORDING
+// ----------------------------------------------------------
 
-  const handleRecordingStop =
-    useCallback(
-      (
-        samples: Float32Array,
-        sampleRate: number,
-      ) => {
-        clearTimers();
+const handleRecordingStop =
+  useCallback(
+    async (
+      samples: Float32Array,
+      sampleRate: number,
+    ) => {
+      clearTimers();
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setScreen('processing');
+
+      try {
+        if (
+          !samples ||
+          samples.length === 0
+        ) {
+          throw new Error(
+            'No audio samples were recorded.',
+          );
+        }
+
+        const measurement =
+          measureRapidNoteTransition(
+            samples,
+            sampleRate,
+            exerciseConfig.sequence.frequencies,
+          );
+
+        const scored =
+          scoreRapidNoteTransition(
+            measurement,
+          );
+
+        const finalScore =
+          Math.round(scored.overall);
+
+        // ----------------------------------------------------
+        // SAVE PROGRESS
+        // ----------------------------------------------------
+
+        try {
+          await saveCompletedExercise(
+            'agility',
+            'rapidNoteTransition',
+            tier,
+            finalScore,
+          );
+
+          console.log(
+            '💾 Rapid Note Transition progress saved:',
+            {
+              componentId: 'agility',
+              templateId: 'rapidNoteTransition',
+              tier,
+              scorePct: finalScore,
+            },
+          );
+        } catch (saveError) {
+          console.error(
+            '❌ Failed to save Rapid Note Transition progress:',
+            saveError,
+          );
+        }
 
         if (!mountedRef.current) {
           return;
         }
 
-        setScreen('processing');
+        // ----------------------------------------------------
+        // SET RESULTS
+        // ----------------------------------------------------
 
-        try {
-          if (
-            !samples ||
-            samples.length === 0
-          ) {
-            throw new Error(
-              'No audio samples were recorded.',
-            );
-          }
+        setResult({
+          overall: scored.overall,
+          pitchScore: scored.pitchScore,
+          sequenceScore:
+            scored.sequenceScore,
+          speedScore: scored.speedScore,
 
-          const measurement =
-            measureRapidNoteTransition(
-              samples,
-              sampleRate,
-              exerciseConfig.sequence.frequencies,
-            );
+          passed: scored.passed,
+          feedback: scored.feedback,
 
-          const scored =
-            scoreRapidNoteTransition(
-              measurement,
-            );
+          transitionCount:
+            measurement.transitionCount,
 
-          if (!mountedRef.current) {
-            return;
-          }
+          transitionsPerSecond:
+            measurement.transitionsPerSecond,
 
-          setResult({
-            overall: scored.overall,
-            pitchScore: scored.pitchScore,
-            sequenceScore:
-              scored.sequenceScore,
-            speedScore: scored.speedScore,
+          averageTransitionTimeMs:
+            measurement.averageTransitionTimeMs,
+        });
 
-            passed: scored.passed,
-            feedback: scored.feedback,
+        setScreen('results');
+      } catch (error) {
+        console.error(
+          'Rapid Note Transition processing failed:',
+          error,
+        );
 
-            transitionCount:
-              measurement.transitionCount,
-
-            transitionsPerSecond:
-              measurement.transitionsPerSecond,
-
-            averageTransitionTimeMs:
-              measurement.averageTransitionTimeMs,
-          });
-
-          setScreen('results');
-        } catch (error) {
-          console.error(
-            'Rapid Note Transition processing failed:',
-            error,
-          );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setErrorMessage(
-            'We could not analyze this recording. Please try again.',
-          );
-
-          setScreen('instructions');
+        if (!mountedRef.current) {
+          return;
         }
-      },
-      [
-        clearTimers,
-        exerciseConfig.sequence.frequencies,
-        setScreen,
-      ],
-    );
+
+        setErrorMessage(
+          'We could not analyze this recording. Please try again.',
+        );
+
+        setScreen('instructions');
+      }
+    },
+    [
+      clearTimers,
+      exerciseConfig.sequence.frequencies,
+      setScreen,
+      tier,
+    ],
+  );
 
   // ----------------------------------------------------------
   // AUDIO RECORDER

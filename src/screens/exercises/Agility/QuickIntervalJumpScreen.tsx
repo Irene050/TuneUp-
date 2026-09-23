@@ -33,6 +33,8 @@ import {
   frequencyToNoteName,
 } from '@/utils/music/notes';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -424,81 +426,116 @@ export default function QuickIntervalJumpScreen({
     };
 
   // ----------------------------------------------------------
-  // PROCESS RECORDING
-  // ----------------------------------------------------------
+// PROCESS RECORDING
+// ----------------------------------------------------------
 
-  const processRecording =
-    async () => {
-      if (processingRef.current) {
-        return;
-      }
+const processRecording =
+  async () => {
+    if (processingRef.current) {
+      return;
+    }
 
-      processingRef.current = true;
+    processingRef.current = true;
 
-      stopRecording();
+    stopRecording();
 
-      setPhase('processing');
+    setPhase('processing');
 
-      await sleep(500);
+    await sleep(500);
 
-      try {
-        const samples =
-          new Float32Array(
-            samplesRef.current,
-          );
-
-        const measurement =
-          measureQuickIntervalJump(
-            samples,
-            SAMPLE_RATE,
-            config.frequencies,
-          );
-
-        const scored =
-          scoreQuickIntervalJump(
-            measurement,
-          );
-
-        setResult({
-          overall: scored.overall,
-          pitchScore: scored.pitchScore,
-          intervalScore:
-            scored.intervalScore,
-          speedScore: scored.speedScore,
-          passed: scored.passed,
-          feedback: scored.feedback,
-
-          noteCount:
-            measurement.noteCount,
-
-          correctNoteCount:
-            measurement.correctNoteCount,
-
-          transitionCount:
-            measurement.transitionCount,
-
-          correctTransitionCount:
-            measurement.correctTransitionCount,
-
-          averageTransitionTimeMs:
-            measurement.averageTransitionTimeMs,
-
-          durationMs:
-            measurement.durationMs,
-        });
-
-        setPhase('results');
-      } catch (error) {
-        console.warn(
-          'Processing failed:',
-          error,
+    try {
+      const samples =
+        new Float32Array(
+          samplesRef.current,
         );
 
-        processingRef.current = false;
+      const measurement =
+        measureQuickIntervalJump(
+          samples,
+          SAMPLE_RATE,
+          config.frequencies,
+        );
 
-        setPhase('instructions');
+      const scored =
+        scoreQuickIntervalJump(
+          measurement,
+        );
+
+      const finalScore =
+        Math.round(scored.overall);
+
+      // ----------------------------------------------------
+      // SAVE PROGRESS
+      // ----------------------------------------------------
+
+      try {
+        await saveCompletedExercise(
+          'agility',
+          'quickIntervalJump',
+          tier,
+          finalScore,
+        );
+
+        console.log(
+          '💾 Quick Interval Jump progress saved:',
+          {
+            componentId: 'agility',
+            templateId: 'quickIntervalJump',
+            tier,
+            scorePct: finalScore,
+          },
+        );
+      } catch (saveError) {
+        console.error(
+          '❌ Failed to save Quick Interval Jump progress:',
+          saveError,
+        );
       }
-    };
+
+      // ----------------------------------------------------
+      // SET RESULTS
+      // ----------------------------------------------------
+
+      setResult({
+        overall: scored.overall,
+        pitchScore: scored.pitchScore,
+        intervalScore:
+          scored.intervalScore,
+        speedScore: scored.speedScore,
+        passed: scored.passed,
+        feedback: scored.feedback,
+
+        noteCount:
+          measurement.noteCount,
+
+        correctNoteCount:
+          measurement.correctNoteCount,
+
+        transitionCount:
+          measurement.transitionCount,
+
+        correctTransitionCount:
+          measurement.correctTransitionCount,
+
+        averageTransitionTimeMs:
+          measurement.averageTransitionTimeMs,
+
+        durationMs:
+          measurement.durationMs,
+      });
+
+      setPhase('results');
+    } catch (error) {
+      console.warn(
+        'Processing failed:',
+        error,
+      );
+
+      processingRef.current = false;
+
+      setPhase('instructions');
+    }
+  };
 
   // ----------------------------------------------------------
   // RESET

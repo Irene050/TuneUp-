@@ -28,6 +28,8 @@ import {
   type ArpeggioSpeedScore,
 } from '@/services/scoring/agility/arpeggioSpeedDrill';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -506,72 +508,96 @@ export default function ArpeggioSpeedDrillScreen({
   // PROCESS RECORDING
   // ----------------------------------------------------------
 
-  const processRecording =
-    async () => {
-      try {
-        const chunks =
-          samplesRef.current;
+  // ----------------------------------------------------------
+// PROCESS RECORDING
+// ----------------------------------------------------------
 
-        const totalLength =
-          chunks.reduce(
-            (total, chunk) =>
-              total + chunk.length,
-            0,
-          );
+const processRecording = async () => {
+  try {
+    const chunks = samplesRef.current;
 
-        if (totalLength === 0) {
-          throw new Error(
-            'No audio samples were captured.',
-          );
-        }
+    const totalLength = chunks.reduce(
+      (total, chunk) =>
+        total + chunk.length,
+      0,
+    );
 
-        const samples =
-          new Float32Array(
-            totalLength,
-          );
+    if (totalLength === 0) {
+      throw new Error(
+        'No audio samples were captured.',
+      );
+    }
 
-        let offset = 0;
+    const samples =
+      new Float32Array(totalLength);
 
-        for (const chunk of chunks) {
-          samples.set(
-            chunk,
-            offset,
-          );
+    let offset = 0;
 
-          offset += chunk.length;
-        }
+    for (const chunk of chunks) {
+      samples.set(chunk, offset);
+      offset += chunk.length;
+    }
 
-        const measurement =
-          measureArpeggioSpeed(
-            samples,
-            SAMPLE_RATE,
-            config.frequencies,
-          );
+    const measurement =
+      measureArpeggioSpeed(
+        samples,
+        SAMPLE_RATE,
+        config.frequencies,
+      );
 
-        const score =
-          scoreArpeggioSpeed(
-            measurement,
-          );
+    const score =
+      scoreArpeggioSpeed(
+        measurement,
+      );
 
-        setResult({
-          measurement,
-          score,
-        });
+    /*
+     * ------------------------------------------
+     * SAVE PROGRESS
+     * ------------------------------------------
+     */
 
-        setPhase('results');
-      } catch (err) {
-        console.error(
-          'Arpeggio processing error:',
-          err,
-        );
+    try {
+      await saveCompletedExercise(
+        'agility',
+        'arpeggioSpeedDrill',
+        tier,
+        score.overall,
+      );
 
-        setError(
-          'We could not analyze your recording. Please try again.',
-        );
+      console.log(
+        '💾 Arpeggio Speed Drill progress saved:',
+        score.overall,
+      );
+    } catch (saveError) {
+      /*
+       * Saving failure should NOT prevent the
+       * user from seeing their exercise results.
+       */
+      console.error(
+        '❌ Failed to save Arpeggio Speed Drill progress:',
+        saveError,
+      );
+    }
 
-        setPhase('instructions');
-      }
-    };
+    setResult({
+      measurement,
+      score,
+    });
+
+    setPhase('results');
+  } catch (err) {
+    console.error(
+      'Arpeggio processing error:',
+      err,
+    );
+
+    setError(
+      'We could not analyze your recording. Please try again.',
+    );
+
+    setPhase('instructions');
+  }
+};
 
   // ----------------------------------------------------------
   // START / RESTART

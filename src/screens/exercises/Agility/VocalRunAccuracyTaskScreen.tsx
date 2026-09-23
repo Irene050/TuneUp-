@@ -34,6 +34,8 @@ import {
   AudioRecorder,
 } from 'react-native-audio-api';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -642,127 +644,155 @@ export default function VocalRunAccuracyTaskScreen({
   // PROCESS RECORDING
   // ==========================================================
 
-  const processRecording =
-    useCallback(async () => {
-      if (
-        processingRef.current
-      ) {
-        return;
-      }
+  // ==========================================================
+// PROCESS RECORDING
+// ==========================================================
 
-      if (
-        phaseRef.current !==
-        'recording'
-      ) {
-        return;
-      }
+const processRecording =
+  useCallback(async () => {
+    if (
+      processingRef.current
+    ) {
+      return;
+    }
 
-      processingRef.current =
-        true;
+    if (
+      phaseRef.current !==
+      'recording'
+    ) {
+      return;
+    }
 
-      stopRecording();
+    processingRef.current =
+      true;
 
-      if (mountedRef.current) {
-        setExercisePhase(
-          'processing',
+    stopRecording();
+
+    if (mountedRef.current) {
+      setExercisePhase(
+        'processing',
+      );
+    }
+
+    await sleep(300);
+
+    try {
+      const samples =
+        new Float32Array(
+          samplesRef.current,
+        );
+
+      if (samples.length === 0) {
+        throw new Error(
+          'No audio samples were captured.',
         );
       }
 
-      await sleep(300);
+      const measurement =
+        measureVocalRunAccuracy(
+          samples,
+          SAMPLE_RATE,
+          config.frequencies,
+        );
+
+      const score =
+        scoreVocalRunAccuracy(
+          measurement,
+        );
+
+      // ======================================================
+      // SAVE EXERCISE PROGRESS
+      // ======================================================
 
       try {
-        const samples =
-          new Float32Array(
-            samplesRef.current,
-          );
+        await saveCompletedExercise(
+          'agility',
+          'vocalRunAccuracy',
+          tier,
+          score.overall,
+        );
 
-        if (samples.length === 0) {
-          throw new Error(
-            'No audio samples were captured.',
-          );
-        }
+        console.log(
+          '💾 Vocal Run Accuracy progress saved:',
+          score.overall,
+        );
+      } catch (saveError) {
+        console.error(
+          '❌ Failed to save Vocal Run Accuracy progress:',
+          saveError,
+        );
+      }
 
-        const measurement =
-          measureVocalRunAccuracy(
-            samples,
-            SAMPLE_RATE,
-            config.frequencies,
-          );
+      if (!mountedRef.current) {
+        return;
+      }
 
-        const score =
-          scoreVocalRunAccuracy(
-            measurement,
-          );
+      setResult({
+        overall:
+          score.overall,
 
-        if (!mountedRef.current) {
-          return;
-        }
+        pitchScore:
+          score.pitchScore,
 
-        setResult({
-          overall:
-            score.overall,
+        sequenceScore:
+          score.sequenceScore,
 
-          pitchScore:
-            score.pitchScore,
+        transitionScore:
+          score.transitionScore,
 
-          sequenceScore:
-            score.sequenceScore,
+        passed:
+          score.passed,
 
-          transitionScore:
-            score.transitionScore,
+        feedback:
+          score.feedback,
 
-          passed:
-            score.passed,
+        noteCount:
+          measurement.noteCount,
 
-          feedback:
-            score.feedback,
+        correctNoteCount:
+          measurement.correctNoteCount,
 
-          noteCount:
-            measurement.noteCount,
+        transitionCount:
+          measurement.transitionCount,
 
-          correctNoteCount:
-            measurement.correctNoteCount,
+        correctTransitionCount:
+          measurement.correctTransitionCount,
 
-          transitionCount:
-            measurement.transitionCount,
+        notesPerSecond:
+          measurement.notesPerSecond,
 
-          correctTransitionCount:
-            measurement.correctTransitionCount,
+        durationMs:
+          measurement.durationMs,
+      });
 
-          notesPerSecond:
-            measurement.notesPerSecond,
+      setExercisePhase(
+        'results',
+      );
+    } catch (error) {
+      console.warn(
+        'Vocal Run Accuracy processing failed:',
+        error,
+      );
 
-          durationMs:
-            measurement.durationMs,
-        });
+      if (mountedRef.current) {
+        setErrorMessage(
+          'We could not analyze this recording. Please try again.',
+        );
 
         setExercisePhase(
-          'results',
+          'instructions',
         );
-      } catch (error) {
-        console.warn(
-          'Vocal Run Accuracy processing failed:',
-          error,
-        );
-
-        if (mountedRef.current) {
-          setErrorMessage(
-            'We could not analyze this recording. Please try again.',
-          );
-
-          setExercisePhase(
-            'instructions',
-          );
-        }
-      } finally {
-        processingRef.current =
-          false;
       }
-    }, [
-      config.frequencies,
-      setExercisePhase,
-      stopRecording,
-    ]);
+    } finally {
+      processingRef.current =
+        false;
+    }
+  }, [
+    config.frequencies,
+    setExercisePhase,
+    stopRecording,
+    tier,
+  ]);
 
   // ==========================================================
   // FINISH RECORDING

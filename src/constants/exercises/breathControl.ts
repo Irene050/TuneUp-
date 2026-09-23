@@ -73,6 +73,7 @@ export interface DiaphragmaticBreathingParams {
   repetitions: number;
   consistencyThreshold: number;
   targetDbRange: [number, number];
+  detectionThreshold: number;
 }
 
 export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
@@ -85,6 +86,7 @@ export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
     repetitions: 2,
     consistencyThreshold: 60,
     targetDbRange: [40, 50],
+    detectionThreshold: 0.02,
   },
 
   intermediate: {
@@ -93,6 +95,7 @@ export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
     repetitions: 3,
     consistencyThreshold: 75,
     targetDbRange: [45, 55],
+    detectionThreshold: 0.02,
   },
 
   advanced: {
@@ -101,9 +104,9 @@ export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
     repetitions: 4,
     consistencyThreshold: 90,
     targetDbRange: [50, 60],
+    detectionThreshold: 0.02,
   },
 };
-
 
 // ============================================================
 // 4. STEADY AIRFLOW MAINTENANCE
@@ -114,6 +117,7 @@ export interface SteadyAirflowParams {
   repetitions: number;
   stabilityThreshold: number;
   amplitudeTolerancePct: number;
+  detectionThreshold: number;
 }
 
 export const STEADY_AIRFLOW_PARAMS: Record<
@@ -125,6 +129,7 @@ export const STEADY_AIRFLOW_PARAMS: Record<
     repetitions: 2,
     stabilityThreshold: 65,
     amplitudeTolerancePct: 15,
+    detectionThreshold: 0.02,
   },
 
   intermediate: {
@@ -132,6 +137,7 @@ export const STEADY_AIRFLOW_PARAMS: Record<
     repetitions: 3,
     stabilityThreshold: 80,
     amplitudeTolerancePct: 12,
+    detectionThreshold: 0.02,
   },
 
   advanced: {
@@ -139,9 +145,9 @@ export const STEADY_AIRFLOW_PARAMS: Record<
     repetitions: 4,
     stabilityThreshold: 95,
     amplitudeTolerancePct: 10,
+    detectionThreshold: 0.02,
   },
 };
-
 
 // ============================================================
 // 5. CONTROLLED BREATH RELEASE
