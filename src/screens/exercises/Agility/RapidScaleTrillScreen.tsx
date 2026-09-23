@@ -1,29 +1,64 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    AudioContext,
-    AudioManager,
-    AudioRecorder,
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
 } from 'react-native-audio-api';
 
-import type { Tier } from '@/constants/exercises/agility';
+import {
+  RAPID_SCALE_TRILL_PARAMS,
+  type Tier,
+} from '@/constants/exercises/agility';
 
 import {
-    measureRapidScaleTrill,
+  measureRapidScaleTrill,
 } from '@/services/measurement/agility/rapidScaleTrill';
 
 import {
-    scoreRapidScaleTrill,
+  scoreRapidScaleTrill,
 } from '@/services/scoring/agility/rapidScaleTrill';
+
+import {
+  frequencyToNoteName,
+} from '@/utils/music/notes';
+
+// ============================================================
+// COLORS
+// ============================================================
+
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const LIGHT_PINK = '#FFF8FA';
+const WHITE = '#FFFFFF';
+const MUTED = '#8E7770';
+const LIGHT_GRAY = '#F2F2F2';
+const BORDER = '#F2DDE5';
+
+const GREEN = '#39734A';
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+const SAMPLE_RATE = 44100;
+const BUFFER_SIZE = 4410;
+const MAX_RECORDING_SECONDS = 10;
+const COUNTDOWN_SECONDS = 3;
+
+// ============================================================
+// TYPES
+// ============================================================
 
 type Phase =
   | 'instructions'
@@ -33,82 +68,18 @@ type Phase =
   | 'processing'
   | 'results';
 
-type TierConfig = {
-  label: string;
-  frequencies: number[];
-  speedLabel: string;
-  accuracyThreshold: number;
-};
-
-const TIER_CONFIGS: Record<
-  Tier,
-  TierConfig
-> = {
-  beginner: {
-    label: 'Beginner',
-    frequencies: [
-      261.63,
-      293.66,
-      329.63,
-      293.66,
-      261.63,
-      293.66,
-      329.63,
-      293.66,
-    ],
-    speedLabel: 'Slow',
-    accuracyThreshold: 60,
-  },
-
-  intermediate: {
-    label: 'Intermediate',
-    frequencies: [
-      293.66,
-      329.63,
-      369.99,
-      329.63,
-      293.66,
-      329.63,
-      369.99,
-      415.3,
-      369.99,
-      329.63,
-    ],
-    speedLabel: 'Moderate',
-    accuracyThreshold: 70,
-  },
-
-  advanced: {
-    label: 'Advanced',
-    frequencies: [
-      392.0,
-      440.0,
-      493.88,
-      554.37,
-      493.88,
-      440.0,
-      392.0,
-      440.0,
-      493.88,
-      554.37,
-      622.25,
-      554.37,
-      493.88,
-      440.0,
-    ],
-    speedLabel: 'Fast',
-    accuracyThreshold: 80,
-  },
-};
-
-const SAMPLE_RATE = 44100;
-const BUFFER_SIZE = 4410;
-const MAX_RECORDING_SECONDS = 10;
+// ============================================================
+// HELPERS
+// ============================================================
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) =>
     setTimeout(resolve, ms),
   );
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export default function RapidScaleTrillScreen({
   tier,
@@ -116,15 +87,17 @@ export default function RapidScaleTrillScreen({
   tier: Tier;
 }) {
   const config =
-    TIER_CONFIGS[tier];
+    RAPID_SCALE_TRILL_PARAMS[tier];
+
+  // ----------------------------------------------------------
+  // STATE
+  // ----------------------------------------------------------
 
   const [phase, setPhase] =
-    useState<Phase>(
-      'instructions',
-    );
+    useState<Phase>('instructions');
 
   const [countdown, setCountdown] =
-    useState(3);
+    useState(COUNTDOWN_SECONDS);
 
   const [recordingTime, setRecordingTime] =
     useState(0);
@@ -146,23 +119,21 @@ export default function RapidScaleTrillScreen({
     durationMs: number;
   } | null>(null);
 
+  // ----------------------------------------------------------
+  // REFS
+  // ----------------------------------------------------------
+
   const audioContextRef =
-    useRef<AudioContext | null>(
-      null,
-    );
+    useRef<AudioContext | null>(null);
 
   const recorderRef =
-    useRef<AudioRecorder | null>(
-      null,
-    );
+    useRef<AudioRecorder | null>(null);
 
   const samplesRef =
     useRef<number[]>([]);
 
   const recordingStartRef =
-    useRef<number | null>(
-      null,
-    );
+    useRef<number | null>(null);
 
   const recordingTimerRef =
     useRef<ReturnType<
@@ -171,6 +142,10 @@ export default function RapidScaleTrillScreen({
 
   const processingRef =
     useRef(false);
+
+  // ----------------------------------------------------------
+  // CLEANUP
+  // ----------------------------------------------------------
 
   useEffect(() => {
     return () => {
@@ -184,6 +159,10 @@ export default function RapidScaleTrillScreen({
     };
   }, []);
 
+  // ----------------------------------------------------------
+  // MICROPHONE PERMISSION
+  // ----------------------------------------------------------
+
   const requestMicrophonePermission =
     async (): Promise<boolean> => {
       try {
@@ -196,14 +175,17 @@ export default function RapidScaleTrillScreen({
       }
     };
 
+  // ----------------------------------------------------------
+  // REFERENCE PLAYBACK
+  // ----------------------------------------------------------
+
   const playReference =
     async () => {
       try {
         const context =
           audioContextRef.current ??
           new AudioContext({
-            sampleRate:
-              SAMPLE_RATE,
+            sampleRate: SAMPLE_RATE,
           });
 
         audioContextRef.current =
@@ -212,11 +194,7 @@ export default function RapidScaleTrillScreen({
         await context.resume();
 
         const noteDuration =
-          tier === 'beginner'
-            ? 0.32
-            : tier === 'intermediate'
-              ? 0.24
-              : 0.18;
+          config.noteDurationSec;
 
         for (
           const frequency of
@@ -241,9 +219,7 @@ export default function RapidScaleTrillScreen({
           const startTime =
             context.currentTime;
 
-          oscillator.start(
-            startTime,
-          );
+          oscillator.start(startTime);
 
           oscillator.stop(
             startTime +
@@ -262,6 +238,10 @@ export default function RapidScaleTrillScreen({
       }
     };
 
+  // ----------------------------------------------------------
+  // BEGIN EXERCISE
+  // ----------------------------------------------------------
+
   const beginExercise =
     async () => {
       const permission =
@@ -274,27 +254,35 @@ export default function RapidScaleTrillScreen({
       setPhase('reference');
     };
 
+  // ----------------------------------------------------------
+  // START COUNTDOWN
+  // ----------------------------------------------------------
+
   const startCountdown =
     async () => {
       setPhase('countdown');
 
       for (
-        let value = 3;
+        let value = COUNTDOWN_SECONDS;
         value >= 1;
         value--
       ) {
         setCountdown(value);
+
         await sleep(1000);
       }
 
       await startRecording();
     };
 
+  // ----------------------------------------------------------
+  // START RECORDING
+  // ----------------------------------------------------------
+
   const startRecording =
     async () => {
       try {
-        processingRef.current =
-          false;
+        processingRef.current = false;
 
         samplesRef.current = [];
 
@@ -307,8 +295,7 @@ export default function RapidScaleTrillScreen({
         const callbackResult =
           recorder.onAudioReady(
             {
-              sampleRate:
-                SAMPLE_RATE,
+              sampleRate: SAMPLE_RATE,
               bufferLength:
                 BUFFER_SIZE,
               channelCount: 1,
@@ -319,9 +306,7 @@ export default function RapidScaleTrillScreen({
             }) => {
               try {
                 const channelData =
-                  buffer.getChannelData(
-                    0,
-                  );
+                  buffer.getChannelData(0);
 
                 const frameCount =
                   Math.min(
@@ -353,9 +338,7 @@ export default function RapidScaleTrillScreen({
           recorderRef.current =
             null;
 
-          setPhase(
-            'instructions',
-          );
+          setPhase('instructions');
 
           return;
         }
@@ -379,9 +362,7 @@ export default function RapidScaleTrillScreen({
           recorderRef.current =
             null;
 
-          setPhase(
-            'instructions',
-          );
+          setPhase('instructions');
 
           return;
         }
@@ -390,7 +371,6 @@ export default function RapidScaleTrillScreen({
           Date.now();
 
         setRecordingTime(0);
-
         setPhase('recording');
 
         recordingTimerRef.current =
@@ -403,19 +383,21 @@ export default function RapidScaleTrillScreen({
             }
 
             const elapsed =
-              (Date.now() -
-                start) /
+              (Date.now() - start) /
               1000;
 
             setRecordingTime(
-              elapsed,
+              Math.min(
+                elapsed,
+                MAX_RECORDING_SECONDS,
+              ),
             );
 
             if (
               elapsed >=
               MAX_RECORDING_SECONDS
             ) {
-              processRecording();
+              void processRecording();
             }
           }, 100);
       } catch (error) {
@@ -424,11 +406,13 @@ export default function RapidScaleTrillScreen({
           error,
         );
 
-        setPhase(
-          'instructions',
-        );
+        setPhase('instructions');
       }
     };
+
+  // ----------------------------------------------------------
+  // STOP RECORDING
+  // ----------------------------------------------------------
 
   const stopRecording =
     () => {
@@ -443,9 +427,7 @@ export default function RapidScaleTrillScreen({
           null;
       }
 
-      if (
-        recorderRef.current
-      ) {
+      if (recorderRef.current) {
         try {
           recorderRef.current.clearOnAudioReady();
         } catch {}
@@ -454,21 +436,21 @@ export default function RapidScaleTrillScreen({
           recorderRef.current.stop();
         } catch {}
 
-        recorderRef.current =
-          null;
+        recorderRef.current = null;
       }
     };
 
+  // ----------------------------------------------------------
+  // PROCESS RECORDING
+  // ----------------------------------------------------------
+
   const processRecording =
     async () => {
-      if (
-        processingRef.current
-      ) {
+      if (processingRef.current) {
         return;
       }
 
-      processingRef.current =
-        true;
+      processingRef.current = true;
 
       stopRecording();
 
@@ -495,8 +477,7 @@ export default function RapidScaleTrillScreen({
           );
 
         setResult({
-          overall:
-            scored.overall,
+          overall: scored.overall,
           pitchScore:
             scored.pitchScore,
           sequenceScore:
@@ -505,8 +486,7 @@ export default function RapidScaleTrillScreen({
             scored.transitionScore,
           speedScore:
             scored.speedScore,
-          passed:
-            scored.passed,
+          passed: scored.passed,
           feedback:
             scored.feedback,
 
@@ -542,347 +522,562 @@ export default function RapidScaleTrillScreen({
         processingRef.current =
           false;
 
-        setPhase(
-          'instructions',
-        );
+        setPhase('instructions');
       }
     };
 
+  // ----------------------------------------------------------
+  // RESET
+  // ----------------------------------------------------------
+
   const resetExercise =
     () => {
-      processingRef.current =
-        false;
+      processingRef.current = false;
 
       setResult(null);
       setRecordingTime(0);
-      setCountdown(3);
+      setCountdown(
+        COUNTDOWN_SECONDS,
+      );
+
       samplesRef.current = [];
 
-      setPhase(
-        'instructions',
-      );
+      setPhase('instructions');
     };
+
+  // ============================================================
+  // INSTRUCTIONS
+  // ============================================================
 
   const renderInstructions =
     () => (
       <View style={styles.content}>
-        <Text style={styles.eyebrow}>
-          VOCAL AGILITY
-        </Text>
+        {/* Back */}
+        <Pressable
+          style={styles.backButton}
+          onPress={() => router.back()}
+          hitSlop={10}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={BROWN}
+          />
+        </Pressable>
+
+        {/* Icon */}
+        <View style={styles.iconCircle}>
+          <Ionicons
+            name="flash-outline"
+            size={34}
+            color={BROWN}
+          />
+        </View>
 
         <Text style={styles.title}>
           Rapid Scale Trill
         </Text>
 
-        <Text
-          style={styles.description}
-        >
-          Sing the repeating scale pattern
-          quickly and accurately while
-          maintaining consistent pitch and
-          smooth note transitions.
+        <Text style={styles.subtitle}>
+          VOCAL AGILITY
         </Text>
 
-        <View style={styles.card}>
-          <Text
-            style={styles.cardTitle}
-          >
-            How to perform
+        {/* Main Card */}
+        <View style={styles.instructionCard}>
+          <View style={styles.prepareCard}>
+            <View style={styles.prepareHeader}>
+              <Ionicons
+                name="information-circle-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareTitle}>
+                Before You Begin
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Find a quiet area with minimal background noise.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Stand or sit upright with your shoulders relaxed.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="mic-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Keep a comfortable distance from the microphone while singing.
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.cardTitle}>
+            Exercise Details
           </Text>
 
-          <Text style={styles.step}>
-            1. Listen to the reference
-            pattern.
-          </Text>
-
-          <Text style={styles.step}>
-            2. Follow the notes in order.
-          </Text>
-
-          <Text style={styles.step}>
-            3. Sing the scale pattern
-            rapidly.
-          </Text>
-
-          <Text style={styles.step}>
-            4. Keep every note clear and
-            controlled.
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <View style={styles.infoBox}>
-            <Text
-              style={styles.infoLabel}
-            >
-              LEVEL
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Difficulty
             </Text>
 
-            <Text
-              style={styles.infoValue}
-            >
+            <Text style={styles.detailValue}>
               {config.label}
             </Text>
           </View>
 
-          <View style={styles.infoBox}>
-            <Text
-              style={styles.infoLabel}
-            >
-              SPEED
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Speed
             </Text>
 
-            <Text
-              style={styles.infoValue}
-            >
+            <Text style={styles.detailValue}>
               {config.speedLabel}
+            </Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Notes
+            </Text>
+
+            <Text style={styles.detailValue}>
+              {config.frequencies.length}
+            </Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Note Duration
+            </Text>
+
+            <Text style={styles.detailValue}>
+              {config.noteDurationSec.toFixed(2)}s
+            </Text>
+          </View>
+
+          <Text
+            style={[
+              styles.cardTitle,
+              { marginTop: 14 },
+            ]}
+          >
+            Instructions
+          </Text>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Listen carefully to the reference scale pattern.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Follow the notes in the correct order.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Sing the pattern rapidly while keeping each note clear.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Focus on accurate transitions rather than forcing speed.
             </Text>
           </View>
         </View>
 
-        <Pressable
-          style={styles.primaryButton}
-          onPress={
-            beginExercise
-          }
-        >
-          <Text
-            style={
-              styles.primaryButtonText
-            }
-          >
-            Start Exercise
+        {/* Reference Card */}
+        <View style={styles.referenceCard}>
+          <Text style={styles.cardTitle}>
+            Target Scale
           </Text>
-        </Pressable>
 
+          <Text style={styles.referenceLabel}>
+            NOTES TO REPRODUCE
+          </Text>
+
+          <View style={styles.noteSequence}>
+            {config.frequencies.map(
+              (frequency, index) => (
+                <View
+                  key={`${frequency}-${index}`}
+                  style={styles.notePill}
+                >
+                  <Text style={styles.noteNumber}>
+                    {index + 1}
+                  </Text>
+
+                  <Text style={styles.noteText}>
+                    {frequencyToNoteName(
+                      frequency,
+                    )}
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
+
+          <Text style={styles.referenceHint}>
+            The reference sequence will play before recording begins.
+          </Text>
+        </View>
+
+        {/* Tip */}
+        <View style={styles.tipCard}>
+          <Ionicons
+            name="bulb-outline"
+            size={19}
+            color={BROWN}
+          />
+
+          <Text style={styles.tipText}>
+            Focus on clean pitch changes first. Build speed naturally while maintaining accuracy.
+          </Text>
+        </View>
+
+        {/* Difficulty */}
+        <View style={styles.difficultyRow}>
+          <Text style={styles.difficultyLabel}>
+            Difficulty
+          </Text>
+
+          <Text style={styles.difficultyValue}>
+            {config.label}
+          </Text>
+        </View>
+
+        {/* Start */}
         <Pressable
-          style={styles.secondaryButton}
-          onPress={() =>
-            router.back()
-          }
+          style={styles.startButton}
+          onPress={beginExercise}
         >
-          <Text
-            style={
-              styles.secondaryButtonText
-            }
-          >
-            Back
+          <Ionicons
+            name="play"
+            size={18}
+            color={WHITE}
+          />
+
+          <Text style={styles.startButtonText}>
+            Start Exercise
           </Text>
         </Pressable>
       </View>
     );
 
+  // ============================================================
+  // REFERENCE
+  // ============================================================
+
   const renderReference =
     () => (
-      <View style={styles.content}>
-        <Text style={styles.eyebrow}>
-          REFERENCE
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons
+            name="musical-notes-outline"
+            size={34}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.phaseTitle}>
+          Listen to the Scale
         </Text>
 
-        <Text style={styles.title}>
-          Listen First
+        <Text style={styles.phaseSubtitle}>
+          Pay attention to each note and the speed of the scale pattern.
         </Text>
 
-        <Text
-          style={styles.description}
-        >
-          Listen to the scale pattern,
-          then reproduce the same sequence
-          with consistent transitions.
-        </Text>
+        <View style={styles.referenceCard}>
+          <Text style={styles.referenceLabel}>
+            REFERENCE NOTES
+          </Text>
 
-        <View
-          style={styles.noteSequence}
-        >
-          {config.frequencies.map(
-            (frequency, index) => (
-              <View
-                key={`${frequency}-${index}`}
-                style={
-                  styles.noteBubble
-                }
-              >
-                <Text
-                  style={
-                    styles.noteNumber
-                  }
+          <View style={styles.noteSequence}>
+            {config.frequencies.map(
+              (frequency, index) => (
+                <View
+                  key={`${frequency}-${index}`}
+                  style={styles.notePill}
                 >
-                  {index + 1}
-                </Text>
+                  <Text style={styles.noteNumber}>
+                    {index + 1}
+                  </Text>
 
-                <Text
-                  style={
-                    styles.noteFrequency
-                  }
-                >
-                  {Math.round(
-                    frequency,
-                  )}{' '}
-                  Hz
-                </Text>
-              </View>
-            ),
-          )}
+                  <Text style={styles.noteText}>
+                    {frequencyToNoteName(
+                      frequency,
+                    )}
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
         </View>
 
         <Pressable
-          style={styles.primaryButton}
-          onPress={
-            playReference
-          }
+          style={styles.startButton}
+          onPress={playReference}
         >
-          <Text
-            style={
-              styles.primaryButtonText
-            }
-          >
-            ▶ Play Reference
+          <Ionicons
+            name="play"
+            size={18}
+            color={WHITE}
+          />
+
+          <Text style={styles.startButtonText}>
+            Play Reference
           </Text>
         </Pressable>
 
         <Pressable
-          style={styles.secondaryButton}
-          onPress={
-            startCountdown
-          }
+          style={styles.doneButton}
+          onPress={startCountdown}
         >
-          <Text
-            style={
-              styles.secondaryButtonText
-            }
-          >
+          <Text style={styles.doneButtonText}>
             Continue
           </Text>
         </Pressable>
       </View>
     );
 
+  // ============================================================
+  // COUNTDOWN
+  // ============================================================
+
   const renderCountdown =
     () => (
-      <View
-        style={
-          styles.centerContent
-        }
-      >
-        <Text style={styles.eyebrow}>
-          GET READY
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons
+            name="flash-outline"
+            size={34}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.phaseTitle}>
+          Get Ready
         </Text>
 
-        <Text
-          style={styles.countdown}
-        >
+        <Text style={styles.countdownText}>
           {countdown}
         </Text>
 
-        <Text
-          style={styles.description}
-        >
-          Prepare for the rapid scale
-          pattern.
+        <Text style={styles.phaseSubtitle}>
+          Prepare for the rapid scale pattern.
         </Text>
       </View>
     );
+
+  // ============================================================
+  // RECORDING
+  // ============================================================
 
   const renderRecording =
-    () => (
-      <View
-        style={
-          styles.centerContent
-        }
-      >
-        <View
-          style={
-            styles.recordingIndicator
-          }
-        />
+    () => {
+      const progress = Math.min(
+        recordingTime /
+          MAX_RECORDING_SECONDS,
+        1,
+      );
 
-        <Text style={styles.eyebrow}>
-          RECORDING
-        </Text>
+      return (
+        <View style={styles.content}>
+          <View style={styles.recordingIcon}>
+            <Ionicons
+              name="mic"
+              size={34}
+              color={BROWN}
+            />
+          </View>
 
-        <Text style={styles.title}>
-          Sing the Scale
-        </Text>
+          <Text style={styles.recordingTitle}>
+            Sing the Scale
+          </Text>
 
-        <Text
-          style={styles.timer}
-        >
-          {recordingTime.toFixed(1)}
-          s
-        </Text>
+          <Text style={styles.recordingSubtitle}>
+            Follow the pattern quickly while keeping every note accurate and controlled.
+          </Text>
 
-        <Text
-          style={styles.description}
-        >
-          Follow the pattern quickly,
-          but keep each transition
-          accurate.
-        </Text>
+          <View style={styles.recordingBadge}>
+            <View style={styles.recordingDot} />
 
-        <View
-          style={styles.noteSequence}
-        >
-          {config.frequencies.map(
-            (frequency, index) => (
-              <View
-                key={`${frequency}-${index}`}
-                style={
-                  styles.smallNoteBubble
-                }
-              >
-                <Text
-                  style={
-                    styles.smallNoteText
-                  }
-                >
-                  {index + 1}
+            <Text style={styles.recordingBadgeText}>
+              RECORDING
+            </Text>
+          </View>
+
+          <View style={styles.liveCard}>
+            <Text style={styles.liveLabel}>
+              RECORDING TIME
+            </Text>
+
+            <Text style={styles.liveCurrentNote}>
+              {recordingTime.toFixed(1)}s
+            </Text>
+
+            <View style={styles.liveDivider} />
+
+            <View style={styles.liveStats}>
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>
+                  Target Notes
+                </Text>
+
+                <Text style={styles.liveStatValue}>
+                  {config.frequencies.length}
                 </Text>
               </View>
-            ),
-          )}
-        </View>
 
-        <Pressable
-          style={styles.stopButton}
-          onPress={
-            processRecording
-          }
-        >
-          <Text
-            style={
-              styles.stopButtonText
-            }
-          >
-            Stop Recording
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>
+                  Max Time
+                </Text>
+
+                <Text style={styles.liveStatValue}>
+                  {MAX_RECORDING_SECONDS}s
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.timerText}>
+            Recording Time: {recordingTime.toFixed(1)}s
           </Text>
-        </Pressable>
-      </View>
-    );
+
+          <View style={styles.timerTrack}>
+            <View
+              style={[
+                styles.timerFill,
+                {
+                  width: `${progress * 100}%`,
+                },
+              ]}
+            />
+          </View>
+
+          <View style={styles.referenceCard}>
+            <Text style={styles.cardTitle}>
+              Sing This Sequence
+            </Text>
+
+            <View style={styles.noteSequence}>
+              {config.frequencies.map(
+                (frequency, index) => (
+                  <View
+                    key={`${frequency}-${index}`}
+                    style={styles.notePill}
+                  >
+                    <Text style={styles.noteNumber}>
+                      {index + 1}
+                    </Text>
+
+                    <Text style={styles.noteText}>
+                      {frequencyToNoteName(
+                        frequency,
+                      )}
+                    </Text>
+                  </View>
+                ),
+              )}
+            </View>
+          </View>
+
+          <Pressable
+            style={styles.finishButton}
+            onPress={processRecording}
+          >
+            <Ionicons
+              name="stop"
+              size={18}
+              color={BROWN}
+            />
+
+            <Text style={styles.finishButtonText}>
+              Finish Recording
+            </Text>
+          </Pressable>
+        </View>
+      );
+    };
+
+  // ============================================================
+  // PROCESSING
+  // ============================================================
 
   const renderProcessing =
     () => (
-      <View
-        style={
-          styles.centerContent
-        }
-      >
-        <ActivityIndicator
-          size="large"
-        />
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+          />
+        </View>
 
-        <Text style={styles.title}>
-          Analyzing...
+        <Text style={styles.phaseTitle}>
+          Analyzing Your Singing
         </Text>
 
-        <Text
-          style={styles.description}
-        >
-          Measuring your pitch,
-          sequence accuracy,
-          transitions, and speed.
+        <Text style={styles.phaseSubtitle}>
+          Measuring pitch accuracy, sequence accuracy, transitions, and speed.
         </Text>
       </View>
     );
+
+  // ============================================================
+  // RESULTS
+  // ============================================================
 
   const renderResults =
     () => {
@@ -891,292 +1086,321 @@ export default function RapidScaleTrillScreen({
       }
 
       return (
-        <ScrollView
-          contentContainerStyle={
-            styles.resultsContainer
-          }
-        >
-          <Text style={styles.eyebrow}>
-            RESULTS
-          </Text>
-
-          <Text style={styles.title}>
-            Rapid Scale Results
-          </Text>
-
+        <View style={styles.resultsContent}>
           <View
-            style={
-              styles.overallCard
-            }
+            style={[
+              styles.resultIcon,
+              result.passed
+                ? styles.resultIconPassed
+                : styles.resultIconFailed,
+            ]}
           >
-            <Text
-              style={
-                styles.overallLabel
+            <Ionicons
+              name={
+                result.passed
+                  ? 'checkmark'
+                  : 'refresh'
               }
-            >
+              size={40}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.resultTitle}>
+            {result.passed
+              ? 'Great Job!'
+              : 'Keep Practicing!'}
+          </Text>
+
+          <Text style={styles.resultSubtitle}>
+            Rapid Scale Trill Result
+          </Text>
+
+          {/* Overall */}
+          <View style={styles.scoreCard}>
+            <Text style={styles.scoreLabel}>
               OVERALL SCORE
             </Text>
 
-            <Text
-              style={
-                styles.overallScore
-              }
-            >
-              {Math.round(
-                result.overall,
-              )}
+            <Text style={styles.scoreValue}>
+              {Math.round(result.overall)}
             </Text>
 
-            <Text
-              style={[
-                styles.statusText,
-                result.passed
-                  ? styles.passed
-                  : styles.needsPractice,
-              ]}
-            >
-              {result.passed
-                ? 'PASSED'
-                : 'KEEP PRACTICING'}
+            <Text style={styles.scoreDescription}>
+              out of 100
             </Text>
           </View>
 
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Pitch Accuracy
+          {/* Breakdown */}
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>
+              Performance Breakdown
             </Text>
 
-            <Text
-              style={styles.scoreValue}
-            >
-              {Math.round(
-                result.pitchScore,
-              )}
-              %
-            </Text>
+            <View style={styles.scoreRow}>
+              <View style={styles.scoreRowHeader}>
+                <Text style={styles.scoreRowLabel}>
+                  Pitch Accuracy
+                </Text>
+
+                <Text style={styles.scoreRowValue}>
+                  {Math.round(
+                    result.pitchScore,
+                  )}
+                  %
+                </Text>
+              </View>
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(
+                        Math.max(
+                          result.pitchScore,
+                          0,
+                        ),
+                        100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.scoreRow}>
+              <View style={styles.scoreRowHeader}>
+                <Text style={styles.scoreRowLabel}>
+                  Sequence Accuracy
+                </Text>
+
+                <Text style={styles.scoreRowValue}>
+                  {Math.round(
+                    result.sequenceScore,
+                  )}
+                  %
+                </Text>
+              </View>
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(
+                        Math.max(
+                          result.sequenceScore,
+                          0,
+                        ),
+                        100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.scoreRow}>
+              <View style={styles.scoreRowHeader}>
+                <Text style={styles.scoreRowLabel}>
+                  Transition Accuracy
+                </Text>
+
+                <Text style={styles.scoreRowValue}>
+                  {Math.round(
+                    result.transitionScore,
+                  )}
+                  %
+                </Text>
+              </View>
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(
+                        Math.max(
+                          result.transitionScore,
+                          0,
+                        ),
+                        100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.scoreRowLast}>
+              <View style={styles.scoreRowHeader}>
+                <Text style={styles.scoreRowLabel}>
+                  Speed Score
+                </Text>
+
+                <Text style={styles.scoreRowValue}>
+                  {Math.round(
+                    result.speedScore,
+                  )}
+                  %
+                </Text>
+              </View>
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(
+                        Math.max(
+                          result.speedScore,
+                          0,
+                        ),
+                        100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
           </View>
 
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Sequence Accuracy
+          {/* Metrics */}
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>
+              Performance Metrics
             </Text>
 
-            <Text
-              style={styles.scoreValue}
-            >
-              {Math.round(
-                result.sequenceScore,
-              )}
-              %
-            </Text>
-          </View>
+            <View style={styles.metricRow}>
+              <Text style={styles.metricLabel}>
+                Correct Notes
+              </Text>
 
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Transition Accuracy
-            </Text>
-
-            <Text
-              style={styles.scoreValue}
-            >
-              {Math.round(
-                result.transitionScore,
-              )}
-              %
-            </Text>
-          </View>
-
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Speed Score
-            </Text>
-
-            <Text
-              style={styles.scoreValue}
-            >
-              {Math.round(
-                result.speedScore,
-              )}
-              %
-            </Text>
-          </View>
-
-          <View
-            style={styles.statsGrid}
-          >
-            <View
-              style={styles.statBox}
-            >
-              <Text
-                style={styles.statValue}
-              >
+              <Text style={styles.metricValue}>
                 {result.correctNoteCount}/
                 {result.noteCount}
               </Text>
-
-              <Text
-                style={styles.statLabel}
-              >
-                Correct Notes
-              </Text>
             </View>
 
-            <View
-              style={styles.statBox}
-            >
-              <Text
-                style={styles.statValue}
-              >
+            <View style={styles.metricRow}>
+              <Text style={styles.metricLabel}>
+                Correct Transitions
+              </Text>
+
+              <Text style={styles.metricValue}>
                 {result.correctTransitionCount}/
                 {result.transitionCount}
               </Text>
-
-              <Text
-                style={styles.statLabel}
-              >
-                Correct Transitions
-              </Text>
             </View>
 
-            <View
-              style={styles.statBox}
-            >
-              <Text
-                style={styles.statValue}
-              >
+            <View style={styles.metricRow}>
+              <Text style={styles.metricLabel}>
+                Average Transition
+              </Text>
+
+              <Text style={styles.metricValue}>
                 {result.averageTransitionTimeMs > 0
                   ? result.averageTransitionTimeMs.toFixed(
                       0,
                     )
-                  : '0'}
+                  : '0'}{' '}
                 ms
-              </Text>
-
-              <Text
-                style={styles.statLabel}
-              >
-                Avg. Transition
               </Text>
             </View>
 
-            <View
-              style={styles.statBox}
-            >
-              <Text
-                style={styles.statValue}
-              >
+            <View style={styles.metricRow}>
+              <Text style={styles.metricLabel}>
+                Notes per Second
+              </Text>
+
+              <Text style={styles.metricValue}>
                 {result.notesPerSecond.toFixed(
                   2,
                 )}
               </Text>
-
-              <Text
-                style={styles.statLabel}
-              >
-                Notes / Sec
-              </Text>
             </View>
 
             <View
-              style={styles.statBox}
+              style={[
+                styles.metricRow,
+                styles.metricRowLast,
+              ]}
             >
-              <Text
-                style={styles.statValue}
-              >
-                {(
-                  result.durationMs /
-                  1000
-                ).toFixed(1)}
-                s
+              <Text style={styles.metricLabel}>
+                Duration
               </Text>
 
-              <Text
-                style={styles.statLabel}
-              >
-                Duration
+              <Text style={styles.metricValue}>
+                {(
+                  result.durationMs / 1000
+                ).toFixed(1)}
+                s
               </Text>
             </View>
           </View>
 
-          <View
-            style={
-              styles.feedbackCard
-            }
-          >
-            <Text
-              style={
-                styles.feedbackTitle
-              }
-            >
-              Feedback
-            </Text>
+          {/* Feedback */}
+          <View style={styles.tipCard}>
+            <Ionicons
+              name="bulb-outline"
+              size={20}
+              color={BROWN}
+            />
 
-            <Text
-              style={
-                styles.feedbackText
-              }
-            >
+            <Text style={styles.tipText}>
               {result.feedback}
             </Text>
           </View>
 
+          {/* Retry */}
           <Pressable
-            style={
-              styles.primaryButton
-            }
-            onPress={
-              resetExercise
-            }
+            style={styles.startButton}
+            onPress={resetExercise}
           >
-            <Text
-              style={
-                styles.primaryButtonText
-              }
-            >
+            <Ionicons
+              name="refresh"
+              size={18}
+              color={WHITE}
+            />
+
+            <Text style={styles.startButtonText}>
               Try Again
             </Text>
           </Pressable>
 
+          {/* Done */}
           <Pressable
-            style={
-              styles.secondaryButton
-            }
+            style={styles.doneButton}
             onPress={() =>
-              router.back()
+              router.replace(
+                '/dashboard/exercises',
+              )
             }
           >
-            <Text
-              style={
-                styles.secondaryButtonText
-              }
-            >
-              Back to Exercises
+            <Text style={styles.doneButtonText}>
+              Done
             </Text>
           </Pressable>
-        </ScrollView>
+        </View>
       );
     };
 
+  // ============================================================
+  // MAIN RENDER
+  // ============================================================
+
   return (
-    <View style={styles.container}>
-      {phase ===
-        'instructions' &&
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={
+        phase === 'results'
+          ? styles.resultsWrapper
+          : undefined
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      {phase === 'instructions' &&
         renderInstructions()}
 
       {phase === 'reference' &&
@@ -1193,344 +1417,661 @@ export default function RapidScaleTrillScreen({
 
       {phase === 'results' &&
         renderResults()}
-    </View>
+    </ScrollView>
   );
 }
 
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        '#FFF7FB',
-    },
+// ============================================================
+// STYLES
+// ============================================================
 
-    content: {
-      flex: 1,
-      padding: 24,
-      justifyContent:
-        'center',
-    },
+const styles = StyleSheet.create({
+  // ============================================================
+  // SCREEN
+  // ============================================================
 
-    centerContent: {
-      flex: 1,
-      padding: 24,
-      alignItems: 'center',
-      justifyContent:
-        'center',
-    },
+  screen: {
+    flex: 1,
+    backgroundColor: WHITE,
+  },
 
-    resultsContainer: {
-      padding: 24,
-      paddingBottom: 40,
-    },
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 92,
+    paddingBottom: 60,
+    alignItems: 'center',
+  },
 
-    eyebrow: {
-      fontSize: 12,
-      fontWeight: '800',
-      letterSpacing: 2,
-      color: '#C45A91',
-      marginBottom: 8,
-    },
+  resultsContent: {
+    flexGrow: 1,
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingTop: 92,
+    paddingBottom: 50,
+    alignItems: 'center',
+  },
 
-    title: {
-      fontSize: 30,
-      fontWeight: '800',
-      color: '#3A2531',
-      marginBottom: 12,
-    },
+  resultsWrapper: {
+    flexGrow: 1,
+    width: '100%',
+  },
 
-    description: {
-      fontSize: 16,
-      lineHeight: 24,
-      color: '#765F6A',
-      marginBottom: 24,
-      textAlign: 'center',
-    },
+  centerScreen: {
+    flexGrow: 1,
+    minHeight: 700,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
 
-    card: {
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 20,
-      padding: 20,
-      marginBottom: 20,
-    },
+  // ============================================================
+  // BACK
+  // ============================================================
 
-    cardTitle: {
-      fontSize: 18,
-      fontWeight: '800',
-      color: '#3A2531',
-      marginBottom: 14,
-    },
+  backButton: {
+    position: 'absolute',
+    top: 55,
+    left: 24,
+    zIndex: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: WHITE,
+  },
 
-    step: {
-      fontSize: 15,
-      color: '#765F6A',
-      lineHeight: 24,
-      marginBottom: 8,
-    },
+  // ============================================================
+  // GENERAL HEADER
+  // ============================================================
 
-    infoRow: {
-      flexDirection:
-        'row',
-      gap: 12,
-      marginBottom: 24,
-    },
+  iconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
 
-    infoBox: {
-      flex: 1,
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 16,
-      padding: 16,
-    },
+  title: {
+    fontFamily: 'FredokaBold',
+    fontSize: 28,
+    color: BROWN,
+    textAlign: 'center',
+  },
 
-    infoLabel: {
-      fontSize: 11,
-      fontWeight: '800',
-      color: '#A98796',
-      letterSpacing: 1,
-      marginBottom: 6,
-    },
+  subtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 3,
+    marginBottom: 24,
+  },
 
-    infoValue: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: '#3A2531',
-    },
+  phaseTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+    marginTop: 20,
+  },
 
-    primaryButton: {
-      backgroundColor:
-        '#D96FA3',
-      borderRadius: 18,
-      paddingVertical: 16,
-      alignItems: 'center',
-      marginBottom: 12,
-    },
+  phaseSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
+  },
 
-    primaryButtonText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '800',
-    },
+  // ============================================================
+  // INSTRUCTIONS
+  // ============================================================
 
-    secondaryButton: {
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 18,
-      paddingVertical: 16,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor:
-        '#E8D6DF',
-    },
+  instructionCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
 
-    secondaryButtonText: {
-      color: '#7D5367',
-      fontSize: 16,
-      fontWeight: '700',
-    },
+  prepareCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
 
-    noteSequence: {
-      flexDirection:
-        'row',
-      flexWrap: 'wrap',
-      justifyContent:
-        'center',
-      gap: 10,
-      marginBottom: 28,
-    },
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
 
-    noteBubble: {
-      width: 82,
-      height: 82,
-      borderRadius: 20,
-      backgroundColor:
-        '#FFFFFF',
-      alignItems: 'center',
-      justifyContent:
-        'center',
-    },
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+    marginLeft: 9,
+  },
 
-    noteNumber: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: '#D96FA3',
-    },
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
 
-    noteFrequency: {
-      fontSize: 11,
-      color: '#765F6A',
-      marginTop: 4,
-    },
+  prepareText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+    marginLeft: 9,
+  },
 
-    smallNoteBubble: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor:
-        '#FFFFFF',
-      alignItems: 'center',
-      justifyContent:
-        'center',
-    },
+  cardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+    marginTop: 10,
+    marginBottom: 14,
+  },
 
-    smallNoteText: {
-      fontSize: 15,
-      fontWeight: '800',
-      color: '#D96FA3',
-    },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+  },
 
-    countdown: {
-      fontSize: 96,
-      fontWeight: '900',
-      color: '#D96FA3',
-      marginBottom: 20,
-    },
+  detailLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
 
-    recordingIndicator: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor:
-        '#D96FA3',
-      marginBottom: 20,
-    },
+  detailValue: {
+    flex: 1,
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+    textAlign: 'right',
+    marginLeft: 16,
+  },
 
-    timer: {
-      fontSize: 48,
-      fontWeight: '800',
-      color: '#D96FA3',
-      marginBottom: 20,
-    },
+  // ============================================================
+  // REFERENCE
+  // ============================================================
 
-    stopButton: {
-      marginTop: 20,
-      backgroundColor:
-        '#FFFFFF',
-      borderWidth: 2,
-      borderColor:
-        '#D96FA3',
-      borderRadius: 18,
-      paddingVertical: 16,
-      paddingHorizontal: 40,
-    },
+  referenceCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginTop: 22,
+  },
 
-    stopButtonText: {
-      color: '#D96FA3',
-      fontSize: 16,
-      fontWeight: '800',
-    },
+  referenceLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
+    textAlign: 'center',
+  },
 
-    overallCard: {
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 24,
-      padding: 24,
-      alignItems: 'center',
-      marginBottom: 16,
-    },
+  referenceHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 16,
+  },
 
-    overallLabel: {
-      fontSize: 12,
-      fontWeight: '800',
-      letterSpacing: 1,
-      color: '#A98796',
-    },
+  noteSequence: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 9,
+    marginTop: 16,
+  },
 
-    overallScore: {
-      fontSize: 64,
-      fontWeight: '900',
-      color: '#D96FA3',
-      marginVertical: 6,
-    },
+  notePill: {
+    minWidth: 60,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: PINK,
+    alignItems: 'center',
+  },
 
-    statusText: {
-      fontSize: 13,
-      fontWeight: '900',
-      letterSpacing: 1,
-    },
+  noteNumber: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: MUTED,
+    marginBottom: 2,
+  },
 
-    passed: {
-      color: '#5B9A76',
-    },
+  noteText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
 
-    needsPractice: {
-      color: '#C45A91',
-    },
+  // ============================================================
+  // TIP
+  // ============================================================
 
-    scoreCard: {
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 18,
-      padding: 18,
-      marginBottom: 10,
-      flexDirection:
-        'row',
-      alignItems: 'center',
-      justifyContent:
-        'space-between',
-    },
+  tipCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 15,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
 
-    scoreLabel: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: '#5E4753',
-    },
+  tipText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+    marginLeft: 9,
+  },
 
-    scoreValue: {
-      fontSize: 20,
-      fontWeight: '900',
-      color: '#D96FA3',
-    },
+  // ============================================================
+  // DIFFICULTY
+  // ============================================================
 
-    statsGrid: {
-      flexDirection:
-        'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      marginTop: 6,
-      marginBottom: 16,
-    },
+  difficultyRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 4,
+  },
 
-    statBox: {
-      width: '48%',
-      backgroundColor:
-        '#FFFFFF',
-      borderRadius: 18,
-      padding: 16,
-    },
+  difficultyLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
 
-    statValue: {
-      fontSize: 19,
-      fontWeight: '900',
-      color: '#3A2531',
-      marginBottom: 4,
-    },
+  difficultyValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
 
-    statLabel: {
-      fontSize: 12,
-      color: '#8A707C',
-    },
+  // ============================================================
+  // BUTTONS
+  // ============================================================
 
-    feedbackCard: {
-      backgroundColor:
-        '#FBE8F1',
-      borderRadius: 20,
-      padding: 20,
-      marginBottom: 20,
-    },
+  startButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 14,
+  },
 
-    feedbackTitle: {
-      fontSize: 17,
-      fontWeight: '800',
-      color: '#3A2531',
-      marginBottom: 8,
-    },
+  startButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: WHITE,
+  },
 
-    feedbackText: {
-      fontSize: 15,
-      lineHeight: 23,
-      color: '#765F6A',
-    },
-  });
+  finishButton: {
+    width: '100%',
+    height: 53,
+    borderRadius: 27,
+    backgroundColor: LIGHT_GRAY,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 18,
+  },
+
+  finishButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+
+  doneButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+
+  doneButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+
+  // ============================================================
+  // COUNTDOWN
+  // ============================================================
+
+  countdownText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 72,
+    color: BROWN,
+    marginTop: 20,
+  },
+
+  // ============================================================
+  // RECORDING
+  // ============================================================
+
+  recordingIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+
+  recordingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 26,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  recordingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 3,
+    maxWidth: 310,
+  },
+
+  recordingBadge: {
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BROWN,
+    marginRight: 7,
+  },
+
+  recordingBadgeText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: BROWN,
+  },
+
+  liveCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+  },
+
+  liveLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
+  },
+
+  liveCurrentNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 42,
+    color: BROWN,
+    marginTop: 4,
+  },
+
+  liveDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: 15,
+  },
+
+  liveStats: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 6,
+  },
+
+  liveStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  liveStatLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+  },
+
+  liveStatValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+    marginTop: 3,
+  },
+
+  timerText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 7,
+  },
+
+  timerTrack: {
+    width: '100%',
+    height: 7,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+
+  timerFill: {
+    height: '100%',
+    backgroundColor: PINK,
+  },
+
+  // ============================================================
+  // RESULTS
+  // ============================================================
+
+  resultIcon: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+
+  resultIconPassed: {
+    backgroundColor: PINK,
+  },
+
+  resultIconFailed: {
+    backgroundColor: LIGHT_GRAY,
+  },
+
+  resultTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 27,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  resultSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 3,
+    marginBottom: 22,
+  },
+
+  scoreCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 22,
+    padding: 22,
+    alignItems: 'center',
+  },
+
+  scoreLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  scoreValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 52,
+    color: BROWN,
+    marginVertical: 3,
+  },
+
+  scoreDescription: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    textAlign: 'center',
+  },
+
+  resultCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  resultCardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 17,
+    color: BROWN,
+    marginBottom: 14,
+  },
+
+  scoreRow: {
+    marginBottom: 14,
+  },
+
+  scoreRowLast: {
+    marginBottom: 0,
+  },
+
+  scoreRowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+
+  scoreRowLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+
+  scoreRowValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  progressBackground: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: LIGHT_GRAY,
+    overflow: 'hidden',
+  },
+
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: PINK,
+  },
+
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+
+  metricRowLast: {
+    borderBottomWidth: 0,
+  },
+
+  metricLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    flex: 1,
+  },
+
+  metricValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+    textAlign: 'right',
+    marginLeft: 12,
+  },
+});

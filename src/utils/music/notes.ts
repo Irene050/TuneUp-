@@ -117,3 +117,31 @@ export function getRandomPitchNote(
     midi
   );
 }
+
+/**
+ * Convert frequency to the nearest musical note name.
+ *
+ * Example:
+ * 440 Hz → A4
+ * 261.63 Hz → C4
+ */
+export function frequencyToNoteName(
+  frequency: number
+): string {
+  if (
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
+    return '--';
+  }
+
+  const midi = Math.round(
+    69 +
+      12 *
+        Math.log2(
+          frequency / 440
+        )
+  );
+
+  return midiToNoteName(midi);
+}

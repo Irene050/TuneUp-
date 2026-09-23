@@ -1,34 +1,39 @@
+// app/exercises/agility.tsx
+
 import { useLocalSearchParams } from 'expo-router';
 
+import ArpeggioSpeedDrillScreen from '../../src/screens/exercises/Agility/ArpeggioSpeedDrillScreen';
+import QuickIntervalJumpScreen from '../../src/screens/exercises/Agility/QuickIntervalJumpScreen';
 import RapidNoteTransitionExerciseScreen from '../../src/screens/exercises/Agility/RapidNoteTransitionExerciseScreen';
+import RapidScaleTrillScreen from '../../src/screens/exercises/Agility/RapidScaleTrillScreen';
+import VocalRunAccuracyTaskScreen from '../../src/screens/exercises/Agility/VocalRunAccuracyTaskScreen';
 
 export default function AgilityRoute() {
-  const { templateId } =
-    useLocalSearchParams<{
-      templateId?: string;
-    }>();
+  const { templateId } = useLocalSearchParams<{
+    templateId?: string;
+  }>();
 
-  /*
-   * For now, Rapid Note Transition is the first
-   * Agility exercise being implemented.
-   *
-   * If no templateId is supplied, open the first
-   * Agility exercise by default.
-   */
   switch (templateId) {
-    case undefined:
-    case 'rapidNoteTransitionExercise':
+    case 'arpeggioSpeed':
+      return <ArpeggioSpeedDrillScreen tier="beginner" />;
+
+    case 'quickIntervalJump':
+      return <QuickIntervalJumpScreen tier="beginner" />;
+
+    case 'rapidNoteTransition':
       return (
         <RapidNoteTransitionExerciseScreen
           tier="beginner"
         />
       );
+
+    case 'rapidScaleTrill':
+      return <RapidScaleTrillScreen tier="beginner" />;
+
+    case 'vocalRunAccuracy':
+      return <VocalRunAccuracyTaskScreen tier="beginner" />;
 
     default:
-      return (
-        <RapidNoteTransitionExerciseScreen
-          tier="beginner"
-        />
-      );
+      return null;
   }
 }

@@ -1,28 +1,59 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+
 import {
-    AudioContext,
-    AudioManager,
-    AudioRecorder,
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
 } from 'react-native-audio-api';
 
 import type { Tier } from '@/constants/exercises/agility';
+
 import {
-    measureArpeggioSpeed,
-    type ArpeggioSpeedMeasurement,
+  measureArpeggioSpeed,
+  type ArpeggioSpeedMeasurement,
 } from '@/services/measurement/agility/arpeggioSpeedDrill';
+
 import {
-    scoreArpeggioSpeed,
-    type ArpeggioSpeedScore,
+  scoreArpeggioSpeed,
+  type ArpeggioSpeedScore,
 } from '@/services/scoring/agility/arpeggioSpeedDrill';
+
+// ============================================================
+// COLORS
+// ============================================================
+
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const LIGHT_PINK = '#FFF8FA';
+const WHITE = '#FFFFFF';
+const MUTED = '#8E7770';
+const LIGHT_GRAY = '#F2F2F2';
+const BORDER = '#F2DDE5';
+
+const GREEN = '#39734A';
+const RED = '#A04444';
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+const SAMPLE_RATE = 44100;
+const BUFFER_LENGTH = 4410; // 100 ms
+const MAX_RECORDING_SECONDS = 10;
+
+// ============================================================
+// TYPES
+// ============================================================
 
 type Props = {
   tier: Tier;
@@ -41,22 +72,9 @@ type ResultData = {
   score: ArpeggioSpeedScore;
 };
 
-const SAMPLE_RATE = 44100;
-const BUFFER_LENGTH = 4410; // 100 ms
-const MAX_RECORDING_SECONDS = 10;
-
-const COLORS = {
-  background: '#FFF7FB',
-  card: '#FFFFFF',
-  pink: '#E85C9E',
-  pinkDark: '#C83F80',
-  pinkLight: '#F9D7E8',
-  text: '#2B1D25',
-  secondary: '#806875',
-  border: '#F0D6E3',
-  success: '#43A047',
-  danger: '#D94A6A',
-};
+// ============================================================
+// ARPEGGIO CONFIGURATION
+// ============================================================
 
 const ARPEGGIOS: Record<
   Tier,
@@ -89,7 +107,12 @@ const ARPEGGIOS: Record<
   },
 };
 
+// ============================================================
+// AUDIO
+// ============================================================
+
 const audioRecorder = new AudioRecorder();
+
 const audioContext = new AudioContext({
   sampleRate: SAMPLE_RATE,
 });
@@ -100,15 +123,24 @@ AudioManager.setAudioSessionOptions({
   iosOptions: [],
 });
 
+// ============================================================
+// COMPONENT
+// ============================================================
+
 export default function ArpeggioSpeedDrillScreen({
   tier,
 }: Props) {
   const config = ARPEGGIOS[tier];
 
+  // ----------------------------------------------------------
+  // STATE
+  // ----------------------------------------------------------
+
   const [phase, setPhase] =
     useState<Phase>('instructions');
 
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] =
+    useState(3);
 
   const [recordingTime, setRecordingTime] =
     useState(0);
@@ -122,7 +154,13 @@ export default function ArpeggioSpeedDrillScreen({
   const [error, setError] =
     useState<string | null>(null);
 
-  const samplesRef = useRef<Float32Array[]>([]);
+  // ----------------------------------------------------------
+  // REFS
+  // ----------------------------------------------------------
+
+  const samplesRef =
+    useRef<Float32Array[]>([]);
+
   const recordingStartedAtRef =
     useRef<number>(0);
 
@@ -140,6 +178,13 @@ export default function ArpeggioSpeedDrillScreen({
     useRef<ReturnType<typeof setTimeout> | null>(
       null,
     );
+
+  const stoppingRef =
+    useRef(false);
+
+  // ----------------------------------------------------------
+  // AUDIO CALLBACK
+  // ----------------------------------------------------------
 
   useEffect(() => {
     audioRecorder.onAudioReady(
@@ -166,15 +211,27 @@ export default function ArpeggioSpeedDrillScreen({
       audioRecorder.clearOnAudioReady();
 
       if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
+        clearInterval(
+          recordingTimerRef.current,
+        );
+
+        recordingTimerRef.current = null;
       }
 
       if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
+        clearInterval(
+          countdownTimerRef.current,
+        );
+
+        countdownTimerRef.current = null;
       }
 
       if (referenceTimeoutRef.current) {
-        clearTimeout(referenceTimeoutRef.current);
+        clearTimeout(
+          referenceTimeoutRef.current,
+        );
+
+        referenceTimeoutRef.current = null;
       }
 
       try {
@@ -185,88 +242,111 @@ export default function ArpeggioSpeedDrillScreen({
     };
   }, [phase]);
 
-  const playReferenceArpeggio = async () => {
-    if (isPlayingReference) {
-      return;
-    }
+  // ----------------------------------------------------------
+  // PLAY REFERENCE
+  // ----------------------------------------------------------
 
-    setIsPlayingReference(true);
-    setError(null);
-
-    try {
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
+  const playReferenceArpeggio =
+    async () => {
+      if (isPlayingReference) {
+        return;
       }
 
-      const noteDuration =
-        tier === 'beginner'
-          ? 0.65
-          : tier === 'intermediate'
-            ? 0.45
-            : 0.3;
+      setIsPlayingReference(true);
+      setError(null);
 
-      const gap =
-        tier === 'beginner'
-          ? 0.08
-          : tier === 'intermediate'
-            ? 0.06
-            : 0.04;
+      try {
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
 
-      let currentTime =
-        audioContext.currentTime + 0.05;
+        const noteDuration =
+          tier === 'beginner'
+            ? 0.65
+            : tier === 'intermediate'
+              ? 0.45
+              : 0.3;
 
-      for (const frequency of config.frequencies) {
-        const oscillator =
-          audioContext.createOscillator();
+        const gap =
+          tier === 'beginner'
+            ? 0.08
+            : tier === 'intermediate'
+              ? 0.06
+              : 0.04;
 
-        const gain =
-          audioContext.createGain();
+        let currentTime =
+          audioContext.currentTime + 0.05;
 
-        oscillator.type = 'sine';
-        oscillator.frequency.value = frequency;
+        for (
+          const frequency of
+          config.frequencies
+        ) {
+          const oscillator =
+            audioContext.createOscillator();
 
-        gain.gain.value = 0.18;
+          const gain =
+            audioContext.createGain();
 
-        oscillator.connect(gain);
-        gain.connect(audioContext.destination);
+          oscillator.type = 'sine';
+          oscillator.frequency.value =
+            frequency;
 
-        oscillator.start(currentTime);
+          gain.gain.value = 0.18;
 
-        oscillator.stop(
-          currentTime + noteDuration,
+          oscillator.connect(gain);
+          gain.connect(
+            audioContext.destination,
+          );
+
+          oscillator.start(currentTime);
+
+          oscillator.stop(
+            currentTime + noteDuration,
+          );
+
+          currentTime +=
+            noteDuration + gap;
+        }
+
+        const totalDuration =
+          config.frequencies.length *
+            (noteDuration + gap) *
+            1000 +
+          100;
+
+        referenceTimeoutRef.current =
+          setTimeout(() => {
+            setIsPlayingReference(false);
+          }, totalDuration);
+      } catch (err) {
+        console.error(
+          'Reference playback error:',
+          err,
         );
 
-        currentTime += noteDuration + gap;
+        setIsPlayingReference(false);
+
+        setError(
+          'Unable to play the reference sequence.',
+        );
       }
+    };
 
-      const totalDuration =
-        config.frequencies.length *
-          (noteDuration + gap) +
-        100;
-
-      referenceTimeoutRef.current =
-        setTimeout(() => {
-          setIsPlayingReference(false);
-        }, totalDuration);
-    } catch (err) {
-      console.error(
-        'Reference playback error:',
-        err,
-      );
-
-      setIsPlayingReference(false);
-
-      setError(
-        'Unable to play the reference pattern.',
-      );
-    }
-  };
+  // ----------------------------------------------------------
+  // COUNTDOWN
+  // ----------------------------------------------------------
 
   const startCountdown = () => {
     setPhase('countdown');
     setCountdown(3);
 
     let value = 3;
+
+    if (countdownTimerRef.current) {
+      clearInterval(
+        countdownTimerRef.current,
+      );
+    }
 
     countdownTimerRef.current =
       setInterval(() => {
@@ -277,9 +357,11 @@ export default function ArpeggioSpeedDrillScreen({
             clearInterval(
               countdownTimerRef.current,
             );
+
+            countdownTimerRef.current = null;
           }
 
-          startRecording();
+          void startRecording();
           return;
         }
 
@@ -287,9 +369,16 @@ export default function ArpeggioSpeedDrillScreen({
       }, 1000);
   };
 
+  // ----------------------------------------------------------
+  // START RECORDING
+  // ----------------------------------------------------------
+
   const startRecording = async () => {
     try {
       setError(null);
+      setResult(null);
+      setRecordingTime(0);
+      stoppingRef.current = false;
 
       const permission =
         await AudioManager.requestRecordingPermissions();
@@ -313,14 +402,21 @@ export default function ArpeggioSpeedDrillScreen({
         await audioRecorder.start();
 
       if (startResult.status === 'error') {
-        throw new Error(startResult.message);
+        throw new Error(
+          startResult.message,
+        );
       }
 
       recordingStartedAtRef.current =
         Date.now();
 
-      setRecordingTime(0);
       setPhase('recording');
+
+      if (recordingTimerRef.current) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+      }
 
       recordingTimerRef.current =
         setInterval(() => {
@@ -329,13 +425,18 @@ export default function ArpeggioSpeedDrillScreen({
               recordingStartedAtRef.current) /
             1000;
 
-          setRecordingTime(elapsed);
+          setRecordingTime(
+            Math.min(
+              elapsed,
+              MAX_RECORDING_SECONDS,
+            ),
+          );
 
           if (
             elapsed >=
             MAX_RECORDING_SECONDS
           ) {
-            stopRecording();
+            void stopRecording();
           }
         }, 100);
     } catch (err) {
@@ -360,7 +461,17 @@ export default function ArpeggioSpeedDrillScreen({
     }
   };
 
+  // ----------------------------------------------------------
+  // STOP RECORDING
+  // ----------------------------------------------------------
+
   const stopRecording = async () => {
+    if (stoppingRef.current) {
+      return;
+    }
+
+    stoppingRef.current = true;
+
     if (recordingTimerRef.current) {
       clearInterval(
         recordingTimerRef.current,
@@ -391,72 +502,86 @@ export default function ArpeggioSpeedDrillScreen({
     await processRecording();
   };
 
-  const processRecording = async () => {
-    try {
-      const chunks = samplesRef.current;
+  // ----------------------------------------------------------
+  // PROCESS RECORDING
+  // ----------------------------------------------------------
 
-      const totalLength = chunks.reduce(
-        (total, chunk) =>
-          total + chunk.length,
-        0,
-      );
+  const processRecording =
+    async () => {
+      try {
+        const chunks =
+          samplesRef.current;
 
-      if (totalLength === 0) {
-        throw new Error(
-          'No audio samples were captured.',
-        );
-      }
+        const totalLength =
+          chunks.reduce(
+            (total, chunk) =>
+              total + chunk.length,
+            0,
+          );
 
-      const samples =
-        new Float32Array(totalLength);
+        if (totalLength === 0) {
+          throw new Error(
+            'No audio samples were captured.',
+          );
+        }
 
-      let offset = 0;
+        const samples =
+          new Float32Array(
+            totalLength,
+          );
 
-      for (const chunk of chunks) {
-        samples.set(chunk, offset);
-        offset += chunk.length;
-      }
+        let offset = 0;
 
-      const measurement =
-        measureArpeggioSpeed(
-          samples,
-          SAMPLE_RATE,
-          config.frequencies,
-        );
+        for (const chunk of chunks) {
+          samples.set(
+            chunk,
+            offset,
+          );
 
-      const score =
-        scoreArpeggioSpeed(
+          offset += chunk.length;
+        }
+
+        const measurement =
+          measureArpeggioSpeed(
+            samples,
+            SAMPLE_RATE,
+            config.frequencies,
+          );
+
+        const score =
+          scoreArpeggioSpeed(
+            measurement,
+          );
+
+        setResult({
           measurement,
+          score,
+        });
+
+        setPhase('results');
+      } catch (err) {
+        console.error(
+          'Arpeggio processing error:',
+          err,
         );
 
-      setResult({
-        measurement,
-        score,
-      });
+        setError(
+          'We could not analyze your recording. Please try again.',
+        );
 
-      setPhase('results');
-    } catch (err) {
-      console.error(
-        'Arpeggio processing error:',
-        err,
-      );
+        setPhase('instructions');
+      }
+    };
 
-      setError(
-        'We could not analyze your recording. Please try again.',
-      );
-
-      setPhase('instructions');
-    }
-  };
+  // ----------------------------------------------------------
+  // START / RESTART
+  // ----------------------------------------------------------
 
   const startExercise = () => {
     setResult(null);
     setError(null);
+    setRecordingTime(0);
     setPhase('reference');
-  };
-
-  const beginAfterReference = () => {
-    startCountdown();
   };
 
   const restartExercise = () => {
@@ -470,140 +595,290 @@ export default function ArpeggioSpeedDrillScreen({
     router.back();
   };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Pressable
-        onPress={goBack}
-        style={styles.backButton}
-      >
-        <Text style={styles.backText}>‹</Text>
-      </Pressable>
-
-      <View style={styles.headerCenter}>
-        <Text style={styles.componentLabel}>
-          VOCAL AGILITY
-        </Text>
-
-        <Text style={styles.headerTitle}>
-          Arpeggio Speed Drill
-        </Text>
-      </View>
-
-      <View style={styles.headerSpacer} />
-    </View>
-  );
+  // ==========================================================
+  // INSTRUCTIONS
+  // ==========================================================
 
   const renderInstructions = () => (
-    <>
-      <View style={styles.heroCard}>
-        <View style={styles.iconCircle}>
-          <Text style={styles.iconText}>♪</Text>
-        </View>
-
-        <Text style={styles.heroTitle}>
-          Arpeggio Speed Drill
-        </Text>
-
-        <Text style={styles.heroDescription}>
-          Practice singing a sequence of
-          arpeggiated notes accurately while
-          gradually developing speed.
-        </Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <InfoRow
-          label="Level"
-          value={
-            tier.charAt(0).toUpperCase() +
-            tier.slice(1)
-          }
+    <View style={styles.content}>
+      <Pressable
+        style={styles.backButton}
+        onPress={goBack}
+        hitSlop={10}
+      >
+        <Ionicons
+          name="arrow-back"
+          size={24}
+          color={BROWN}
         />
+      </Pressable>
 
-        <InfoRow
-          label="Pattern"
-          value={config.name}
-        />
-
-        <InfoRow
-          label="Speed"
-          value={config.speedLabel}
-        />
-
-        <InfoRow
-          label="Notes"
-          value={config.notes.join(' • ')}
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="musical-notes-outline"
+          size={34}
+          color={BROWN}
         />
       </View>
+
+      <Text style={styles.title}>
+        Arpeggio Speed Drill
+      </Text>
+
+      <Text style={styles.subtitle}>
+        VOCAL AGILITY
+      </Text>
 
       <View style={styles.instructionCard}>
-        <Text style={styles.sectionTitle}>
-          How to do it
+        <View style={styles.prepareCard}>
+          <View style={styles.prepareHeader}>
+            <Ionicons
+              name="information-circle-outline"
+              size={21}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareTitle}>
+              Before You Begin
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="volume-mute-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Find a quiet area with minimal
+              background noise.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="body-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Stand or sit upright with your
+              shoulders relaxed.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="mic-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Keep a comfortable distance from
+              the microphone while singing.
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.cardTitle}>
+          Exercise Details
         </Text>
 
-        <InstructionRow
-          number="1"
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Difficulty
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {tier.charAt(0).toUpperCase() +
+              tier.slice(1)}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Pattern
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {config.name}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Speed
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {config.speedLabel}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Notes
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {config.notes.join(' • ')}
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.cardTitle,
+            { marginTop: 14 },
+          ]}
+        >
+          Instructions
+        </Text>
+
+        <InstructionItem
+          icon="checkmark-circle-outline"
           text="Listen carefully to the reference arpeggio."
         />
 
-        <InstructionRow
-          number="2"
+        <InstructionItem
+          icon="checkmark-circle-outline"
           text="Sing the same notes in the same order."
         />
 
-        <InstructionRow
-          number="3"
+        <InstructionItem
+          icon="checkmark-circle-outline"
           text="Keep each transition clean and controlled."
         />
 
-        <InstructionRow
-          number="4"
-          text="Maintain accuracy while increasing speed."
+        <InstructionItem
+          icon="checkmark-circle-outline"
+          text="Maintain accurate pitch while developing speed."
         />
       </View>
 
-      {error && (
-        <ErrorBox message={error} />
-      )}
-
-      <Pressable
-        onPress={startExercise}
-        style={styles.primaryButton}
-      >
-        <Text style={styles.primaryButtonText}>
-          Start Exercise
-        </Text>
-      </Pressable>
-    </>
-  );
-
-  const renderReference = () => (
-    <>
-      <View style={styles.phaseCard}>
-        <Text style={styles.phaseLabel}>
-          STEP 1
+      <View style={styles.referenceCard}>
+        <Text style={styles.cardTitle}>
+          Reference Arpeggio
         </Text>
 
-        <Text style={styles.phaseTitle}>
-          Listen to the Reference
-        </Text>
-
-        <Text style={styles.phaseDescription}>
-          Listen to the complete arpeggio before
-          attempting to sing it.
+        <Text style={styles.referenceLabel}>
+          NOTES TO SING
         </Text>
 
         <View style={styles.noteSequence}>
-          {config.notes.map((note, index) => (
-            <View
-              key={`${note}-${index}`}
-              style={styles.notePill}
-            >
-              <Text style={styles.noteText}>
-                {note}
-              </Text>
-            </View>
-          ))}
+          {config.notes.map(
+            (note, index) => (
+              <View
+                key={`${note}-${index}`}
+                style={styles.notePill}
+              >
+                <Text
+                  style={styles.noteText}
+                >
+                  {note}
+                </Text>
+              </View>
+            ),
+          )}
+        </View>
+
+        <Text style={styles.referenceHint}>
+          The reference arpeggio will play
+          before recording begins.
+        </Text>
+      </View>
+
+      {error ? (
+        <ErrorBox message={error} />
+      ) : null}
+
+      <View style={styles.tipCard}>
+        <Ionicons
+          name="bulb-outline"
+          size={19}
+          color={BROWN}
+        />
+
+        <Text style={styles.tipText}>
+          Focus on clean pitch transitions
+          first. Speed should develop
+          naturally as your accuracy improves.
+        </Text>
+      </View>
+
+      <View style={styles.difficultyRow}>
+        <Text style={styles.difficultyLabel}>
+          Difficulty
+        </Text>
+
+        <Text style={styles.difficultyValue}>
+          {tier.charAt(0).toUpperCase() +
+            tier.slice(1)}
+        </Text>
+      </View>
+
+      <Pressable
+        style={styles.startButton}
+        onPress={startExercise}
+      >
+        <Ionicons
+          name="play"
+          size={18}
+          color={WHITE}
+        />
+
+        <Text style={styles.startButtonText}>
+          Start Exercise
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  // ==========================================================
+  // REFERENCE
+  // ==========================================================
+
+  const renderReference = () => (
+    <View style={styles.centerContent}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="musical-notes-outline"
+          size={34}
+          color={BROWN}
+        />
+      </View>
+
+      <Text style={styles.phaseTitle}>
+        Listen to the Reference
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Listen carefully to the complete
+        arpeggio before singing.
+      </Text>
+
+      <View style={styles.referenceCard}>
+        <Text style={styles.referenceLabel}>
+          REFERENCE NOTES
+        </Text>
+
+        <View style={styles.noteSequence}>
+          {config.notes.map(
+            (note, index) => (
+              <View
+                key={`${note}-${index}`}
+                style={styles.notePill}
+              >
+                <Text
+                  style={styles.noteText}
+                >
+                  {note}
+                </Text>
+              </View>
+            ),
+          )}
         </View>
 
         <Pressable
@@ -615,163 +890,268 @@ export default function ArpeggioSpeedDrillScreen({
               styles.disabledButton,
           ]}
         >
-          <Text style={styles.referenceButtonText}>
+          <Ionicons
+            name={
+              isPlayingReference
+                ? 'volume-high-outline'
+                : 'play'
+            }
+            size={18}
+            color={BROWN}
+          />
+
+          <Text
+            style={
+              styles.referenceButtonText
+            }
+          >
             {isPlayingReference
               ? 'Playing...'
-              : '▶  Play Reference'}
+              : 'Play Reference'}
           </Text>
         </Pressable>
 
-        {isPlayingReference && (
+        {isPlayingReference ? (
           <ActivityIndicator
             size="small"
-            color={COLORS.pink}
-            style={styles.loader}
+            color={BROWN}
+            style={{
+              marginTop: 16,
+            }}
           />
-        )}
+        ) : null}
       </View>
 
       <Pressable
-        onPress={beginAfterReference}
+        onPress={startCountdown}
         disabled={isPlayingReference}
         style={[
-          styles.primaryButton,
+          styles.startButton,
           isPlayingReference &&
             styles.disabledButton,
         ]}
       >
-        <Text style={styles.primaryButtonText}>
+        <Text style={styles.startButtonText}>
           {isPlayingReference
             ? 'Listen First'
             : 'Continue'}
         </Text>
       </Pressable>
-    </>
+    </View>
   );
+
+  // ==========================================================
+  // COUNTDOWN
+  // ==========================================================
 
   const renderCountdown = () => (
-    <View style={styles.centerPhase}>
-      <Text style={styles.phaseLabel}>
-        GET READY
-      </Text>
-
-      <View style={styles.countdownCircle}>
-        <Text style={styles.countdownText}>
-          {countdown}
-        </Text>
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="mic-outline"
+          size={34}
+          color={BROWN}
+        />
       </View>
 
-      <Text style={styles.readyText}>
-        Prepare to sing the arpeggio
+      <Text style={styles.phaseTitle}>
+        Get Ready
+      </Text>
+
+      <Text style={styles.countdownText}>
+        {countdown}
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Prepare to sing the arpeggio.
       </Text>
     </View>
   );
 
-  const renderRecording = () => (
-    <View style={styles.centerPhase}>
-      <Text style={styles.phaseLabel}>
-        RECORDING
-      </Text>
+  // ==========================================================
+  // RECORDING
+  // ==========================================================
 
-      <View style={styles.recordingCircle}>
-        <View style={styles.recordingDot} />
-      </View>
+  const renderRecording = () => {
+    const progress = Math.min(
+      recordingTime /
+        MAX_RECORDING_SECONDS,
+      1,
+    );
 
-      <Text style={styles.recordingTitle}>
-        Sing the arpeggio
-      </Text>
+    return (
+      <View style={styles.content}>
+        <View style={styles.recordingIcon}>
+          <Ionicons
+            name="mic"
+            size={34}
+            color={BROWN}
+          />
+        </View>
 
-      <Text style={styles.recordingTime}>
-        {recordingTime.toFixed(1)}s
-      </Text>
+        <Text style={styles.recordingTitle}>
+          Sing the Arpeggio
+        </Text>
 
-      <View style={styles.liveNotes}>
-        {config.notes.map((note, index) => (
-          <View
-            key={`${note}-${index}`}
-            style={styles.liveNote}
+        <Text style={styles.recordingSubtitle}>
+          Follow the reference notes as
+          accurately and smoothly as possible.
+        </Text>
+
+        <View style={styles.recordingBadge}>
+          <View style={styles.recordingDot} />
+
+          <Text
+            style={styles.recordingBadgeText}
           >
-            <Text style={styles.liveNoteText}>
-              {note}
-            </Text>
+            RECORDING
+          </Text>
+        </View>
+
+        <View style={styles.referenceCard}>
+          <Text style={styles.referenceLabel}>
+            SING THIS SEQUENCE
+          </Text>
+
+          <View style={styles.noteSequence}>
+            {config.notes.map(
+              (note, index) => (
+                <View
+                  key={`${note}-${index}`}
+                  style={styles.notePill}
+                >
+                  <Text
+                    style={styles.noteText}
+                  >
+                    {note}
+                  </Text>
+                </View>
+              ),
+            )}
           </View>
-        ))}
-      </View>
+        </View>
 
-      <Pressable
-        onPress={stopRecording}
-        style={styles.stopButton}
-      >
-        <View style={styles.stopIcon} />
-
-        <Text style={styles.stopButtonText}>
-          Stop Recording
+        <Text style={styles.timerText}>
+          Recording Time:{' '}
+          {recordingTime.toFixed(1)}s
         </Text>
-      </Pressable>
-    </View>
-  );
+
+        <View style={styles.timerTrack}>
+          <View
+            style={[
+              styles.timerFill,
+              {
+                width: `${progress * 100}%`,
+              },
+            ]}
+          />
+        </View>
+
+        <Pressable
+          onPress={() => void stopRecording()}
+          style={styles.finishButton}
+        >
+          <Ionicons
+            name="stop"
+            size={18}
+            color={BROWN}
+          />
+
+          <Text
+            style={styles.finishButtonText}
+          >
+            Finish Recording
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
+
+  // ==========================================================
+  // PROCESSING
+  // ==========================================================
 
   const renderProcessing = () => (
-    <View style={styles.centerPhase}>
-      <ActivityIndicator
-        size="large"
-        color={COLORS.pink}
-      />
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+        />
+      </View>
 
-      <Text style={styles.processingTitle}>
-        Analyzing your performance
+      <Text style={styles.phaseTitle}>
+        Analyzing Your Singing
       </Text>
 
-      <Text style={styles.processingText}>
-        Checking pitch accuracy, note sequence,
-        and speed...
+      <Text style={styles.phaseSubtitle}>
+        Measuring pitch accuracy, note
+        sequence, and singing speed.
       </Text>
     </View>
   );
+
+  // ==========================================================
+  // RESULTS
+  // ==========================================================
 
   const renderResults = () => {
     if (!result) {
       return null;
     }
 
-    const { score, measurement } =
-      result;
+    const {
+      score,
+      measurement,
+    } = result;
 
     return (
-      <>
-        <View style={styles.resultHero}>
-          <View
-            style={[
-              styles.resultCircle,
-              {
-                borderColor: score.passed
-                  ? COLORS.success
-                  : COLORS.pink,
-              },
-            ]}
-          >
-            <Text style={styles.resultScore}>
-              {score.overall}
-            </Text>
+      <View style={styles.resultsContent}>
+        <View
+          style={[
+            styles.resultIcon,
+            score.passed
+              ? styles.resultIconPassed
+              : styles.resultIconFailed,
+          ]}
+        >
+          <Ionicons
+            name={
+              score.passed
+                ? 'checkmark'
+                : 'refresh'
+            }
+            size={40}
+            color={BROWN}
+          />
+        </View>
 
-            <Text style={styles.resultOutOf}>
-              /100
-            </Text>
-          </View>
+        <Text style={styles.resultTitle}>
+          {score.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'}
+        </Text>
 
-          <Text style={styles.resultTitle}>
-            {score.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
+        <Text style={styles.resultSubtitle}>
+          Arpeggio Speed Drill Result
+        </Text>
+
+        <View style={styles.scoreCard}>
+          <Text style={styles.scoreLabel}>
+            OVERALL SCORE
           </Text>
 
-          <Text style={styles.resultFeedback}>
-            {score.feedback}
+          <Text style={styles.scoreValue}>
+            {score.overall}
+          </Text>
+
+          <Text style={styles.scoreDescription}>
+            out of 100
           </Text>
         </View>
 
-        <View style={styles.scoreCard}>
-          <Text style={styles.sectionTitle}>
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
             Performance Breakdown
           </Text>
 
@@ -788,11 +1168,12 @@ export default function ArpeggioSpeedDrillScreen({
           <ScoreRow
             label="Speed"
             value={score.speedScore}
+            last
           />
         </View>
 
-        <View style={styles.metricsCard}>
-          <Text style={styles.sectionTitle}>
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
             Exercise Metrics
           </Text>
 
@@ -810,7 +1191,9 @@ export default function ArpeggioSpeedDrillScreen({
 
           <MetricRow
             label="Average Note Duration"
-            value={`${measurement.averageNoteDurationMs.toFixed(0)} ms`}
+            value={`${measurement.averageNoteDurationMs.toFixed(
+              0,
+            )} ms`}
           />
 
           <MetricRow
@@ -818,98 +1201,104 @@ export default function ArpeggioSpeedDrillScreen({
             value={`${(
               measurement.durationMs / 1000
             ).toFixed(1)} s`}
+            last
           />
+        </View>
+
+        <View style={styles.tipCard}>
+          <Ionicons
+            name="bulb-outline"
+            size={20}
+            color={BROWN}
+          />
+
+          <Text style={styles.tipText}>
+            {score.feedback}
+          </Text>
         </View>
 
         <Pressable
           onPress={restartExercise}
-          style={styles.primaryButton}
+          style={styles.startButton}
         >
-          <Text style={styles.primaryButtonText}>
+          <Ionicons
+            name="refresh"
+            size={18}
+            color={WHITE}
+          />
+
+          <Text style={styles.startButtonText}>
             Try Again
           </Text>
         </Pressable>
 
         <Pressable
           onPress={goBack}
-          style={styles.secondaryButton}
+          style={styles.doneButton}
         >
-          <Text style={styles.secondaryButtonText}>
+          <Text style={styles.doneButtonText}>
             Back to Agility
           </Text>
         </Pressable>
-      </>
+      </View>
     );
   };
 
+  // ==========================================================
+  // MAIN RENDER
+  // ==========================================================
+
   return (
-    <View style={styles.screen}>
-      {renderHeader()}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={
+        phase === 'results'
+          ? styles.resultsWrapper
+          : undefined
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      {phase === 'instructions' &&
+        renderInstructions()}
 
-      <ScrollView
-        contentContainerStyle={
-          styles.scrollContent
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {phase === 'instructions' &&
-          renderInstructions()}
+      {phase === 'reference' &&
+        renderReference()}
 
-        {phase === 'reference' &&
-          renderReference()}
+      {phase === 'countdown' &&
+        renderCountdown()}
 
-        {phase === 'countdown' &&
-          renderCountdown()}
+      {phase === 'recording' &&
+        renderRecording()}
 
-        {phase === 'recording' &&
-          renderRecording()}
+      {phase === 'processing' &&
+        renderProcessing()}
 
-        {phase === 'processing' &&
-          renderProcessing()}
-
-        {phase === 'results' &&
-          renderResults()}
-      </ScrollView>
-    </View>
+      {phase === 'results' &&
+        renderResults()}
+    </ScrollView>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>
-        {label}
-      </Text>
+// ============================================================
+// SMALL COMPONENTS
+// ============================================================
 
-      <Text style={styles.infoValue}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function InstructionRow({
-  number,
+function InstructionItem({
+  icon,
   text,
 }: {
-  number: string;
+  icon: keyof typeof Ionicons.glyphMap;
   text: string;
 }) {
   return (
-    <View style={styles.instructionRow}>
-      <View style={styles.numberCircle}>
-        <Text style={styles.numberText}>
-          {number}
-        </Text>
-      </View>
+    <View style={styles.prepareItem}>
+      <Ionicons
+        name={icon}
+        size={17}
+        color={BROWN}
+      />
 
-      <Text style={styles.instructionText}>
+      <Text style={styles.prepareText}>
         {text}
       </Text>
     </View>
@@ -919,19 +1308,26 @@ function InstructionRow({
 function ScoreRow({
   label,
   value,
+  last = false,
 }: {
   label: string;
   value: number;
+  last?: boolean;
 }) {
   return (
-    <View style={styles.scoreRow}>
+    <View
+      style={[
+        styles.scoreRow,
+        last && styles.scoreRowLast,
+      ]}
+    >
       <View style={styles.scoreRowHeader}>
-        <Text style={styles.scoreLabel}>
+        <Text style={styles.scoreRowLabel}>
           {label}
         </Text>
 
-        <Text style={styles.scoreValue}>
-          {value}
+        <Text style={styles.scoreRowValue}>
+          {value}%
         </Text>
       </View>
 
@@ -940,9 +1336,9 @@ function ScoreRow({
           style={[
             styles.progressFill,
             {
-              width: `${Math.max(
-                0,
-                Math.min(100, value),
+              width: `${Math.min(
+                Math.max(value, 0),
+                100,
               )}%`,
             },
           ]}
@@ -955,12 +1351,19 @@ function ScoreRow({
 function MetricRow({
   label,
   value,
+  last = false,
 }: {
   label: string;
   value: string;
+  last?: boolean;
 }) {
   return (
-    <View style={styles.metricRow}>
+    <View
+      style={[
+        styles.metricRow,
+        last && styles.metricRowLast,
+      ]}
+    >
       <Text style={styles.metricLabel}>
         {label}
       </Text>
@@ -978,7 +1381,13 @@ function ErrorBox({
   message: string;
 }) {
   return (
-    <View style={styles.errorBox}>
+    <View style={styles.errorCard}>
+      <Ionicons
+        name="alert-circle-outline"
+        size={18}
+        color={BROWN}
+      />
+
       <Text style={styles.errorText}>
         {message}
       </Text>
@@ -986,271 +1395,220 @@ function ErrorBox({
   );
 }
 
+// ============================================================
+// STYLES
+// ============================================================
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: WHITE,
   },
 
-  header: {
-    minHeight: 76,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 12,
-    flexDirection: 'row',
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 92,
+    paddingBottom: 60,
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
+
+  resultsContent: {
+    flexGrow: 1,
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingTop: 92,
+    paddingBottom: 50,
+    alignItems: 'center',
+  },
+
+  resultsWrapper: {
+    flexGrow: 1,
+    width: '100%',
+  },
+
+  centerContent: {
+    flexGrow: 1,
+    minHeight: 700,
+    paddingHorizontal: 24,
+    paddingTop: 92,
+    paddingBottom: 60,
+    alignItems: 'center',
+  },
+
+  centerScreen: {
+    flexGrow: 1,
+    minHeight: 700,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+  // ==========================================================
+  // BACK
+  // ==========================================================
 
   backButton: {
+    position: 'absolute',
+    top: 55,
+    left: 24,
+    zIndex: 10,
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.pinkLight,
+    backgroundColor: WHITE,
   },
 
-  backText: {
-    color: COLORS.pinkDark,
-    fontSize: 32,
-    lineHeight: 34,
-    marginTop: -4,
-  },
-
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-
-  headerSpacer: {
-    width: 42,
-  },
-
-  componentLabel: {
-    color: COLORS.pink,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-
-  headerTitle: {
-    marginTop: 3,
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-
-  heroCard: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 18,
-  },
+  // ==========================================================
+  // HERO
+  // ==========================================================
 
   iconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.pinkLight,
-    marginBottom: 16,
+    marginBottom: 20,
   },
 
-  iconText: {
-    color: COLORS.pink,
-    fontSize: 38,
-    fontWeight: '700',
-  },
-
-  heroTitle: {
-    color: COLORS.text,
-    fontSize: 27,
-    fontWeight: '800',
+  title: {
+    fontFamily: 'FredokaBold',
+    fontSize: 28,
+    color: BROWN,
     textAlign: 'center',
   },
 
-  heroDescription: {
-    marginTop: 10,
-    maxWidth: 350,
-    color: COLORS.secondary,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
+  subtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 3,
+    marginBottom: 24,
   },
 
-  infoCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 16,
-  },
-
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 9,
-  },
-
-  infoLabel: {
-    color: COLORS.secondary,
-    fontSize: 14,
-  },
-
-  infoValue: {
-    maxWidth: '65%',
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
+  // ==========================================================
+  // CARDS
+  // ==========================================================
 
   instructionCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 18,
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 18,
+    borderColor: BORDER,
   },
 
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 14,
+  prepareCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
 
-  instructionRow: {
+  prepareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+    marginLeft: 9,
+  },
+
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+
+  prepareText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+    marginLeft: 9,
+  },
+
+  cardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+    marginTop: 10,
     marginBottom: 14,
   },
 
-  numberCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.pinkLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
   },
 
-  numberText: {
-    color: COLORS.pinkDark,
-    fontWeight: '800',
-  },
-
-  instructionText: {
-    flex: 1,
-    color: COLORS.secondary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  primaryButton: {
-    minHeight: 56,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.pink,
-    marginTop: 4,
-  },
-
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 12,
-  },
-
-  secondaryButtonText: {
-    color: COLORS.pinkDark,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  disabledButton: {
-    opacity: 0.55,
-  },
-
-  errorBox: {
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: '#FDECEF',
-    borderWidth: 1,
-    borderColor: '#F4B7C5',
-    marginBottom: 16,
-  },
-
-  errorText: {
-    color: COLORS.danger,
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-  },
-
-  phaseCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-
-  phaseLabel: {
-    color: COLORS.pink,
+  detailLabel: {
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.5,
+    color: MUTED,
+  },
+
+  detailValue: {
+    flex: 1,
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+    textAlign: 'right',
+    marginLeft: 16,
+  },
+
+  referenceCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginTop: 22,
+  },
+
+  referenceLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
     textAlign: 'center',
   },
 
-  phaseTitle: {
-    marginTop: 8,
-    color: COLORS.text,
-    fontSize: 24,
-    fontWeight: '800',
+  referenceHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: MUTED,
     textAlign: 'center',
+    marginTop: 16,
   },
 
-  phaseDescription: {
-    marginTop: 9,
-    color: COLORS.secondary,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
+  // ==========================================================
+  // NOTES
+  // ==========================================================
 
   noteSequence: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 9,
-    marginTop: 22,
+    marginTop: 16,
   },
 
   notePill: {
@@ -1258,273 +1616,417 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 14,
     borderRadius: 14,
-    backgroundColor: COLORS.pinkLight,
+    backgroundColor: PINK,
     alignItems: 'center',
   },
 
   noteText: {
-    color: COLORS.pinkDark,
-    fontWeight: '800',
+    fontFamily: 'FredokaBold',
     fontSize: 15,
+    color: BROWN,
   },
 
-  referenceButton: {
-    marginTop: 28,
-    minWidth: 210,
-    minHeight: 52,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    backgroundColor: COLORS.pinkLight,
+  // ==========================================================
+  // BUTTONS
+  // ==========================================================
+
+  startButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  referenceButtonText: {
-    color: COLORS.pinkDark,
-    fontWeight: '800',
-    fontSize: 15,
-  },
-
-  loader: {
+    gap: 8,
     marginTop: 14,
   },
 
-  centerPhase: {
-    flex: 1,
-    minHeight: 550,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+  startButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: WHITE,
   },
 
-  countdownCircle: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: COLORS.pinkLight,
+  referenceButton: {
+    width: '100%',
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: PINK,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 28,
+    gap: 8,
+    marginTop: 22,
+  },
+
+  referenceButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+  },
+
+  finishButton: {
+    width: '100%',
+    height: 53,
+    borderRadius: 27,
+    backgroundColor: LIGHT_GRAY,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 18,
+  },
+
+  finishButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+
+  doneButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+
+  doneButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+
+  disabledButton: {
+    opacity: 0.55,
+  },
+
+  // ==========================================================
+  // ERROR / TIP
+  // ==========================================================
+
+  errorCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 15,
+    padding: 14,
+    marginTop: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  errorText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: BROWN,
+    marginLeft: 9,
+  },
+
+  tipCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 15,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  tipText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+    marginLeft: 9,
+  },
+
+  difficultyRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 4,
+  },
+
+  difficultyLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+
+  difficultyValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  // ==========================================================
+  // PHASES
+  // ==========================================================
+
+  phaseTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+
+  phaseSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
   },
 
   countdownText: {
-    color: COLORS.pinkDark,
+    fontFamily: 'FredokaBold',
     fontSize: 72,
-    fontWeight: '900',
+    color: BROWN,
+    marginTop: 20,
   },
 
-  readyText: {
-    color: COLORS.secondary,
-    fontSize: 15,
-    textAlign: 'center',
-  },
+  // ==========================================================
+  // RECORDING
+  // ==========================================================
 
-  recordingCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: '#FDECEF',
-    borderWidth: 8,
-    borderColor: COLORS.pinkLight,
+  recordingIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 25,
-  },
-
-  recordingDot: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.pink,
+    marginBottom: 18,
   },
 
   recordingTitle: {
-    color: COLORS.text,
-    fontSize: 23,
-    fontWeight: '800',
+    fontFamily: 'FredokaBold',
+    fontSize: 26,
+    color: BROWN,
+    textAlign: 'center',
   },
 
-  recordingTime: {
-    marginTop: 7,
-    color: COLORS.pink,
-    fontSize: 18,
-    fontWeight: '700',
+  recordingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 3,
+    maxWidth: 310,
   },
 
-  liveNotes: {
+  recordingBadge: {
+    marginTop: 18,
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 24,
-  },
-
-  liveNote: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.pinkLight,
-  },
-
-  liveNoteText: {
-    color: COLORS.pinkDark,
-    fontWeight: '800',
-  },
-
-  stopButton: {
-    marginTop: 30,
-    minHeight: 54,
-    minWidth: 190,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderWidth: 1,
-    borderColor: COLORS.pink,
-    flexDirection: 'row',
+    borderColor: BORDER,
+  },
+
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BROWN,
+    marginRight: 7,
+  },
+
+  recordingBadgeText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: BROWN,
+  },
+
+  timerText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 7,
+  },
+
+  timerTrack: {
+    width: '100%',
+    height: 7,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+
+  timerFill: {
+    height: '100%',
+    backgroundColor: PINK,
+  },
+
+  // ==========================================================
+  // RESULTS
+  // ==========================================================
+
+  resultIcon: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    marginBottom: 18,
   },
 
-  stopIcon: {
-    width: 13,
-    height: 13,
-    borderRadius: 3,
-    backgroundColor: COLORS.pink,
+  resultIconPassed: {
+    backgroundColor: PINK,
   },
 
-  stopButtonText: {
-    color: COLORS.pinkDark,
-    fontWeight: '800',
-  },
-
-  processingTitle: {
-    marginTop: 24,
-    color: COLORS.text,
-    fontSize: 21,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  processingText: {
-    marginTop: 9,
-    color: COLORS.secondary,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    maxWidth: 300,
-  },
-
-  resultHero: {
-    alignItems: 'center',
-    paddingVertical: 18,
-  },
-
-  resultCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    borderWidth: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.card,
-  },
-
-  resultScore: {
-    color: COLORS.text,
-    fontSize: 48,
-    fontWeight: '900',
-  },
-
-  resultOutOf: {
-    color: COLORS.secondary,
-    fontSize: 13,
-    marginTop: -4,
+  resultIconFailed: {
+    backgroundColor: LIGHT_GRAY,
   },
 
   resultTitle: {
-    marginTop: 16,
-    color: COLORS.text,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  resultFeedback: {
-    marginTop: 8,
-    maxWidth: 340,
-    color: COLORS.secondary,
-    fontSize: 14,
-    lineHeight: 21,
+    fontFamily: 'FredokaBold',
+    fontSize: 27,
+    color: BROWN,
     textAlign: 'center',
   },
 
+  resultSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 3,
+    marginBottom: 22,
+  },
+
   scoreCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 22,
+    padding: 22,
+    alignItems: 'center',
+  },
+
+  scoreLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  scoreValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 52,
+    color: BROWN,
+    marginVertical: 3,
+  },
+
+  scoreDescription: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    textAlign: 'center',
+  },
+
+  resultCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
     padding: 18,
+    marginTop: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 12,
+    borderColor: BORDER,
+  },
+
+  resultCardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 17,
+    color: BROWN,
+    marginBottom: 14,
   },
 
   scoreRow: {
-    marginBottom: 16,
+    marginBottom: 14,
+  },
+
+  scoreRowLast: {
+    marginBottom: 0,
   },
 
   scoreRowHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 7,
   },
 
-  scoreLabel: {
-    color: COLORS.secondary,
-    fontSize: 14,
+  scoreRowLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
   },
 
-  scoreValue: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
+  scoreRowValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
   },
 
   progressBackground: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: '#F3E6EC',
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: LIGHT_GRAY,
     overflow: 'hidden',
   },
 
   progressFill: {
     height: '100%',
-    borderRadius: 5,
-    backgroundColor: COLORS.pink,
-  },
-
-  metricsCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 12,
-    marginBottom: 18,
+    borderRadius: 4,
+    backgroundColor: PINK,
   },
 
   metricRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: '#F6EAF0',
+    borderBottomColor: BORDER,
+  },
+
+  metricRowLast: {
+    borderBottomWidth: 0,
   },
 
   metricLabel: {
-    color: COLORS.secondary,
-    fontSize: 14,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    flex: 1,
   },
 
   metricValue: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+    textAlign: 'right',
+    marginLeft: 12,
   },
 });
