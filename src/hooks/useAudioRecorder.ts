@@ -1069,15 +1069,11 @@ export function useAudioRecorder(
     useCallback(
       async () => {
         const recorder =
-          recorderRef.current;
+  recorderRef.current;
 
-        if (!recorder) {
-          console.warn(
-            "🛑 No active recorder."
-          );
-
-          return;
-        }
+if (!recorder) {
+  return;
+}
 
         console.log(
           "🛑 STOPPING RECORDER..."

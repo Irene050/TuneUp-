@@ -27,10 +27,16 @@ const categories = [
   'Agility',
 ];
 
-const exercises = [
-  // =========================================
+type Exercise = {
+  name: string;
+  category: string;
+  templateId?: string;
+};
+
+const exercises: Exercise[] = [
+  // =========================================================
   // BREATH CONTROL
-  // =========================================
+  // =========================================================
   {
     name: 'Sustained Exhale',
     category: 'Breath Control',
@@ -57,9 +63,9 @@ const exercises = [
     templateId: 'controlledBreathRelease',
   },
 
-  // =========================================
+  // =========================================================
   // PITCH
-  // =========================================
+  // =========================================================
   {
     name: 'Note Matching Exercise',
     category: 'Pitch',
@@ -86,33 +92,38 @@ const exercises = [
     templateId: 'melodicPatternMatching',
   },
 
-  // =========================================
+  // =========================================================
   // TONE
-  // =========================================
+  // =========================================================
   {
     name: 'Vowel Consistency Exercise',
     category: 'Tone',
+    templateId: 'vowelConsistencyExercise',
   },
   {
     name: 'Waveform Smoothness Drill',
     category: 'Tone',
+    templateId: 'waveformSmoothnessDrill',
   },
   {
     name: 'Resonance Stabilization Task',
     category: 'Tone',
+    templateId: 'resonanceStabilizationTask',
   },
   {
     name: 'Tone Consistency Exercise',
     category: 'Tone',
+    templateId: 'toneConsistencyExercise',
   },
   {
     name: 'Steady Tone Holding',
     category: 'Tone',
+    templateId: 'steadyToneHolding',
   },
 
-  // =========================================
+  // =========================================================
   // VOLUME
-  // =========================================
+  // =========================================================
   {
     name: 'Dynamic Range Exercise',
     category: 'Volume',
@@ -134,28 +145,33 @@ const exercises = [
     category: 'Volume',
   },
 
-  // =========================================
+  // =========================================================
   // AGILITY
-  // =========================================
+  // =========================================================
   {
     name: 'Rapid Note-Transition Exercise',
     category: 'Agility',
+    templateId: 'rapidNoteTransition',
   },
   {
     name: 'Arpeggio Speed Drill',
     category: 'Agility',
+    templateId: 'arpeggioSpeed',
   },
   {
     name: 'Vocal Run Accuracy Task',
     category: 'Agility',
+    templateId: 'vocalRunAccuracy',
   },
   {
     name: 'Quick Interval Jump',
     category: 'Agility',
+    templateId: 'quickIntervalJump',
   },
   {
     name: 'Rapid Scale Trill',
     category: 'Agility',
+    templateId: 'rapidScaleTrill',
   },
 ];
 
@@ -163,27 +179,22 @@ const recommendedComponents = [
   {
     name: 'Breath Control',
     route: '/exercises/breath-control',
-    icon: 'water-outline' as const,
   },
   {
     name: 'Pitch',
     route: '/exercises/pitch',
-    icon: 'musical-notes-outline' as const,
   },
   {
     name: 'Tone',
     route: '/exercises/tone',
-    icon: 'radio-outline' as const,
   },
   {
     name: 'Volume',
     route: '/exercises/volume',
-    icon: 'volume-high-outline' as const,
   },
   {
     name: 'Agility',
     route: '/exercises/agility',
-    icon: 'pulse-outline' as const,
   },
 ];
 
@@ -197,9 +208,9 @@ export default function ExercisesScreen() {
   const [search, setSearch] =
     useState('');
 
-  // =========================================
+  // =========================================================
   // FILTER
-  // =========================================
+  // =========================================================
 
   const filteredExercises = useMemo(() => {
     return exercises.filter((exercise) => {
@@ -219,7 +230,9 @@ export default function ExercisesScreen() {
     });
   }, [selectedCategory, search]);
 
-  
+  // =========================================================
+  // RECOMMENDED CARD NAVIGATION
+  // =========================================================
 
   const handleRecommendedPress = (
     route: string,
@@ -227,20 +240,19 @@ export default function ExercisesScreen() {
     router.push(route as any);
   };
 
+  // =========================================================
+  // EXERCISE NAVIGATION
+  // =========================================================
 
-
-  const handleExercisePress = (exercise: {
-    name: string;
-    category: string;
-    templateId?: string;
-  }) => {
-    // -----------------------------------------
+  const handleExercisePress = (
+    exercise: Exercise,
+  ) => {
+    // ---------------------------------------------------------
     // BREATH CONTROL
-    // -----------------------------------------
+    // ---------------------------------------------------------
 
     if (
-      exercise.category ===
-        'Breath Control' &&
+      exercise.category === 'Breath Control' &&
       exercise.templateId
     ) {
       router.push(
@@ -252,9 +264,9 @@ export default function ExercisesScreen() {
       return;
     }
 
-    // -----------------------------------------
+    // ---------------------------------------------------------
     // PITCH
-    // -----------------------------------------
+    // ---------------------------------------------------------
 
     if (
       exercise.category === 'Pitch' &&
@@ -269,13 +281,28 @@ export default function ExercisesScreen() {
       return;
     }
 
-    // -----------------------------------------
-    // VOLUME
-    // -----------------------------------------
+    // ---------------------------------------------------------
+    // TONE
+    // ---------------------------------------------------------
 
     if (
-      exercise.category === 'Volume'
+      exercise.category === 'Tone' &&
+      exercise.templateId
     ) {
+      router.push(
+        `/exercises/tone?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // VOLUME
+    // ---------------------------------------------------------
+
+    if (exercise.category === 'Volume') {
       if (
         exercise.name ===
         'Dynamic Range Exercise'
@@ -329,8 +356,27 @@ export default function ExercisesScreen() {
       return;
     }
 
-  
+    // ---------------------------------------------------------
+    // AGILITY
+    // ---------------------------------------------------------
+
+    if (
+      exercise.category === 'Agility' &&
+      exercise.templateId
+    ) {
+      router.push(
+        `/exercises/agility?templateId=${encodeURIComponent(
+          exercise.templateId,
+        )}` as any,
+      );
+
+      return;
+    }
   };
+
+  // =========================================================
+  // UI
+  // =========================================================
 
   return (
     <View style={styles.screen}>
@@ -342,16 +388,13 @@ export default function ExercisesScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* =====================================
-            SEARCH
-        ====================================== */}
+        {/* SEARCH */}
 
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
-
             <Ionicons
               name="search-outline"
-              size={20}
+              size={21}
               color={MUTED}
             />
 
@@ -362,55 +405,32 @@ export default function ExercisesScreen() {
               value={search}
               onChangeText={setSearch}
             />
-
           </View>
         </View>
 
-        {/* =====================================
-            TITLE
-        ====================================== */}
+        {/* TITLE */}
 
         <Text style={styles.title}>
           Vocal Exercises
         </Text>
 
-        {/* =====================================
-            RECOMMENDED FOR YOU
-        ====================================== */}
+        {/* RECOMMENDED */}
 
-        <View
-          style={styles.recommendedHeader}
-        >
+        <View style={styles.recommendedHeader}>
           <View>
-
-            <Text
-              style={
-                styles.recommendedTitle
-              }
-            >
+            <Text style={styles.recommendedTitle}>
               Recommended For You
             </Text>
 
-            <Text
-              style={
-                styles.recommendedSubtitle
-              }
-            >
+            <Text style={styles.recommendedSubtitle}>
               Based on your assessment
             </Text>
-
           </View>
         </View>
 
-        {
-
-        }
-
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
+          showsHorizontalScrollIndicator={false}
           contentContainerStyle={
             styles.recommendedScroll
           }
@@ -420,70 +440,37 @@ export default function ExercisesScreen() {
             (component) => (
               <View
                 key={component.name}
-                style={
-                  styles.recommendedCard
-                }
+                style={styles.recommendedCard}
               >
 
                 {/* IMAGE AREA */}
 
                 <View
-                  style={
-                    styles.recommendedImage
-                  }
+                  style={styles.recommendedImage}
                 >
-
                   <View
-                    style={
-                      styles.componentIcon
-                    }
+                    style={styles.recommendedDifficulty}
                   >
-                    <Ionicons
-                      name={
-                        component.icon
-                      }
-                      size={34}
-                      color={BROWN}
-                    />
-                  </View>
-
-                  <View
-                    style={
-                      styles.recommendedDifficulty
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.difficultyText
-                      }
-                    >
+                    <Text style={styles.difficultyText}>
                       Beginner
                     </Text>
                   </View>
-
                 </View>
 
                 {/* CARD BOTTOM */}
 
                 <View
-                  style={
-                    styles.recommendedBottom
-                  }
+                  style={styles.recommendedBottom}
                 >
-
                   <Text
-                    style={
-                      styles.categoryText
-                    }
+                    style={styles.categoryText}
                     numberOfLines={1}
                   >
                     {component.name}
                   </Text>
 
                   <Pressable
-                    style={
-                      styles.smallPlayButton
-                    }
+                    style={styles.smallPlayButton}
                     onPress={() =>
                       handleRecommendedPress(
                         component.route,
@@ -492,11 +479,10 @@ export default function ExercisesScreen() {
                   >
                     <Ionicons
                       name="play"
-                      size={15}
+                      size={16}
                       color={BROWN}
                     />
                   </Pressable>
-
                 </View>
 
               </View>
@@ -505,40 +491,23 @@ export default function ExercisesScreen() {
 
         </ScrollView>
 
-        {/* =====================================
-            EXERCISES
-        ====================================== */}
+        {/* EXERCISES HEADER */}
 
-        <View
-          style={styles.exerciseHeader}
-        >
-
-          <Text
-            style={styles.exerciseTitle}
-          >
+        <View style={styles.exerciseHeader}>
+          <Text style={styles.exerciseTitle}>
             Exercises
           </Text>
 
-          {/* FILTER */}
+          {/* FILTER DROPDOWN */}
 
-          <View
-            style={
-              styles.dropdownWrapper
-            }
-          >
-
+          <View style={styles.dropdownWrapper}>
             <Pressable
               style={styles.dropdown}
               onPress={() =>
-                setFilterOpen(
-                  !filterOpen,
-                )
+                setFilterOpen(!filterOpen)
               }
             >
-
-              <Text
-                style={styles.dropdownText}
-              >
+              <Text style={styles.dropdownText}>
                 {selectedCategory}
               </Text>
 
@@ -548,84 +517,61 @@ export default function ExercisesScreen() {
                     ? 'chevron-up'
                     : 'chevron-down'
                 }
-                size={14}
+                size={15}
                 color={MUTED}
               />
-
             </Pressable>
 
             {filterOpen && (
-              <View
-                style={
-                  styles.dropdownMenu
-                }
-              >
+              <View style={styles.dropdownMenu}>
+                {categories.map((category) => (
+                  <Pressable
+                    key={category}
+                    style={[
+                      styles.dropdownItem,
+                      selectedCategory ===
+                        category &&
+                        styles.selectedDropdownItem,
+                    ]}
+                    onPress={() => {
+                      setSelectedCategory(
+                        category,
+                      );
 
-                {categories.map(
-                  (category) => (
-                    <Pressable
-                      key={category}
+                      setFilterOpen(false);
+
+                      setSearch('');
+                    }}
+                  >
+                    <Text
                       style={[
-                        styles.dropdownItem,
+                        styles.dropdownItemText,
                         selectedCategory ===
                           category &&
-                          styles.selectedDropdownItem,
+                          styles.selectedDropdownText,
                       ]}
-                      onPress={() => {
-                        setSelectedCategory(
-                          category,
-                        );
-
-                        setFilterOpen(
-                          false,
-                        );
-
-                        setSearch('');
-                      }}
                     >
-
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          selectedCategory ===
-                            category &&
-                            styles.selectedDropdownText,
-                        ]}
-                      >
-                        {category}
-                      </Text>
-
-                    </Pressable>
-                  ),
-                )}
-
+                      {category}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
             )}
-
           </View>
-
         </View>
 
-        {/* =====================================
-            COUNT
-        ====================================== */}
+        {/* EXERCISE COUNT */}
 
-        <Text
-          style={styles.resultCount}
-        >
+        <Text style={styles.resultCount}>
           {filteredExercises.length}{' '}
           {filteredExercises.length === 1
             ? 'exercise'
             : 'exercises'}
         </Text>
 
-        {/* =====================================
-            EXERCISE LIST
-        ====================================== */}
+        {/* EXERCISE LIST */}
 
-        <View
-          style={styles.exerciseList}
-        >
+        <View style={styles.exerciseList}>
 
           {filteredExercises.map(
             (exercise) => (
@@ -643,125 +589,61 @@ export default function ExercisesScreen() {
                 }
               >
 
-                {/* ICON */}
-
                 <View
-                  style={styles.exerciseIcon}
+                  style={styles.exerciseNameContainer}
                 >
-                  <Ionicons
-                    name={
-                      exercise.category ===
-                      'Volume'
-                        ? 'volume-medium'
-                        : exercise.category ===
-                          'Pitch'
-                        ? 'musical-notes'
-                        : exercise.category ===
-                          'Tone'
-                        ? 'radio'
-                        : exercise.category ===
-                          'Agility'
-                        ? 'pulse'
-                        : 'water'
-                    }
-                    size={19}
-                    color={BROWN}
-                  />
-                </View>
-
-                {/* NAME */}
-
-                <View
-                  style={
-                    styles.exerciseNameContainer
-                  }
-                >
-
                   <Text
-                    style={
-                      styles.exerciseName
-                    }
+                    style={styles.exerciseName}
                     numberOfLines={2}
                   >
                     {exercise.name}
                   </Text>
-
                 </View>
 
-                {/* LEVEL */}
-
-                <View
-                  style={styles.levelBadge}
-                >
-
-                  <Text
-                    style={styles.levelText}
-                  >
+                <View style={styles.levelBadge}>
+                  <Text style={styles.levelText}>
                     Beginner
                   </Text>
-
                 </View>
 
-                {/* CATEGORY */}
-
                 <Text
-                  style={
-                    styles.exerciseCategory
-                  }
+                  style={styles.exerciseCategory}
                   numberOfLines={1}
                 >
                   {exercise.category}
                 </Text>
 
-                {/* PLAY */}
-
                 <View
-                  style={
-                    styles.listPlayButton
-                  }
+                  style={styles.listPlayButton}
                 >
-
                   <Ionicons
                     name="play"
-                    size={15}
+                    size={16}
                     color={BROWN}
                   />
-
                 </View>
 
               </Pressable>
             ),
           )}
 
-          {filteredExercises.length ===
-            0 && (
-            <View
-              style={styles.noResults}
-            >
+          {/* NO RESULTS */}
 
+          {filteredExercises.length === 0 && (
+            <View style={styles.noResults}>
               <Ionicons
                 name="search-outline"
-                size={30}
+                size={32}
                 color={MUTED}
               />
 
-              <Text
-                style={
-                  styles.noResultsTitle
-                }
-              >
+              <Text style={styles.noResultsTitle}>
                 No exercises found
               </Text>
 
-              <Text
-                style={
-                  styles.noResultsText
-                }
-              >
-                Try another search or
-                category.
+              <Text style={styles.noResultsText}>
+                Try another search or category.
               </Text>
-
             </View>
           )}
 
@@ -783,103 +665,175 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 120,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 140,
   },
 
-  // =========================================
+  // =========================================================
   // SEARCH
-  // =========================================
+  // =========================================================
 
   searchRow: {
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 14,
   },
 
   searchContainer: {
-    height: 38,
+    flex: 1,
+    height: 44,
 
     borderWidth: 1,
     borderColor: BORDER,
 
-    borderRadius: 9,
+    borderRadius: 10,
 
     backgroundColor: WHITE,
 
     flexDirection: 'row',
     alignItems: 'center',
 
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
   },
 
   searchInput: {
     flex: 1,
 
-    marginLeft: 7,
+    marginLeft: 9,
 
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 13,
 
     color: BROWN,
 
     padding: 0,
   },
 
-  // =========================================
+  // =========================================================
   // TITLE
-  // =========================================
+  // =========================================================
 
   title: {
     fontFamily: 'FredokaBold',
-    fontSize: 25,
+    fontSize: 34,
     color: BROWN,
 
-    marginBottom: 15,
+    marginBottom: 20,
   },
 
-  // =========================================
+  // =========================================================
   // RECOMMENDED
-  // =========================================
+  // =========================================================
 
   recommendedHeader: {
-    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+
+    marginBottom: 14,
   },
 
   recommendedTitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 14,
+    fontSize: 16,
     color: BROWN,
   },
 
   recommendedSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: MUTED,
+    fontSize: 10,
+    color: BROWN,
 
     marginTop: 2,
   },
 
   recommendedScroll: {
-    paddingBottom: 19,
-    paddingRight: 8,
+    paddingBottom: 26,
   },
 
   recommendedCard: {
-    width: 170,
-    height: 145,
+    width: 180,
+    height: 193,
 
     backgroundColor: PINK,
 
-    borderRadius: 9,
+    borderRadius: 10,
 
-    padding: 10,
+    padding: 14,
 
-    marginRight: 10,
+    marginRight: 14,
 
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
 
+    elevation: 4,
+  },
+
+  recommendedImage: {
+    height: 111,
+
+    backgroundColor: WHITE,
+
+    borderRadius: 7,
+
+    position: 'relative',
+
+    marginBottom: 10,
+  },
+
+  recommendedDifficulty: {
+    position: 'absolute',
+
+    right: 7,
+    bottom: 7,
+
+    backgroundColor: WHITE,
+
+    borderRadius: 10,
+
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  difficultyText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    color: BROWN,
+  },
+
+  recommendedBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  categoryText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  smallPlayButton: {
+    width: 38,
+    height: 38,
+
+    borderRadius: 19,
+
+    backgroundColor: WHITE,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -888,112 +842,27 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  recommendedImage: {
-    height: 91,
-
-    backgroundColor: WHITE,
-
-    borderRadius: 6,
-
-    position: 'relative',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginBottom: 7,
-  },
-
-  componentIcon: {
-    width: 52,
-    height: 52,
-
-    borderRadius: 26,
-
-    backgroundColor: PINK,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  recommendedDifficulty: {
-    position: 'absolute',
-
-    right: 5,
-    bottom: 5,
-
-    backgroundColor: WHITE,
-
-    borderRadius: 8,
-
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-
-  difficultyText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 7,
-    color: BROWN,
-  },
-
-  recommendedBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  categoryText: {
-    flex: 1,
-
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    color: BROWN,
-
-    marginRight: 5,
-  },
-
-  smallPlayButton: {
-    width: 32,
-    height: 32,
-
-    borderRadius: 16,
-
-    backgroundColor: WHITE,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 3,
-
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-
-    elevation: 2,
-  },
-
-  // =========================================
+  // =========================================================
   // EXERCISES HEADER
-  // =========================================
+  // =========================================================
 
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
 
-    marginBottom: 1,
+    marginBottom: 2,
   },
 
   exerciseTitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 25,
+    fontSize: 31,
     color: BROWN,
   },
 
-  // =========================================
+  // =========================================================
   // DROPDOWN
-  // =========================================
+  // =========================================================
 
   dropdownWrapper: {
     position: 'relative',
@@ -1001,14 +870,14 @@ const styles = StyleSheet.create({
   },
 
   dropdown: {
-    width: 88,
-    height: 29,
+    width: 108,
+    height: 32,
 
     backgroundColor: PINK,
 
-    borderRadius: 7,
+    borderRadius: 8,
 
-    paddingHorizontal: 9,
+    paddingHorizontal: 12,
 
     flexDirection: 'row',
     alignItems: 'center',
@@ -1017,25 +886,25 @@ const styles = StyleSheet.create({
 
   dropdownText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 9,
+    fontSize: 11,
     color: BROWN,
 
-    maxWidth: 62,
+    maxWidth: 75,
   },
 
   dropdownMenu: {
     position: 'absolute',
 
-    top: 34,
+    top: 37,
     right: 0,
 
-    width: 135,
+    width: 145,
 
     backgroundColor: WHITE,
 
-    borderRadius: 8,
+    borderRadius: 10,
 
-    paddingVertical: 4,
+    paddingVertical: 5,
 
     zIndex: 100,
 
@@ -1043,8 +912,7 @@ const styles = StyleSheet.create({
 
     shadowColor: '#000',
     shadowOpacity: 0.15,
-    shadowRadius: 7,
-
+    shadowRadius: 8,
     shadowOffset: {
       width: 0,
       height: 3,
@@ -1052,8 +920,8 @@ const styles = StyleSheet.create({
   },
 
   dropdownItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
 
   selectedDropdownItem: {
@@ -1062,7 +930,7 @@ const styles = StyleSheet.create({
 
   dropdownItemText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
+    fontSize: 11,
     color: BROWN,
   },
 
@@ -1070,35 +938,35 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
   },
 
-  // =========================================
-  // COUNT
-  // =========================================
+  // =========================================================
+  // RESULT COUNT
+  // =========================================================
 
   resultCount: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
+    fontSize: 10,
     color: MUTED,
 
-    marginBottom: 6,
+    marginBottom: 8,
   },
 
-  // =========================================
+  // =========================================================
   // EXERCISE LIST
-  // =========================================
+  // =========================================================
 
   exerciseList: {
-    gap: 6,
+    gap: 7,
   },
 
   exerciseCard: {
-    minHeight: 59,
+    minHeight: 64,
 
     backgroundColor: LIGHT_PINK,
 
-    borderRadius: 8,
+    borderRadius: 9,
 
-    paddingHorizontal: 8,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
 
     flexDirection: 'row',
     alignItems: 'center',
@@ -1108,51 +976,35 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 
-  exerciseIcon: {
-    width: 35,
-    height: 35,
-
-    borderRadius: 18,
-
-    backgroundColor: PINK,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginRight: 7,
-  },
-
   exerciseNameContainer: {
-    width: 92,
-
-    marginRight: 5,
+    width: 108,
   },
 
   exerciseName: {
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 15,
+    lineHeight: 17,
     color: BROWN,
   },
 
   levelBadge: {
-    width: 52,
+    width: 61,
 
     backgroundColor: PINK,
 
-    borderRadius: 8,
+    borderRadius: 10,
 
-    paddingVertical: 3,
+    paddingVertical: 4,
 
     alignItems: 'center',
     justifyContent: 'center',
 
-    marginRight: 7,
+    marginRight: 14,
   },
 
   levelText: {
     fontFamily: 'FredokaBold',
-    fontSize: 6,
+    fontSize: 8,
     color: BROWN,
   },
 
@@ -1160,17 +1012,16 @@ const styles = StyleSheet.create({
     flex: 1,
 
     fontFamily: 'FredokaRegular',
-    fontSize: 7,
+    fontSize: 10,
+    lineHeight: 12,
     color: BROWN,
-
-    marginRight: 5,
   },
 
   listPlayButton: {
-    width: 34,
-    height: 34,
+    width: 38,
+    height: 38,
 
-    borderRadius: 17,
+    borderRadius: 19,
 
     backgroundColor: WHITE,
 
@@ -1180,7 +1031,6 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.10,
     shadowRadius: 3,
-
     shadowOffset: {
       width: 0,
       height: 2,
@@ -1189,30 +1039,30 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  // =========================================
+  // =========================================================
   // NO RESULTS
-  // =========================================
+  // =========================================================
 
   noResults: {
     alignItems: 'center',
     justifyContent: 'center',
 
-    paddingVertical: 35,
+    paddingVertical: 40,
   },
 
   noResultsTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 15,
+    fontSize: 17,
     color: BROWN,
 
-    marginTop: 8,
+    marginTop: 10,
   },
 
   noResultsText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 9,
+    fontSize: 12,
     color: MUTED,
 
-    marginTop: 3,
+    marginTop: 4,
   },
 });

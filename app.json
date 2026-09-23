@@ -42,7 +42,8 @@
       "expo-audio",
       "expo-asset",
       "react-native-audio-api",
-      "expo-image"
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -53,6 +54,7 @@
       "eas": {
         "projectId": "4eb68170-e9ea-400f-bc03-61fba0b2f47d"
       }
-    }
+    },
+    "owner": "fmadera"
   }
 }

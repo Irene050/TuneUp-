@@ -1,16 +1,18 @@
+// src/screens/exercises/BreathControl/SustainedSSSSScreen.tsx
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    SUSTAINED_SSSS_PARAMS,
-    Tier,
+  SUSTAINED_SSSS_PARAMS,
+  Tier,
 } from '@/constants/exercises/breathControl';
 
 const BROWN = '#4E2F1F';
@@ -62,13 +64,84 @@ export default function SustainedSSSSScreen({
         </Text>
 
         <View style={styles.instructionCard}>
+
+          {/* BEFORE YOU BEGIN */}
+          <View style={styles.prepareCard}>
+            <View style={styles.prepareHeader}>
+              <Ionicons
+                name="mic-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareTitle}>
+                Before You Begin
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Find a quiet room or area with minimal
+                background noise.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Sit upright or stand with your back straight
+                and your shoulders relaxed.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="mic-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Hold your phone's microphone about 10–15 cm
+                from your mouth. Direct the "ssss" sound
+                toward the microphone so the app can detect
+                the strength and consistency of your airflow.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="resize-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Keep the microphone at a consistent distance
+                from your mouth throughout the exercise.
+              </Text>
+            </View>
+          </View>
+
+          {/* INSTRUCTIONS */}
           <Text style={styles.cardTitle}>
             Instructions
           </Text>
 
           <Text style={styles.instruction}>
-            Take a deep breath, then produce a
-            steady "ssss" sound.
+            Take a comfortable breath, then produce a
+            steady "ssss" sound toward the microphone.
           </Text>
 
           <Text style={styles.instruction}>
@@ -83,11 +156,13 @@ export default function SustainedSSSSScreen({
           </View>
 
           <Text style={styles.helperText}>
-            Keep the hissing sound smooth and
-            consistent throughout the exercise.
+            Keep the hissing sound smooth and consistent
+            while maintaining a steady distance from the
+            microphone.
           </Text>
         </View>
 
+        {/* TIP */}
         <View style={styles.tipCard}>
           <Ionicons
             name="bulb-outline"
@@ -96,11 +171,13 @@ export default function SustainedSSSSScreen({
           />
 
           <Text style={styles.tipText}>
-            Keep your airflow gentle and avoid
-            sudden changes in the sound.
+            Keep your airflow gentle and avoid sudden
+            changes in the sound. Do not blow forcefully
+            into the microphone.
           </Text>
         </View>
 
+        {/* DIFFICULTY */}
         <View style={styles.difficultyRow}>
           <Text style={styles.difficultyLabel}>
             Difficulty
@@ -111,6 +188,7 @@ export default function SustainedSSSSScreen({
           </Text>
         </View>
 
+        {/* START */}
         <Pressable
           style={styles.startButton}
           onPress={() => {
@@ -207,6 +285,54 @@ const styles = StyleSheet.create({
     color: BROWN,
 
     marginBottom: 14,
+  },
+
+  prepareCard: {
+    width: '100%',
+
+    backgroundColor: PINK,
+
+    borderRadius: 18,
+
+    padding: 16,
+
+    marginBottom: 18,
+
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    marginBottom: 12,
+  },
+
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+
+    marginLeft: 9,
+  },
+
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    marginTop: 8,
+  },
+
+  prepareText: {
+    flex: 1,
+
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+
+    marginLeft: 9,
   },
 
   instruction: {

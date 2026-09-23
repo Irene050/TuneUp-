@@ -1,16 +1,18 @@
+// src/screens/exercises/BreathControl/ControlledBreathReleaseScreen.tsx
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    CONTROLLED_BREATH_RELEASE_PARAMS,
-    Tier,
+  CONTROLLED_BREATH_RELEASE_PARAMS,
+  Tier,
 } from '@/constants/exercises/breathControl';
 
 const BROWN = '#4E2F1F';
@@ -26,8 +28,7 @@ interface Props {
 export default function ControlledBreathReleaseScreen({
   tier,
 }: Props) {
-  const params =
-    CONTROLLED_BREATH_RELEASE_PARAMS[tier];
+  const params = CONTROLLED_BREATH_RELEASE_PARAMS[tier];
 
   return (
     <View style={styles.screen}>
@@ -46,6 +47,7 @@ export default function ControlledBreathReleaseScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
+        {/* ICON */}
         <View style={styles.iconCircle}>
           <Ionicons
             name="pulse-outline"
@@ -54,6 +56,7 @@ export default function ControlledBreathReleaseScreen({
           />
         </View>
 
+        {/* TITLE */}
         <Text style={styles.title}>
           Controlled Breath Release
         </Text>
@@ -63,19 +66,91 @@ export default function ControlledBreathReleaseScreen({
         </Text>
 
         <View style={styles.instructionCard}>
+
+          {/* BEFORE YOU BEGIN */}
+          <View style={styles.prepareCard}>
+            <View style={styles.prepareHeader}>
+              <Ionicons
+                name="mic-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareTitle}>
+                Before You Begin
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Find a quiet room or area with minimal
+                background noise.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Sit upright or stand with your back straight
+                and your shoulders relaxed.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="mic-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Hold your phone's microphone about 10–15 cm
+                from your mouth. Direct each exhale pulse
+                toward the microphone so the app can detect
+                changes in your airflow.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="resize-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Keep the microphone at a consistent distance
+                from your mouth throughout the exercise.
+              </Text>
+            </View>
+          </View>
+
+          {/* INSTRUCTIONS */}
           <Text style={styles.cardTitle}>
             Instructions
           </Text>
 
           <Text style={styles.instruction}>
-            Take a comfortable breath, then release
-            it in short, controlled pulses.
+            Take a comfortable breath, then release it in
+            short, controlled pulses toward the microphone.
           </Text>
 
           <Text style={styles.instruction}>
             Complete:
           </Text>
 
+          {/* TARGET */}
           <View style={styles.targetBox}>
             <Text style={styles.targetText}>
               {params.pulseCount} pulses
@@ -87,11 +162,13 @@ export default function ControlledBreathReleaseScreen({
           </View>
 
           <Text style={styles.helperText}>
-            Try to keep each pulse similar in
-            strength and evenly spaced.
+            Try to keep each pulse similar in strength and
+            evenly spaced while maintaining a steady distance
+            from the microphone.
           </Text>
         </View>
 
+        {/* TIP */}
         <View style={styles.tipCard}>
           <Ionicons
             name="bulb-outline"
@@ -100,11 +177,13 @@ export default function ControlledBreathReleaseScreen({
           />
 
           <Text style={styles.tipText}>
-            Focus on control rather than releasing
-            your breath too quickly.
+            Focus on control rather than releasing your
+            breath too quickly. Use comfortable, gentle
+            breath pulses.
           </Text>
         </View>
 
+        {/* DIFFICULTY */}
         <View style={styles.difficultyRow}>
           <Text style={styles.difficultyLabel}>
             Difficulty
@@ -115,6 +194,7 @@ export default function ControlledBreathReleaseScreen({
           </Text>
         </View>
 
+        {/* START BUTTON */}
         <Pressable
           style={styles.startButton}
           onPress={() => {
@@ -205,6 +285,58 @@ const styles = StyleSheet.create({
     borderColor: '#F2DDE5',
   },
 
+  /* BEFORE YOU BEGIN */
+
+  prepareCard: {
+    width: '100%',
+
+    backgroundColor: PINK,
+
+    borderRadius: 18,
+
+    padding: 16,
+
+    marginBottom: 18,
+
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    marginBottom: 12,
+  },
+
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+
+    marginLeft: 9,
+  },
+
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    marginTop: 8,
+  },
+
+  prepareText: {
+    flex: 1,
+
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+
+    marginLeft: 9,
+  },
+
+  /* INSTRUCTIONS */
+
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
@@ -221,6 +353,8 @@ const styles = StyleSheet.create({
 
     marginBottom: 10,
   },
+
+  /* TARGET */
 
   targetBox: {
     backgroundColor: PINK,
@@ -260,6 +394,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
+  /* TIP */
+
   tipCard: {
     width: '100%',
 
@@ -286,6 +422,8 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
 
+  /* DIFFICULTY */
+
   difficultyRow: {
     width: '100%',
 
@@ -310,6 +448,8 @@ const styles = StyleSheet.create({
 
     textTransform: 'capitalize',
   },
+
+  /* START BUTTON */
 
   startButton: {
     width: '100%',

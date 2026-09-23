@@ -1,4 +1,4 @@
-// src/screens/exercises/Tone/WaveformSmoothnessDrillScreen.tsx
+// src/screens/exercises/Tone/ToneConsistencyExerciseScreen.tsx
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
@@ -15,19 +15,19 @@ import {
 
 import {
   Tier,
-  WAVEFORM_SMOOTHNESS_PARAMS,
+  TONE_CONSISTENCY_PARAMS,
 } from '@/constants/exercises/tone';
 import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import {
-  measureWaveformSmoothness,
-} from '@/services/measurement/tone/waveformSmoothnessDrill';
+  measureToneConsistency,
+} from '@/services/measurement/tone/toneConsistencyExercise';
 import {
-  WaveformSmoothnessScoreResult,
-  scoreWaveformSmoothnessDrill,
-} from '@/services/scoring/tone/waveformSmoothnessDrill';
+  ToneConsistencyScoreResult,
+  scoreToneConsistencyExercise,
+} from '@/services/scoring/tone/toneConsistencyExercise';
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
@@ -40,11 +40,11 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#E8DCD7';
 
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
 const COUNTDOWN_SECONDS = 3;
+const REST_MS = 1200;
 
 interface Props {
   tier?: Tier;
@@ -54,8 +54,13 @@ type Phase =
   | 'instructions'
   | 'countdown'
   | 'recording'
+  | 'rest'
   | 'processing'
   | 'results';
+
+interface RepPreview {
+  durationSec: number;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -65,79 +70,108 @@ function formatNumber(value: number, decimals = 1) {
   return Number.isFinite(value) ? value.toFixed(decimals) : '--';
 }
 
-export default function WaveformSmoothnessDrillScreen({
+export default function ToneConsistencyExerciseScreen({
   tier = 'beginner',
 }: Props) {
-  const params = WAVEFORM_SMOOTHNESS_PARAMS[tier];
+  const params = TONE_CONSISTENCY_PARAMS[tier];
+  const repetitions = Math.max(1, params.repetitions);
 
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [currentRepetition, setCurrentRepetition] = useState(1);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
-  const [result, setResult] =
-    useState<WaveformSmoothnessScoreResult | null>(null);
-  const [centroidSmoothness, setCentroidSmoothness] = useState(0);
-  const [amplitudeStability, setAmplitudeStability] = useState(0);
-  const [averageCentroid, setAverageCentroid] = useState(0);
-  const [frameCount, setFrameCount] = useState(0);
+  const [repPreviews, setRepPreviews] = useState<RepPreview[]>([]);
+  const [finalResult, setFinalResult] =
+    useState<ToneConsistencyScoreResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const recordingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const processingRef = useRef(false);
   const elapsedRef = useRef(0);
-  const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
+  const repetitionRef = useRef(1);
+  const repetitionSamplesRef = useRef<Float32Array[]>([]);
+  const repetitionFFTFramesRef = useRef<Float32Array[][]>([]);
+  const repPreviewsRef = useRef<RepPreview[]>([]);
+  const startRepCountdownRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      if (restTimerRef.current) {
+        clearTimeout(restTimerRef.current);
+      }
+
       recordingRef.current = false;
       stopRequestedRef.current = false;
     };
   }, []);
 
   const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
-    if (mountedRef.current) setLiveFrame(frame);
+    if (mountedRef.current) {
+      setLiveFrame(frame);
+    }
   }, []);
 
   const resetExercise = useCallback(() => {
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (restTimerRef.current) {
+      clearTimeout(restTimerRef.current);
+      restTimerRef.current = null;
+    }
 
+    repetitionRef.current = 1;
     recordingRef.current = false;
     stopRequestedRef.current = false;
     processingRef.current = false;
     elapsedRef.current = 0;
+    repetitionSamplesRef.current = [];
+    repetitionFFTFramesRef.current = [];
+    repPreviewsRef.current = [];
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCurrentRepetition(1);
     setElapsedMs(0);
     setLiveFrame(null);
-    setResult(null);
-    setCentroidSmoothness(0);
-    setAmplitudeStability(0);
-    setAverageCentroid(0);
-    setFrameCount(0);
+    setRepPreviews([]);
+    setFinalResult(null);
     setErrorMessage(null);
   }, []);
 
-  const handleRecordingStop = useCallback(
-    async (samples: Float32Array, sampleRate: number) => {
-      if (!mountedRef.current || processingRef.current) return;
+  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
+    onFrame: handleLiveFrame,
+    onStop: async (samples, sampleRate) => {
+      if (!mountedRef.current || processingRef.current) {
+        return;
+      }
 
       recordingRef.current = false;
+
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
-
-      processingRef.current = true;
-      setPhase('processing');
 
       try {
         if (!samples.length || sampleRate <= 0) {
@@ -154,75 +188,103 @@ export default function WaveformSmoothnessDrillScreen({
           throw new Error('No FFT frames could be generated.');
         }
 
-        const measurement = measureWaveformSmoothness(
-          samples,
-          fftFrames,
+        repetitionSamplesRef.current.push(samples);
+        repetitionFFTFramesRef.current.push(fftFrames);
+
+        const preview: RepPreview = {
+          durationSec: samples.length / sampleRate,
+        };
+        const nextPreviews = [...repPreviewsRef.current, preview];
+        repPreviewsRef.current = nextPreviews;
+
+        if (mountedRef.current) {
+          setRepPreviews(nextPreviews);
+          setLiveFrame(null);
+        }
+
+        if (nextPreviews.length < repetitions) {
+          const nextRep = nextPreviews.length + 1;
+          repetitionRef.current = nextRep;
+          elapsedRef.current = 0;
+
+          if (mountedRef.current) {
+            setCurrentRepetition(nextRep);
+            setElapsedMs(0);
+            setPhase('rest');
+          }
+
+          restTimerRef.current = setTimeout(() => {
+            if (!mountedRef.current) {
+              return;
+            }
+
+            startRepCountdownRef.current?.();
+          }, REST_MS);
+
+          return;
+        }
+
+        processingRef.current = true;
+
+        if (mountedRef.current) {
+          setPhase('processing');
+        }
+
+        const measurement = measureToneConsistency(
+          repetitionSamplesRef.current,
+          repetitionFFTFramesRef.current,
           sampleRate,
           FFT_SIZE,
         );
 
-        const scored = scoreWaveformSmoothnessDrill(measurement, tier);
-        const centroids = fftFrames.length
-          ? fftFrames
-              .map((_, index) => {
-                const value = measurement.centroidSmoothnessPct;
-                return Number.isFinite(value) ? value : 0;
-              })
-              .filter((value) => Number.isFinite(value))
-          : [];
+        const scored = scoreToneConsistencyExercise(measurement, tier);
+        const finalScored: ToneConsistencyScoreResult = {
+          score: clamp(scored.score, 0, 100),
+          passed: scored.passed,
+        };
 
-        setCentroidSmoothness(measurement.centroidSmoothnessPct);
-        setAmplitudeStability(measurement.amplitudeStabilityPct);
-        setFrameCount(fftFrames.length);
-
-        if (centroids.length) {
-          // The measurement helper already summarizes the centroid series.
-          // Keep the displayed centroid as a stability metric rather than inventing
-          // a second independent DSP calculation here.
-          setAverageCentroid(0);
-        }
-
-        setResult(scored);
+        setFinalResult(finalScored);
 
         await saveCompletedExercise(
           'tone',
-          'waveformSmoothnessDrill',
+          'toneConsistencyExercise',
           tier,
-          scored.score,
+          finalScored.score,
         );
 
-        if (mountedRef.current) setPhase('results');
+        if (mountedRef.current) {
+          setPhase('results');
+        }
       } catch (error) {
-        console.error('❌ WAVEFORM SMOOTHNESS PROCESSING ERROR:', error);
+        console.error('❌ TONE CONSISTENCY PROCESSING ERROR:', error);
+
         if (mountedRef.current) {
           setErrorMessage(
-            'We could not analyze your recording. Please try again.',
+            'We could not analyze the recordings. Please try again.',
           );
           setPhase('instructions');
         }
       } finally {
-        processingRef.current = false;
         stopRequestedRef.current = false;
+
+        if (repPreviewsRef.current.length >= repetitions) {
+          processingRef.current = false;
+        }
       }
     },
-    [tier],
-  );
-
-  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
-    onFrame: handleLiveFrame,
-    onStop: handleRecordingStop,
   });
 
-  useEffect(() => {
-    stopRecordingRef.current = stopRecording;
-  }, [stopRecording]);
-
   const beginRecording = useCallback(async () => {
-    if (!mountedRef.current || recordingRef.current || processingRef.current) {
+    if (
+      !mountedRef.current ||
+      recordingRef.current ||
+      processingRef.current
+    ) {
       return;
     }
 
     try {
+      setErrorMessage(null);
       setLiveFrame(null);
       elapsedRef.current = 0;
       setElapsedMs(0);
@@ -230,11 +292,15 @@ export default function WaveformSmoothnessDrillScreen({
       setPhase('recording');
 
       await startRecording();
-      if (!mountedRef.current) return;
+
+      if (!mountedRef.current) {
+        return;
+      }
 
       recordingRef.current = true;
 
-      const durationMs = params.durationSec * 1000;
+      const durationMs = params.intervalSec * 1000;
+
       recordingTimerRef.current = setInterval(() => {
         if (
           !mountedRef.current ||
@@ -254,21 +320,29 @@ export default function WaveformSmoothnessDrillScreen({
           }
 
           stopRequestedRef.current = true;
+
           stopRecording().catch((error) => {
-            console.error('❌ FAILED TO STOP WAVEFORM RECORDING:', error);
+            console.error(
+              '❌ FAILED TO STOP TONE CONSISTENCY RECORDING:',
+              error,
+            );
             recordingRef.current = false;
             stopRequestedRef.current = false;
+
             if (mountedRef.current) {
-              setErrorMessage('We could not finish the recording. Please try again.');
+              setErrorMessage(
+                'We could not finish the recording. Please try again.',
+              );
               setPhase('instructions');
             }
           });
         }
       }, 100);
     } catch (error) {
-      console.error('❌ FAILED TO START WAVEFORM RECORDING:', error);
+      console.error('❌ FAILED TO START TONE CONSISTENCY RECORDING:', error);
       recordingRef.current = false;
       stopRequestedRef.current = false;
+
       if (mountedRef.current) {
         setPhase('instructions');
         Alert.alert(
@@ -277,46 +351,85 @@ export default function WaveformSmoothnessDrillScreen({
         );
       }
     }
-  }, [params.durationSec, startRecording, stopRecording]);
+  }, [params.intervalSec, startRecording, stopRecording]);
 
-  const startCountdown = useCallback(() => {
-    resetExercise();
-    setPhase('countdown');
+  const startRepCountdown = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      processingRef.current ||
+      recordingRef.current
+    ) {
+      return;
+    }
+
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+
     setCountdown(COUNTDOWN_SECONDS);
+    setPhase('countdown');
 
     let value = COUNTDOWN_SECONDS;
+
     countdownTimerRef.current = setInterval(() => {
       value -= 1;
 
       if (value <= 0) {
-        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+
         void beginRecording();
         return;
       }
 
-      if (mountedRef.current) setCountdown(value);
+      if (mountedRef.current) {
+        setCountdown(value);
+      }
     }, 1000);
-  }, [beginRecording, resetExercise]);
+  }, [beginRecording]);
+
+  startRepCountdownRef.current = startRepCountdown;
+
+  const startExercise = useCallback(() => {
+    resetExercise();
+    setPhase('countdown');
+    startRepCountdown();
+  }, [resetExercise, startRepCountdown]);
 
   const stopEarly = useCallback(() => {
-    if (!recordingRef.current || stopRequestedRef.current) return;
+    if (!recordingRef.current || stopRequestedRef.current) {
+      return;
+    }
+
     stopRequestedRef.current = true;
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null;
 
-    const stop = stopRecordingRef.current;
-    if (!stop) return;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
 
-    stop().catch((error) => {
-      console.error('❌ FAILED TO STOP WAVEFORM RECORDING EARLY:', error);
+    stopRecording().catch((error) => {
+      console.error(
+        '❌ FAILED TO STOP TONE CONSISTENCY RECORDING EARLY:',
+        error,
+      );
       stopRequestedRef.current = false;
     });
-  }, []);
+  }, [stopRecording]);
 
   const goBack = useCallback(() => {
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+    }
+    if (restTimerRef.current) {
+      clearTimeout(restTimerRef.current);
+    }
+
     router.replace('/dashboard/exercises');
   }, []);
 
@@ -325,9 +438,11 @@ export default function WaveformSmoothnessDrillScreen({
     setPhase('instructions');
   }, [resetExercise]);
 
-  const recordingProgress = params.durationSec
-    ? clamp(elapsedMs / 1000 / params.durationSec, 0, 1)
-    : 0;
+  const recordingProgress = clamp(
+    elapsedMs / 1000 / Math.max(params.intervalSec, 0.1),
+    0,
+    1,
+  );
 
   const livePitchNote =
     liveFrame && liveFrame.pitch > 0
@@ -346,10 +461,10 @@ export default function WaveformSmoothnessDrillScreen({
           contentContainerStyle={styles.content}
         >
           <View style={styles.iconCircle}>
-            <Ionicons name="pulse-outline" size={34} color={BROWN} />
+            <Ionicons name="repeat-outline" size={34} color={BROWN} />
           </View>
 
-          <Text style={styles.title}>Waveform Smoothness</Text>
+          <Text style={styles.title}>Tone Consistency</Text>
           <Text style={styles.subtitle}>Tone</Text>
 
           <View style={styles.instructionCard}>
@@ -358,43 +473,75 @@ export default function WaveformSmoothnessDrillScreen({
                 <Ionicons name="mic-outline" size={21} color={BROWN} />
                 <Text style={styles.prepareTitle}>Before You Begin</Text>
               </View>
+
               <View style={styles.prepareItem}>
-                <Ionicons name="volume-mute-outline" size={17} color={BROWN} />
-                <Text style={styles.prepareText}>Find a quiet place with minimal background noise.</Text>
+                <Ionicons
+                  name="volume-mute-outline"
+                  size={17}
+                  color={BROWN}
+                />
+                <Text style={styles.prepareText}>
+                  Find a quiet place with minimal background noise.
+                </Text>
               </View>
+
               <View style={styles.prepareItem}>
                 <Ionicons name="body-outline" size={17} color={BROWN} />
-                <Text style={styles.prepareText}>Choose one comfortable note and stay on it for the entire drill.</Text>
+                <Text style={styles.prepareText}>
+                  Keep your posture relaxed and keep the microphone a comfortable distance away.
+                </Text>
               </View>
+
               <View style={styles.prepareItem}>
-                <Ionicons name="pulse-outline" size={17} color={BROWN} />
-                <Text style={styles.prepareText}>This is one continuous hold. There are no vowel repetitions or changing targets.</Text>
+                <Ionicons name="repeat-outline" size={17} color={BROWN} />
+                <Text style={styles.prepareText}>
+                  You will repeat the same note and tone several times so TuneUp! can compare them.
+                </Text>
               </View>
             </View>
 
             <Text style={styles.cardTitle}>How It Works</Text>
-            <Text style={styles.instruction}>Sustain one comfortable vocal sound for the full duration.</Text>
-            <Text style={styles.instruction}>Keep the tone steady. Avoid deliberate changes in pitch, loudness, or vocal quality.</Text>
-            <Text style={styles.instruction}>The drill looks at how stable your tone and amplitude remain across the whole recording.</Text>
+            <Text style={styles.instruction}>
+              Sing one comfortable note using the same vowel for every repetition.
+            </Text>
+            <Text style={styles.instruction}>
+              Keep the tone quality and loudness as similar as you can from one repetition to the next.
+            </Text>
+            <Text style={styles.instruction}>
+              Rest briefly between repetitions and repeat the same sound each time.
+            </Text>
 
             <View style={styles.targetBox}>
-              <Ionicons name="pulse-outline" size={28} color={BROWN} />
+              <Ionicons name="musical-note-outline" size={28} color={BROWN} />
               <View style={styles.targetInfo}>
-                <Text style={styles.targetLabel}>GOAL</Text>
-                <Text style={styles.targetValue}>Smooth &amp; Steady Tone</Text>
+                <Text style={styles.targetLabel}>TARGET</Text>
+                <Text style={styles.targetValue}>Same note &amp; same tone</Text>
               </View>
             </View>
           </View>
 
           <View style={styles.keyMetricCard}>
-            <Text style={styles.keyMetricTitle}>What makes this different?</Text>
+            <Text style={styles.keyMetricTitle}>What TuneUp! checks</Text>
+
             <View style={styles.metricRow}>
-              <Ionicons name="pulse-outline" size={19} color={BROWN} />
-              <Text style={styles.metricText}>One continuous recording instead of repeated vowel attempts</Text>
+              <Ionicons name="radio-outline" size={19} color={BROWN} />
+              <Text style={styles.metricText}>
+                Average spectral brightness of each repetition
+              </Text>
             </View>
+
             <View style={styles.metricRow}>
               <Ionicons name="volume-medium-outline" size={19} color={BROWN} />
-              <Text style={styles.metricText}>Tone brightness smoothness + amplitude stability</Text>
+              <Text style={styles.metricText}>
+                Average loudness of each repetition
+              </Text>
+            </View>
+
+            <View style={styles.metricRow}>
+              <Ionicons name="repeat-outline" size={19} color={BROWN} />
+              <Text style={styles.metricText}>
+                Similarity across all repetitions
+              </Text>
             </View>
           </View>
 
@@ -402,27 +549,36 @@ export default function WaveformSmoothnessDrillScreen({
             <Text style={styles.difficultyLabel}>Difficulty</Text>
             <Text style={styles.difficultyValue}>{tier}</Text>
           </View>
+
           <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Continuous hold</Text>
-            <Text style={styles.difficultyValue}>{params.durationSec}s</Text>
+            <Text style={styles.difficultyLabel}>Repetitions</Text>
+            <Text style={styles.difficultyValue}>{repetitions}</Text>
           </View>
+
           <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Required smoothness</Text>
-            <Text style={styles.difficultyValue}>{params.smoothnessThreshold}%</Text>
+            <Text style={styles.difficultyLabel}>Hold interval</Text>
+            <Text style={styles.difficultyValue}>{params.intervalSec}s</Text>
           </View>
+
           <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Amplitude variance</Text>
-            <Text style={styles.difficultyValue}>≤{params.amplitudeVariancePct}%</Text>
+            <Text style={styles.difficultyLabel}>Required consistency</Text>
+            <Text style={styles.difficultyValue}>
+              {params.consistencyThreshold}%
+            </Text>
           </View>
 
           {errorMessage && (
             <View style={styles.errorCard}>
-              <Ionicons name="alert-circle-outline" size={21} color={BROWN} />
+              <Ionicons
+                name="alert-circle-outline"
+                size={21}
+                color={BROWN}
+              />
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           )}
 
-          <Pressable style={styles.startButton} onPress={startCountdown}>
+          <Pressable style={styles.startButton} onPress={startExercise}>
             <Text style={styles.startButtonText}>Start Exercise</Text>
             <Ionicons name="arrow-forward" size={18} color={WHITE} />
           </Pressable>
@@ -435,12 +591,40 @@ export default function WaveformSmoothnessDrillScreen({
     return (
       <View style={styles.centerScreen}>
         <View style={styles.iconCircle}>
-          <Ionicons name="pulse-outline" size={34} color={BROWN} />
+          <Ionicons name="repeat-outline" size={34} color={BROWN} />
         </View>
         <Text style={styles.phaseTitle}>Get Ready</Text>
         <Text style={styles.countdownText}>{countdown}</Text>
-        <Text style={styles.phaseSubtitle}>Choose one comfortable note</Text>
-        <Text style={styles.phaseSubtitle}>Then keep the tone steady for {params.durationSec} seconds.</Text>
+        <Text style={styles.phaseSubtitle}>
+          Repetition {currentRepetition} of {repetitions}
+        </Text>
+        <Text style={styles.largeTarget}>Same tone</Text>
+        <Text style={styles.phaseSubtitle}>
+          Hold for {params.intervalSec} seconds
+        </Text>
+      </View>
+    );
+  }
+
+  if (phase === 'rest') {
+    return (
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="pause-outline" size={34} color={BROWN} />
+        </View>
+        <Text style={styles.phaseTitle}>Relax</Text>
+        <Text style={styles.phaseSubtitle}>
+          Repetition {currentRepetition - 1} complete.
+        </Text>
+        <Text style={styles.largeTarget}>Keep the same sound</Text>
+        <Text style={styles.phaseSubtitle}>
+          Next: repetition {currentRepetition} of {repetitions}
+        </Text>
+        <ActivityIndicator
+          size="small"
+          color={BROWN}
+          style={{ marginTop: 18 }}
+        />
       </View>
     );
   }
@@ -452,16 +636,20 @@ export default function WaveformSmoothnessDrillScreen({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.recordingContent}
         >
-          <Text style={styles.recordingEyebrow}>ONE CONTINUOUS HOLD</Text>
-          <Text style={styles.recordingTitle}>Keep Your Tone Steady</Text>
-          <Text style={styles.recordingSubtitle}>Do not intentionally change the sound while you hold it.</Text>
+          <Text style={styles.recordingEyebrow}>
+            REPETITION {currentRepetition} / {repetitions}
+          </Text>
+          <Text style={styles.recordingTitle}>Keep the Tone the Same</Text>
+          <Text style={styles.recordingSubtitle}>
+            Repeat the same note with the same tone quality and loudness.
+          </Text>
 
-          <View style={styles.goalCard}>
-            <Ionicons name="pulse-outline" size={29} color={BROWN} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.goalTitle}>Steady Tone</Text>
-              <Text style={styles.goalText}>No target vowel • no repetitions • one continuous take</Text>
-            </View>
+          <View style={styles.targetCard}>
+            <Text style={styles.targetCardLabel}>TARGET</Text>
+            <Text style={styles.targetCardValue}>Same note &amp; same tone</Text>
+            <Text style={styles.targetCardHint}>
+              Consistency matters more than volume.
+            </Text>
           </View>
 
           <View style={styles.microphoneArea}>
@@ -480,37 +668,60 @@ export default function WaveformSmoothnessDrillScreen({
             <Text style={styles.liveLabel}>LIVE SIGNAL</Text>
             <Text style={styles.liveNote}>{livePitchNote}</Text>
             <Text style={styles.liveFrequency}>
-              {liveFrame && liveFrame.pitch > 0 ? `${Math.round(liveFrame.pitch)} Hz` : '--'}
+              {liveFrame && liveFrame.pitch > 0
+                ? `${Math.round(liveFrame.pitch)} Hz`
+                : '--'}
             </Text>
+
             <View style={styles.liveStats}>
               <View style={styles.liveStat}>
                 <Text style={styles.liveStatLabel}>Clarity</Text>
                 <Text style={styles.liveStatValue}>
-                  {liveFrame && liveFrame.clarity > 0 ? `${Math.round(liveFrame.clarity * 100)}%` : '--'}
+                  {liveFrame && liveFrame.clarity > 0
+                    ? `${Math.round(liveFrame.clarity * 100)}%`
+                    : '--'}
                 </Text>
               </View>
+
               <View style={styles.liveStat}>
                 <Text style={styles.liveStatLabel}>Volume</Text>
                 <Text style={styles.liveStatValue}>
-                  {liveFrame && Number.isFinite(liveFrame.volume) ? `${Math.round(liveFrame.volume)} dB` : '--'}
+                  {liveFrame && Number.isFinite(liveFrame.volume)
+                    ? `${Math.round(liveFrame.volume)} dB`
+                    : '--'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={styles.liveReminder}>
-            <Ionicons name="lock-closed-outline" size={18} color={BROWN} />
-            <Text style={styles.liveReminderText}>Keep the same vocal quality until the timer reaches the end.</Text>
-          </View>
+          <Text style={styles.timerText}>
+            {(elapsedMs / 1000).toFixed(1)} / {formatNumber(params.intervalSec)}s
+          </Text>
 
-          <Text style={styles.timerText}>{(elapsedMs / 1000).toFixed(1)} / {params.durationSec.toFixed(1)}s</Text>
           <View style={styles.timerTrack}>
-            <View style={[styles.timerFill, { width: `${recordingProgress * 100}%` }]} />
+            <View
+              style={[
+                styles.timerFill,
+                { width: `${recordingProgress * 100}%` },
+              ]}
+            />
           </View>
 
-          <Pressable style={styles.stopButton} onPress={stopEarly} disabled={!isRecording}>
-            <Ionicons name="stop-circle-outline" size={20} color={BROWN} />
-            <Text style={styles.stopButtonText}>Finish Early</Text>
+          <Text style={styles.helperText}>
+            Try to reproduce the same sound you made in the previous repetition.
+          </Text>
+
+          <Pressable
+            style={styles.stopButton}
+            onPress={stopEarly}
+            disabled={!isRecording}
+          >
+            <Ionicons
+              name="stop-circle-outline"
+              size={20}
+              color={BROWN}
+            />
+            <Text style={styles.stopButtonText}>Finish This Repetition</Text>
           </Pressable>
         </ScrollView>
       </View>
@@ -524,90 +735,123 @@ export default function WaveformSmoothnessDrillScreen({
           <Ionicons name="analytics-outline" size={34} color={BROWN} />
         </View>
         <Text style={styles.phaseTitle}>Analyzing Your Tone</Text>
-        <Text style={styles.phaseSubtitle}>Measuring spectral smoothness and amplitude stability across the whole take.</Text>
-        <ActivityIndicator size="large" color={BROWN} style={styles.processingIndicator} />
+        <Text style={styles.phaseSubtitle}>
+          Comparing brightness and loudness across {repetitions} repetitions.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.processingIndicator}
+        />
       </View>
     );
   }
 
-  if (phase === 'results' && result) {
-    return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.resultsContent}
+  const score = finalResult?.score ?? 0;
+  const passed = finalResult?.passed ?? false;
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.resultsContent}
+      >
+        <View
+          style={[
+            styles.resultIcon,
+            passed ? styles.resultIconPassed : styles.resultIconFailed,
+          ]}
         >
-          <View style={[styles.resultIcon, result.passed ? styles.resultIconPassed : styles.resultIconFailed]}>
-            <Ionicons name={result.passed ? 'checkmark' : 'refresh'} size={40} color={BROWN} />
-          </View>
+          <Ionicons
+            name={passed ? 'checkmark' : 'analytics-outline'}
+            size={40}
+            color={BROWN}
+          />
+        </View>
 
-          <Text style={styles.resultTitle}>{result.passed ? 'Great Job!' : 'Keep Practicing!'}</Text>
-          <Text style={styles.resultSubtitle}>Waveform Smoothness Result</Text>
+        <Text style={styles.resultTitle}>
+          {passed ? 'Tone Kept Consistent!' : 'Keep Practicing'}
+        </Text>
+        <Text style={styles.resultSubtitle}>
+          Your tone consistency was measured across all repetitions.
+        </Text>
 
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>Overall Score</Text>
-            <Text style={styles.scoreValue}>{result.score}%</Text>
-            <Text style={styles.scoreDescription}>
-              {result.passed
-                ? 'Your tone stayed sufficiently smooth through the continuous hold.'
-                : 'Focus on holding one steady tone with less wavering and loudness variation.'}
+        <View style={styles.scoreCard}>
+          <Text style={styles.scoreLabel}>YOUR SCORE</Text>
+          <Text style={styles.scoreValue}>{score}%</Text>
+          <Text style={styles.scoreDescription}>
+            Higher scores mean the tone brightness and loudness changed less between repetitions.
+          </Text>
+        </View>
+
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>Session Summary</Text>
+
+          <View style={styles.resultRow}>
+            <View style={styles.resultRowTextBlock}>
+              <Text style={styles.resultRowLabel}>Repetitions recorded</Text>
+              <Text style={styles.resultRowHint}>
+                All completed repetitions used for the final comparison.
+              </Text>
+            </View>
+            <Text style={styles.resultRowValue}>
+              {repPreviews.length}/{repetitions}
             </Text>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>Tone Stability</Text>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Spectral smoothness</Text>
-              <Text style={styles.resultRowValue}>{Math.round(centroidSmoothness)}%</Text>
+          <View style={styles.resultRow}>
+            <View style={styles.resultRowTextBlock}>
+              <Text style={styles.resultRowLabel}>Hold interval</Text>
+              <Text style={styles.resultRowHint}>
+                Target duration for each repetition.
+              </Text>
             </View>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Amplitude stability</Text>
-              <Text style={styles.resultRowValue}>{Math.round(amplitudeStability)}%</Text>
-            </View>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Required smoothness</Text>
-              <Text style={styles.resultRowValue}>{params.smoothnessThreshold}%</Text>
-            </View>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Amplitude variance target</Text>
-              <Text style={styles.resultRowValue}>≤{params.amplitudeVariancePct}%</Text>
-            </View>
+            <Text style={styles.resultRowValue}>
+              {params.intervalSec}s
+            </Text>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>Recording</Text>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Continuous hold</Text>
-              <Text style={styles.resultRowValue}>{params.durationSec}s</Text>
+          <View style={styles.resultRow}>
+            <View style={styles.resultRowTextBlock}>
+              <Text style={styles.resultRowLabel}>Consistency target</Text>
+              <Text style={styles.resultRowHint}>
+                Minimum score for this difficulty tier.
+              </Text>
             </View>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>FFT frames analyzed</Text>
-              <Text style={styles.resultRowValue}>{frameCount}</Text>
-            </View>
+            <Text style={styles.resultRowValue}>
+              {params.consistencyThreshold}%
+            </Text>
           </View>
 
-          <View style={styles.differenceCard}>
-            <Ionicons name="pulse-outline" size={22} color={BROWN} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.differenceTitle}>What you just practiced</Text>
-              <Text style={styles.differenceText}>This drill evaluates continuous tone stability. It does not ask you to match or repeat a specific vowel.</Text>
-            </View>
+          <View style={[styles.statusBadge, passed ? styles.statusPassed : styles.statusFailed]}>
+            <Ionicons
+              name={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
+              size={18}
+              color={BROWN}
+            />
+            <Text style={styles.statusBadgeText}>
+              {passed ? 'Target reached' : 'Needs more consistency'}
+            </Text>
           </View>
+        </View>
 
-          <Pressable style={styles.startButton} onPress={retry}>
-            <Text style={styles.startButtonText}>Try Again</Text>
-            <Ionicons name="refresh" size={18} color={WHITE} />
-          </Pressable>
+        <View style={styles.tipCard}>
+          <Ionicons name="bulb-outline" size={20} color={BROWN} />
+          <Text style={styles.tipText}>
+            Keep your mouth shape, pitch, and airflow setup as similar as possible each time. Small differences in loudness and tone color can change the final consistency score.
+          </Text>
+        </View>
 
-          <Pressable style={styles.secondaryButton} onPress={goBack}>
-            <Text style={styles.secondaryButtonText}>Back to Exercises</Text>
-          </Pressable>
-        </ScrollView>
-      </View>
-    );
-  }
+        <Pressable style={styles.doneButton} onPress={goBack}>
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
+        </Pressable>
 
-  return null;
+        <Pressable style={styles.retryButton} onPress={retry}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -653,8 +897,7 @@ const styles = StyleSheet.create({
     top: 55,
     left: 24,
     zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    padding: 4,
   },
 
   iconCircle: {
@@ -678,6 +921,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
+    textAlign: 'center',
     marginTop: 3,
     marginBottom: 24,
   },
@@ -696,78 +940,79 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     borderRadius: 18,
     padding: 16,
-    marginBottom: 14,
+    marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: '#F0D2DC',
   },
 
   prepareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
   },
 
   prepareTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 16,
+    fontSize: 17,
     color: BROWN,
-    marginLeft: 9,
   },
 
   prepareItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: 8,
+    marginTop: 10,
+    gap: 9,
   },
 
   prepareText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
     color: BROWN,
-    marginLeft: 9,
   },
 
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
     color: BROWN,
-    marginBottom: 14,
+    marginBottom: 8,
   },
 
   instruction: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: BROWN,
-    marginBottom: 10,
+    color: MUTED,
+    marginTop: 6,
   },
 
   targetBox: {
-    backgroundColor: PINK,
-    borderRadius: 14,
-    paddingVertical: 15,
-    paddingHorizontal: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 8,
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 18,
   },
 
   targetInfo: {
-    flex: 1,
     marginLeft: 12,
+    flex: 1,
   },
 
   targetLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
+    fontSize: 9,
+    letterSpacing: 0.7,
     color: MUTED,
   },
 
   targetValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 21,
+    fontSize: 18,
     color: BROWN,
     marginTop: 2,
   },
@@ -775,8 +1020,8 @@ const styles = StyleSheet.create({
   keyMetricCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 18,
+    padding: 16,
     marginTop: 14,
     borderWidth: 1,
     borderColor: '#F2DDE5',
@@ -784,21 +1029,23 @@ const styles = StyleSheet.create({
 
   keyMetricTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 17,
+    fontSize: 16,
     color: BROWN,
-    marginBottom: 10,
+    marginBottom: 7,
   },
 
   metricRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    marginTop: 8,
+    gap: 8,
   },
 
   metricText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
+    lineHeight: 17,
     color: MUTED,
   },
 
@@ -808,7 +1055,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 18,
-    marginBottom: 20,
+    marginBottom: -8,
   },
 
   difficultyLabel: {
@@ -828,19 +1075,19 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: PINK,
+    backgroundColor: LIGHT_GRAY,
     borderRadius: 15,
     padding: 14,
-    marginTop: 14,
+    marginTop: 20,
+    gap: 8,
   },
 
   errorText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    lineHeight: 16,
+    lineHeight: 17,
     color: BROWN,
-    marginLeft: 10,
   },
 
   startButton: {
@@ -848,32 +1095,17 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 27,
     backgroundColor: BROWN,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
     gap: 8,
+    marginTop: 28,
   },
 
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
-  },
-
-  secondaryButton: {
-    width: '100%',
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-
-  secondaryButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: BROWN,
   },
 
   phaseTitle: {
@@ -889,35 +1121,36 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
+    marginTop: 3,
   },
 
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
     color: BROWN,
-    marginTop: 20,
+    marginTop: 12,
   },
 
-  largeVowel: {
+  largeTarget: {
     fontFamily: 'FredokaBold',
-    fontSize: 58,
+    fontSize: 24,
     color: BROWN,
-    marginTop: 14,
+    textAlign: 'center',
+    marginTop: 18,
+    marginBottom: 4,
   },
 
   recordingEyebrow: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
-    letterSpacing: 1,
+    letterSpacing: 1.1,
     color: MUTED,
     textAlign: 'center',
   },
 
   recordingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 28,
+    fontSize: 25,
     color: BROWN,
     textAlign: 'center',
     marginTop: 8,
@@ -926,115 +1159,121 @@ const styles = StyleSheet.create({
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 20,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 5,
+    marginTop: 3,
     marginBottom: 18,
   },
 
-  vowelCard: {
+  targetCard: {
     width: '100%',
     backgroundColor: PINK,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 18,
+    padding: 16,
     alignItems: 'center',
-    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#F0D2DC',
   },
 
-  vowelLabel: {
+  targetCardLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 9,
+    letterSpacing: 0.8,
     color: MUTED,
   },
 
-  vowelValue: {
+  targetCardValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 54,
+    fontSize: 20,
     color: BROWN,
-    marginTop: 2,
+    marginTop: 3,
+    textAlign: 'center',
   },
 
-  vowelInstruction: {
+  targetCardHint: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: BROWN,
-    marginTop: 2,
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 4,
+    textAlign: 'center',
   },
 
   microphoneArea: {
     alignItems: 'center',
-    marginVertical: 20,
+    justifyContent: 'center',
+    marginTop: 22,
+    marginBottom: 18,
   },
 
   outerMicCircle: {
-    width: 146,
-    height: 146,
-    borderRadius: 73,
-    backgroundColor: LIGHT_PINK,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   innerMicCircle: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   recordingBadge: {
-    marginTop: 11,
+    marginTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
 
   recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: BROWN,
   },
 
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
-    color: BROWN,
     letterSpacing: 0.8,
+    color: BROWN,
   },
 
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
     borderRadius: 22,
+    padding: 20,
     borderWidth: 1,
     borderColor: '#F2DDE5',
-    padding: 20,
-    marginTop: 25,
     alignItems: 'center',
   },
 
   liveLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 9,
+    letterSpacing: 1,
     color: MUTED,
   },
 
   liveNote: {
     fontFamily: 'FredokaBold',
-    fontSize: 34,
+    fontSize: 38,
     color: BROWN,
-    marginTop: 3,
+    marginTop: 5,
   },
 
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-    marginTop: 2,
+    marginTop: 1,
   },
 
   liveStats: {
@@ -1195,37 +1434,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  targetResultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  resultTargetSmall: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: MUTED,
-  },
-
-  resultTargetLarge: {
-    fontFamily: 'FredokaBold',
-    fontSize: 38,
-    color: BROWN,
-  },
-
-  targetBadge: {
-    backgroundColor: WHITE,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-
-  targetBadgeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: BROWN,
-  },
-
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1235,11 +1443,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F2DDE5',
   },
 
+  resultRowTextBlock: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-    flex: 1,
   },
 
   resultRowHint: {
@@ -1257,71 +1469,81 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
 
-  goalCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 18,
-    marginTop: 20,
-  },
-
-  goalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  goalText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-
-  liveReminder: {
+  statusBadge: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PINK,
+    justifyContent: 'center',
+    gap: 7,
     borderRadius: 14,
-    padding: 12,
+    paddingVertical: 11,
     marginTop: 12,
   },
 
-  liveReminderText: {
-    flex: 1,
-    marginLeft: 8,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    color: BROWN,
+  statusPassed: {
+    backgroundColor: PINK,
   },
 
-  differenceCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
+  statusFailed: {
+    backgroundColor: LIGHT_GRAY,
   },
 
-  differenceTitle: {
+  statusBadgeText: {
     fontFamily: 'FredokaBold',
-    fontSize: 15,
+    fontSize: 11,
     color: BROWN,
-    marginBottom: 8,
   },
 
-  differenceText: {
+  tipCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: PINK,
+    borderRadius: 15,
+    padding: 14,
+    marginTop: 14,
+    gap: 8,
+  },
+
+  tipText: {
+    flex: 1,
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    color: MUTED,
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
   },
 
+  doneButton: {
+    width: '100%',
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+
+  doneButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
+
+  retryButton: {
+    width: '100%',
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: '#E8DCD7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+
+  retryButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
 });

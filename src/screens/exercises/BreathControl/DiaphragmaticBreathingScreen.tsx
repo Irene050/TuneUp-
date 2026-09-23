@@ -1,16 +1,18 @@
+// src/screens/exercises/BreathControl/DiaphragmaticBreathingScreen.tsx
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    DIAPHRAGMATIC_BREATHING_PARAMS,
-    Tier,
+  DIAPHRAGMATIC_BREATHING_PARAMS,
+  Tier,
 } from '@/constants/exercises/breathControl';
 
 const BROWN = '#4E2F1F';
@@ -26,8 +28,7 @@ interface Props {
 export default function DiaphragmaticBreathingScreen({
   tier,
 }: Props) {
-  const params =
-    DIAPHRAGMATIC_BREATHING_PARAMS[tier];
+  const params = DIAPHRAGMATIC_BREATHING_PARAMS[tier];
 
   return (
     <View style={styles.screen}>
@@ -63,14 +64,85 @@ export default function DiaphragmaticBreathingScreen({
         </Text>
 
         <View style={styles.instructionCard}>
+
+          {/* BEFORE YOU BEGIN */}
+          <View style={styles.prepareCard}>
+            <View style={styles.prepareHeader}>
+              <Ionicons
+                name="mic-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareTitle}>
+                Before You Begin
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Find a quiet room or area with minimal
+                background noise.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Sit upright or stand comfortably with your
+                back straight and your shoulders relaxed.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="mic-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Hold your phone's microphone about 10–15 cm
+                from your mouth. During the exhale, gently
+                direct your breath toward the microphone.
+              </Text>
+            </View>
+
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="resize-outline"
+                size={17}
+                color={BROWN}
+              />
+
+              <Text style={styles.prepareText}>
+                Keep the microphone at a consistent distance
+                from your mouth throughout the exercise.
+              </Text>
+            </View>
+          </View>
+
+          {/* INSTRUCTIONS */}
           <Text style={styles.cardTitle}>
             Instructions
           </Text>
 
           <Text style={styles.instruction}>
-            Breathe slowly and deeply using your
-            diaphragm. Take a comfortable inhale,
-            then release the breath gradually.
+            Breathe slowly and deeply using your diaphragm.
+            Take a comfortable inhale, then gently exhale
+            toward the microphone in a controlled and
+            steady way.
           </Text>
 
           <Text style={styles.instruction}>
@@ -102,11 +174,13 @@ export default function DiaphragmaticBreathingScreen({
           </View>
 
           <Text style={styles.helperText}>
-            Focus on relaxed breathing and a
-            controlled, steady exhale.
+            Focus on relaxed breathing and a controlled,
+            steady exhale. Keep the microphone at a
+            consistent distance from your mouth.
           </Text>
         </View>
 
+        {/* TIP */}
         <View style={styles.tipCard}>
           <Ionicons
             name="bulb-outline"
@@ -115,11 +189,12 @@ export default function DiaphragmaticBreathingScreen({
           />
 
           <Text style={styles.tipText}>
-            Keep your shoulders relaxed and avoid
-            forcing your breath.
+            Keep your shoulders relaxed and avoid forcing
+            your breath. Use a comfortable breathing pace.
           </Text>
         </View>
 
+        {/* DIFFICULTY */}
         <View style={styles.difficultyRow}>
           <Text style={styles.difficultyLabel}>
             Difficulty
@@ -130,6 +205,7 @@ export default function DiaphragmaticBreathingScreen({
           </Text>
         </View>
 
+        {/* START */}
         <Pressable
           style={styles.startButton}
           onPress={() => {
@@ -226,6 +302,54 @@ const styles = StyleSheet.create({
     color: BROWN,
 
     marginBottom: 14,
+  },
+
+  prepareCard: {
+    width: '100%',
+
+    backgroundColor: PINK,
+
+    borderRadius: 18,
+
+    padding: 16,
+
+    marginBottom: 18,
+
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    marginBottom: 12,
+  },
+
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+
+    marginLeft: 9,
+  },
+
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    marginTop: 8,
+  },
+
+  prepareText: {
+    flex: 1,
+
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+
+    marginLeft: 9,
   },
 
   instruction: {
