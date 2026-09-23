@@ -17,6 +17,7 @@ export interface SustainedExhaleParams {
   pacingGuideMs: number;
   repetitions: number;
   consistencyThreshold: number;
+  detectionThreshold: number;
 }
 
 export const SUSTAINED_EXHALE_PARAMS: Record<
@@ -28,6 +29,7 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
     pacingGuideMs: 1500,
     repetitions: 3,
     consistencyThreshold: 60,
+    detectionThreshold: 0.02,
   },
 
   intermediate: {
@@ -35,6 +37,7 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
     pacingGuideMs: 1000,
     repetitions: 4,
     consistencyThreshold: 75,
+    detectionThreshold: 0.02,
   },
 
   advanced: {
@@ -42,6 +45,7 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
     pacingGuideMs: 625,
     repetitions: 6,
     consistencyThreshold: 90,
+    detectionThreshold: 0.02,
   },
 };
 
