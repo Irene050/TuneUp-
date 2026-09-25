@@ -323,20 +323,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* AUDIO TEST */}
-        <Pressable
-          onPress={() =>
-            router.push('/audio-test')
-          }
-          style={styles.audioTestButton}
-        >
-          <Text
-            style={styles.audioTestText}
-          >
-            Test Audio
-          </Text>
-        </Pressable>
-
         {/* VOCAL EXERCISES HEADER */}
         <View
           style={styles.sectionHeader}
