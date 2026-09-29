@@ -1,8 +1,8 @@
 import type {
-    ControlledDecrescendoMeasurement,
+  ControlledDecrescendoMeasurement,
 } from '@/services/measurement/volume/controlledDecrescendoDrill';
 
-const BEGINNER_PASSING_SCORE = 70;
+const DEFAULT_PASSING_SCORE = 75;
 
 export interface ControlledDecrescendoScore {
   smoothness: number;
@@ -49,7 +49,7 @@ export function scoreControlledDecrescendo(
 ): ControlledDecrescendoScore {
   const passingScore =
     options.passingScore ??
-    BEGINNER_PASSING_SCORE;
+    DEFAULT_PASSING_SCORE;
 
   const overallScore =
     roundScore(
@@ -59,6 +59,7 @@ export function scoreControlledDecrescendo(
   const passed =
     measurement.validWindowCount > 0 &&
     measurement.directionCorrect &&
+    measurement.targetReached &&
     overallScore >=
       passingScore;
 

@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
 
   backArrow: {
     fontSize: 28,
-    fontWeight: '300',
+    fontFamily: 'FredokaLight',
     color: '#4A302F',
   },
 
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
 
   buttonText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontFamily: 'FredokaBold',
     color: '#4A302F',
   },
 });

@@ -50,6 +50,8 @@ export interface LiveAudioFrame {
   clarity: number;
   volume: number;
   stability: number;
+  samples: Float32Array;
+  sampleRate: number;
 }
 
 interface UseAudioRecorderOptions {
@@ -546,7 +548,6 @@ export function useAudioRecorder(
                 channelData
               );
 
-
               // ==================================================
               // ALWAYS STORE RAW AUDIO
               // ==================================================
@@ -649,25 +650,27 @@ export function useAudioRecorder(
                 ) {
                   emitLiveFrame(
                     {
-                      pitch:
-                        lastValidPitchRef.current,
+                    pitch:
+                      lastValidPitchRef.current,
 
-                      note:
-                        lastValidNoteRef.current,
+                    note:
+                      lastValidNoteRef.current,
 
-                      clarity:
-                        lastValidClarityRef.current,
+                    clarity:
+                      lastValidClarityRef.current,
 
-                      /*
-                       * Show the current signal level.
-                       */
-                      volume:
-                        signal.db,
+                    volume:
+                      signal.db,
 
-                      stability:
-                        0,
-                    }
-                  );
+                    stability:
+                      0,
+
+                    samples,
+
+                    sampleRate:
+                      DEFAULT_SAMPLE_RATE,
+                  }
+                );
 
                   return;
                 }
@@ -691,6 +694,11 @@ export function useAudioRecorder(
                       signal.db,
 
                     stability: 0,
+
+                    samples,
+
+                    sampleRate:
+                      DEFAULT_SAMPLE_RATE,
                   }
                 );
 
@@ -810,6 +818,11 @@ export function useAudioRecorder(
 
                       stability:
                         0,
+
+                      samples,
+
+                      sampleRate:
+                        DEFAULT_SAMPLE_RATE,
                     }
                   );
 
@@ -824,19 +837,24 @@ export function useAudioRecorder(
                  */
 
                 emitLiveFrame(
-                  {
-                    pitch: 0,
+  {
+    pitch: 0,
 
-                    note: "--",
+    note: "--",
 
-                    clarity: 0,
+    clarity: 0,
 
-                    volume:
-                      signal.db,
+    volume:
+      signal.db,
 
-                    stability: 0,
-                  }
-                );
+    stability: 0,
+
+    samples,
+
+    sampleRate:
+      DEFAULT_SAMPLE_RATE,
+  }
+);
 
                 return;
               }
@@ -863,23 +881,28 @@ export function useAudioRecorder(
 
 
               const liveFrame:
-                LiveAudioFrame =
-                {
-                  pitch:
-                    detectedPitch,
+              LiveAudioFrame =
+              {
+                pitch:
+                  detectedPitch,
 
-                  note:
-                    detectedNote,
+                note:
+                  detectedNote,
 
-                  clarity:
-                    detectedClarity,
+                clarity:
+                  detectedClarity,
 
-                  volume:
-                    signal.db,
+                volume:
+                  signal.db,
 
-                  stability:
-                    0,
-                };
+                stability:
+                  0,
+
+                samples,
+
+                sampleRate:
+                  DEFAULT_SAMPLE_RATE,
+              };
 
 
               emitLiveFrame(

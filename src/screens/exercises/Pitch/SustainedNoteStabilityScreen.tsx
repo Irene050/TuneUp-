@@ -19,7 +19,8 @@ import {
 
 import {
   SUSTAINED_NOTE_STABILITY_PARAMS,
-  Tier,
+  type SustainedNoteStabilityParams,
+  type Tier,
 } from '@/constants/exercises/pitch';
 
 import {
@@ -55,6 +56,19 @@ import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  generateSustainedNoteStabilityParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -75,10 +89,22 @@ type Phase =
   | 'results';
 
 export default function SustainedNoteStabilityScreen({
-  tier = 'beginner',
+  tier,
 }: Props) {
-  const params =
-    SUSTAINED_NOTE_STABILITY_PARAMS[tier];
+  const [currentTier, setCurrentTier] =
+    useState<Tier>(tier ?? 'beginner');
+
+  const [params, setParams] =
+    useState<SustainedNoteStabilityParams>(
+      SUSTAINED_NOTE_STABILITY_PARAMS[
+        tier ?? 'beginner'
+      ]
+    );
+
+  const [
+    isLoadingAdaptiveParams,
+    setIsLoadingAdaptiveParams,
+  ] = useState(true);
 
   const [phase, setPhase] =
     useState<Phase>('instructions');
@@ -144,6 +170,169 @@ export default function SustainedNoteStabilityScreen({
     useRef<
       (() => Promise<void>) | null
     >(null);
+
+  /*
+   * =====================================================
+   * LOAD ADAPTIVE PARAMETERS
+   * =====================================================
+   *
+   * If a tier is explicitly provided, that tier is used.
+   *
+   * Otherwise:
+   * 1. Resolve the user's current tier from component progress.
+   * 2. Get the latest five completed exercises for that tier.
+   * 3. If no exercise history exists, use the latest
+   *    assessment pitch score as the ADS reference.
+   * 4. Generate the adaptive parameters.
+   */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParams =
+      async () => {
+        setIsLoadingAdaptiveParams(true);
+
+        try {
+          const resolvedUser =
+            await import(
+              '@/services/firebase/config'
+            );
+
+          const user =
+            resolvedUser.auth.currentUser;
+
+          let resolvedTier: Tier =
+            tier ?? 'beginner';
+
+          /*
+           * Only resolve the tier from progress when
+           * the screen was not explicitly given one.
+           */
+          if (!tier && user) {
+            const progress =
+              await fetchComponentProgress(
+                user.uid,
+                'pitch'
+              );
+
+            resolvedTier =
+              progress?.currentTier ??
+              'beginner';
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          setCurrentTier(
+            resolvedTier
+          );
+
+          let recentScores: number[] = [];
+
+          /*
+           * Get the latest five completed exercises
+           * for the current pitch tier.
+           */
+          if (user) {
+            const records =
+              await fetchExerciseRecords(
+                user.uid,
+                'pitch'
+              );
+
+            const currentTierRecords =
+              records
+                .filter(
+                  record =>
+                    record.tier === resolvedTier &&
+                    record.templateId ===
+                      'sustainedNoteStability'
+                )
+                .sort(
+                  (a, b) =>
+                    a.timestamp -
+                    b.timestamp
+                );
+
+            recentScores =
+              currentTierRecords
+                .slice(-5)
+                .map(
+                  record =>
+                    record.scorePct
+                );
+          }
+
+          /*
+           * If no exercise history exists for the
+           * current tier, use the latest assessment's
+           * pitch score as the initial ADS reference.
+           */
+          if (
+            recentScores.length === 0
+          ) {
+            const assessment =
+              await getLatestAssessment();
+
+            const pitchScore =
+              assessment?.scores.find(
+                score =>
+                  score.componentId ===
+                  'pitch'
+              );
+
+            if (pitchScore) {
+              recentScores = [
+                pitchScore.scorePct,
+              ];
+            }
+          }
+
+          const generatedParams =
+            generateSustainedNoteStabilityParams(
+              {
+                tier: resolvedTier,
+                recentScores,
+              }
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          setParams(
+            generatedParams
+          );
+        } catch (error) {
+          console.error(
+            '❌ FAILED TO LOAD SUSTAINED NOTE ADAPTIVE PARAMETERS:',
+            error
+          );
+
+          if (!cancelled) {
+            setParams(
+              SUSTAINED_NOTE_STABILITY_PARAMS[
+                tier ?? 'beginner'
+              ]
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingAdaptiveParams(
+              false
+            );
+          }
+        }
+      };
+
+    loadAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -228,16 +417,20 @@ export default function SustainedNoteStabilityScreen({
               params.minClarity
             );
 
+          /*
+           * Pass the generated adaptive parameters
+           * directly to the scorer.
+           */
           const score =
             scoreSustainedNoteStability(
               measurement,
-              tier
+              params
             );
 
           await saveCompletedExercise(
             'pitch',
             'sustainedNoteStability',
-            tier,
+            currentTier,
             score.score
           );
 
@@ -276,8 +469,8 @@ export default function SustainedNoteStabilityScreen({
         }
       },
       [
-        params.minClarity,
-        tier,
+        params,
+        currentTier,
       ]
     );
 
@@ -467,7 +660,9 @@ export default function SustainedNoteStabilityScreen({
   const startCountdown =
     useCallback(() => {
       const generated =
-        getRandomPitchNote(tier);
+        getRandomPitchNote(
+          currentTier
+        );
 
       setTargetNote(generated);
 
@@ -526,7 +721,7 @@ export default function SustainedNoteStabilityScreen({
         }, 1000);
     }, [
       playTargetAndRecord,
-      tier,
+      currentTier,
     ]);
 
   const retry =
@@ -635,6 +830,26 @@ export default function SustainedNoteStabilityScreen({
           <View
             style={styles.instructionCard}
           >
+            <Text style={styles.cardTitle}>
+              Exercise Instructions
+            </Text>
+
+            <Text style={styles.instruction}>
+              Listen to the reference note
+              before recording.
+            </Text>
+
+            <Text style={styles.instruction}>
+              Sing the same comfortable note
+              and hold it steadily for{' '}
+              {params.durationSec} seconds.
+            </Text>
+
+            <Text style={styles.instruction}>
+              Try to keep the pitch steady
+              without drifting sharp or flat.
+            </Text>
+
             <View style={styles.prepareCard}>
               <View
                 style={styles.prepareHeader}
@@ -701,26 +916,6 @@ export default function SustainedNoteStabilityScreen({
               </View>
             </View>
 
-            <Text style={styles.cardTitle}>
-              Instructions
-            </Text>
-
-            <Text style={styles.instruction}>
-              Listen to the reference note
-              before recording.
-            </Text>
-
-            <Text style={styles.instruction}>
-              Sing the same comfortable note
-              and hold it steadily for{' '}
-              {params.durationSec} seconds.
-            </Text>
-
-            <Text style={styles.instruction}>
-              Try to keep the pitch steady
-              without drifting sharp or flat.
-            </Text>
-
             <View style={styles.targetBox}>
               <Ionicons
                 name="remove"
@@ -763,25 +958,37 @@ export default function SustainedNoteStabilityScreen({
             <Text
               style={styles.difficultyValue}
             >
-              {tier}
+              {currentTier}
             </Text>
           </View>
 
           <Pressable
             style={styles.startButton}
             onPress={startCountdown}
+            disabled={
+              isLoadingAdaptiveParams
+            }
           >
-            <Text
-              style={styles.startButtonText}
-            >
-              Start Exercise
-            </Text>
+            {isLoadingAdaptiveParams ? (
+              <ActivityIndicator
+                size="small"
+                color={WHITE}
+              />
+            ) : (
+              <>
+                <Text
+                  style={styles.startButtonText}
+                >
+                  Start Exercise
+                </Text>
 
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={WHITE}
+                />
+              </>
+            )}
           </Pressable>
 
           {errorMessage && (
@@ -1302,7 +1509,7 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: '#F2DDE5',
@@ -1313,7 +1520,7 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     borderRadius: 18,
     padding: 16,
-    marginBottom: 14,
+    marginTop: 18,
     borderWidth: 1,
     borderColor: '#F2DDE5',
   },

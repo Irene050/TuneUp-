@@ -12,7 +12,7 @@ import type {
 
 import {
   saveExerciseAndUpdateProgress,
-} from '@/services/firebase/progressRepo';
+} from '@/services/progress/progressRepo';
 
 import type {
   Tier,

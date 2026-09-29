@@ -1,5 +1,5 @@
 import type {
-    VolumeControlStabilityMeasurement,
+  VolumeControlStabilityMeasurement,
 } from '@/services/measurement/volume/volumeControlStability';
 
 /* =========================================================
@@ -16,10 +16,10 @@ export interface VolumeControlStabilityScore {
 }
 
 /* =========================================================
-   FIXED BEGINNER TARGET
+   DEFAULTS
    ========================================================= */
 
-const TARGET_STABILITY = 70;
+const DEFAULT_TARGET_STABILITY = 70;
 
 /*
  * Minimum amount of detected voice required before
@@ -28,13 +28,21 @@ const TARGET_STABILITY = 70;
 const MIN_VOICED_COVERAGE = 20;
 
 /* =========================================================
+   OPTIONS
+   ========================================================= */
+
+export interface VolumeControlStabilityScoreOptions {
+  passingScore?: number;
+}
+
+/* =========================================================
    CLAMP
    ========================================================= */
 
 function clamp(
   value: number,
   min = 0,
-  max = 100
+  max = 100,
 ): number {
   if (!Number.isFinite(value)) {
     return min;
@@ -42,7 +50,7 @@ function clamp(
 
   return Math.max(
     min,
-    Math.min(max, value)
+    Math.min(max, value),
   );
 }
 
@@ -51,23 +59,37 @@ function clamp(
    ========================================================= */
 
 export function scoreVolumeControlStability(
-  measurement: VolumeControlStabilityMeasurement
+  measurement: VolumeControlStabilityMeasurement,
+  options: VolumeControlStabilityScoreOptions = {},
 ): VolumeControlStabilityScore {
+  /* =======================================================
+     TARGET
+     ======================================================= */
+
+  const targetStability =
+    clamp(
+      options.passingScore ??
+        DEFAULT_TARGET_STABILITY,
+    );
+
   /* =======================================================
      MEASURED VALUES
      ======================================================= */
 
-  const stabilityScore = clamp(
-    measurement.stability
-  );
+  const stabilityScore =
+    clamp(
+      measurement.stability,
+    );
 
-  const durationScore = clamp(
-    measurement.durationScore
-  );
+  const durationScore =
+    clamp(
+      measurement.durationScore,
+    );
 
-  const voicedCoverage = clamp(
-    measurement.voicedCoveragePercent
-  );
+  const voicedCoverage =
+    clamp(
+      measurement.voicedCoveragePercent,
+    );
 
   /* =======================================================
      AUDIO VALIDATION
@@ -83,7 +105,7 @@ export function scoreVolumeControlStability(
 
   const hasAudio =
     Number.isFinite(
-      measurement.averageDb
+      measurement.averageDb,
     ) &&
     measurement.averageDb > 0 &&
     voicedCoverage > 0;
@@ -97,10 +119,11 @@ export function scoreVolumeControlStability(
      (duration score × 0.3)
      ======================================================= */
 
-  const overallScore = clamp(
-    stabilityScore * 0.7 +
-      durationScore * 0.3
-  );
+  const overallScore =
+    clamp(
+      stabilityScore * 0.7 +
+        durationScore * 0.3,
+    );
 
   /* =======================================================
      PASS CONDITION
@@ -111,7 +134,7 @@ export function scoreVolumeControlStability(
     voicedCoverage >=
       MIN_VOICED_COVERAGE &&
     overallScore >=
-      TARGET_STABILITY;
+      targetStability;
 
   /* =======================================================
      FEEDBACK
@@ -128,7 +151,7 @@ export function scoreVolumeControlStability(
     feedback =
       'Excellent volume control. Your vocal volume remained very stable.';
   } else if (
-    overallScore >= TARGET_STABILITY
+    overallScore >= targetStability
   ) {
     feedback =
       'Good volume control. Continue practicing a steady vocal output.';

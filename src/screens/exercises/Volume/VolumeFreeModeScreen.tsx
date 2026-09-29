@@ -1,5 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { router } from 'expo-router';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,11 +14,19 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
+  LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
+import {
+  measureVolumeFreeModeFrame,
+} from '@/services/measurement/freemode/volume';
 
 /* =========================================================
    COLORS
@@ -53,7 +67,7 @@ type Phase =
    NORMALIZE VOLUME
    ========================================================= */
 
-function normalizeVolume(value: number) {
+function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
@@ -63,86 +77,8 @@ function normalizeVolume(value: number) {
     Math.min(
       1,
       (value - DBFS_MIN) /
-        (DBFS_MAX - DBFS_MIN)
-    )
-  );
-}
-
-/* =========================================================
-   LIVE STABILITY
-   ========================================================= */
-
-function calculateStability(
-  values: number[]
-) {
-  if (values.length < 2) {
-    return 0;
-  }
-
-  const validValues =
-    values.filter(
-      (value) =>
-        Number.isFinite(value)
-    );
-
-  if (validValues.length < 2) {
-    return 0;
-  }
-
-  /*
-   * Convert dB back to linear amplitude.
-   */
-  const amplitudes =
-    validValues.map(
-      (db) =>
-        Math.pow(
-          10,
-          db / 20
-        )
-    );
-
-  const mean =
-    amplitudes.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    amplitudes.length;
-
-  if (
-    mean <= 0 ||
-    !Number.isFinite(mean)
-  ) {
-    return 0;
-  }
-
-  const variance =
-    amplitudes.reduce(
-      (sum, value) =>
-        sum +
-        Math.pow(
-          value - mean,
-          2
-        ),
-      0
-    ) /
-    amplitudes.length;
-
-  const standardDeviation =
-    Math.sqrt(variance);
-
-  const stability =
-    100 -
-    (standardDeviation /
-      mean) *
-      100;
-
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      stability
-    )
+        (DBFS_MAX - DBFS_MIN),
+    ),
   );
 }
 
@@ -155,73 +91,48 @@ function VolumeVisualizer({
 }: {
   liveHistory: number[];
 }) {
-  const actualBars =
-    Array.from(
-      {
-        length: BAR_COUNT,
-      },
-      (_, index) => {
-        if (
-          index <
-          liveHistory.length
-        ) {
-          return liveHistory[
-            index
-          ];
-        }
-
-        return 0;
+  const actualBars = Array.from(
+    {
+      length: BAR_COUNT,
+    },
+    (_, index) => {
+      if (index < liveHistory.length) {
+        return liveHistory[index];
       }
-    );
+
+      return 0;
+    },
+  );
 
   return (
-    <View
-      style={
-        styles.visualizer
-      }
-    >
-      {/* Center reference line */}
+    <View style={styles.visualizer}>
+      {/* CENTER REFERENCE LINE */}
 
-      <View
-        style={
-          styles.centerLine
-        }
-      />
+      <View style={styles.centerLine} />
 
-      {/* Live bars */}
+      {/* LIVE BARS */}
 
-      <View
-        style={
-          styles.actualBars
-        }
-      >
-        {actualBars.map(
-          (
-            value,
-            index
-          ) => (
-            <View
-              key={`bar-${index}`}
-              style={[
-                styles.actualBar,
-                {
-                  height:
-                    value > 0
-                      ? `${Math.max(
-                          5,
-                          value *
-                            82
-                        )}%`
-                      : '0%',
-                },
-              ]}
-            />
-          )
-        )}
+      <View style={styles.actualBars}>
+        {actualBars.map((value, index) => (
+          <View
+            key={`bar-${index}`}
+            style={[
+              styles.actualBar,
+              {
+                height:
+                  value > 0
+                    ? `${Math.max(
+                        5,
+                        value * 82,
+                      )}%`
+                    : '0%',
+              },
+            ]}
+          />
+        ))}
       </View>
 
-      {liveHistory.length ===
-        0 && (
+      {liveHistory.length === 0 && (
         <Text
           style={
             styles.visualizerPlaceholder
@@ -251,7 +162,7 @@ export default function VolumeFreeModeScreen() {
   const horizontalPadding =
     Math.min(
       22,
-      width * 0.055
+      width * 0.055,
     );
 
   const isSmallScreen =
@@ -264,15 +175,13 @@ export default function VolumeFreeModeScreen() {
   const [
     phase,
     setPhase,
-  ] = useState<Phase>(
-    'ready'
-  );
+  ] = useState<Phase>('ready');
 
   const [
     liveVolume,
     setLiveVolume,
   ] = useState<number | null>(
-    null
+    null,
   );
 
   const [
@@ -283,9 +192,7 @@ export default function VolumeFreeModeScreen() {
   const [
     liveHistory,
     setLiveHistory,
-  ] = useState<number[]>(
-    []
-  );
+  ] = useState<number[]>([]);
 
   const [
     elapsedSeconds,
@@ -298,123 +205,107 @@ export default function VolumeFreeModeScreen() {
   ] = useState(false);
 
   /* =======================================================
-     REFS
+     TIMER REFS
      ======================================================= */
 
   const startedAtRef =
-    useRef<number | null>(
-      null
-    );
+    useRef<number | null>(null);
 
   const timerRef =
     useRef<
-      ReturnType<
-        typeof setInterval
-      > | null
+      ReturnType<typeof setInterval> | null
     >(null);
 
   /* =======================================================
-     CLEANUP
+     TIMER CLEANUP
      ======================================================= */
 
   useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(
-          timerRef.current
+          timerRef.current,
         );
       }
     };
   }, []);
 
   /* =======================================================
-     AUDIO RECORDER
+     LIVE AUDIO
      ======================================================= */
 
-  const {
-    startRecording,
-    stopRecording,
-  } = useAudioRecorder({
-    onFrame: (frame) => {
-      if (
-        phase !== 'exercise'
-      ) {
-        return;
-      }
-
-      if (
-        !Number.isFinite(
-          frame.volume
-        )
-      ) {
-        return;
-      }
-
-      const db =
-        frame.volume;
-
-      setLiveVolume(db);
-
-      const normalized =
-        normalizeVolume(db);
-
-      setLiveHistory(
-        (previous) => {
-          const next = [
-            ...previous,
-            normalized,
-          ].slice(
-            -BAR_COUNT
-          );
-
-          return next;
-        }
-      );
-    },
-  });
-
-  /* =======================================================
-     CALCULATE LIVE STABILITY
-     ======================================================= */
-
-  useEffect(() => {
-    if (
-      phase !== 'exercise'
-    ) {
+  const handleAudioFrame = (
+    frame: LiveAudioFrame,
+  ) => {
+    if (phase !== 'exercise') {
       return;
     }
 
     /*
-     * Convert the normalized graph values back into
-     * dB values for stability calculation.
+     * Use the existing Volume Free Mode
+     * measurement service.
+     *
+     * The service is responsible for
+     * calculating the current volume and
+     * consistency from the raw PCM samples.
      */
-    const dbHistory =
-      liveHistory.map(
-        (normalized) =>
-          DBFS_MIN +
-          normalized *
-            (DBFS_MAX -
-              DBFS_MIN)
+    const reading =
+      measureVolumeFreeModeFrame(
+        frame.samples,
+        frame.sampleRate,
       );
 
-    setLiveStability(
-      calculateStability(
-        dbHistory
+    if (
+      !Number.isFinite(
+        reading.volumeDb,
       )
+    ) {
+      return;
+    }
+
+    setLiveVolume(
+      reading.volumeDb,
     );
-  }, [
-    liveHistory,
-    phase,
-  ]);
+
+    setLiveStability(
+      reading.consistencyPct,
+    );
+
+    /*
+     * The visualizer uses the same
+     * measured volume value.
+     *
+     * This is only a visual representation
+     * and is not a score.
+     */
+    const normalized =
+      normalizeVolume(
+        reading.volumeDb,
+      );
+
+    setLiveHistory(
+      (previous) =>
+        [
+          ...previous,
+          normalized,
+        ].slice(-BAR_COUNT),
+    );
+  };
+
+  const {
+    startRecording,
+    stopRecording,
+    isRecording,
+  } = useAudioRecorder({
+    onFrame: handleAudioFrame,
+  });
 
   /* =======================================================
      TIMER
      ======================================================= */
 
   useEffect(() => {
-    if (
-      phase !== 'exercise'
-    ) {
+    if (phase !== 'exercise') {
       return;
     }
 
@@ -424,31 +315,28 @@ export default function VolumeFreeModeScreen() {
     timerRef.current =
       setInterval(() => {
         if (
-          startedAtRef.current
+          startedAtRef.current !== null
         ) {
           const elapsed =
             Math.floor(
               (Date.now() -
                 startedAtRef.current) /
-                1000
+                1000,
             );
 
           setElapsedSeconds(
-            elapsed
+            elapsed,
           );
         }
       }, 250);
 
     return () => {
-      if (
-        timerRef.current
-      ) {
+      if (timerRef.current) {
         clearInterval(
-          timerRef.current
+          timerRef.current,
         );
 
-        timerRef.current =
-          null;
+        timerRef.current = null;
       }
     };
   }, [phase]);
@@ -461,7 +349,8 @@ export default function VolumeFreeModeScreen() {
     async () => {
       if (
         isStarting ||
-        phase === 'exercise'
+        phase === 'exercise' ||
+        isRecording
       ) {
         return;
       }
@@ -470,25 +359,20 @@ export default function VolumeFreeModeScreen() {
         setIsStarting(true);
 
         setLiveVolume(null);
-
         setLiveStability(0);
-
         setLiveHistory([]);
-
         setElapsedSeconds(0);
+
+        startedAtRef.current =
+          null;
 
         await startRecording();
 
-        startedAtRef.current =
-          Date.now();
-
-        setPhase(
-          'exercise'
-        );
+        setPhase('exercise');
       } catch (error) {
         console.error(
           'Unable to start Volume Free Mode:',
-          error
+          error,
         );
       } finally {
         setIsStarting(false);
@@ -506,36 +390,32 @@ export default function VolumeFreeModeScreen() {
       } catch (error) {
         console.error(
           'Unable to stop Volume Free Mode:',
-          error
+          error,
         );
       }
 
-      if (
-        timerRef.current
-      ) {
+      if (timerRef.current) {
         clearInterval(
-          timerRef.current
+          timerRef.current,
         );
 
-        timerRef.current =
-          null;
+        timerRef.current = null;
       }
 
       startedAtRef.current =
         null;
 
       /*
-       * Free Mode does NOT calculate
-       * a score or save progress.
+       * Free Mode does NOT:
+       * - calculate an exercise score
+       * - save progress
+       * - update adaptive difficulty
        */
       setPhase('ready');
 
       setLiveVolume(null);
-
       setLiveStability(0);
-
       setLiveHistory([]);
-
       setElapsedSeconds(0);
     };
 
@@ -547,34 +427,30 @@ export default function VolumeFreeModeScreen() {
     useMemo(() => {
       const minutes =
         Math.floor(
-          elapsedSeconds / 60
+          elapsedSeconds / 60,
         );
 
       const seconds =
         elapsedSeconds % 60;
 
       return `${String(
-        minutes
+        minutes,
       ).padStart(
         2,
-        '0'
+        '0',
       )}:${String(
-        seconds
+        seconds,
       ).padStart(
         2,
-        '0'
+        '0',
       )}`;
-    }, [
-      elapsedSeconds,
-    ]);
+    }, [elapsedSeconds]);
 
   /* =======================================================
      READY SCREEN
      ======================================================= */
 
-  if (
-    phase === 'ready'
-  ) {
+  if (phase === 'ready') {
     return (
       <SafeAreaView
         style={[
@@ -600,7 +476,9 @@ export default function VolumeFreeModeScreen() {
             style={
               styles.backButton
             }
-            onPress={() => {}}
+            onPress={() =>
+              router.back()
+            }
           >
             <Ionicons
               name="arrow-back"
@@ -665,7 +543,7 @@ export default function VolumeFreeModeScreen() {
             or structured exercise.
           </Text>
 
-          {/* WHAT YOU CAN SEE */}
+          {/* LIVE FEEDBACK */}
 
           <View
             style={
@@ -799,7 +677,7 @@ export default function VolumeFreeModeScreen() {
               paddingBottom:
                 Math.max(
                   8,
-                  insets.bottom
+                  insets.bottom,
                 ),
             },
           ]}
@@ -978,11 +856,8 @@ export default function VolumeFreeModeScreen() {
                 styles.volumeValueSmall,
             ]}
           >
-            {liveVolume !==
-            null
-              ? liveVolume.toFixed(
-                  1
-                )
+            {liveVolume !== null
+              ? liveVolume.toFixed(1)
               : '--'}
           </Text>
 
@@ -1015,8 +890,7 @@ export default function VolumeFreeModeScreen() {
               styles.volumeHint
             }
           >
-            {liveVolume !==
-            null
+            {liveVolume !== null
               ? 'Voice detected'
               : 'Listening...'}
           </Text>
@@ -1057,10 +931,14 @@ export default function VolumeFreeModeScreen() {
                 styles.consistencyValue
               }
             >
-              {Math.round(
-                liveStability
-              )}
-              %
+              {liveVolume !== null
+                ? Math.round(
+                    liveStability,
+                  )
+                : '--'}
+              {liveVolume !== null
+                ? '%'
+                : ''}
             </Text>
           </View>
 
@@ -1075,7 +953,10 @@ export default function VolumeFreeModeScreen() {
                 {
                   width: `${Math.min(
                     100,
-                    liveStability
+                    Math.max(
+                      0,
+                      liveStability,
+                    ),
                   )}%`,
                 },
               ]}
@@ -1213,7 +1094,7 @@ export default function VolumeFreeModeScreen() {
             paddingBottom:
               Math.max(
                 8,
-                insets.bottom
+                insets.bottom,
               ),
           },
         ]}

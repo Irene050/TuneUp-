@@ -1,4 +1,6 @@
-import type { ControlledCrescendoMeasurement } from '@/services/measurement/volume/controlledCrescendoDrill';
+import type {
+  ControlledCrescendoMeasurement,
+} from '@/services/measurement/volume/controlledCrescendoDrill';
 
 export interface ControlledCrescendoScore {
   smoothness: number;
@@ -12,33 +14,49 @@ interface ScoreOptions {
   passingScore?: number;
 }
 
-const BEGINNER_SMOOTHNESS_TARGET = 70;
+const DEFAULT_PASSING_SCORE = 75;
 
 export function scoreControlledCrescendo(
   measurement: ControlledCrescendoMeasurement,
   options: ScoreOptions = {},
 ): ControlledCrescendoScore {
   const passingScore =
-    options.passingScore ?? BEGINNER_SMOOTHNESS_TARGET;
+    options.passingScore ??
+    DEFAULT_PASSING_SCORE;
 
-  const smoothness = clamp(
-    measurement.smoothness,
-    0,
-    100,
-  );
+  const smoothness =
+    clamp(
+      measurement.smoothness,
+      0,
+      100,
+    );
 
-  const overallScore = round(smoothness);
+  const overallScore =
+    round(smoothness);
+
+  const measurementValid =
+    measurement.validWindowCount > 0;
+
+  const passed =
+    measurementValid &&
+    measurement.targetReached &&
+    overallScore >= passingScore;
 
   return {
-    smoothness: overallScore,
+    smoothness:
+      overallScore,
+
     overallScore,
-    passed:
-      measurement.validWindowCount > 0 &&
-      overallScore >= passingScore,
-    targetReached: measurement.targetReached,
-    measurementQuality: round(
-      measurement.overallMeasurementQuality,
-    ),
+
+    passed,
+
+    targetReached:
+      measurement.targetReached,
+
+    measurementQuality:
+      round(
+        measurement.overallMeasurementQuality,
+      ),
   };
 }
 
@@ -47,9 +65,19 @@ function clamp(
   min: number,
   max: number,
 ): number {
-  return Math.max(min, Math.min(max, value));
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value,
+    ),
+  );
 }
 
-function round(value: number): number {
-  return Math.round(value * 10) / 10;
+function round(
+  value: number,
+): number {
+  return Math.round(
+    value * 10,
+  ) / 10;
 }

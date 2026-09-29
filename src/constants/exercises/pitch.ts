@@ -90,7 +90,21 @@ export const SCALE_ACCURACY_PARAMS: Record<
 export interface IntervalRecognitionParams {
   tolerancePct: number;
   minClarity: number;
+
+  /**
+   * Number of times the same interval is
+   * presented and performed.
+   *
+   * Kept fixed at 2 so the playback,
+   * recording, measurement, and scoring
+   * flow remain consistent.
+   */
   repetitions: number;
+
+  /**
+   * Total recording duration for the complete
+   * repeated interval task.
+   */
   totalDurationSec: number;
 }
 
@@ -102,21 +116,21 @@ export const INTERVAL_RECOGNITION_PARAMS: Record<
     tolerancePct: 7,
     minClarity: 0.70,
     repetitions: 2,
-    totalDurationSec: 5,
+    totalDurationSec: 8,
   },
 
   intermediate: {
     tolerancePct: 5,
     minClarity: 0.75,
     repetitions: 2,
-    totalDurationSec: 4,
+    totalDurationSec: 7,
   },
 
   advanced: {
     tolerancePct: 3,
     minClarity: 0.80,
     repetitions: 2,
-    totalDurationSec: 3,
+    totalDurationSec: 6,
   },
 };
 

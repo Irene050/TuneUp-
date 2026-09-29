@@ -5,29 +5,40 @@ import { useLocalSearchParams } from 'expo-router';
 import ResonanceStabilizationTaskScreen from '../../src/screens/exercises/Tone/ResonanceStabilizationTaskScreen';
 import SteadyToneHoldingScreen from '../../src/screens/exercises/Tone/SteadyToneHoldingScreen';
 import ToneConsistencyExerciseScreen from '../../src/screens/exercises/Tone/ToneConsistencyExerciseScreen';
+import ToneExercisesScreen from '../../src/screens/exercises/Tone/ToneExercisesScreen';
+import ToneFreeModeScreen from '../../src/screens/exercises/Tone/ToneFreeModeScreen';
 import VowelConsistencyExerciseScreen from '../../src/screens/exercises/Tone/VowelConsistencyExerciseScreen';
 import WaveformSmoothnessDrillScreen from '../../src/screens/exercises/Tone/WaveformSmoothnessDrillScreen';
 
 export default function ToneRoute() {
-  const { templateId } = useLocalSearchParams<{
+  const { mode, templateId } = useLocalSearchParams<{
     templateId?: string;
+    mode?: string;
   }>();
 
+  if (mode === 'free') {
+    return <ToneFreeModeScreen />;
+  }
+
+  if (!templateId) {
+    return <ToneExercisesScreen />;
+  }
+
   switch (templateId) {
-    case 'vowelConsistencyExercise':
-      return <VowelConsistencyExerciseScreen tier="beginner" />;
+case 'vowelConsistencyExercise':
+  return <VowelConsistencyExerciseScreen />;
 
-    case 'waveformSmoothnessDrill':
-      return <WaveformSmoothnessDrillScreen tier="beginner" />;
+case 'waveformSmoothnessDrill':
+  return <WaveformSmoothnessDrillScreen />;
 
-    case 'resonanceStabilizationTask':
-      return <ResonanceStabilizationTaskScreen tier="beginner" />;
+case 'resonanceStabilizationTask':
+  return <ResonanceStabilizationTaskScreen />;
 
-    case 'toneConsistencyExercise':
-      return <ToneConsistencyExerciseScreen tier="beginner" />;
+case 'toneConsistencyExercise':
+  return <ToneConsistencyExerciseScreen />;
 
-    case 'steadyToneHolding':
-      return <SteadyToneHoldingScreen tier="beginner" />;
+case 'steadyToneHolding':
+  return <SteadyToneHoldingScreen />;
 
     default:
       return null;

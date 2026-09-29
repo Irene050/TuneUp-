@@ -21,18 +21,28 @@ import {
 } from '@/constants/exercises/agility';
 
 import {
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
+} from 'react-native-audio-api';
+
+import { auth } from '@/services/firebase/config';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  generateVocalRunAccuracyParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import {
   measureVocalRunAccuracy,
 } from '@/services/measurement/agility/vocalRunAccuracyTask';
 
 import {
   scoreVocalRunAccuracy,
 } from '@/services/scoring/agility/vocalRunAccuracyTask';
-
-import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
-} from 'react-native-audio-api';
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 
@@ -144,13 +154,186 @@ const frequencyToNoteName = (
 // COMPONENT
 // ============================================================
 
-export default function VocalRunAccuracyTaskScreen({
-  tier,
-}: {
-  tier: Tier;
-}) {
-  const config =
-    RAPID_VOCAL_RUN_PARAMS[tier];
+export default function VocalRunAccuracyTaskScreen() {
+  // ==========================================================
+  // TIER
+  // ==========================================================
+
+  const [tier, setTier] =
+    useState<Tier>('beginner');
+
+  const [tierLoading, setTierLoading] =
+    useState(true);
+
+  // ==========================================================
+  // ADAPTIVE CONFIGURATION
+  // ==========================================================
+
+  const [adaptiveConfig, setAdaptiveConfig] =
+    useState(
+      () =>
+        RAPID_VOCAL_RUN_PARAMS.beginner,
+    );
+
+  const [
+    isLoadingAdaptiveParams,
+    setIsLoadingAdaptiveParams,
+  ] = useState(true);
+
+  // ==========================================================
+  // LOAD COMPONENT TIER
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadComponentTier =
+      async () => {
+        const user =
+          auth.currentUser;
+
+        if (!user) {
+          if (!cancelled) {
+            setTier('beginner');
+            setTierLoading(false);
+          }
+
+          return;
+        }
+
+        try {
+          const progress =
+            await fetchComponentProgress(
+              user.uid,
+              'agility',
+            );
+
+          if (!cancelled) {
+            setTier(
+              (progress?.currentTier as Tier) ??
+                'beginner',
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to load agility component tier:',
+            error,
+          );
+
+          if (!cancelled) {
+            setTier('beginner');
+          }
+        } finally {
+          if (!cancelled) {
+            setTierLoading(false);
+          }
+        }
+      };
+
+    void loadComponentTier();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ==========================================================
+  // LOAD ADAPTIVE PARAMETERS
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParameters =
+      async () => {
+        setIsLoadingAdaptiveParams(true);
+
+        const currentBaseParams =
+          RAPID_VOCAL_RUN_PARAMS[tier];
+
+        setAdaptiveConfig(
+          currentBaseParams,
+        );
+
+        const user =
+          auth.currentUser;
+
+        if (!user) {
+          if (!cancelled) {
+            setIsLoadingAdaptiveParams(false);
+          }
+
+          return;
+        }
+
+        try {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'agility',
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+         const recentScores =
+  records
+    .filter(
+      (exercise) =>
+        exercise.templateId ===
+          'vocalRunAccuracy' &&
+        exercise.tier === tier,
+    )
+    .slice(-5)
+    .map(
+      (exercise) =>
+        exercise.scorePct,
+    );
+
+          const generatedParams =
+  generateVocalRunAccuracyParams({
+    tier,
+    recentScores,
+  });
+
+          if (!cancelled) {
+            setAdaptiveConfig(
+              generatedParams,
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to load Vocal Run Accuracy adaptive parameters:',
+            error,
+          );
+
+          if (!cancelled) {
+            setAdaptiveConfig(
+              currentBaseParams,
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingAdaptiveParams(false);
+          }
+        }
+      };
+
+    if (!tierLoading) {
+      void loadAdaptiveParameters();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier, tierLoading]);
+
+  // ==========================================================
+  // ACTIVE CONFIG
+  // ==========================================================
+
+  const config = adaptiveConfig;
 
   // ==========================================================
   // STATE
@@ -644,155 +827,151 @@ export default function VocalRunAccuracyTaskScreen({
   // PROCESS RECORDING
   // ==========================================================
 
-  // ==========================================================
-// PROCESS RECORDING
-// ==========================================================
-
-const processRecording =
-  useCallback(async () => {
-    if (
-      processingRef.current
-    ) {
-      return;
-    }
-
-    if (
-      phaseRef.current !==
-      'recording'
-    ) {
-      return;
-    }
-
-    processingRef.current =
-      true;
-
-    stopRecording();
-
-    if (mountedRef.current) {
-      setExercisePhase(
-        'processing',
-      );
-    }
-
-    await sleep(300);
-
-    try {
-      const samples =
-        new Float32Array(
-          samplesRef.current,
-        );
-
-      if (samples.length === 0) {
-        throw new Error(
-          'No audio samples were captured.',
-        );
-      }
-
-      const measurement =
-        measureVocalRunAccuracy(
-          samples,
-          SAMPLE_RATE,
-          config.frequencies,
-        );
-
-      const score =
-        scoreVocalRunAccuracy(
-          measurement,
-        );
-
-      // ======================================================
-      // SAVE EXERCISE PROGRESS
-      // ======================================================
-
-      try {
-        await saveCompletedExercise(
-          'agility',
-          'vocalRunAccuracy',
-          tier,
-          score.overall,
-        );
-
-        console.log(
-          '💾 Vocal Run Accuracy progress saved:',
-          score.overall,
-        );
-      } catch (saveError) {
-        console.error(
-          '❌ Failed to save Vocal Run Accuracy progress:',
-          saveError,
-        );
-      }
-
-      if (!mountedRef.current) {
+  const processRecording =
+    useCallback(async () => {
+      if (
+        processingRef.current
+      ) {
         return;
       }
 
-      setResult({
-        overall:
-          score.overall,
+      if (
+        phaseRef.current !==
+        'recording'
+      ) {
+        return;
+      }
 
-        pitchScore:
-          score.pitchScore,
+      processingRef.current =
+        true;
 
-        sequenceScore:
-          score.sequenceScore,
-
-        transitionScore:
-          score.transitionScore,
-
-        passed:
-          score.passed,
-
-        feedback:
-          score.feedback,
-
-        noteCount:
-          measurement.noteCount,
-
-        correctNoteCount:
-          measurement.correctNoteCount,
-
-        transitionCount:
-          measurement.transitionCount,
-
-        correctTransitionCount:
-          measurement.correctTransitionCount,
-
-        notesPerSecond:
-          measurement.notesPerSecond,
-
-        durationMs:
-          measurement.durationMs,
-      });
-
-      setExercisePhase(
-        'results',
-      );
-    } catch (error) {
-      console.warn(
-        'Vocal Run Accuracy processing failed:',
-        error,
-      );
+      stopRecording();
 
       if (mountedRef.current) {
-        setErrorMessage(
-          'We could not analyze this recording. Please try again.',
-        );
-
         setExercisePhase(
-          'instructions',
+          'processing',
         );
       }
-    } finally {
-      processingRef.current =
-        false;
-    }
-  }, [
-    config.frequencies,
-    setExercisePhase,
-    stopRecording,
-    tier,
-  ]);
+
+      await sleep(300);
+
+      try {
+        const samples =
+          new Float32Array(
+            samplesRef.current,
+          );
+
+        if (samples.length === 0) {
+          throw new Error(
+            'No audio samples were captured.',
+          );
+        }
+
+        const measurement =
+          measureVocalRunAccuracy(
+            samples,
+            SAMPLE_RATE,
+            config.frequencies,
+          );
+
+        const score =
+          scoreVocalRunAccuracy(
+            measurement,
+          );
+
+        // ======================================================
+        // SAVE EXERCISE PROGRESS
+        // ======================================================
+
+        try {
+          await saveCompletedExercise(
+            'agility',
+            'vocalRunAccuracy',
+            tier,
+            score.overall,
+          );
+
+          console.log(
+            '💾 Vocal Run Accuracy progress saved:',
+            score.overall,
+          );
+        } catch (saveError) {
+          console.error(
+            '❌ Failed to save Vocal Run Accuracy progress:',
+            saveError,
+          );
+        }
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setResult({
+          overall:
+            score.overall,
+
+          pitchScore:
+            score.pitchScore,
+
+          sequenceScore:
+            score.sequenceScore,
+
+          transitionScore:
+            score.transitionScore,
+
+          passed:
+            score.passed,
+
+          feedback:
+            score.feedback,
+
+          noteCount:
+            measurement.noteCount,
+
+          correctNoteCount:
+            measurement.correctNoteCount,
+
+          transitionCount:
+            measurement.transitionCount,
+
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+
+          notesPerSecond:
+            measurement.notesPerSecond,
+
+          durationMs:
+            measurement.durationMs,
+        });
+
+        setExercisePhase(
+          'results',
+        );
+      } catch (error) {
+        console.warn(
+          'Vocal Run Accuracy processing failed:',
+          error,
+        );
+
+        if (mountedRef.current) {
+          setErrorMessage(
+            'We could not analyze this recording. Please try again.',
+          );
+
+          setExercisePhase(
+            'instructions',
+          );
+        }
+      } finally {
+        processingRef.current =
+          false;
+      }
+    }, [
+      config.frequencies,
+      setExercisePhase,
+      stopRecording,
+      tier,
+    ]);
 
   // ==========================================================
   // FINISH RECORDING
@@ -1056,7 +1235,7 @@ const processRecording =
               },
             ]}
           >
-            Instructions
+            Exercise Instructions
           </Text>
 
           <View
@@ -2206,6 +2385,44 @@ const processRecording =
   // MAIN RENDER
   // ==========================================================
 
+  if (
+    tierLoading ||
+    isLoadingAdaptiveParams
+  ) {
+    return (
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
+        <View
+          style={styles.iconCircle}
+        >
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={
+            styles.phaseTitle
+          }
+        >
+          Preparing Exercise
+        </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Loading your current difficulty and exercise settings.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.screen}
@@ -2244,10 +2461,6 @@ const processRecording =
 // ============================================================
 
 const styles = StyleSheet.create({
-  // ==========================================================
-  // SCREEN / CONTENT
-  // ==========================================================
-
   screen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2275,10 +2488,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  // ==========================================================
-  // BACK BUTTON
-  // ==========================================================
-
   backButton: {
     position: 'absolute',
     top: 55,
@@ -2291,10 +2500,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: WHITE,
   },
-
-  // ==========================================================
-  // GENERAL ICON / TITLE
-  // ==========================================================
 
   iconCircle: {
     width: 76,
@@ -2321,14 +2526,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  // ==========================================================
-  // INSTRUCTIONS
-  // ==========================================================
-
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,
@@ -2424,10 +2625,6 @@ const styles = StyleSheet.create({
     marginLeft: 9,
   },
 
-  // ==========================================================
-  // BUTTONS
-  // ==========================================================
-
   startButton: {
     width: '100%',
     height: 54,
@@ -2463,10 +2660,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: BROWN,
   },
-
-  // ==========================================================
-  // REFERENCE
-  // ==========================================================
 
   referenceCard: {
     width: '100%',
@@ -2525,10 +2718,6 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ==========================================================
-  // COUNTDOWN / CENTER STATES
-  // ==========================================================
-
   centerScreen: {
     flexGrow: 1,
     minHeight: 700,
@@ -2562,10 +2751,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 20,
   },
-
-  // ==========================================================
-  // RECORDING
-  // ==========================================================
 
   recordingIcon: {
     width: 76,
@@ -2721,10 +2906,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: PINK,
   },
-
-  // ==========================================================
-  // RESULTS
-  // ==========================================================
 
   resultIcon: {
     width: 82,

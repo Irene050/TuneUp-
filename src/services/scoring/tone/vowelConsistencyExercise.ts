@@ -1,6 +1,5 @@
-import {
-  Tier,
-  VOWEL_CONSISTENCY_PARAMS,
+import type {
+  VowelConsistencyParams,
 } from '@/constants/exercises/tone';
 
 import type {
@@ -18,11 +17,8 @@ export interface VowelConsistencyScoreResult {
 
 export function scoreVowelConsistencyExercise(
   measurement: VowelConsistencyMeasurement,
-  tier: Tier,
+  params: VowelConsistencyParams,
 ): VowelConsistencyScoreResult {
-  const params =
-    VOWEL_CONSISTENCY_PARAMS[tier];
-
   const validCentroids =
     measurement.centroidOverTime.filter(
       (value) =>

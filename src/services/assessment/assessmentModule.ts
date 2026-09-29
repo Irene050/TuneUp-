@@ -2220,7 +2220,7 @@ function detectComfortableNote(
     autocorrelationResults.length;
 
   /*
-   * Allow one-octave agreement as an alternative.
+   * Allow one-octave agraeement as an alternative.
    *
    * Example:
    * Pitchy = 200 Hz

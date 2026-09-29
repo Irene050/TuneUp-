@@ -11,8 +11,8 @@ import {
   View,
 } from 'react-native';
 
-import {
-  STEADY_AIRFLOW_PARAMS,
+import type {
+  SteadyAirflowParams,
   Tier,
 } from '@/constants/exercises/breathControl';
 
@@ -30,6 +30,19 @@ import {
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import { auth } from '@/services/firebase/config';
+
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+
+import {
+  generateSteadyAirflowParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -41,7 +54,7 @@ const BORDER = '#F2DDE5';
 const PREPARATION_COUNTDOWN = 3;
 
 interface Props {
-  tier: Tier;
+  tier?: Tier;
 }
 
 type Phase =
@@ -58,34 +71,70 @@ interface RepResult {
 }
 
 export default function SteadyAirflowMaintenanceScreen({
-  tier,
+  tier: initialTier,
 }: Props) {
-  const params = STEADY_AIRFLOW_PARAMS[tier];
+  /*
+   * ------------------------------------------
+   * ADAPTIVE PARAMETERS
+   * ------------------------------------------
+   */
+
+  const [tier, setTier] =
+    useState<Tier | null>(
+      initialTier ?? null,
+    );
+
+  const [params, setParams] =
+    useState<SteadyAirflowParams | null>(null);
+
+  const paramsRef =
+    useRef<SteadyAirflowParams | null>(null);
+
+  const tierRef =
+    useRef<Tier>(
+      initialTier ?? 'beginner',
+    );
+
+  /*
+   * ------------------------------------------
+   * EXERCISE STATE
+   * ------------------------------------------
+   */
 
   const [phase, setPhase] =
     useState<Phase>('instructions');
 
   const [countdown, setCountdown] = useState(
-    PREPARATION_COUNTDOWN
+    PREPARATION_COUNTDOWN,
   );
 
   const [elapsed, setElapsed] = useState(0);
 
-  const [currentRep, setCurrentRep] = useState(1);
+  const [currentRep, setCurrentRep] =
+    useState(1);
 
-  const [volume, setVolume] = useState(0);
+  const [volume, setVolume] =
+    useState(0);
 
   const [repResults, setRepResults] = useState<
     RepResult[]
   >([]);
 
+  /*
+   * ------------------------------------------
+   * REFS
+   * ------------------------------------------
+   */
+
   const mountedRef = useRef(true);
 
-  const phaseRef = useRef<Phase>('instructions');
+  const phaseRef =
+    useRef<Phase>('instructions');
 
   const currentRepRef = useRef(1);
 
-  const repResultsRef = useRef<RepResult[]>([]);
+  const repResultsRef =
+    useRef<RepResult[]>([]);
 
   const startRecordingRef = useRef<
     (() => Promise<void>) | null
@@ -107,248 +156,260 @@ export default function SteadyAirflowMaintenanceScreen({
     (() => void) | null
   >(null);
 
+  /*
+   * ------------------------------------------
+   * LOAD ADAPTIVE PARAMETERS
+   * ------------------------------------------
+   *
+   * Tier resolution:
+   *
+   * 1. Use the supplied tier if one is provided.
+   *
+   * 2. Otherwise, load the saved current tier
+   *    for Breath Control.
+   *
+   * 3. If no progress exists, use Beginner.
+   *
+   * ADS reference priority:
+   *
+   * 1. Latest five completed Steady Airflow
+   *    exercises in the current tier.
+   *
+   * 2. Initial Assessment Breath Control score
+   *    if no Steady Airflow exercise history
+   *    exists for the current tier.
+   *
+   * 3. Default tier parameters if neither
+   *    source is available.
+   */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeParams = async () => {
+      let currentTier: Tier =
+        initialTier ?? 'beginner';
+
+      let recentScores: number[] = [];
+
+      /*
+       * ------------------------------------------
+       * RESOLVE CURRENT TIER
+       * ------------------------------------------
+       */
+
+      try {
+        const user = auth.currentUser;
+
+        if (
+          !initialTier &&
+          user
+        ) {
+          const progress =
+            await fetchComponentProgress(
+              user.uid,
+              'breathControl',
+            );
+
+          currentTier =
+            progress?.currentTier ??
+            'beginner';
+        }
+      } catch (error) {
+        console.error(
+          '❌ Failed to load Steady Airflow current tier:',
+          error,
+        );
+
+        currentTier =
+          initialTier ?? 'beginner';
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      tierRef.current =
+        currentTier;
+
+      setTier(currentTier);
+
+      /*
+       * ------------------------------------------
+       * LOAD ADS REFERENCE
+       * ------------------------------------------
+       */
+
+      try {
+        const user =
+          auth.currentUser;
+
+        if (user) {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'breathControl',
+            );
+
+          /*
+           * ADS history must be specific to
+           * Steady Airflow Maintenance and
+           * the user's current tier.
+           */
+          const currentExerciseRecords =
+            records.filter(
+              record =>
+                record.templateId ===
+                  'steadyAirflow' &&
+                record.tier ===
+                  currentTier,
+            );
+
+          /*
+           * Use only the latest five completed
+           * Steady Airflow exercises for this
+           * template and current tier.
+           */
+          recentScores =
+            currentExerciseRecords
+              .slice(-5)
+              .map(
+                record =>
+                  record.scorePct,
+              );
+
+          /*
+           * ------------------------------------------
+           * INITIAL ASSESSMENT FALLBACK
+           * ------------------------------------------
+           *
+           * If this specific exercise has never
+           * been completed at the current tier,
+           * use the latest Breath Control assessment
+           * score as the cold-start ADS reference.
+           *
+           * Once Steady Airflow exercise history
+           * exists, only the exercise scores above
+           * are used for continuous ADS.
+           */
+          if (
+            recentScores.length === 0
+          ) {
+            const assessment =
+              await getLatestAssessment();
+
+            const assessmentScore =
+              assessment?.scores.find(
+                score =>
+                  score.componentId ===
+                  'breathControl',
+              )?.scorePct;
+
+            if (
+              typeof assessmentScore ===
+              'number'
+            ) {
+              recentScores = [
+                assessmentScore,
+              ];
+
+              console.log(
+                '📋 Steady Airflow ADS reference from assessment:',
+                assessmentScore,
+              );
+            } else {
+              console.log(
+                'ℹ️ No Steady Airflow exercise history or Breath Control assessment score. Using default parameters.',
+              );
+            }
+          }
+        } else {
+          console.log(
+            'ℹ️ No authenticated user. Using default Steady Airflow parameters.',
+          );
+        }
+      } catch (error) {
+        console.error(
+          '❌ Failed to load Steady Airflow history/assessment:',
+          error,
+        );
+
+        recentScores = [];
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      /*
+       * ------------------------------------------
+       * GENERATE ADAPTIVE PARAMETERS
+       * ------------------------------------------
+       */
+
+      const generatedParams =
+        generateSteadyAirflowParams({
+          tier: currentTier,
+          recentScores,
+        });
+
+      if (cancelled) {
+        return;
+      }
+
+      paramsRef.current =
+        generatedParams;
+
+      setParams(
+        generatedParams,
+      );
+
+      console.log(
+        '🎯 Steady Airflow adaptive parameters:',
+        {
+          tier: currentTier,
+          recentScores,
+          generatedParams,
+        },
+      );
+    };
+
+    initializeParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTier]);
+
+  /*
+   * ------------------------------------------
+   * TIMER CLEANUP
+   * ------------------------------------------
+   */
+
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
+      clearInterval(
+        countdownTimerRef.current,
+      );
+
       countdownTimerRef.current = null;
     }
 
     if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
+      clearInterval(
+        recordingTimerRef.current,
+      );
+
       recordingTimerRef.current = null;
     }
   }, []);
 
-  const finishExercise = useCallback(async () => {
-  clearTimers();
-
-  if (!mountedRef.current) {
-    return;
-  }
-
-  const finalResults = repResultsRef.current;
-
-  const finalScore =
-    finalResults.length > 0
-      ? Math.round(
-          finalResults.reduce(
-            (sum, result) =>
-              sum + result.score.score,
-            0
-          ) / finalResults.length
-        )
-      : 0;
-
-  console.log(
-    '🏆 Final Steady Airflow results:',
-    finalResults
-  );
-
-  console.log(
-    '🏆 Final Steady Airflow score:',
-    finalScore
-  );
-
   /*
    * ------------------------------------------
-   * SAVE PROGRESS
+   * COUNTDOWN
    * ------------------------------------------
    */
-
-  try {
-    await saveCompletedExercise(
-      'breathControl',
-      'steadyAirflow',
-      tier,
-      finalScore,
-    );
-
-    console.log(
-      '💾 Steady Airflow progress saved'
-    );
-  } catch (saveError) {
-    console.error(
-      '❌ Failed to save Steady Airflow progress:',
-      saveError
-    );
-  }
-
-  if (!mountedRef.current) {
-    return;
-  }
-
-  phaseRef.current = 'results';
-  setPhase('results');
-  setElapsed(0);
-  setVolume(0);
-}, [
-  clearTimers,
-  tier,
-]);
-
-  const handleRecordingStop = useCallback(
-    (
-      samples: Float32Array,
-      sampleRate: number
-    ) => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      if (phaseRef.current !== 'recording') {
-        return;
-      }
-
-      clearTimers();
-
-      phaseRef.current = 'processing';
-      setPhase('processing');
-
-      setElapsed(0);
-      setVolume(0);
-
-      const measurement =
-        measureSteadyAirflow(
-          samples,
-          params.detectionThreshold,
-          sampleRate
-        );
-
-      const score = scoreSteadyAirflow(
-        measurement,
-        tier
-      );
-
-      const result: RepResult = {
-        rep: currentRepRef.current,
-        measurement,
-        score,
-      };
-
-      const updatedResults = [
-        ...repResultsRef.current,
-        result,
-      ];
-
-      repResultsRef.current =
-        updatedResults;
-
-      setRepResults(updatedResults);
-
-      setTimeout(() => {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        if (
-          currentRepRef.current >=
-          params.repetitions
-        ) {
-          finishExercise();
-          return;
-        }
-
-        currentRepRef.current += 1;
-
-        setCurrentRep(
-          currentRepRef.current
-        );
-
-        startCountdown();
-      }, 700);
-    },
-    [
-      clearTimers,
-      finishExercise,
-      params,
-      tier,
-    ]
-  );
-
-  const {
-    isRecording,
-    startRecording,
-    stopRecording,
-  } = useAudioRecorder({
-    onFrame: (frame) => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setVolume(frame.volume ?? 0);
-    },
-
-    onStop: handleRecordingStop,
-  });
-
-  useEffect(() => {
-    startRecordingRef.current =
-      startRecording;
-
-    stopRecordingRef.current =
-      stopRecording;
-  }, [startRecording, stopRecording]);
-
-  const startRecordingPhase =
-    useCallback(() => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      clearTimers();
-
-      phaseRef.current = 'recording';
-      setPhase('recording');
-
-      setElapsed(0);
-      setVolume(0);
-
-      startRecordingRef.current?.();
-
-      const startedAt = Date.now();
-
-      recordingTimerRef.current =
-        setInterval(() => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          const elapsedSeconds =
-            (Date.now() - startedAt) /
-            1000;
-
-          setElapsed(
-            Math.min(
-              elapsedSeconds,
-              params.durationSec
-            )
-          );
-
-          if (
-            elapsedSeconds >=
-            params.durationSec
-          ) {
-            if (recordingTimerRef.current) {
-              clearInterval(
-                recordingTimerRef.current
-              );
-
-              recordingTimerRef.current =
-                null;
-            }
-
-            stopRecordingRef.current?.();
-          }
-        }, 50);
-    }, [
-      clearTimers,
-      params.durationSec,
-    ]);
-
-  useEffect(() => {
-    startRecordingPhaseRef.current =
-      startRecordingPhase;
-  }, [startRecordingPhase]);
 
   const startCountdown =
     useCallback(() => {
@@ -358,11 +419,13 @@ export default function SteadyAirflowMaintenanceScreen({
 
       clearTimers();
 
-      phaseRef.current = 'countdown';
+      phaseRef.current =
+        'countdown';
+
       setPhase('countdown');
 
       setCountdown(
-        PREPARATION_COUNTDOWN
+        PREPARATION_COUNTDOWN,
       );
 
       setElapsed(0);
@@ -380,9 +443,11 @@ export default function SteadyAirflowMaintenanceScreen({
           value -= 1;
 
           if (value <= 0) {
-            if (countdownTimerRef.current) {
+            if (
+              countdownTimerRef.current
+            ) {
               clearInterval(
-                countdownTimerRef.current
+                countdownTimerRef.current,
               );
 
               countdownTimerRef.current =
@@ -390,6 +455,7 @@ export default function SteadyAirflowMaintenanceScreen({
             }
 
             startRecordingPhaseRef.current?.();
+
             return;
           }
 
@@ -397,31 +463,375 @@ export default function SteadyAirflowMaintenanceScreen({
         }, 1000);
     }, [clearTimers]);
 
-  const startExercise = useCallback(() => {
-    repResultsRef.current = [];
+  /*
+   * ------------------------------------------
+   * FINISH EXERCISE
+   * ------------------------------------------
+   */
 
-    currentRepRef.current = 1;
+  const finishExercise =
+    useCallback(async () => {
+      clearTimers();
 
-    setRepResults([]);
-    setCurrentRep(1);
-    setElapsed(0);
-    setVolume(0);
+      if (!mountedRef.current) {
+        return;
+      }
 
-    startCountdown();
-  }, [startCountdown]);
+      const finalResults =
+        repResultsRef.current;
 
-  const retryExercise = useCallback(() => {
-    repResultsRef.current = [];
+      const finalScore =
+        finalResults.length > 0
+          ? Math.round(
+              finalResults.reduce(
+                (sum, result) =>
+                  sum +
+                  result.score.score,
+                0,
+              ) /
+                finalResults.length,
+            )
+          : 0;
 
-    currentRepRef.current = 1;
+      console.log(
+        '🏆 Final Steady Airflow results:',
+        finalResults,
+      );
 
-    setRepResults([]);
-    setCurrentRep(1);
-    setElapsed(0);
-    setVolume(0);
+      console.log(
+        '🏆 Final Steady Airflow score:',
+        finalScore,
+      );
 
-    startCountdown();
-  }, [startCountdown]);
+      /*
+       * ------------------------------------------
+       * SAVE PROGRESS
+       * ------------------------------------------
+       */
+
+      const activeTier =
+        tierRef.current;
+
+      if (!activeTier) {
+        console.error(
+          '❌ Current exercise tier is not available.',
+        );
+        return;
+      }
+
+      try {
+        await saveCompletedExercise(
+          'breathControl',
+          'steadyAirflow',
+          activeTier,
+          finalScore,
+        );
+
+        console.log(
+          '💾 Steady Airflow progress saved',
+        );
+      } catch (saveError) {
+        console.error(
+          '❌ Failed to save Steady Airflow progress:',
+          saveError,
+        );
+      }
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      phaseRef.current =
+        'results';
+
+      setPhase('results');
+      setElapsed(0);
+      setVolume(0);
+    }, [clearTimers]);
+
+  /*
+   * ------------------------------------------
+   * RECORDING PHASE
+   * ------------------------------------------
+   */
+
+  const startRecordingPhase =
+    useCallback(() => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const adaptiveParams =
+        paramsRef.current;
+
+      if (!adaptiveParams) {
+        console.error(
+          '❌ Steady Airflow parameters are not ready.',
+        );
+
+        return;
+      }
+
+      clearTimers();
+
+      phaseRef.current =
+        'recording';
+
+      setPhase('recording');
+
+      setElapsed(0);
+      setVolume(0);
+
+      startRecordingRef.current?.();
+
+      const startedAt =
+        Date.now();
+
+      recordingTimerRef.current =
+        setInterval(() => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          const elapsedSeconds =
+            (Date.now() -
+              startedAt) /
+            1000;
+
+          setElapsed(
+            Math.min(
+              elapsedSeconds,
+              adaptiveParams.durationSec,
+            ),
+          );
+
+          if (
+            elapsedSeconds >=
+            adaptiveParams.durationSec
+          ) {
+            if (
+              recordingTimerRef.current
+            ) {
+              clearInterval(
+                recordingTimerRef.current,
+              );
+
+              recordingTimerRef.current =
+                null;
+            }
+
+            stopRecordingRef.current?.();
+          }
+        }, 50);
+    }, [clearTimers]);
+
+  useEffect(() => {
+    startRecordingPhaseRef.current =
+      startRecordingPhase;
+  }, [startRecordingPhase]);
+
+  /*
+   * ------------------------------------------
+   * RECORDING STOP / MEASUREMENT / SCORING
+   * ------------------------------------------
+   */
+
+  const handleRecordingStop =
+    useCallback(
+      (
+        samples: Float32Array,
+        sampleRate: number,
+      ) => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        if (
+          phaseRef.current !==
+          'recording'
+        ) {
+          return;
+        }
+
+        const adaptiveParams =
+          paramsRef.current;
+
+        if (!adaptiveParams) {
+          console.error(
+            '❌ Steady Airflow parameters are not ready.',
+          );
+
+          phaseRef.current =
+            'instructions';
+
+          setPhase(
+            'instructions',
+          );
+
+          return;
+        }
+
+        clearTimers();
+
+        phaseRef.current =
+          'processing';
+
+        setPhase('processing');
+
+        setElapsed(0);
+        setVolume(0);
+
+        const measurement =
+          measureSteadyAirflow(
+            samples,
+            adaptiveParams.detectionThreshold,
+            sampleRate,
+          );
+
+        const score =
+          scoreSteadyAirflow(
+            measurement,
+            adaptiveParams,
+          );
+
+        const result: RepResult = {
+          rep:
+            currentRepRef.current,
+          measurement,
+          score,
+        };
+
+        const updatedResults = [
+          ...repResultsRef.current,
+          result,
+        ];
+
+        repResultsRef.current =
+          updatedResults;
+
+        setRepResults(
+          updatedResults,
+        );
+
+        setTimeout(() => {
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          if (
+            currentRepRef.current >=
+            adaptiveParams.repetitions
+          ) {
+            finishExercise();
+
+            return;
+          }
+
+          currentRepRef.current += 1;
+
+          setCurrentRep(
+            currentRepRef.current,
+          );
+
+          startCountdown();
+        }, 700);
+      },
+      [
+        clearTimers,
+        finishExercise,
+        startCountdown,
+      ],
+    );
+
+  /*
+   * ------------------------------------------
+   * AUDIO RECORDER
+   * ------------------------------------------
+   */
+
+  const {
+    isRecording,
+    startRecording,
+    stopRecording,
+  } = useAudioRecorder({
+    onFrame: frame => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setVolume(
+        frame.volume ?? 0,
+      );
+    },
+
+    onStop:
+      handleRecordingStop,
+  });
+
+  useEffect(() => {
+    startRecordingRef.current =
+      startRecording;
+
+    stopRecordingRef.current =
+      stopRecording;
+  }, [
+    startRecording,
+    stopRecording,
+  ]);
+
+  /*
+   * ------------------------------------------
+   * START / RETRY
+   * ------------------------------------------
+   */
+
+  const startExercise =
+    useCallback(() => {
+      if (!paramsRef.current) {
+        console.warn(
+          '⚠️ Steady Airflow parameters are not ready.',
+        );
+
+        return;
+      }
+
+      repResultsRef.current = [];
+
+      currentRepRef.current = 1;
+
+      setRepResults([]);
+      setCurrentRep(1);
+      setElapsed(0);
+      setVolume(0);
+
+      startCountdown();
+    }, [startCountdown]);
+
+  const retryExercise =
+    useCallback(() => {
+      if (!paramsRef.current) {
+        return;
+      }
+
+      repResultsRef.current = [];
+
+      currentRepRef.current = 1;
+
+      setRepResults([]);
+      setCurrentRep(1);
+      setElapsed(0);
+      setVolume(0);
+
+      startCountdown();
+    }, [startCountdown]);
+
+  /*
+   * ------------------------------------------
+   * MOUNT / UNMOUNT CLEANUP
+   * ------------------------------------------
+   */
 
   useEffect(() => {
     mountedRef.current = true;
@@ -435,14 +845,22 @@ export default function SteadyAirflowMaintenanceScreen({
     };
   }, [clearTimers]);
 
+  /*
+   * ------------------------------------------
+   * CALCULATED RESULTS
+   * ------------------------------------------
+   */
+
   const averageScore =
     repResults.length > 0
       ? Math.round(
           repResults.reduce(
             (sum, result) =>
-              sum + result.score.score,
-            0
-          ) / repResults.length
+              sum +
+              result.score.score,
+            0,
+          ) /
+            repResults.length,
         )
       : 0;
 
@@ -453,8 +871,9 @@ export default function SteadyAirflowMaintenanceScreen({
             sum +
             result.measurement
               .stabilityPct,
-          0
-        ) / repResults.length
+          0,
+        ) /
+        repResults.length
       : 0;
 
   const averageDuration =
@@ -462,37 +881,38 @@ export default function SteadyAirflowMaintenanceScreen({
       ? repResults.reduce(
           (sum, result) =>
             sum +
-            result.measurement.durationSec,
-          0
-        ) / repResults.length
+            result.measurement
+              .durationSec,
+          0,
+        ) /
+        repResults.length
       : 0;
 
   const passedReps =
     repResults.filter(
-      (result) => result.score.passed
+      result =>
+        result.score.passed,
     ).length;
 
-  const progress =
-    params.durationSec > 0
-      ? Math.min(
-          elapsed / params.durationSec,
-          1
-        )
-      : 0;
-
-  const formatTime = (
-    seconds: number
-  ) => seconds.toFixed(1);
+  /*
+   * ------------------------------------------
+   * BACK BUTTON
+   * ------------------------------------------
+   */
 
   const handleBack = () => {
-    if (phase === 'instructions') {
+    if (
+      phase === 'instructions'
+    ) {
       router.replace(
-        '/dashboard/exercises'
+        '/dashboard/exercises',
       );
+
       return;
     }
 
     stopRecordingRef.current?.();
+
     clearTimers();
 
     phaseRef.current =
@@ -514,11 +934,76 @@ export default function SteadyAirflowMaintenanceScreen({
     </Pressable>
   );
 
-  /* --------------------------------
-     INSTRUCTIONS
-  -------------------------------- */
+  /*
+   * ------------------------------------------
+   * PARAMETERS LOADING
+   * ------------------------------------------
+   */
 
-  if (phase === 'instructions') {
+  if (!params || !tier) {
+    return (
+      <View style={styles.screen}>
+        {renderBackButton()}
+
+        <View
+          style={styles.processingContent}
+        >
+          <View
+            style={styles.processingCircle}
+          >
+            <Ionicons
+              name="options-outline"
+              size={48}
+              color={BROWN}
+            />
+          </View>
+
+          <Text
+            style={styles.processingTitle}
+          >
+            Preparing your exercise
+          </Text>
+
+          <Text
+            style={styles.processingText}
+          >
+            Setting your airflow
+            parameters...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  /*
+   * ------------------------------------------
+   * PROGRESS
+   * ------------------------------------------
+   */
+
+  const progress =
+    params.durationSec > 0
+      ? Math.min(
+          elapsed /
+            params.durationSec,
+          1,
+        )
+      : 0;
+
+  const formatTime = (
+    seconds: number,
+  ) =>
+    seconds.toFixed(1);
+
+  /*
+   * --------------------------------
+   * INSTRUCTIONS
+   * --------------------------------
+   */
+
+  if (
+    phase === 'instructions'
+  ) {
     return (
       <View style={styles.screen}>
         {renderBackButton()}
@@ -531,7 +1016,9 @@ export default function SteadyAirflowMaintenanceScreen({
             styles.content
           }
         >
-          <View style={styles.iconCircle}>
+          <View
+            style={styles.iconCircle}
+          >
             <Ionicons
               name="water-outline"
               size={34}
@@ -543,173 +1030,243 @@ export default function SteadyAirflowMaintenanceScreen({
             Steady Airflow Maintenance
           </Text>
 
-          <Text style={styles.subtitle}>
+          <Text
+            style={styles.subtitle}
+          >
             Breath Control
           </Text>
 
           <View
             style={styles.instructionCard}
           >
-            <View
-              style={styles.prepareCard}
+            <Text
+              style={styles.sectionTitle}
             >
-              <View
-                style={styles.prepareHeader}
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
+              Exercise Instructions
+            </Text>
 
-                <Text
-                  style={styles.prepareTitle}
-                >
-                  Before You Begin
-                </Text>
-              </View>
+            <Text
+              style={
+                styles.instructionText
+              }
+            >
+              Take a comfortable breath,
+              then gently exhale toward
+              the microphone. Maintain a
+              smooth and steady airflow
+              throughout the entire
+              exercise.
+            </Text>
+
+            <View
+              style={styles.beforeCard}
+            >
+              <Text
+                style={
+                  styles.beforeTitle
+                }
+              >
+                Before You Begin
+              </Text>
 
               <PrepareItem
-                icon="volume-mute-outline"
-                text="Find a quiet room or area with minimal background noise."
+                icon="leaf-outline"
+                text="Sit or stand with a relaxed posture."
               />
 
               <PrepareItem
                 icon="body-outline"
-                text="Sit upright or stand with your back straight and your shoulders relaxed."
+                text="Take a comfortable breath without forcing it."
+              />
+
+              <PrepareItem
+                icon="volume-low-outline"
+                text="Exhale gently and steadily for the full duration."
               />
 
               <PrepareItem
                 icon="mic-outline"
-                text="Hold your phone's microphone about 10–15 cm from your mouth. Direct your exhale toward the microphone so the app can detect the strength and consistency of your airflow."
-              />
-
-              <PrepareItem
-                icon="resize-outline"
-                text="Keep the microphone at a consistent distance from your mouth throughout the exercise."
+                text="Stay close enough to the microphone for consistent audio."
               />
             </View>
-
-            <Text
-              style={styles.cardTitle}
-            >
-              Instructions
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Take a comfortable breath, then
-              gently exhale toward the
-              microphone. Maintain a smooth and
-              steady airflow throughout the
-              entire exercise.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Continue for:
-            </Text>
 
             <View
               style={styles.targetBox}
             >
-              <Text
-                style={styles.targetText}
+              <View
+                style={styles.targetItem}
               >
-                {params.durationSec} seconds
-              </Text>
+                <Text
+                  style={
+                    styles.targetLabel
+                  }
+                >
+                  TARGET
+                </Text>
+
+                <Text
+                  style={
+                    styles.targetValue
+                  }
+                >
+                  {params.durationSec}s
+                </Text>
+
+                <Text
+                  style={
+                    styles.targetHint
+                  }
+                >
+                  steady airflow
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.targetDivider
+                }
+              />
+
+              <View
+                style={styles.targetItem}
+              >
+                <Text
+                  style={
+                    styles.targetLabel
+                  }
+                >
+                  REPETITIONS
+                </Text>
+
+                <Text
+                  style={
+                    styles.targetValue
+                  }
+                >
+                  {params.repetitions}
+                </Text>
+
+                <Text
+                  style={
+                    styles.targetHint
+                  }
+                >
+                  attempts
+                </Text>
+              </View>
             </View>
 
-            <Text
-              style={styles.helperText}
+            <View
+              style={styles.tipCard}
             >
-              Imagine gently blowing on hot soup.
-              Try not to increase or decrease the
-              strength of your airflow.
-            </Text>
-          </View>
+              <Ionicons
+                name="bulb-outline"
+                size={21}
+                color={BROWN}
+              />
 
-          <View style={styles.tipCard}>
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text style={styles.tipText}>
-              Aim for an even airflow from the
-              beginning to the end. Avoid sudden
-              changes in breath strength.
-            </Text>
+              <Text
+                style={styles.tipText}
+              >
+                Focus on keeping your
+                airflow even from the
+                beginning to the end. Avoid
+                sudden changes in breath
+                strength.
+              </Text>
+            </View>
           </View>
 
           <View
-            style={styles.difficultyRow}
+            style={
+              styles.difficultyRow
+            }
           >
-            <Text
-              style={styles.difficultyLabel}
+            <View>
+              <Text
+                style={
+                  styles.difficultyLabel
+                }
+              >
+                DIFFICULTY
+              </Text>
+
+              <Text
+                style={
+                  styles.difficultyValue
+                }
+              >
+                {tier.charAt(0).toUpperCase() +
+                  tier.slice(1)}
+              </Text>
+            </View>
+
+            <View
+              style={
+                styles.difficultyDots
+              }
             >
-              Difficulty
-            </Text>
-
-            <Text
-              style={styles.difficultyValue}
-            >
-              {tier}
-            </Text>
-          </View>
-
-          <View style={styles.parameterRow}>
-            <Parameter
-              value={`${params.durationSec}s`}
-              label="Duration"
-            />
-
-            <Parameter
-              value={`${params.repetitions}`}
-              label="Repetitions"
-            />
-
-            <Parameter
-              value={`${params.stabilityThreshold}%`}
-              label="Target"
-            />
+              {[
+                'beginner',
+                'intermediate',
+                'advanced',
+              ].map(level => (
+                <View
+                  key={level}
+                  style={[
+                    styles.difficultyDot,
+                    level === tier &&
+                      styles.difficultyDotActive,
+                  ]}
+                />
+              ))}
+            </View>
           </View>
 
           <Pressable
             style={styles.startButton}
             onPress={startExercise}
           >
+            <Ionicons
+              name="play"
+              size={20}
+              color={WHITE}
+            />
+
             <Text
-              style={styles.startButtonText}
+              style={
+                styles.startButtonText
+              }
             >
               Start Exercise
             </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
           </Pressable>
         </ScrollView>
       </View>
     );
   }
 
-  /* --------------------------------
-     COUNTDOWN
-  -------------------------------- */
+  /*
+   * --------------------------------
+   * COUNTDOWN
+   * --------------------------------
+   */
 
-  if (phase === 'countdown') {
+  if (
+    phase === 'countdown'
+  ) {
     return (
-      <View style={styles.exerciseScreen}>
+      <View
+        style={
+          styles.exerciseScreen
+        }
+      >
         {renderBackButton()}
 
         <View
-          style={styles.exerciseContent}
+          style={
+            styles.exerciseContent
+          }
         >
           <Text
             style={styles.phaseLabel}
@@ -717,16 +1274,22 @@ export default function SteadyAirflowMaintenanceScreen({
             GET READY
           </Text>
 
-          <Text style={styles.repText}>
+          <Text
+            style={styles.repText}
+          >
             Repetition {currentRep} of{' '}
             {params.repetitions}
           </Text>
 
           <View
-            style={styles.countdownCircle}
+            style={
+              styles.countdownCircle
+            }
           >
             <Text
-              style={styles.countdownText}
+              style={
+                styles.countdownText
+              }
             >
               {countdown}
             </Text>
@@ -739,27 +1302,40 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
 
           <Text
-            style={styles.exerciseDescription}
+            style={
+              styles.exerciseDescription
+            }
           >
-            Take a comfortable breath and get
-            ready to exhale steadily.
+            Take a comfortable breath
+            and get ready to exhale
+            steadily.
           </Text>
         </View>
       </View>
     );
   }
 
-  /* --------------------------------
-     RECORDING
-  -------------------------------- */
+  /*
+   * --------------------------------
+   * RECORDING
+   * --------------------------------
+   */
 
-  if (phase === 'recording') {
+  if (
+    phase === 'recording'
+  ) {
     return (
-      <View style={styles.exerciseScreen}>
+      <View
+        style={
+          styles.exerciseScreen
+        }
+      >
         {renderBackButton()}
 
         <View
-          style={styles.exerciseContent}
+          style={
+            styles.exerciseContent
+          }
         >
           <Text
             style={styles.phaseLabel}
@@ -767,7 +1343,9 @@ export default function SteadyAirflowMaintenanceScreen({
             STEADY AIRFLOW
           </Text>
 
-          <Text style={styles.repText}>
+          <Text
+            style={styles.repText}
+          >
             Repetition {currentRep} of{' '}
             {params.repetitions}
           </Text>
@@ -794,7 +1372,11 @@ export default function SteadyAirflowMaintenanceScreen({
             <Text
               style={styles.timerTarget}
             >
-              / {params.durationSec.toFixed(1)}s
+              /{' '}
+              {params.durationSec.toFixed(
+                1,
+              )}
+              s
             </Text>
           </View>
 
@@ -805,11 +1387,13 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
 
           <Text
-            style={styles.exerciseDescription}
+            style={
+              styles.exerciseDescription
+            }
           >
-            Gently blow toward the microphone.
-            Keep your airflow as even as
-            possible.
+            Gently blow toward the
+            microphone. Keep your
+            airflow as even as possible.
           </Text>
 
           <View
@@ -822,7 +1406,9 @@ export default function SteadyAirflowMaintenanceScreen({
             </Text>
 
             <View
-              style={styles.airflowIndicator}
+              style={
+                styles.airflowIndicator
+              }
             >
               <View
                 style={[
@@ -831,9 +1417,9 @@ export default function SteadyAirflowMaintenanceScreen({
                     width: `${Math.min(
                       Math.max(
                         volume * 100,
-                        0
+                        0,
                       ),
-                      100
+                      100,
                     )}%`,
                   },
                 ]}
@@ -843,12 +1429,15 @@ export default function SteadyAirflowMaintenanceScreen({
             <Text
               style={styles.airflowHint}
             >
-              Maintain a consistent level
+              Maintain a consistent
+              level
             </Text>
           </View>
 
           <View
-            style={styles.progressTrack}
+            style={
+              styles.progressTrack
+            }
           >
             <View
               style={[
@@ -863,28 +1452,41 @@ export default function SteadyAirflowMaintenanceScreen({
           <Text
             style={styles.smallHint}
           >
-            Keep going until the timer reaches
-            {` ${params.durationSec} seconds.`}
+            Keep going until the timer
+            reaches{' '}
+            {`${params.durationSec} seconds.`}
           </Text>
         </View>
       </View>
     );
   }
 
-  /* --------------------------------
-     PROCESSING
-  -------------------------------- */
+  /*
+   * --------------------------------
+   * PROCESSING
+   * --------------------------------
+   */
 
-  if (phase === 'processing') {
+  if (
+    phase === 'processing'
+  ) {
     return (
-      <View style={styles.exerciseScreen}>
+      <View
+        style={
+          styles.exerciseScreen
+        }
+      >
         {renderBackButton()}
 
         <View
-          style={styles.processingContent}
+          style={
+            styles.processingContent
+          }
         >
           <View
-            style={styles.processingCircle}
+            style={
+              styles.processingCircle
+            }
           >
             <Ionicons
               name="analytics-outline"
@@ -894,25 +1496,31 @@ export default function SteadyAirflowMaintenanceScreen({
           </View>
 
           <Text
-            style={styles.processingTitle}
+            style={
+              styles.processingTitle
+            }
           >
             Analyzing your airflow
           </Text>
 
           <Text
-            style={styles.processingText}
+            style={
+              styles.processingText
+            }
           >
-            Measuring airflow stability and
-            duration...
+            Measuring airflow stability
+            and duration...
           </Text>
         </View>
       </View>
     );
   }
 
-  /* --------------------------------
-     RESULTS
-  -------------------------------- */
+  /*
+   * --------------------------------
+   * RESULTS
+   * --------------------------------
+   */
 
   return (
     <View style={styles.screen}>
@@ -926,7 +1534,9 @@ export default function SteadyAirflowMaintenanceScreen({
           styles.resultsContent
         }
       >
-        <View style={styles.resultsIcon}>
+        <View
+          style={styles.resultsIcon}
+        >
           <Ionicons
             name={
               averageScore >= 70
@@ -945,12 +1555,16 @@ export default function SteadyAirflowMaintenanceScreen({
         </Text>
 
         <Text
-          style={styles.resultsSubtitle}
+          style={
+            styles.resultsSubtitle
+          }
         >
           Your steady airflow results
         </Text>
 
-        <View style={styles.scoreCard}>
+        <View
+          style={styles.scoreCard}
+        >
           <Text
             style={styles.scoreLabel}
           >
@@ -964,7 +1578,9 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
 
           <Text
-            style={styles.scoreMessage}
+            style={
+              styles.scoreMessage
+            }
           >
             {averageScore >= 90
               ? 'Excellent airflow control!'
@@ -976,18 +1592,20 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
         </View>
 
-        <View style={styles.statsGrid}>
+        <View
+          style={styles.statsGrid}
+        >
           <ResultStat
             label="Avg. Stability"
             value={`${Math.round(
-              averageStability
+              averageStability,
             )}%`}
           />
 
           <ResultStat
             label="Avg. Duration"
             value={`${averageDuration.toFixed(
-              1
+              1,
             )}s`}
           />
 
@@ -1003,79 +1621,93 @@ export default function SteadyAirflowMaintenanceScreen({
         </View>
 
         <Text
-          style={styles.sectionTitle}
+          style={
+            styles.resultsSectionTitle
+          }
         >
           Repetition Results
         </Text>
 
-        {repResults.map((result) => (
-          <View
-            key={`rep-${result.rep}`}
-            style={styles.repCard}
-          >
+        {repResults.map(
+          result => (
             <View
-              style={styles.repHeader}
+              key={`rep-${result.rep}`}
+              style={styles.repCard}
             >
-              <Text
-                style={styles.repTitle}
-              >
-                Repetition {result.rep}
-              </Text>
-
               <View
-                style={[
-                  styles.passBadge,
-                  !result.score.passed &&
-                    styles.failBadge,
-                ]}
+                style={
+                  styles.repHeader
+                }
               >
                 <Text
                   style={
-                    styles.passBadgeText
+                    styles.repTitle
                   }
                 >
-                  {result.score.passed
-                    ? 'PASS'
-                    : 'KEEP PRACTICING'}
+                  Repetition {result.rep}
                 </Text>
+
+                <View
+                  style={[
+                    styles.passBadge,
+                    !result.score
+                      .passed &&
+                      styles.failBadge,
+                  ]}
+                >
+                  <Text
+                    style={
+                      styles.passBadgeText
+                    }
+                  >
+                    {result.score
+                      .passed
+                      ? 'PASS'
+                      : 'KEEP PRACTICING'}
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={
+                  styles.repMetrics
+                }
+              >
+                <Metric
+                  label="Stability"
+                  value={`${Math.round(
+                    result
+                      .measurement
+                      .stabilityPct,
+                  )}%`}
+                />
+
+                <Metric
+                  label="Duration"
+                  value={`${result.measurement.durationSec.toFixed(
+                    1,
+                  )}s`}
+                />
+
+                <Metric
+                  label="Score"
+                  value={`${result.score.score}%`}
+                />
+
+                <Metric
+                  label="Detected"
+                  value={
+                    result
+                      .measurement
+                      .detected
+                      ? 'Yes'
+                      : 'No'
+                  }
+                />
               </View>
             </View>
-
-            <View
-              style={styles.repMetrics}
-            >
-              <Metric
-                label="Stability"
-                value={`${Math.round(
-                  result.measurement
-                    .stabilityPct
-                )}%`}
-              />
-
-              <Metric
-                label="Duration"
-                value={`${result.measurement.durationSec.toFixed(
-                  1
-                )}s`}
-              />
-
-              <Metric
-                label="Score"
-                value={`${result.score.score}%`}
-              />
-
-              <Metric
-                label="Detected"
-                value={
-                  result.measurement
-                    .detected
-                    ? 'Yes'
-                    : 'No'
-                }
-              />
-            </View>
-          </View>
-        ))}
+          ),
+        )}
 
         <Pressable
           style={styles.retryButton}
@@ -1088,7 +1720,9 @@ export default function SteadyAirflowMaintenanceScreen({
           />
 
           <Text
-            style={styles.retryButtonText}
+            style={
+              styles.retryButtonText
+            }
           >
             Try Again
           </Text>
@@ -1098,12 +1732,14 @@ export default function SteadyAirflowMaintenanceScreen({
           style={styles.doneButton}
           onPress={() =>
             router.replace(
-              '/dashboard/exercises'
+              '/dashboard/exercises',
             )
           }
         >
           <Text
-            style={styles.doneButtonText}
+            style={
+              styles.doneButtonText
+            }
           >
             Back to Exercises
           </Text>
@@ -1125,14 +1761,18 @@ function PrepareItem({
   text: string;
 }) {
   return (
-    <View style={styles.prepareItem}>
+    <View
+      style={styles.prepareItem}
+    >
       <Ionicons
         name={icon}
         size={17}
         color={BROWN}
       />
 
-      <Text style={styles.prepareText}>
+      <Text
+        style={styles.prepareText}
+      >
         {text}
       </Text>
     </View>
@@ -1147,15 +1787,21 @@ function Parameter({
   label: string;
 }) {
   return (
-    <View style={styles.parameter}>
+    <View
+      style={styles.parameter}
+    >
       <Text
-        style={styles.parameterValue}
+        style={
+          styles.parameterValue
+        }
       >
         {value}
       </Text>
 
       <Text
-        style={styles.parameterLabel}
+        style={
+          styles.parameterLabel
+        }
       >
         {label}
       </Text>
@@ -1171,15 +1817,21 @@ function ResultStat({
   value: string;
 }) {
   return (
-    <View style={styles.resultStat}>
+    <View
+      style={styles.resultStat}
+    >
       <Text
-        style={styles.resultStatValue}
+        style={
+          styles.resultStatValue
+        }
       >
         {value}
       </Text>
 
       <Text
-        style={styles.resultStatLabel}
+        style={
+          styles.resultStatLabel
+        }
       >
         {label}
       </Text>
@@ -1196,11 +1848,15 @@ function Metric({
 }) {
   return (
     <View style={styles.metric}>
-      <Text style={styles.metricLabel}>
+      <Text
+        style={styles.metricLabel}
+      >
         {label}
       </Text>
 
-      <Text style={styles.metricValue}>
+      <Text
+        style={styles.metricValue}
+      >
         {value}
       </Text>
     </View>
@@ -1220,7 +1876,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 100,
+    paddingTop: 78,
     paddingBottom: 60,
     alignItems: 'center',
   },
@@ -1230,8 +1886,9 @@ const styles = StyleSheet.create({
     top: 55,
     left: 24,
     zIndex: 10,
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1255,7 +1912,7 @@ const styles = StyleSheet.create({
 
   subtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
+    fontSize: 16,
     color: MUTED,
     marginTop: 3,
     marginBottom: 24,
@@ -1264,10 +1921,38 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,
+  },
+
+  sectionTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+    marginBottom: 12,
+  },
+
+  instructionText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 23,
+    color: MUTED,
+  },
+
+  beforeCard: {
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 18,
+  },
+
+  beforeTitle: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 16,
+    color: BROWN,
+    marginBottom: 12,
   },
 
   prepareCard: {
@@ -1302,10 +1987,10 @@ const styles = StyleSheet.create({
   prepareText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 14,
     lineHeight: 17,
     color: BROWN,
-    marginLeft: 9,
+    marginLeft: 10,
   },
 
   cardTitle: {
@@ -1324,11 +2009,44 @@ const styles = StyleSheet.create({
   },
 
   targetBox: {
-    backgroundColor: PINK,
-    borderRadius: 14,
-    paddingVertical: 14,
+    flexDirection: 'row',
+    backgroundColor: WHITE,
+    borderRadius: 18,
+    paddingVertical: 17,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  targetItem: {
+    flex: 1,
     alignItems: 'center',
-    marginVertical: 8,
+  },
+
+  targetDivider: {
+    width: 1,
+    backgroundColor: BORDER,
+  },
+
+  targetLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 11,
+    color: MUTED,
+    letterSpacing: 0.5,
+  },
+
+  targetValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    marginTop: 3,
+  },
+
+  targetHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 1,
   },
 
   targetText: {
@@ -1339,29 +2057,30 @@ const styles = StyleSheet.create({
 
   helperText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 15,
+    lineHeight: 23,
     color: MUTED,
     textAlign: 'center',
     marginTop: 6,
   },
 
   tipCard: {
-    width: '100%',
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: PINK,
-    borderRadius: 15,
+    alignItems: 'flex-start',
+    backgroundColor: WHITE,
+    borderRadius: 16,
     padding: 14,
-    marginTop: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
 
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
+    fontSize: 13,
+    lineHeight: 19,
+    color: MUTED,
     marginLeft: 10,
   },
 
@@ -1370,21 +2089,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 18,
+    marginTop: 22,
     marginBottom: 10,
+    paddingHorizontal: 4,
   },
 
   difficultyLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FredokaSemiBold',
     fontSize: 11,
     color: MUTED,
+    letterSpacing: 0.5,
   },
 
   difficultyValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 16,
     color: BROWN,
-    textTransform: 'capitalize',
+    marginTop: 2,
+  },
+
+  difficultyDots: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+
+  difficultyDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: LIGHT_GRAY,
+  },
+
+  difficultyDotActive: {
+    backgroundColor: PINK,
+    borderWidth: 2,
+    borderColor: BROWN,
   },
 
   parameterRow: {
@@ -1711,7 +2450,7 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  sectionTitle: {
+  resultsSectionTitle: {
     marginTop: 24,
     marginBottom: 10,
     fontFamily: 'FredokaSemiBold',

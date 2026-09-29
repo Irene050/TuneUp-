@@ -15,22 +15,43 @@ import {
 
 import {
   Tier,
-  TONE_CONSISTENCY_PARAMS,
 } from '@/constants/exercises/tone';
+
 import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
 import {
   measureToneConsistency,
 } from '@/services/measurement/tone/toneConsistencyExercise';
+
 import {
-  ToneConsistencyScoreResult,
-  scoreToneConsistencyExercise,
-} from '@/services/scoring/tone/toneConsistencyExercise';
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
+
+import {
+  scoreToneConsistencyExercise,
+  ToneConsistencyScoreResult,
+} from '@/services/scoring/tone/toneConsistencyExercise';
+
+import {
+  generateToneConsistencyParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import {
+  auth,
+} from '@/services/firebase/config';
+
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNote } from '@/utils/dsp/pitch';
 
@@ -71,35 +92,236 @@ function formatNumber(value: number, decimals = 1) {
 }
 
 export default function ToneConsistencyExerciseScreen({
-  tier = 'beginner',
+  tier,
 }: Props) {
-  const params = TONE_CONSISTENCY_PARAMS[tier];
-  const repetitions = Math.max(1, params.repetitions);
+  const [resolvedTier, setResolvedTier] =
+    useState<Tier>(tier ?? 'beginner');
 
-  const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
-  const [currentRepetition, setCurrentRepetition] = useState(1);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
-  const [repPreviews, setRepPreviews] = useState<RepPreview[]>([]);
+  const [params, setParams] = useState(() => ({
+    intervalSec: 3,
+    repetitions: 2,
+    consistencyThreshold: 65,
+    variancePct: 12,
+  }));
+
+  const [phase, setPhase] =
+    useState<Phase>('instructions');
+
+  const [countdown, setCountdown] =
+    useState(COUNTDOWN_SECONDS);
+
+  const [currentRepetition, setCurrentRepetition] =
+    useState(1);
+
+  const [elapsedMs, setElapsedMs] =
+    useState(0);
+
+  const [liveFrame, setLiveFrame] =
+    useState<LiveAudioFrame | null>(null);
+
+  const [repPreviews, setRepPreviews] =
+    useState<RepPreview[]>([]);
+
   const [finalResult, setFinalResult] =
     useState<ToneConsistencyScoreResult | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const restTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [errorMessage, setErrorMessage] =
+    useState<string | null>(null);
 
-  const recordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
-  const processingRef = useRef(false);
-  const elapsedRef = useRef(0);
-  const repetitionRef = useRef(1);
-  const repetitionSamplesRef = useRef<Float32Array[]>([]);
-  const repetitionFFTFramesRef = useRef<Float32Array[][]>([]);
-  const repPreviewsRef = useRef<RepPreview[]>([]);
-  const startRepCountdownRef = useRef<(() => void) | null>(null);
+  const mountedRef =
+    useRef(true);
+
+  const countdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const restTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const recordingRef =
+    useRef(false);
+
+  const stopRequestedRef =
+    useRef(false);
+
+  const processingRef =
+    useRef(false);
+
+  const elapsedRef =
+    useRef(0);
+
+  const repetitionRef =
+    useRef(1);
+
+  const repetitionSamplesRef =
+    useRef<Float32Array[]>([]);
+
+  const repetitionFFTFramesRef =
+    useRef<Float32Array[][]>([]);
+
+  const repPreviewsRef =
+    useRef<RepPreview[]>([]);
+
+  const startRepCountdownRef =
+    useRef<(() => void) | null>(null);
+
+  /*
+   * Resolve the active tier and generate adaptive
+   * parameters before the exercise begins.
+   *
+   * Explicit route tier takes priority.
+   * Otherwise use the user's current Tone tier.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeDifficulty = async () => {
+      try {
+        const user = auth.currentUser;
+
+        let currentTier: Tier =
+          tier ?? 'beginner';
+
+        if (!tier && user) {
+          const componentProgress =
+            await fetchComponentProgress(
+              user.uid,
+              'tone',
+            );
+
+          if (
+            componentProgress?.currentTier  ===
+              'beginner' ||
+            componentProgress?.currentTier  ===
+              'intermediate' ||
+            componentProgress?.currentTier  ===
+              'advanced'
+          ) {
+            currentTier =
+              componentProgress.currentTier ;
+          }
+        }
+
+        let referenceScores: number[] = [];
+
+        if (user) {
+          const exerciseRecords =
+            await fetchExerciseRecords(
+              user.uid,
+              'tone',
+            );
+
+          const matchingRecords =
+            exerciseRecords
+              .filter(
+                record =>
+                  record.templateId ===
+                    'toneConsistencyExercise' &&
+                  record.tier === currentTier,
+              )
+              .sort(
+                (a, b) =>
+                  Number(a.timestamp ?? 0) -
+                  Number(b.timestamp ?? 0),
+              );
+
+          referenceScores =
+            matchingRecords
+              .slice(-5)
+              .map(record =>
+                Number(record.scorePct),
+              )
+              .filter(score =>
+                Number.isFinite(score),
+              );
+        }
+
+        /*
+         * If there is no exercise history for this
+         * component/tier, use the latest assessment
+         * Tone score as the cold-start reference.
+         */
+        if (
+          referenceScores.length === 0
+        ) {
+          const latestAssessment =
+            await getLatestAssessment();
+
+          const assessmentToneScore =
+            latestAssessment?.scores.find(
+              score =>
+                score.componentId === 'tone',
+            )?.scorePct;
+
+          if (
+            Number.isFinite(
+              assessmentToneScore,
+            )
+          ) {
+            referenceScores = [
+              Number(
+                assessmentToneScore,
+              ),
+            ];
+          }
+        }
+
+        const generated =
+          generateToneConsistencyParams({
+            tier: currentTier,
+            recentScores: referenceScores,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedTier(currentTier);
+        setParams(generated);
+      } catch (error) {
+        console.error(
+          '❌ FAILED TO INITIALIZE TONE CONSISTENCY DIFFICULTY:',
+          error,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * Keep the exercise usable even if adaptive
+         * history cannot be loaded.
+         */
+        const fallbackTier =
+          tier ?? 'beginner';
+
+        setResolvedTier(
+          fallbackTier,
+        );
+
+        setParams(
+          generateToneConsistencyParams({
+            tier: fallbackTier,
+            recentScores: [],
+          }),
+        );
+      }
+    };
+
+    void initializeDifficulty();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  const repetitions =
+    Math.max(
+      1,
+      params.repetitions,
+    );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -108,13 +330,21 @@ export default function ToneConsistencyExerciseScreen({
       mountedRef.current = false;
 
       if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
+        clearInterval(
+          countdownTimerRef.current,
+        );
       }
+
       if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
+        clearInterval(
+          recordingTimerRef.current,
+        );
       }
+
       if (restTimerRef.current) {
-        clearTimeout(restTimerRef.current);
+        clearTimeout(
+          restTimerRef.current,
+        );
       }
 
       recordingRef.current = false;
@@ -122,485 +352,1021 @@ export default function ToneConsistencyExerciseScreen({
     };
   }, []);
 
-  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
-    if (mountedRef.current) {
-      setLiveFrame(frame);
-    }
-  }, []);
+  const handleLiveFrame =
+    useCallback(
+      (frame: LiveAudioFrame) => {
+        if (mountedRef.current) {
+          setLiveFrame(frame);
+        }
+      },
+      [],
+    );
 
-  const resetExercise = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    if (restTimerRef.current) {
-      clearTimeout(restTimerRef.current);
-      restTimerRef.current = null;
-    }
+  const resetExercise =
+    useCallback(() => {
+      if (countdownTimerRef.current) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
 
-    repetitionRef.current = 1;
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
-    processingRef.current = false;
-    elapsedRef.current = 0;
-    repetitionSamplesRef.current = [];
-    repetitionFFTFramesRef.current = [];
-    repPreviewsRef.current = [];
-
-    setCurrentRepetition(1);
-    setElapsedMs(0);
-    setLiveFrame(null);
-    setRepPreviews([]);
-    setFinalResult(null);
-    setErrorMessage(null);
-  }, []);
-
-  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
-    onFrame: handleLiveFrame,
-    onStop: async (samples, sampleRate) => {
-      if (!mountedRef.current || processingRef.current) {
-        return;
+        countdownTimerRef.current =
+          null;
       }
-
-      recordingRef.current = false;
 
       if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
+        clearInterval(
+          recordingTimerRef.current,
+        );
+
+        recordingTimerRef.current =
+          null;
       }
 
-      try {
-        if (!samples.length || sampleRate <= 0) {
-          throw new Error('No usable audio was recorded.');
-        }
-
-        const fftFrames = samplesToFFTFrames(
-          samples,
-          FFT_SIZE,
-          FFT_HOP_SIZE,
+      if (restTimerRef.current) {
+        clearTimeout(
+          restTimerRef.current,
         );
 
-        if (!fftFrames.length) {
-          throw new Error('No FFT frames could be generated.');
-        }
-
-        repetitionSamplesRef.current.push(samples);
-        repetitionFFTFramesRef.current.push(fftFrames);
-
-        const preview: RepPreview = {
-          durationSec: samples.length / sampleRate,
-        };
-        const nextPreviews = [...repPreviewsRef.current, preview];
-        repPreviewsRef.current = nextPreviews;
-
-        if (mountedRef.current) {
-          setRepPreviews(nextPreviews);
-          setLiveFrame(null);
-        }
-
-        if (nextPreviews.length < repetitions) {
-          const nextRep = nextPreviews.length + 1;
-          repetitionRef.current = nextRep;
-          elapsedRef.current = 0;
-
-          if (mountedRef.current) {
-            setCurrentRepetition(nextRep);
-            setElapsedMs(0);
-            setPhase('rest');
-          }
-
-          restTimerRef.current = setTimeout(() => {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            startRepCountdownRef.current?.();
-          }, REST_MS);
-
-          return;
-        }
-
-        processingRef.current = true;
-
-        if (mountedRef.current) {
-          setPhase('processing');
-        }
-
-        const measurement = measureToneConsistency(
-          repetitionSamplesRef.current,
-          repetitionFFTFramesRef.current,
-          sampleRate,
-          FFT_SIZE,
-        );
-
-        const scored = scoreToneConsistencyExercise(measurement, tier);
-        const finalScored: ToneConsistencyScoreResult = {
-          score: clamp(scored.score, 0, 100),
-          passed: scored.passed,
-        };
-
-        setFinalResult(finalScored);
-
-        await saveCompletedExercise(
-          'tone',
-          'toneConsistencyExercise',
-          tier,
-          finalScored.score,
-        );
-
-        if (mountedRef.current) {
-          setPhase('results');
-        }
-      } catch (error) {
-        console.error('❌ TONE CONSISTENCY PROCESSING ERROR:', error);
-
-        if (mountedRef.current) {
-          setErrorMessage(
-            'We could not analyze the recordings. Please try again.',
-          );
-          setPhase('instructions');
-        }
-      } finally {
-        stopRequestedRef.current = false;
-
-        if (repPreviewsRef.current.length >= repetitions) {
-          processingRef.current = false;
-        }
+        restTimerRef.current =
+          null;
       }
-    },
-  });
 
-  const beginRecording = useCallback(async () => {
-    if (
-      !mountedRef.current ||
-      recordingRef.current ||
-      processingRef.current
-    ) {
-      return;
-    }
-
-    try {
-      setErrorMessage(null);
-      setLiveFrame(null);
-      elapsedRef.current = 0;
-      setElapsedMs(0);
+      repetitionRef.current = 1;
+      recordingRef.current = false;
       stopRequestedRef.current = false;
-      setPhase('recording');
+      processingRef.current = false;
+      elapsedRef.current = 0;
 
-      await startRecording();
+      repetitionSamplesRef.current = [];
+      repetitionFFTFramesRef.current = [];
+      repPreviewsRef.current = [];
 
-      if (!mountedRef.current) {
-        return;
-      }
+      setCurrentRepetition(1);
+      setElapsedMs(0);
+      setLiveFrame(null);
+      setRepPreviews([]);
+      setFinalResult(null);
+      setErrorMessage(null);
+    }, []);
 
-      recordingRef.current = true;
+  const {
+    startRecording,
+    stopRecording,
+    isRecording,
+  } = useAudioRecorder({
+    onFrame:
+      handleLiveFrame,
 
-      const durationMs = params.intervalSec * 1000;
-
-      recordingTimerRef.current = setInterval(() => {
+    onStop:
+      async (
+        samples,
+        sampleRate,
+      ) => {
         if (
           !mountedRef.current ||
-          !recordingRef.current ||
-          stopRequestedRef.current
+          processingRef.current
         ) {
           return;
         }
 
-        elapsedRef.current += 100;
-        setElapsedMs(elapsedRef.current);
+        recordingRef.current =
+          false;
 
-        if (elapsedRef.current >= durationMs) {
-          if (recordingTimerRef.current) {
-            clearInterval(recordingTimerRef.current);
-            recordingTimerRef.current = null;
+        if (
+          recordingTimerRef.current
+        ) {
+          clearInterval(
+            recordingTimerRef.current,
+          );
+
+          recordingTimerRef.current =
+            null;
+        }
+
+        try {
+          if (
+            !samples.length ||
+            sampleRate <= 0
+          ) {
+            throw new Error(
+              'No usable audio was recorded.',
+            );
           }
 
-          stopRequestedRef.current = true;
-
-          stopRecording().catch((error) => {
-            console.error(
-              '❌ FAILED TO STOP TONE CONSISTENCY RECORDING:',
-              error,
+          const fftFrames =
+            samplesToFFTFrames(
+              samples,
+              FFT_SIZE,
+              FFT_HOP_SIZE,
             );
-            recordingRef.current = false;
-            stopRequestedRef.current = false;
 
-            if (mountedRef.current) {
-              setErrorMessage(
-                'We could not finish the recording. Please try again.',
+          if (
+            !fftFrames.length
+          ) {
+            throw new Error(
+              'No FFT frames could be generated.',
+            );
+          }
+
+          repetitionSamplesRef.current.push(
+            samples,
+          );
+
+          repetitionFFTFramesRef.current.push(
+            fftFrames,
+          );
+
+          const preview: RepPreview = {
+            durationSec:
+              samples.length /
+              sampleRate,
+          };
+
+          const nextPreviews = [
+            ...repPreviewsRef.current,
+            preview,
+          ];
+
+          repPreviewsRef.current =
+            nextPreviews;
+
+          if (mountedRef.current) {
+            setRepPreviews(
+              nextPreviews,
+            );
+
+            setLiveFrame(null);
+          }
+
+          if (
+            nextPreviews.length <
+            repetitions
+          ) {
+            const nextRep =
+              nextPreviews.length + 1;
+
+            repetitionRef.current =
+              nextRep;
+
+            elapsedRef.current = 0;
+
+            if (
+              mountedRef.current
+            ) {
+              setCurrentRepetition(
+                nextRep,
               );
-              setPhase('instructions');
+
+              setElapsedMs(0);
+              setPhase('rest');
             }
-          });
+
+            restTimerRef.current =
+              setTimeout(() => {
+                if (
+                  !mountedRef.current
+                ) {
+                  return;
+                }
+
+                startRepCountdownRef.current?.();
+              }, REST_MS);
+
+            return;
+          }
+
+          processingRef.current =
+            true;
+
+          if (
+            mountedRef.current
+          ) {
+            setPhase(
+              'processing',
+            );
+          }
+
+          const measurement =
+            measureToneConsistency(
+              repetitionSamplesRef.current,
+              repetitionFFTFramesRef.current,
+              sampleRate,
+              FFT_SIZE,
+            );
+
+          /*
+           * The scoring function currently accepts
+           * the tier. The adaptive parameters are
+           * still used for interval/repetitions here.
+           *
+           * If the scorer is updated to accept the
+           * generated params, pass `params` there
+           * instead.
+           */
+          const scored =
+            scoreToneConsistencyExercise(
+              measurement,
+              params,
+            );
+
+          const finalScored:
+            ToneConsistencyScoreResult = {
+              score: clamp(
+                scored.score,
+                0,
+                100,
+              ),
+              passed:
+                scored.passed,
+            };
+
+          setFinalResult(
+            finalScored,
+          );
+
+          await saveCompletedExercise(
+            'tone',
+            'toneConsistencyExercise',
+            resolvedTier,
+            finalScored.score,
+          );
+
+          if (
+            mountedRef.current
+          ) {
+            setPhase('results');
+          }
+        } catch (error) {
+          console.error(
+            '❌ TONE CONSISTENCY PROCESSING ERROR:',
+            error,
+          );
+
+          if (
+            mountedRef.current
+          ) {
+            setErrorMessage(
+              'We could not analyze the recordings. Please try again.',
+            );
+
+            setPhase(
+              'instructions',
+            );
+          }
+        } finally {
+          stopRequestedRef.current =
+            false;
+
+          if (
+            repPreviewsRef.current
+              .length >= repetitions
+          ) {
+            processingRef.current =
+              false;
+          }
         }
-      }, 100);
-    } catch (error) {
-      console.error('❌ FAILED TO START TONE CONSISTENCY RECORDING:', error);
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      },
+  });
 
-      if (mountedRef.current) {
-        setPhase('instructions');
-        Alert.alert(
-          'Microphone Error',
-          'Unable to start the microphone. Please check your microphone permission and try again.',
-        );
-      }
-    }
-  }, [params.intervalSec, startRecording, stopRecording]);
-
-  const startRepCountdown = useCallback(() => {
-    if (
-      !mountedRef.current ||
-      processingRef.current ||
-      recordingRef.current
-    ) {
-      return;
-    }
-
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-    }
-
-    setCountdown(COUNTDOWN_SECONDS);
-    setPhase('countdown');
-
-    let value = COUNTDOWN_SECONDS;
-
-    countdownTimerRef.current = setInterval(() => {
-      value -= 1;
-
-      if (value <= 0) {
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-          countdownTimerRef.current = null;
+  const beginRecording =
+    useCallback(
+      async () => {
+        if (
+          !mountedRef.current ||
+          recordingRef.current ||
+          processingRef.current
+        ) {
+          return;
         }
 
-        void beginRecording();
+        try {
+          setErrorMessage(null);
+          setLiveFrame(null);
+
+          elapsedRef.current = 0;
+          setElapsedMs(0);
+
+          stopRequestedRef.current =
+            false;
+
+          setPhase('recording');
+
+          await startRecording();
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          recordingRef.current =
+            true;
+
+          const durationMs =
+            params.intervalSec *
+            1000;
+
+          recordingTimerRef.current =
+            setInterval(() => {
+              if (
+                !mountedRef.current ||
+                !recordingRef.current ||
+                stopRequestedRef.current
+              ) {
+                return;
+              }
+
+              elapsedRef.current +=
+                100;
+
+              setElapsedMs(
+                elapsedRef.current,
+              );
+
+              if (
+                elapsedRef.current >=
+                durationMs
+              ) {
+                if (
+                  recordingTimerRef.current
+                ) {
+                  clearInterval(
+                    recordingTimerRef.current,
+                  );
+
+                  recordingTimerRef.current =
+                    null;
+                }
+
+                stopRequestedRef.current =
+                  true;
+
+                stopRecording().catch(
+                  error => {
+                    console.error(
+                      '❌ FAILED TO STOP TONE CONSISTENCY RECORDING:',
+                      error,
+                    );
+
+                    recordingRef.current =
+                      false;
+
+                    stopRequestedRef.current =
+                      false;
+
+                    if (
+                      mountedRef.current
+                    ) {
+                      setErrorMessage(
+                        'We could not finish the recording. Please try again.',
+                      );
+
+                      setPhase(
+                        'instructions',
+                      );
+                    }
+                  },
+                );
+              }
+            }, 100);
+        } catch (error) {
+          console.error(
+            '❌ FAILED TO START TONE CONSISTENCY RECORDING:',
+            error,
+          );
+
+          recordingRef.current =
+            false;
+
+          stopRequestedRef.current =
+            false;
+
+          if (
+            mountedRef.current
+          ) {
+            setPhase(
+              'instructions',
+            );
+
+            Alert.alert(
+              'Microphone Error',
+              'Unable to start the microphone. Please check your microphone permission and try again.',
+            );
+          }
+        }
+      },
+      [
+        params.intervalSec,
+        startRecording,
+        stopRecording,
+      ],
+    );
+
+  const startRepCountdown =
+    useCallback(() => {
+      if (
+        !mountedRef.current ||
+        processingRef.current ||
+        recordingRef.current
+      ) {
         return;
       }
 
-      if (mountedRef.current) {
-        setCountdown(value);
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
       }
-    }, 1000);
-  }, [beginRecording]);
 
-  startRepCountdownRef.current = startRepCountdown;
-
-  const startExercise = useCallback(() => {
-    resetExercise();
-    setPhase('countdown');
-    startRepCountdown();
-  }, [resetExercise, startRepCountdown]);
-
-  const stopEarly = useCallback(() => {
-    if (!recordingRef.current || stopRequestedRef.current) {
-      return;
-    }
-
-    stopRequestedRef.current = true;
-
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-
-    stopRecording().catch((error) => {
-      console.error(
-        '❌ FAILED TO STOP TONE CONSISTENCY RECORDING EARLY:',
-        error,
+      setCountdown(
+        COUNTDOWN_SECONDS,
       );
-      stopRequestedRef.current = false;
-    });
-  }, [stopRecording]);
 
-  const goBack = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-    }
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-    }
-    if (restTimerRef.current) {
-      clearTimeout(restTimerRef.current);
-    }
+      setPhase('countdown');
 
-    router.replace('/dashboard/exercises');
-  }, []);
+      let value =
+        COUNTDOWN_SECONDS;
 
-  const retry = useCallback(() => {
-    resetExercise();
-    setPhase('instructions');
-  }, [resetExercise]);
+      countdownTimerRef.current =
+        setInterval(() => {
+          value -= 1;
 
-  const recordingProgress = clamp(
-    elapsedMs / 1000 / Math.max(params.intervalSec, 0.1),
-    0,
-    1,
-  );
+          if (value <= 0) {
+            if (
+              countdownTimerRef.current
+            ) {
+              clearInterval(
+                countdownTimerRef.current,
+              );
+
+              countdownTimerRef.current =
+                null;
+            }
+
+            void beginRecording();
+            return;
+          }
+
+          if (
+            mountedRef.current
+          ) {
+            setCountdown(value);
+          }
+        }, 1000);
+    }, [beginRecording]);
+
+  startRepCountdownRef.current =
+    startRepCountdown;
+
+  const startExercise =
+    useCallback(() => {
+      resetExercise();
+      setPhase('countdown');
+      startRepCountdown();
+    }, [
+      resetExercise,
+      startRepCountdown,
+    ]);
+
+  const stopEarly =
+    useCallback(() => {
+      if (
+        !recordingRef.current ||
+        stopRequestedRef.current
+      ) {
+        return;
+      }
+
+      stopRequestedRef.current =
+        true;
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+
+        recordingTimerRef.current =
+          null;
+      }
+
+      stopRecording().catch(
+        error => {
+          console.error(
+            '❌ FAILED TO STOP TONE CONSISTENCY RECORDING EARLY:',
+            error,
+          );
+
+          stopRequestedRef.current =
+            false;
+        },
+      );
+    }, [stopRecording]);
+
+  const goBack =
+    useCallback(() => {
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
+      }
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+      }
+
+      if (
+        restTimerRef.current
+      ) {
+        clearTimeout(
+          restTimerRef.current,
+        );
+      }
+
+      router.replace(
+        '/dashboard/exercises',
+      );
+    }, []);
+
+  const retry =
+    useCallback(() => {
+      resetExercise();
+      setPhase(
+        'instructions',
+      );
+    }, [resetExercise]);
+
+  const recordingProgress =
+    clamp(
+      elapsedMs /
+        1000 /
+        Math.max(
+          params.intervalSec,
+          0.1,
+        ),
+      0,
+      1,
+    );
 
   const livePitchNote =
-    liveFrame && liveFrame.pitch > 0
-      ? frequencyToNote(liveFrame.pitch)
+    liveFrame &&
+    liveFrame.pitch > 0
+      ? frequencyToNote(
+          liveFrame.pitch,
+        )
       : '--';
 
-  if (phase === 'instructions') {
+  if (
+    phase === 'instructions'
+  ) {
     return (
       <View style={styles.screen}>
-        <Pressable style={styles.backButton} onPress={goBack}>
-          <Ionicons name="arrow-back" size={22} color={BROWN} />
+        <Pressable
+          style={styles.backButton}
+          onPress={goBack}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={BROWN}
+          />
         </Pressable>
 
         <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={
+            false
+          }
+          contentContainerStyle={
+            styles.content
+          }
         >
           <View style={styles.iconCircle}>
-            <Ionicons name="repeat-outline" size={34} color={BROWN} />
+            <Ionicons
+              name="repeat-outline"
+              size={34}
+              color={BROWN}
+            />
           </View>
 
-          <Text style={styles.title}>Tone Consistency</Text>
-          <Text style={styles.subtitle}>Tone</Text>
+          <Text style={styles.title}>
+            Tone Consistency
+          </Text>
 
-          <View style={styles.instructionCard}>
-            <View style={styles.prepareCard}>
-              <View style={styles.prepareHeader}>
-                <Ionicons name="mic-outline" size={21} color={BROWN} />
-                <Text style={styles.prepareTitle}>Before You Begin</Text>
+          <Text style={styles.subtitle}>
+            Tone
+          </Text>
+
+          <View
+            style={
+              styles.instructionCard
+            }
+          >
+            <View
+              style={
+                styles.prepareCard
+              }
+            >
+              <View
+                style={
+                  styles.prepareHeader
+                }
+              >
+                <Ionicons
+                  name="mic-outline"
+                  size={21}
+                  color={BROWN}
+                />
+
+                <Text
+                  style={
+                    styles.prepareTitle
+                  }
+                >
+                  Before You Begin
+                </Text>
               </View>
 
-              <View style={styles.prepareItem}>
+              <View
+                style={
+                  styles.prepareItem
+                }
+              >
                 <Ionicons
                   name="volume-mute-outline"
                   size={17}
                   color={BROWN}
                 />
-                <Text style={styles.prepareText}>
+
+                <Text
+                  style={
+                    styles.prepareText
+                  }
+                >
                   Find a quiet place with minimal background noise.
                 </Text>
               </View>
 
-              <View style={styles.prepareItem}>
-                <Ionicons name="body-outline" size={17} color={BROWN} />
-                <Text style={styles.prepareText}>
+              <View
+                style={
+                  styles.prepareItem
+                }
+              >
+                <Ionicons
+                  name="body-outline"
+                  size={17}
+                  color={BROWN}
+                />
+
+                <Text
+                  style={
+                    styles.prepareText
+                  }
+                >
                   Keep your posture relaxed and keep the microphone a comfortable distance away.
                 </Text>
               </View>
 
-              <View style={styles.prepareItem}>
-                <Ionicons name="repeat-outline" size={17} color={BROWN} />
-                <Text style={styles.prepareText}>
+              <View
+                style={
+                  styles.prepareItem
+                }
+              >
+                <Ionicons
+                  name="repeat-outline"
+                  size={17}
+                  color={BROWN}
+                />
+
+                <Text
+                  style={
+                    styles.prepareText
+                  }
+                >
                   You will repeat the same note and tone several times so TuneUp! can compare them.
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.cardTitle}>How It Works</Text>
-            <Text style={styles.instruction}>
+            <Text
+              style={styles.cardTitle}
+            >
+              How It Works
+            </Text>
+
+            <Text
+              style={
+                styles.instruction
+              }
+            >
               Sing one comfortable note using the same vowel for every repetition.
             </Text>
-            <Text style={styles.instruction}>
+
+            <Text
+              style={
+                styles.instruction
+              }
+            >
               Keep the tone quality and loudness as similar as you can from one repetition to the next.
             </Text>
-            <Text style={styles.instruction}>
+
+            <Text
+              style={
+                styles.instruction
+              }
+            >
               Rest briefly between repetitions and repeat the same sound each time.
             </Text>
 
-            <View style={styles.targetBox}>
-              <Ionicons name="musical-note-outline" size={28} color={BROWN} />
-              <View style={styles.targetInfo}>
-                <Text style={styles.targetLabel}>TARGET</Text>
-                <Text style={styles.targetValue}>Same note &amp; same tone</Text>
+            <View
+              style={styles.targetBox}
+            >
+              <Ionicons
+                name="musical-note-outline"
+                size={28}
+                color={BROWN}
+              />
+
+              <View
+                style={
+                  styles.targetInfo
+                }
+              >
+                <Text
+                  style={
+                    styles.targetLabel
+                  }
+                >
+                  TARGET
+                </Text>
+
+                <Text
+                  style={
+                    styles.targetValue
+                  }
+                >
+                  Same note &amp; same tone
+                </Text>
               </View>
             </View>
           </View>
 
-          <View style={styles.keyMetricCard}>
-            <Text style={styles.keyMetricTitle}>What TuneUp! checks</Text>
+          <View
+            style={styles.keyMetricCard}
+          >
+            <Text
+              style={
+                styles.keyMetricTitle
+              }
+            >
+              What TuneUp! checks
+            </Text>
 
-            <View style={styles.metricRow}>
-              <Ionicons name="radio-outline" size={19} color={BROWN} />
-              <Text style={styles.metricText}>
+            <View
+              style={styles.metricRow}
+            >
+              <Ionicons
+                name="radio-outline"
+                size={19}
+                color={BROWN}
+              />
+
+              <Text
+                style={
+                  styles.metricText
+                }
+              >
                 Average spectral brightness of each repetition
               </Text>
             </View>
 
-            <View style={styles.metricRow}>
-              <Ionicons name="volume-medium-outline" size={19} color={BROWN} />
-              <Text style={styles.metricText}>
+            <View
+              style={styles.metricRow}
+            >
+              <Ionicons
+                name="volume-medium-outline"
+                size={19}
+                color={BROWN}
+              />
+
+              <Text
+                style={
+                  styles.metricText
+                }
+              >
                 Average loudness of each repetition
               </Text>
             </View>
 
-            <View style={styles.metricRow}>
-              <Ionicons name="repeat-outline" size={19} color={BROWN} />
-              <Text style={styles.metricText}>
+            <View
+              style={styles.metricRow}
+            >
+              <Ionicons
+                name="repeat-outline"
+                size={19}
+                color={BROWN}
+              />
+
+              <Text
+                style={
+                  styles.metricText
+                }
+              >
                 Similarity across all repetitions
               </Text>
             </View>
           </View>
 
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Difficulty</Text>
-            <Text style={styles.difficultyValue}>{tier}</Text>
+          <View
+            style={styles.difficultyRow}
+          >
+            <Text
+              style={
+                styles.difficultyLabel
+              }
+            >
+              Difficulty
+            </Text>
+
+            <Text
+              style={
+                styles.difficultyValue
+              }
+            >
+              {resolvedTier}
+            </Text>
           </View>
 
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Repetitions</Text>
-            <Text style={styles.difficultyValue}>{repetitions}</Text>
+          <View
+            style={styles.difficultyRow}
+          >
+            <Text
+              style={
+                styles.difficultyLabel
+              }
+            >
+              Repetitions
+            </Text>
+
+            <Text
+              style={
+                styles.difficultyValue
+              }
+            >
+              {repetitions}
+            </Text>
           </View>
 
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Hold interval</Text>
-            <Text style={styles.difficultyValue}>{params.intervalSec}s</Text>
+          <View
+            style={styles.difficultyRow}
+          >
+            <Text
+              style={
+                styles.difficultyLabel
+              }
+            >
+              Hold interval
+            </Text>
+
+            <Text
+              style={
+                styles.difficultyValue
+              }
+            >
+              {params.intervalSec}s
+            </Text>
           </View>
 
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Required consistency</Text>
-            <Text style={styles.difficultyValue}>
+          <View
+            style={styles.difficultyRow}
+          >
+            <Text
+              style={
+                styles.difficultyLabel
+              }
+            >
+              Required consistency
+            </Text>
+
+            <Text
+              style={
+                styles.difficultyValue
+              }
+            >
               {params.consistencyThreshold}%
             </Text>
           </View>
 
           {errorMessage && (
-            <View style={styles.errorCard}>
+            <View
+              style={styles.errorCard}
+            >
               <Ionicons
                 name="alert-circle-outline"
                 size={21}
                 color={BROWN}
               />
-              <Text style={styles.errorText}>{errorMessage}</Text>
+
+              <Text
+                style={
+                  styles.errorText
+                }
+              >
+                {errorMessage}
+              </Text>
             </View>
           )}
 
-          <Pressable style={styles.startButton} onPress={startExercise}>
-            <Text style={styles.startButtonText}>Start Exercise</Text>
-            <Ionicons name="arrow-forward" size={18} color={WHITE} />
+          <Pressable
+            style={styles.startButton}
+            onPress={
+              startExercise
+            }
+          >
+            <Text
+              style={
+                styles.startButtonText
+              }
+            >
+              Start Exercise
+            </Text>
+
+            <Ionicons
+              name="arrow-forward"
+              size={18}
+              color={WHITE}
+            />
           </Pressable>
         </ScrollView>
       </View>
     );
   }
 
-  if (phase === 'countdown') {
+  if (
+    phase === 'countdown'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="repeat-outline" size={34} color={BROWN} />
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
+        <View
+          style={styles.iconCircle}
+        >
+          <Ionicons
+            name="repeat-outline"
+            size={34}
+            color={BROWN}
+          />
         </View>
-        <Text style={styles.phaseTitle}>Get Ready</Text>
-        <Text style={styles.countdownText}>{countdown}</Text>
-        <Text style={styles.phaseSubtitle}>
-          Repetition {currentRepetition} of {repetitions}
+
+        <Text
+          style={styles.phaseTitle}
+        >
+          Get Ready
         </Text>
-        <Text style={styles.largeTarget}>Same tone</Text>
-        <Text style={styles.phaseSubtitle}>
-          Hold for {params.intervalSec} seconds
+
+        <Text
+          style={
+            styles.countdownText
+          }
+        >
+          {countdown}
+        </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Repetition {currentRepetition}{' '}
+          of {repetitions}
+        </Text>
+
+        <Text
+          style={
+            styles.largeTarget
+          }
+        >
+          Same tone
+        </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Hold for {params.intervalSec}{' '}
+          seconds
         </Text>
       </View>
     );
@@ -608,112 +1374,314 @@ export default function ToneConsistencyExerciseScreen({
 
   if (phase === 'rest') {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="pause-outline" size={34} color={BROWN} />
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
+        <View
+          style={styles.iconCircle}
+        >
+          <Ionicons
+            name="pause-outline"
+            size={34}
+            color={BROWN}
+          />
         </View>
-        <Text style={styles.phaseTitle}>Relax</Text>
-        <Text style={styles.phaseSubtitle}>
-          Repetition {currentRepetition - 1} complete.
+
+        <Text
+          style={styles.phaseTitle}
+        >
+          Relax
         </Text>
-        <Text style={styles.largeTarget}>Keep the same sound</Text>
-        <Text style={styles.phaseSubtitle}>
-          Next: repetition {currentRepetition} of {repetitions}
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Repetition {currentRepetition - 1}{' '}
+          complete.
         </Text>
+
+        <Text
+          style={
+            styles.largeTarget
+          }
+        >
+          Keep the same sound
+        </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Next: repetition {currentRepetition}{' '}
+          of {repetitions}
+        </Text>
+
         <ActivityIndicator
           size="small"
           color={BROWN}
-          style={{ marginTop: 18 }}
+          style={{
+            marginTop: 18,
+          }}
         />
       </View>
     );
   }
 
-  if (phase === 'recording') {
+  if (
+    phase === 'recording'
+  ) {
     return (
       <View style={styles.screen}>
         <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.recordingContent}
+          showsVerticalScrollIndicator={
+            false
+          }
+          contentContainerStyle={
+            styles.recordingContent
+          }
         >
-          <Text style={styles.recordingEyebrow}>
-            REPETITION {currentRepetition} / {repetitions}
+          <Text
+            style={
+              styles.recordingEyebrow
+            }
+          >
+            REPETITION {currentRepetition} /{' '}
+            {repetitions}
           </Text>
-          <Text style={styles.recordingTitle}>Keep the Tone the Same</Text>
-          <Text style={styles.recordingSubtitle}>
+
+          <Text
+            style={
+              styles.recordingTitle
+            }
+          >
+            Keep the Tone the Same
+          </Text>
+
+          <Text
+            style={
+              styles.recordingSubtitle
+            }
+          >
             Repeat the same note with the same tone quality and loudness.
           </Text>
 
-          <View style={styles.targetCard}>
-            <Text style={styles.targetCardLabel}>TARGET</Text>
-            <Text style={styles.targetCardValue}>Same note &amp; same tone</Text>
-            <Text style={styles.targetCardHint}>
+          <View
+            style={styles.targetCard}
+          >
+            <Text
+              style={
+                styles.targetCardLabel
+              }
+            >
+              TARGET
+            </Text>
+
+            <Text
+              style={
+                styles.targetCardValue
+              }
+            >
+              Same note &amp; same tone
+            </Text>
+
+            <Text
+              style={
+                styles.targetCardHint
+              }
+            >
               Consistency matters more than volume.
             </Text>
           </View>
 
-          <View style={styles.microphoneArea}>
-            <View style={styles.outerMicCircle}>
-              <View style={styles.innerMicCircle}>
-                <Ionicons name="mic" size={52} color={BROWN} />
+          <View
+            style={
+              styles.microphoneArea
+            }
+          >
+            <View
+              style={
+                styles.outerMicCircle
+              }
+            >
+              <View
+                style={
+                  styles.innerMicCircle
+                }
+              >
+                <Ionicons
+                  name="mic"
+                  size={52}
+                  color={BROWN}
+                />
               </View>
             </View>
-            <View style={styles.recordingBadge}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingBadgeText}>RECORDING</Text>
+
+            <View
+              style={
+                styles.recordingBadge
+              }
+            >
+              <View
+                style={
+                  styles.recordingDot
+                }
+              />
+
+              <Text
+                style={
+                  styles.recordingBadgeText
+                }
+              >
+                RECORDING
+              </Text>
             </View>
           </View>
 
-          <View style={styles.liveCard}>
-            <Text style={styles.liveLabel}>LIVE SIGNAL</Text>
-            <Text style={styles.liveNote}>{livePitchNote}</Text>
-            <Text style={styles.liveFrequency}>
-              {liveFrame && liveFrame.pitch > 0
-                ? `${Math.round(liveFrame.pitch)} Hz`
+          <View
+            style={styles.liveCard}
+          >
+            <Text
+              style={
+                styles.liveLabel
+              }
+            >
+              LIVE SIGNAL
+            </Text>
+
+            <Text
+              style={
+                styles.liveNote
+              }
+            >
+              {livePitchNote}
+            </Text>
+
+            <Text
+              style={
+                styles.liveFrequency
+              }
+            >
+              {liveFrame &&
+              liveFrame.pitch > 0
+                ? `${Math.round(
+                    liveFrame.pitch,
+                  )} Hz`
                 : '--'}
             </Text>
 
-            <View style={styles.liveStats}>
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Clarity</Text>
-                <Text style={styles.liveStatValue}>
-                  {liveFrame && liveFrame.clarity > 0
-                    ? `${Math.round(liveFrame.clarity * 100)}%`
+            <View
+              style={
+                styles.liveStats
+              }
+            >
+              <View
+                style={
+                  styles.liveStat
+                }
+              >
+                <Text
+                  style={
+                    styles.liveStatLabel
+                  }
+                >
+                  Clarity
+                </Text>
+
+                <Text
+                  style={
+                    styles.liveStatValue
+                  }
+                >
+                  {liveFrame &&
+                  liveFrame.clarity > 0
+                    ? `${Math.round(
+                        liveFrame.clarity *
+                          100,
+                      )}%`
                     : '--'}
                 </Text>
               </View>
 
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Volume</Text>
-                <Text style={styles.liveStatValue}>
-                  {liveFrame && Number.isFinite(liveFrame.volume)
-                    ? `${Math.round(liveFrame.volume)} dB`
+              <View
+                style={
+                  styles.liveStat
+                }
+              >
+                <Text
+                  style={
+                    styles.liveStatLabel
+                  }
+                >
+                  Volume
+                </Text>
+
+                <Text
+                  style={
+                    styles.liveStatValue
+                  }
+                >
+                  {liveFrame &&
+                  Number.isFinite(
+                    liveFrame.volume,
+                  )
+                    ? `${Math.round(
+                        liveFrame.volume,
+                      )} dB`
                     : '--'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.timerText}>
-            {(elapsedMs / 1000).toFixed(1)} / {formatNumber(params.intervalSec)}s
+          <Text
+            style={styles.timerText}
+          >
+            {(elapsedMs / 1000).toFixed(
+              1,
+            )}{' '}
+            /{' '}
+            {formatNumber(
+              params.intervalSec,
+            )}
+            s
           </Text>
 
-          <View style={styles.timerTrack}>
+          <View
+            style={styles.timerTrack}
+          >
             <View
               style={[
                 styles.timerFill,
-                { width: `${recordingProgress * 100}%` },
+                {
+                  width: `${
+                    recordingProgress *
+                    100
+                  }%`,
+                },
               ]}
             />
           </View>
 
-          <Text style={styles.helperText}>
+          <Text
+            style={
+              styles.helperText
+            }
+          >
             Try to reproduce the same sound you made in the previous repetition.
           </Text>
 
           <Pressable
-            style={styles.stopButton}
-            onPress={stopEarly}
+            style={
+              styles.stopButton
+            }
+            onPress={
+              stopEarly
+            }
             disabled={!isRecording}
           >
             <Ionicons
@@ -721,133 +1689,325 @@ export default function ToneConsistencyExerciseScreen({
               size={20}
               color={BROWN}
             />
-            <Text style={styles.stopButtonText}>Finish This Repetition</Text>
+
+            <Text
+              style={
+                styles.stopButtonText
+              }
+            >
+              Finish This Repetition
+            </Text>
           </Pressable>
         </ScrollView>
       </View>
     );
   }
 
-  if (phase === 'processing') {
+  if (
+    phase === 'processing'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="analytics-outline" size={34} color={BROWN} />
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
+        <View
+          style={styles.iconCircle}
+        >
+          <Ionicons
+            name="analytics-outline"
+            size={34}
+            color={BROWN}
+          />
         </View>
-        <Text style={styles.phaseTitle}>Analyzing Your Tone</Text>
-        <Text style={styles.phaseSubtitle}>
-          Comparing brightness and loudness across {repetitions} repetitions.
+
+        <Text
+          style={styles.phaseTitle}
+        >
+          Analyzing Your Tone
         </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Comparing brightness and loudness across{' '}
+          {repetitions} repetitions.
+        </Text>
+
         <ActivityIndicator
           size="large"
           color={BROWN}
-          style={styles.processingIndicator}
+          style={
+            styles.processingIndicator
+          }
         />
       </View>
     );
   }
 
-  const score = finalResult?.score ?? 0;
-  const passed = finalResult?.passed ?? false;
+  const score =
+    finalResult?.score ?? 0;
+
+  const passed =
+    finalResult?.passed ??
+    false;
 
   return (
     <View style={styles.screen}>
       <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.resultsContent}
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={
+          styles.resultsContent
+        }
       >
         <View
           style={[
             styles.resultIcon,
-            passed ? styles.resultIconPassed : styles.resultIconFailed,
+            passed
+              ? styles.resultIconPassed
+              : styles.resultIconFailed,
           ]}
         >
           <Ionicons
-            name={passed ? 'checkmark' : 'analytics-outline'}
+            name={
+              passed
+                ? 'checkmark'
+                : 'analytics-outline'
+            }
             size={40}
             color={BROWN}
           />
         </View>
 
-        <Text style={styles.resultTitle}>
-          {passed ? 'Tone Kept Consistent!' : 'Keep Practicing'}
+        <Text
+          style={styles.resultTitle}
+        >
+          {passed
+            ? 'Tone Kept Consistent!'
+            : 'Keep Practicing'}
         </Text>
-        <Text style={styles.resultSubtitle}>
+
+        <Text
+          style={
+            styles.resultSubtitle
+          }
+        >
           Your tone consistency was measured across all repetitions.
         </Text>
 
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>YOUR SCORE</Text>
-          <Text style={styles.scoreValue}>{score}%</Text>
-          <Text style={styles.scoreDescription}>
+        <View
+          style={styles.scoreCard}
+        >
+          <Text
+            style={styles.scoreLabel}
+          >
+            YOUR SCORE
+          </Text>
+
+          <Text
+            style={styles.scoreValue}
+          >
+            {score}%
+          </Text>
+
+          <Text
+            style={
+              styles.scoreDescription
+            }
+          >
             Higher scores mean the tone brightness and loudness changed less between repetitions.
           </Text>
         </View>
 
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>Session Summary</Text>
+        <View
+          style={styles.resultCard}
+        >
+          <Text
+            style={
+              styles.resultCardTitle
+            }
+          >
+            Session Summary
+          </Text>
 
-          <View style={styles.resultRow}>
-            <View style={styles.resultRowTextBlock}>
-              <Text style={styles.resultRowLabel}>Repetitions recorded</Text>
-              <Text style={styles.resultRowHint}>
+          <View
+            style={styles.resultRow}
+          >
+            <View
+              style={
+                styles.resultRowTextBlock
+              }
+            >
+              <Text
+                style={
+                  styles.resultRowLabel
+                }
+              >
+                Repetitions recorded
+              </Text>
+
+              <Text
+                style={
+                  styles.resultRowHint
+                }
+              >
                 All completed repetitions used for the final comparison.
               </Text>
             </View>
-            <Text style={styles.resultRowValue}>
-              {repPreviews.length}/{repetitions}
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
+              {repPreviews.length}/
+              {repetitions}
             </Text>
           </View>
 
-          <View style={styles.resultRow}>
-            <View style={styles.resultRowTextBlock}>
-              <Text style={styles.resultRowLabel}>Hold interval</Text>
-              <Text style={styles.resultRowHint}>
-                Target duration for each repetition.
+          <View
+            style={styles.resultRow}
+          >
+            <View
+              style={
+                styles.resultRowTextBlock
+              }
+            >
+              <Text
+                style={
+                  styles.resultRowLabel
+                }
+              >
+                Hold interval
+              </Text>
+
+              <Text
+                style={
+                  styles.resultRowHint
+                }
+              >
+                Adaptive target duration for each repetition.
               </Text>
             </View>
-            <Text style={styles.resultRowValue}>
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
               {params.intervalSec}s
             </Text>
           </View>
 
-          <View style={styles.resultRow}>
-            <View style={styles.resultRowTextBlock}>
-              <Text style={styles.resultRowLabel}>Consistency target</Text>
-              <Text style={styles.resultRowHint}>
-                Minimum score for this difficulty tier.
+          <View
+            style={styles.resultRow}
+          >
+            <View
+              style={
+                styles.resultRowTextBlock
+              }
+            >
+              <Text
+                style={
+                  styles.resultRowLabel
+                }
+              >
+                Consistency target
+              </Text>
+
+              <Text
+                style={
+                  styles.resultRowHint
+                }
+              >
+                Minimum consistency required for this session.
               </Text>
             </View>
-            <Text style={styles.resultRowValue}>
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
               {params.consistencyThreshold}%
             </Text>
           </View>
 
-          <View style={[styles.statusBadge, passed ? styles.statusPassed : styles.statusFailed]}>
+          <View
+            style={[
+              styles.statusBadge,
+              passed
+                ? styles.statusPassed
+                : styles.statusFailed,
+            ]}
+          >
             <Ionicons
-              name={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
+              name={
+                passed
+                  ? 'checkmark-circle-outline'
+                  : 'refresh-outline'
+              }
               size={18}
               color={BROWN}
             />
-            <Text style={styles.statusBadgeText}>
-              {passed ? 'Target reached' : 'Needs more consistency'}
+
+            <Text
+              style={
+                styles.statusBadgeText
+              }
+            >
+              {passed
+                ? 'Target reached'
+                : 'Needs more consistency'}
             </Text>
           </View>
         </View>
 
-        <View style={styles.tipCard}>
-          <Ionicons name="bulb-outline" size={20} color={BROWN} />
-          <Text style={styles.tipText}>
+        <View
+          style={styles.tipCard}
+        >
+          <Ionicons
+            name="bulb-outline"
+            size={20}
+            color={BROWN}
+          />
+
+          <Text
+            style={styles.tipText}
+          >
             Keep your mouth shape, pitch, and airflow setup as similar as possible each time. Small differences in loudness and tone color can change the final consistency score.
           </Text>
         </View>
 
-        <Pressable style={styles.doneButton} onPress={goBack}>
-          <Text style={styles.doneButtonText}>Back to Exercises</Text>
+        <Pressable
+          style={styles.doneButton}
+          onPress={goBack}
+        >
+          <Text
+            style={
+              styles.doneButtonText
+            }
+          >
+            Back to Exercises
+          </Text>
         </Pressable>
 
-        <Pressable style={styles.retryButton} onPress={retry}>
-          <Text style={styles.retryButtonText}>Try Again</Text>
+        <Pressable
+          style={styles.retryButton}
+          onPress={retry}
+        >
+          <Text
+            style={
+              styles.retryButtonText
+            }
+          >
+            Try Again
+          </Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -929,7 +2089,7 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: '#F2DDE5',

@@ -16,7 +16,10 @@ import {
   AudioRecorder,
 } from 'react-native-audio-api';
 
-import type { Tier } from '@/constants/exercises/agility';
+import {
+  ARPEGGIO_SPEED_DRILL_PARAMS,
+  type Tier,
+} from '@/constants/exercises/agility';
 
 import {
   measureArpeggioSpeed,
@@ -28,7 +31,22 @@ import {
   type ArpeggioSpeedScore,
 } from '@/services/scoring/agility/arpeggioSpeedDrill';
 
+import { auth } from '@/services/firebase/config';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
+import {
+  generateArpeggioSpeedDrillParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
 // ============================================================
 // COLORS
@@ -57,10 +75,6 @@ const MAX_RECORDING_SECONDS = 10;
 // TYPES
 // ============================================================
 
-type Props = {
-  tier: Tier;
-};
-
 type Phase =
   | 'instructions'
   | 'reference'
@@ -72,41 +86,6 @@ type Phase =
 type ResultData = {
   measurement: ArpeggioSpeedMeasurement;
   score: ArpeggioSpeedScore;
-};
-
-// ============================================================
-// ARPEGGIO CONFIGURATION
-// ============================================================
-
-const ARPEGGIOS: Record<
-  Tier,
-  {
-    name: string;
-    notes: string[];
-    frequencies: number[];
-    speedLabel: string;
-  }
-> = {
-  beginner: {
-    name: 'C Major Arpeggio',
-    notes: ['C4', 'E4', 'G4', 'C5'],
-    frequencies: [261.63, 329.63, 392.0, 523.25],
-    speedLabel: 'Slow',
-  },
-
-  intermediate: {
-    name: 'A Minor Arpeggio',
-    notes: ['A3', 'C4', 'E4', 'A4'],
-    frequencies: [220.0, 261.63, 329.63, 440.0],
-    speedLabel: 'Moderate',
-  },
-
-  advanced: {
-    name: 'G Major Arpeggio',
-    notes: ['G3', 'B3', 'D4', 'G4'],
-    frequencies: [196.0, 246.94, 293.66, 392.0],
-    speedLabel: 'Fast',
-  },
 };
 
 // ============================================================
@@ -129,10 +108,101 @@ AudioManager.setAudioSessionOptions({
 // COMPONENT
 // ============================================================
 
-export default function ArpeggioSpeedDrillScreen({
-  tier,
-}: Props) {
-  const config = ARPEGGIOS[tier];
+export default function ArpeggioSpeedDrillScreen() {
+  const userId =
+    auth.currentUser?.uid ?? null;
+
+  // ----------------------------------------------------------
+  // CURRENT COMPONENT TIER
+  // ----------------------------------------------------------
+
+  const [tier, setTier] =
+    useState<Tier | null>(null);
+
+  const [tierLoading, setTierLoading] =
+    useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTier = async () => {
+      setTierLoading(true);
+
+      if (!userId) {
+        if (!cancelled) {
+          setTier('beginner');
+          setTierLoading(false);
+        }
+
+        return;
+      }
+
+      try {
+        const progress =
+          await fetchComponentProgress(
+            userId,
+            'agility',
+          );
+
+        if (!cancelled) {
+          setTier(
+            progress?.currentTier ??
+              'beginner',
+          );
+
+          setTierLoading(false);
+        }
+      } catch (error) {
+        console.error(
+          '❌ Failed to load current Agility tier:',
+          error,
+        );
+
+        if (!cancelled) {
+          setTier('beginner');
+          setTierLoading(false);
+        }
+      }
+    };
+
+    void loadTier();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // ----------------------------------------------------------
+  // BASE / ADAPTIVE PARAMETERS
+  // ----------------------------------------------------------
+
+  const [adaptiveParams, setAdaptiveParams] =
+    useState<
+      ReturnType<
+        typeof generateArpeggioSpeedDrillParams
+      > | null
+    >(null);
+
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+    useState(true);
+
+  const [adaptiveError, setAdaptiveError] =
+    useState<string | null>(null);
+
+  // ----------------------------------------------------------
+  // ACTIVE CONFIGURATION
+  // ----------------------------------------------------------
+
+  const activeTier: Tier =
+    tier ?? 'beginner';
+
+  const baseConfig =
+    ARPEGGIO_SPEED_DRILL_PARAMS[
+      activeTier
+    ];
+
+  const config =
+    adaptiveParams ?? baseConfig;
 
   // ----------------------------------------------------------
   // STATE
@@ -183,6 +253,169 @@ export default function ArpeggioSpeedDrillScreen({
 
   const stoppingRef =
     useRef(false);
+
+  // ----------------------------------------------------------
+  // LOAD ADAPTIVE PARAMETERS
+  // ----------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParams = async () => {
+      setIsLoadingAdaptiveParams(true);
+      setAdaptiveError(null);
+      setAdaptiveParams(null);
+
+      if (tierLoading) {
+        return;
+      }
+
+      if (!userId || !tier) {
+        if (!cancelled) {
+          setAdaptiveParams(
+            ARPEGGIO_SPEED_DRILL_PARAMS[
+              tier ?? 'beginner'
+            ],
+          );
+
+          setIsLoadingAdaptiveParams(false);
+        }
+
+        return;
+      }
+
+      try {
+        const records =
+          await fetchExerciseRecords(
+            userId,
+            'agility',
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * Only use Arpeggio Speed Drill records
+         * from the user's CURRENT tier.
+         */
+        const matchingExerciseRecords =
+          records
+            .filter(
+              (record) =>
+                record.templateId ===
+                  'arpeggioSpeedDrill' &&
+                record.tier === tier,
+            )
+            .sort(
+              (a, b) =>
+                a.timestamp -
+                b.timestamp,
+            );
+
+        let recentScores: number[] = [];
+
+        /*
+         * CONTINUOUS ADS:
+         *
+         * Once this exercise has history in the
+         * current tier, use only the latest five
+         * scores from this exact exercise.
+         *
+         * The assessment score is NOT mixed into
+         * the continuous exercise history.
+         */
+        if (
+          matchingExerciseRecords.length > 0
+        ) {
+          recentScores =
+            matchingExerciseRecords
+              .slice(-5)
+              .map(
+                (record) =>
+                  record.scorePct,
+              );
+        } else {
+          /*
+           * COLD-START ADS:
+           *
+           * If this specific exercise has no
+           * history in the current tier, use the
+           * latest Agility assessment score as the
+           * initial ADS reference.
+           */
+          const latestAssessment =
+            await getLatestAssessment();
+
+          if (cancelled) {
+            return;
+          }
+
+          const agilityAssessmentScore =
+            latestAssessment?.scores.find(
+              (score) =>
+                score.componentId ===
+                'agility',
+            )?.scorePct;
+
+          if (
+            typeof agilityAssessmentScore ===
+            'number'
+          ) {
+            recentScores = [
+              agilityAssessmentScore,
+            ];
+          }
+        }
+
+        const generated =
+          generateArpeggioSpeedDrillParams({
+            tier,
+            recentScores,
+          });
+
+        if (!cancelled) {
+          setAdaptiveParams(generated);
+          setIsLoadingAdaptiveParams(false);
+        }
+      } catch (loadError) {
+        console.error(
+          '❌ Failed to load Arpeggio Speed Drill adaptive parameters:',
+          loadError,
+        );
+
+        if (!cancelled) {
+          /*
+           * If adaptive difficulty cannot be
+           * loaded, use the tier's base parameters
+           * rather than preventing the exercise
+           * from loading.
+           */
+          setAdaptiveParams(
+            ARPEGGIO_SPEED_DRILL_PARAMS[
+              tier
+            ],
+          );
+
+          setAdaptiveError(
+            'Adaptive difficulty could not be loaded. Using the standard difficulty settings.',
+          );
+
+          setIsLoadingAdaptiveParams(false);
+        }
+      }
+    };
+
+    void loadAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    userId,
+    tier,
+    tierLoading,
+  ]);
 
   // ----------------------------------------------------------
   // AUDIO CALLBACK
@@ -250,7 +483,10 @@ export default function ArpeggioSpeedDrillScreen({
 
   const playReferenceArpeggio =
     async () => {
-      if (isPlayingReference) {
+      if (
+        isPlayingReference ||
+        isLoadingAdaptiveParams
+      ) {
         return;
       }
 
@@ -258,26 +494,28 @@ export default function ArpeggioSpeedDrillScreen({
       setError(null);
 
       try {
-        if (audioContext.state === 'suspended') {
+        if (
+          audioContext.state ===
+          'suspended'
+        ) {
           await audioContext.resume();
         }
 
+        /*
+         * These two values are controlled by ADS.
+         *
+         * Higher-performing users can receive
+         * shorter note durations and gaps.
+         */
         const noteDuration =
-          tier === 'beginner'
-            ? 0.65
-            : tier === 'intermediate'
-              ? 0.45
-              : 0.3;
+          config.noteDurationSec;
 
         const gap =
-          tier === 'beginner'
-            ? 0.08
-            : tier === 'intermediate'
-              ? 0.06
-              : 0.04;
+          config.gapSec;
 
         let currentTime =
-          audioContext.currentTime + 0.05;
+          audioContext.currentTime +
+          0.05;
 
         for (
           const frequency of
@@ -290,24 +528,30 @@ export default function ArpeggioSpeedDrillScreen({
             audioContext.createGain();
 
           oscillator.type = 'sine';
+
           oscillator.frequency.value =
             frequency;
 
           gain.gain.value = 0.18;
 
           oscillator.connect(gain);
+
           gain.connect(
             audioContext.destination,
           );
 
-          oscillator.start(currentTime);
+          oscillator.start(
+            currentTime,
+          );
 
           oscillator.stop(
-            currentTime + noteDuration,
+            currentTime +
+              noteDuration,
           );
 
           currentTime +=
-            noteDuration + gap;
+            noteDuration +
+            gap;
         }
 
         const totalDuration =
@@ -339,6 +583,13 @@ export default function ArpeggioSpeedDrillScreen({
   // ----------------------------------------------------------
 
   const startCountdown = () => {
+    if (
+      isLoadingAdaptiveParams ||
+      !tier
+    ) {
+      return;
+    }
+
     setPhase('countdown');
     setCountdown(3);
 
@@ -360,10 +611,12 @@ export default function ArpeggioSpeedDrillScreen({
               countdownTimerRef.current,
             );
 
-            countdownTimerRef.current = null;
+            countdownTimerRef.current =
+              null;
           }
 
           void startRecording();
+
           return;
         }
 
@@ -391,6 +644,7 @@ export default function ArpeggioSpeedDrillScreen({
         );
 
         setPhase('instructions');
+
         return;
       }
 
@@ -403,7 +657,10 @@ export default function ArpeggioSpeedDrillScreen({
       const startResult =
         await audioRecorder.start();
 
-      if (startResult.status === 'error') {
+      if (
+        startResult.status ===
+        'error'
+      ) {
         throw new Error(
           startResult.message,
         );
@@ -508,102 +765,117 @@ export default function ArpeggioSpeedDrillScreen({
   // PROCESS RECORDING
   // ----------------------------------------------------------
 
-  // ----------------------------------------------------------
-// PROCESS RECORDING
-// ----------------------------------------------------------
-
-const processRecording = async () => {
-  try {
-    const chunks = samplesRef.current;
-
-    const totalLength = chunks.reduce(
-      (total, chunk) =>
-        total + chunk.length,
-      0,
-    );
-
-    if (totalLength === 0) {
-      throw new Error(
-        'No audio samples were captured.',
-      );
-    }
-
-    const samples =
-      new Float32Array(totalLength);
-
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      samples.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    const measurement =
-      measureArpeggioSpeed(
-        samples,
-        SAMPLE_RATE,
-        config.frequencies,
-      );
-
-    const score =
-      scoreArpeggioSpeed(
-        measurement,
-      );
-
-    /*
-     * ------------------------------------------
-     * SAVE PROGRESS
-     * ------------------------------------------
-     */
-
+  const processRecording = async () => {
     try {
-      await saveCompletedExercise(
-        'agility',
-        'arpeggioSpeedDrill',
-        tier,
-        score.overall,
-      );
+      const chunks =
+        samplesRef.current;
 
-      console.log(
-        '💾 Arpeggio Speed Drill progress saved:',
-        score.overall,
-      );
-    } catch (saveError) {
+      const totalLength =
+        chunks.reduce(
+          (total, chunk) =>
+            total + chunk.length,
+          0,
+        );
+
+      if (totalLength === 0) {
+        throw new Error(
+          'No audio samples were captured.',
+        );
+      }
+
+      const samples =
+        new Float32Array(
+          totalLength,
+        );
+
+      let offset = 0;
+
+      for (const chunk of chunks) {
+        samples.set(
+          chunk,
+          offset,
+        );
+
+        offset +=
+          chunk.length;
+      }
+
+      const measurement =
+        measureArpeggioSpeed(
+          samples,
+          SAMPLE_RATE,
+          config.frequencies,
+        );
+
+      const score =
+        scoreArpeggioSpeed(
+          measurement,
+        );
+
       /*
-       * Saving failure should NOT prevent the
-       * user from seeing their exercise results.
+       * ------------------------------------------
+       * SAVE PROGRESS
+       * ------------------------------------------
+       *
+       * Save using the CURRENT component tier.
        */
+      if (tier) {
+        try {
+          await saveCompletedExercise(
+            'agility',
+            'arpeggioSpeedDrill',
+            tier,
+            score.overall,
+          );
+
+          console.log(
+            '💾 Arpeggio Speed Drill progress saved:',
+            score.overall,
+          );
+        } catch (saveError) {
+          /*
+           * Saving failure should NOT prevent
+           * the user from seeing exercise results.
+           */
+          console.error(
+            '❌ Failed to save Arpeggio Speed Drill progress:',
+            saveError,
+          );
+        }
+      }
+
+      setResult({
+        measurement,
+        score,
+      });
+
+      setPhase('results');
+    } catch (err) {
       console.error(
-        '❌ Failed to save Arpeggio Speed Drill progress:',
-        saveError,
+        'Arpeggio processing error:',
+        err,
       );
+
+      setError(
+        'We could not analyze your recording. Please try again.',
+      );
+
+      setPhase('instructions');
     }
-
-    setResult({
-      measurement,
-      score,
-    });
-
-    setPhase('results');
-  } catch (err) {
-    console.error(
-      'Arpeggio processing error:',
-      err,
-    );
-
-    setError(
-      'We could not analyze your recording. Please try again.',
-    );
-
-    setPhase('instructions');
-  }
-};
+  };
 
   // ----------------------------------------------------------
   // START / RESTART
   // ----------------------------------------------------------
 
   const startExercise = () => {
+    if (
+      isLoadingAdaptiveParams ||
+      !tier
+    ) {
+      return;
+    }
+
     setResult(null);
     setError(null);
     setRecordingTime(0);
@@ -620,6 +892,37 @@ const processRecording = async () => {
   const goBack = () => {
     router.back();
   };
+
+  // ==========================================================
+  // LOADING
+  // ==========================================================
+
+  if (
+    tierLoading ||
+    isLoadingAdaptiveParams ||
+    !tier ||
+    !adaptiveParams
+  ) {
+    return (
+      <View style={styles.loadingScreen}>
+        <View style={styles.iconCircle}>
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.phaseTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.phaseSubtitle}>
+          Loading your current difficulty
+          settings...
+        </Text>
+      </View>
+    );
+  }
 
   // ==========================================================
   // INSTRUCTIONS
@@ -760,7 +1063,7 @@ const processRecording = async () => {
             { marginTop: 14 },
           ]}
         >
-          Instructions
+          Exercise Instructions
         </Text>
 
         <InstructionItem
@@ -815,6 +1118,12 @@ const processRecording = async () => {
           before recording begins.
         </Text>
       </View>
+
+      {adaptiveError ? (
+        <ErrorBox
+          message={adaptiveError}
+        />
+      ) : null}
 
       {error ? (
         <ErrorBox message={error} />
@@ -1431,6 +1740,15 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
+  loadingScreen: {
+    flex: 1,
+    minHeight: 700,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1524,7 +1842,7 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,

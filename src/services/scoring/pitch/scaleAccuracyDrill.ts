@@ -1,16 +1,13 @@
-// src/services/scoring/pitch/scaleAccuracyDrill.ts
-
-import {
-    SCALE_ACCURACY_PARAMS,
-    Tier,
+import type {
+  ScaleAccuracyParams,
 } from '@/constants/exercises/pitch';
 
 import {
-    ScaleAccuracyMeasurement,
+  ScaleAccuracyMeasurement,
 } from '@/services/measurement/pitch/scaleAccuracyDrill';
 
 import {
-    calcPitchAccuracy,
+  calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 
 export interface ScaleAccuracyScoreResult {
@@ -35,11 +32,8 @@ export interface ScaleAccuracyScoreResult {
 
 export function scoreScaleAccuracyDrill(
   measurement: ScaleAccuracyMeasurement,
-  tier: Tier
+  params: ScaleAccuracyParams,
 ): ScaleAccuracyScoreResult {
-
-  const params =
-    SCALE_ACCURACY_PARAMS[tier];
 
   const targetFreqs =
     measurement.targetFreqs;

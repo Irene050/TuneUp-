@@ -1,52 +1,45 @@
+// app/exercises/pitch.tsx
+
 import { useLocalSearchParams } from 'expo-router';
 
 import IntervalRecognitionTaskScreen from '../../src/screens/exercises/Pitch/IntervalRecognitionTaskScreen';
 import MelodicPatternMatchingScreen from '../../src/screens/exercises/Pitch/MelodicPatternMatchingScreen';
 import NoteMatchingScreen from '../../src/screens/exercises/Pitch/NoteMatchingScreen';
+import PitchExercisesScreen from '../../src/screens/exercises/Pitch/PitchExercisesScreen';
+import PitchFreeModeScreen from '../../src/screens/exercises/Pitch/PitchFreeModeScreen';
 import ScaleAccuracyDrillScreen from '../../src/screens/exercises/Pitch/ScaleAccuracyDrillScreen';
 import SustainedNoteStabilityScreen from '../../src/screens/exercises/Pitch/SustainedNoteStabilityScreen';
 
 export default function PitchRoute() {
-  const { templateId } =
+  const { mode, templateId } =
     useLocalSearchParams<{
       templateId?: string;
+      mode?: string;
     }>();
+
+  if (mode === 'free') {
+    return <PitchFreeModeScreen />;
+  }
+
+  if (!templateId) {
+    return <PitchExercisesScreen />;
+  }
 
   switch (templateId) {
     case 'noteMatchingExercise':
-      return (
-        <NoteMatchingScreen
-          tier="beginner"
-        />
-      );
+      return <NoteMatchingScreen />;
 
     case 'scaleAccuracyDrill':
-      return (
-        <ScaleAccuracyDrillScreen
-          tier="beginner"
-        />
-      );
+      return <ScaleAccuracyDrillScreen />;
 
     case 'intervalRecognitionTask':
-      return (
-        <IntervalRecognitionTaskScreen
-          tier="beginner"
-        />
-      );
+      return <IntervalRecognitionTaskScreen />;
 
     case 'sustainedNoteStability':
-      return (
-        <SustainedNoteStabilityScreen
-          tier="beginner"
-        />
-      );
+      return <SustainedNoteStabilityScreen />;
 
     case 'melodicPatternMatching':
-      return (
-        <MelodicPatternMatchingScreen
-          tier="beginner"
-        />
-      );
+      return <MelodicPatternMatchingScreen />;
 
     default:
       return null;

@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
 import { loginUser } from '@/services/firebase/authService';
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
 
   buttonText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'FredokaBold',
     color: '#4A302F',
   },
 

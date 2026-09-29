@@ -1,8 +1,5 @@
-// src/services/scoring/tone/steadyToneHolding.ts
-
-import {
-  STEADY_TONE_HOLDING_PARAMS,
-  Tier,
+import type {
+  SteadyToneHoldingParams,
 } from '@/constants/exercises/tone';
 
 import {
@@ -20,11 +17,8 @@ export interface SteadyToneHoldingScoreResult {
 
 export function scoreSteadyToneHolding(
   measurement: SteadyToneHoldingMeasurement,
-  tier: Tier,
+  params: SteadyToneHoldingParams,
 ): SteadyToneHoldingScoreResult {
-  const params =
-    STEADY_TONE_HOLDING_PARAMS[tier];
-
   const quality =
     calcOverallToneQuality(
       measurement.smoothnessPct,
@@ -47,6 +41,7 @@ export function scoreSteadyToneHolding(
   return {
     score,
     passed:
-      quality >= params.qualityThreshold,
+      quality >=
+      params.qualityThreshold,
   };
 }

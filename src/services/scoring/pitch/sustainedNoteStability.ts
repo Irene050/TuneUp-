@@ -1,10 +1,9 @@
-import {
-    SUSTAINED_NOTE_STABILITY_PARAMS,
-    Tier,
+import type {
+  SustainedNoteStabilityParams,
 } from '@/constants/exercises/pitch';
 
-import {
-    SustainedNoteStabilityMeasurement,
+import type {
+  SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 
 export interface SustainedNoteStabilityScoreResult {
@@ -16,11 +15,8 @@ export interface SustainedNoteStabilityScoreResult {
 
 export function scoreSustainedNoteStability(
   measurement: SustainedNoteStabilityMeasurement,
-  tier: Tier
+  params: SustainedNoteStabilityParams,
 ): SustainedNoteStabilityScoreResult {
-  const params =
-    SUSTAINED_NOTE_STABILITY_PARAMS[tier];
-
   const stabilityRatio =
     measurement.stabilityCents /
     params.stabilityThresholdCents;
@@ -29,8 +25,8 @@ export function scoreSustainedNoteStability(
     0,
     Math.min(
       100,
-      100 - stabilityRatio * 100
-    )
+      100 - stabilityRatio * 100,
+    ),
   );
 
   const durationRatio =
@@ -39,12 +35,15 @@ export function scoreSustainedNoteStability(
 
   const durationScore = Math.max(
     0,
-    Math.min(100, durationRatio * 100)
+    Math.min(
+      100,
+      durationRatio * 100,
+    ),
   );
 
   const score = Math.round(
     stabilityScore * 0.6 +
-      durationScore * 0.4
+      durationScore * 0.4,
   );
 
   const passed =

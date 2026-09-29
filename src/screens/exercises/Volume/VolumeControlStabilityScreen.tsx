@@ -15,11 +15,15 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { AudioContext } from 'react-native-audio-api';
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+
+import {
+  VOLUME_CONTROL_STABILITY_PARAMS,
+  type Tier,
+} from '@/constants/exercises/volume';
 
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
@@ -31,27 +35,48 @@ import {
   scoreVolumeControlStability,
 } from '@/services/scoring/volume/volumeControlStability';
 
+import {
+  generateVolumeControlStabilityParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
-const REFERENCE_AUDIO = require(
-  '../../../../assets/audio/volume/C4_reference.wav'
-);
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
+import { auth } from '@/services/firebase/config';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  createMusicalNote,
+} from '@/utils/music/notes';
+
+import {
+  playSingleNote,
+} from '@/services/assessment/notePlayer';
 
 /* =========================================================
-   FIXED BEGINNER PARAMETERS
+   DEFAULT CONFIGURATION
    ========================================================= */
+
+const CURRENT_TIER: Tier = 'beginner';
+
+const DEFAULT_VOLUME_CONTROL_STABILITY =
+  VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
 const NOTE = 'C4';
 
-const DURATION_SECONDS = 5;
+const REFERENCE_NOTE =
+  createMusicalNote(60);
 
-const REPETITIONS = 2;
-
-const TARGET_STABILITY = 70;
-
-const AMPLITUDE_VARIANCE_PERCENT = 10;
-
-const TOTAL_EXERCISE_SECONDS =
-  DURATION_SECONDS * REPETITIONS;
+const REFERENCE_NOTE_DURATION_SEC = 1.5;
 
 const COUNTDOWN_SECONDS = 3;
 
@@ -70,10 +95,6 @@ interface HistoryPoint {
   time: number;
 }
 
-/*
- * Using ReturnType here means this screen does not depend on
- * exported measurement/scoring type names.
- */
 type MeasurementResult =
   ReturnType<
     typeof measureVolumeControlStability
@@ -88,7 +109,11 @@ type ScoreResult =
    COMPONENT
    ========================================================= */
 
-export default function VolumeControlStabilityScreen() {
+export default function VolumeControlStabilityScreen({
+  tier,
+}: {
+  tier?: Tier;
+}) {
   const insets = useSafeAreaInsets();
 
   const { width, height } =
@@ -97,7 +122,7 @@ export default function VolumeControlStabilityScreen() {
   const horizontalPadding =
     Math.min(
       24,
-      width * 0.06
+      width * 0.06,
     );
 
   const isSmallScreen =
@@ -109,19 +134,20 @@ export default function VolumeControlStabilityScreen() {
 
   const [phase, setPhase] =
     useState<Phase>(
-      'directions'
+      'directions',
     );
 
   const [countdown, setCountdown] =
     useState(
-      COUNTDOWN_SECONDS
+      COUNTDOWN_SECONDS,
     );
 
   const [
     remainingSeconds,
     setRemainingSeconds,
   ] = useState(
-    TOTAL_EXERCISE_SECONDS
+    DEFAULT_VOLUME_CONTROL_STABILITY.durationSec *
+      DEFAULT_VOLUME_CONTROL_STABILITY.repetitions,
   );
 
   const [liveVolume, setLiveVolume] =
@@ -135,20 +161,20 @@ export default function VolumeControlStabilityScreen() {
   const [
     liveHistory,
     setLiveHistory,
-  ] = useState<
-    HistoryPoint[]
-  >([]);
+  ] = useState<HistoryPoint[]>(
+    [],
+  );
 
   const [
     measurement,
     setMeasurement,
-  ] = useState<
-    MeasurementResult | null
-  >(null);
+  ] = useState<MeasurementResult | null>(
+    null,
+  );
 
   const [score, setScore] =
     useState<ScoreResult | null>(
-      null
+      null,
     );
 
   const [
@@ -165,13 +191,51 @@ export default function VolumeControlStabilityScreen() {
     referenceError,
     setReferenceError,
   ] = useState<string | null>(
-    null
+    null,
   );
 
   const [
     isStarting,
     setIsStarting,
   ] = useState(false);
+
+  const [
+    resolvedTier,
+    setResolvedTier,
+  ] = useState<Tier>(
+    tier ?? CURRENT_TIER,
+  );
+
+  const [
+    exerciseParams,
+    setExerciseParams,
+  ] = useState(
+    DEFAULT_VOLUME_CONTROL_STABILITY,
+  );
+
+  const [
+    paramsReady,
+    setParamsReady,
+  ] = useState(false);
+
+  /* =======================================================
+     DERIVED PARAMETERS
+     ======================================================= */
+
+  const durationSeconds =
+    exerciseParams.durationSec;
+
+  const repetitions =
+    exerciseParams.repetitions;
+
+  const targetStability =
+    exerciseParams.stabilityThreshold;
+
+  const amplitudeVariancePercent =
+    exerciseParams.amplitudeVariancePct;
+
+  const totalExerciseSeconds =
+    durationSeconds * repetitions;
 
   /* =======================================================
      REFS
@@ -182,37 +246,168 @@ export default function VolumeControlStabilityScreen() {
 
   const exerciseStartedAtRef =
     useRef<number | null>(
-      null
+      null,
     );
-
-  const audioContextRef =
-    useRef<AudioContext | null>(
-      null
-    );
-
-  const referenceBufferRef =
-    useRef<
-      Awaited<
-        ReturnType<
-          AudioContext['decodeAudioData']
-        >
-      > | null
-    >(null);
-
-  const referenceSourceRef =
-    useRef<
-      ReturnType<
-        AudioContext['createBufferSource']
-      > | null
-    >(null);
-
-  const referenceTimerRef =
-    useRef<
-      ReturnType<typeof setTimeout> | null
-    >(null);
 
   const recordingFinishedRef =
     useRef(false);
+
+  /* =======================================================
+     LOAD ADAPTIVE PARAMETERS
+     ======================================================= */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParameters = async () => {
+      try {
+        const user =
+          auth.currentUser;
+
+        let selectedTier: Tier =
+          tier ?? CURRENT_TIER;
+
+        let recentScores: number[] =
+          [];
+
+        if (user) {
+          /*
+           * If the route does not explicitly provide
+           * a tier, use the user's current saved tier.
+           */
+          if (!tier) {
+            const progress =
+              await fetchComponentProgress(
+                user.uid,
+                'volume',
+              );
+
+            selectedTier =
+              progress?.currentTier ??
+              CURRENT_TIER;
+          }
+
+          /*
+           * Get exercise history for Volume.
+           */
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'volume',
+            );
+
+          /*
+           * ADS for this exercise uses the latest
+           * five scores from the same template
+           * and same tier.
+           */
+          const matchingRecords =
+            records
+              .filter(
+                (record) =>
+                  record.templateId ===
+                    'volumeControlStability' &&
+                  record.tier ===
+                    selectedTier,
+              )
+              .sort(
+                (a, b) =>
+                  a.timestamp -
+                  b.timestamp,
+              );
+
+          recentScores =
+            matchingRecords
+              .slice(-5)
+              .map(
+                (record) =>
+                  record.scorePct,
+              );
+
+          /*
+           * Cold-start behavior:
+           *
+           * If there is no exercise history for this
+           * exercise/tier, use the latest assessment's
+           * Volume score as the initial ADS reference.
+           */
+          if (
+            recentScores.length === 0
+          ) {
+            const latestAssessment =
+              await getLatestAssessment();
+
+            const assessmentScore =
+              latestAssessment?.scores.find(
+                (score) =>
+                  score.componentId ===
+                  'volume',
+              )?.scorePct;
+
+            if (
+              Number.isFinite(
+                assessmentScore,
+              )
+            ) {
+              recentScores = [
+                assessmentScore!,
+              ];
+            }
+          }
+        }
+
+        /*
+         * Generate the actual exercise parameters.
+         *
+         * The generator starts from
+         * VOLUME_CONTROL_STABILITY_PARAMS[selectedTier]
+         * and applies ADS when a reference score exists.
+         */
+        const generatedParams =
+          generateVolumeControlStabilityParams({
+            tier: selectedTier,
+            recentScores,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedTier(
+          selectedTier,
+        );
+
+        setExerciseParams(
+          generatedParams,
+        );
+
+        setParamsReady(true);
+      } catch (error) {
+        console.error(
+          'Failed to load Volume Control Stability parameters:',
+          error,
+        );
+
+        if (!cancelled) {
+          setResolvedTier(
+            tier ?? CURRENT_TIER,
+          );
+
+          setExerciseParams(
+            DEFAULT_VOLUME_CONTROL_STABILITY,
+          );
+
+          setParamsReady(true);
+        }
+      }
+    };
+
+    void loadParameters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
 
   /* =======================================================
      CLEANUP
@@ -220,27 +415,7 @@ export default function VolumeControlStabilityScreen() {
 
   useEffect(() => {
     return () => {
-      mountedRef.current =
-        false;
-
-      if (
-        referenceTimerRef.current
-      ) {
-        clearTimeout(
-          referenceTimerRef.current
-        );
-      }
-
-      if (
-        referenceSourceRef.current
-      ) {
-        try {
-          referenceSourceRef.current.stop();
-        } catch {}
-
-        referenceSourceRef.current =
-          null;
-      }
+      mountedRef.current = false;
     };
   }, []);
 
@@ -250,153 +425,44 @@ export default function VolumeControlStabilityScreen() {
 
   const playReferenceNote =
     useCallback(async () => {
-      if (
-        referencePlaying
-      ) {
+      if (referencePlaying) {
         return;
       }
 
       setReferenceError(null);
-
       setReferencePlaying(true);
 
       try {
-        /*
-         * Create AudioContext only once.
-         */
-        if (
-          !audioContextRef.current
-        ) {
-          audioContextRef.current =
-            new AudioContext();
-        }
-
-        const audioContext =
-          audioContextRef.current;
-
-        /*
-         * Resume the audio context.
-         */
-        try {
-          await audioContext.resume();
-        } catch (error) {
-          console.warn(
-            'AudioContext resume warning:',
-            error
-          );
-        }
-
-        /*
-         * Decode the bundled C4 WAV.
-         */
-        if (
-          !referenceBufferRef.current
-        ) {
-          referenceBufferRef.current =
-            await audioContext.decodeAudioData(
-              REFERENCE_AUDIO
-            );
-        }
-
-        /*
-         * Stop previous reference playback.
-         */
-        if (
-          referenceSourceRef.current
-        ) {
-          try {
-            referenceSourceRef.current.stop();
-          } catch {}
-
-          referenceSourceRef.current =
-            null;
-        }
-
-        /*
-         * Create a fresh source every time.
-         */
-        const source =
-          audioContext.createBufferSource();
-
-        source.buffer =
-          referenceBufferRef.current;
-
-        /*
-         * Direct connection:
-         *
-         * source
-         *   ↓
-         * destination / speaker
-         */
-        source.connect(
-          audioContext.destination
-        );
-
-        referenceSourceRef.current =
-          source;
-
-        /*
-         * Start immediately.
-         */
-        source.start(
-          audioContext.currentTime
-        );
-
-        setHasPlayedReference(
-          true
-        );
-
-        /*
-         * Keep the button state synchronized
-         * with the reference duration.
-         */
-        const duration =
-          referenceBufferRef.current
-            ?.duration ?? 1;
-
-        if (
-          referenceTimerRef.current
-        ) {
-          clearTimeout(
-            referenceTimerRef.current
-          );
-        }
-
-        referenceTimerRef.current =
-          setTimeout(() => {
-            if (
-              !mountedRef.current
-            ) {
-              return;
-            }
-
-            setReferencePlaying(
-              false
-            );
-
-            referenceSourceRef.current =
-              null;
-          }, duration * 1000);
-      } catch (error) {
-        console.error(
-          'C4 reference playback error:',
-          error
+        await playSingleNote(
+          REFERENCE_NOTE.frequency,
+          REFERENCE_NOTE_DURATION_SEC,
         );
 
         if (
           mountedRef.current
         ) {
-          setReferencePlaying(
-            false
-          );
+          setHasPlayedReference(true);
+        }
+      } catch (error) {
+        console.error(
+          'C4 reference playback error:',
+          error,
+        );
 
-          setHasPlayedReference(
-            false
-          );
+        if (
+          mountedRef.current
+        ) {
+          setHasPlayedReference(false);
 
           setReferenceError(
-            'Unable to play the C4 reference. Check that the C4_reference.wav file exists in assets/audio/volume.'
+            'Unable to play the C4 reference note.',
           );
+        }
+      } finally {
+        if (
+          mountedRef.current
+        ) {
+          setReferencePlaying(false);
         }
       }
     }, [referencePlaying]);
@@ -422,7 +488,7 @@ export default function VolumeControlStabilityScreen() {
        */
       const db =
         Number.isFinite(
-          frame.volume
+          frame.volume,
         ) &&
         frame.volume > -100
           ? frame.volume
@@ -432,18 +498,14 @@ export default function VolumeControlStabilityScreen() {
 
       /*
        * Voice presence.
-       *
-       * We only consider a frame voiced when
-       * pitch and clarity indicate an actual
-       * vocal signal.
        */
       const isVoiced =
         Number.isFinite(
-          frame.pitch
+          frame.pitch,
         ) &&
         frame.pitch > 0 &&
         Number.isFinite(
-          frame.clarity
+          frame.clarity,
         ) &&
         frame.clarity >= 0.45 &&
         typeof frame.note ===
@@ -468,16 +530,18 @@ export default function VolumeControlStabilityScreen() {
           ].slice(-40);
 
           /*
-           * Convert dB back into amplitude so
-           * stability is calculated from amplitude.
+           * Convert dB back into amplitude.
+           *
+           * This mirrors the measurement layer's
+           * RMS-based stability concept.
            */
           const amplitudes =
             next.map(
               (item) =>
                 Math.pow(
                   10,
-                  item.value / 20
-                )
+                  item.value / 20,
+                ),
             );
 
           if (
@@ -492,17 +556,17 @@ export default function VolumeControlStabilityScreen() {
             amplitudes.reduce(
               (
                 sum,
-                value
+                value,
               ) =>
                 sum + value,
-              0
+              0,
             ) /
             amplitudes.length;
 
           if (
             mean <= 0 ||
             !Number.isFinite(
-              mean
+              mean,
             )
           ) {
             setLiveStability(0);
@@ -514,20 +578,20 @@ export default function VolumeControlStabilityScreen() {
             amplitudes.reduce(
               (
                 sum,
-                value
+                value,
               ) =>
                 sum +
                 Math.pow(
                   value - mean,
-                  2
+                  2,
                 ),
-              0
+              0,
             ) /
             amplitudes.length;
 
           const standardDeviation =
             Math.sqrt(
-              variance
+              variance,
             );
 
           const stability =
@@ -541,19 +605,19 @@ export default function VolumeControlStabilityScreen() {
               0,
               Math.min(
                 100,
-                stability
-              )
-            )
+                stability,
+              ),
+            ),
           );
 
           return next;
-        }
+        },
       );
     },
 
     onStop: (
       samples,
-      sampleRate
+      sampleRate,
     ) => {
       if (
         !mountedRef.current ||
@@ -567,32 +631,55 @@ export default function VolumeControlStabilityScreen() {
 
       /*
        * Measurement layer.
+       *
+       * Use the actual dynamically generated
+       * duration and repetition count.
        */
       const measured =
         measureVolumeControlStability(
           samples,
           sampleRate,
-          DURATION_SECONDS,
-          REPETITIONS
+          durationSeconds,
+          repetitions,
         );
 
       /*
        * Scoring layer.
+       *
+       * The passing score comes from the
+       * current generated parameter set.
        */
       const scored =
         scoreVolumeControlStability(
-          measured
+          measured,
+          {
+            passingScore:
+              targetStability,
+          },
         );
 
       setMeasurement(
-        measured
+        measured,
       );
 
       setScore(
-        scored
+        scored,
       );
 
       setPhase('results');
+
+      /*
+       * Save the completed exercise.
+       *
+       * Save the actual tier used to generate
+       * the exercise parameters.
+       */
+      void saveCompletedExercise(
+        'volume',
+        'volumeControlStability',
+        resolvedTier,
+        scored.overallScore,
+      );
     },
   });
 
@@ -624,31 +711,34 @@ export default function VolumeControlStabilityScreen() {
         setLiveHistory([]);
 
         setRemainingSeconds(
-          TOTAL_EXERCISE_SECONDS
+          totalExerciseSeconds,
         );
 
         setPhase(
-          'exercise'
+          'exercise',
         );
       } catch (error) {
         console.error(
           'Unable to start recording:',
-          error
+          error,
         );
 
         if (
           mountedRef.current
         ) {
           setPhase(
-            'directions'
+            'directions',
           );
 
           setReferenceError(
-            'Microphone could not be started. Please check microphone permission.'
+            'Microphone could not be started. Please check microphone permission.',
           );
         }
       }
-    }, [startRecording]);
+    }, [
+      startRecording,
+      totalExerciseSeconds,
+    ]);
 
   /* =======================================================
      COUNTDOWN
@@ -662,7 +752,7 @@ export default function VolumeControlStabilityScreen() {
     }
 
     setCountdown(
-      COUNTDOWN_SECONDS
+      COUNTDOWN_SECONDS,
     );
 
     const interval =
@@ -671,7 +761,7 @@ export default function VolumeControlStabilityScreen() {
           (value) => {
             if (value <= 1) {
               clearInterval(
-                interval
+                interval,
               );
 
               void beginRecording();
@@ -680,13 +770,13 @@ export default function VolumeControlStabilityScreen() {
             }
 
             return value - 1;
-          }
+          },
         );
       }, 1000);
 
     return () => {
       clearInterval(
-        interval
+        interval,
       );
     };
   }, [
@@ -723,21 +813,21 @@ export default function VolumeControlStabilityScreen() {
           Math.max(
             0,
             Math.ceil(
-              TOTAL_EXERCISE_SECONDS -
-                elapsed
-            )
+              totalExerciseSeconds -
+                elapsed,
+            ),
           );
 
         setRemainingSeconds(
-          remaining
+          remaining,
         );
 
         if (
           elapsed >=
-          TOTAL_EXERCISE_SECONDS
+          totalExerciseSeconds
         ) {
           clearInterval(
-            interval
+            interval,
           );
 
           void stopRecording();
@@ -746,12 +836,13 @@ export default function VolumeControlStabilityScreen() {
 
     return () => {
       clearInterval(
-        interval
+        interval,
       );
     };
   }, [
     phase,
     stopRecording,
+    totalExerciseSeconds,
   ]);
 
   /* =======================================================
@@ -761,6 +852,7 @@ export default function VolumeControlStabilityScreen() {
   const startExercise =
     useCallback(() => {
       if (
+        !paramsReady ||
         !hasPlayedReference ||
         isStarting
       ) {
@@ -779,14 +871,18 @@ export default function VolumeControlStabilityScreen() {
 
       setLiveStability(0);
 
+      setRemainingSeconds(
+        totalExerciseSeconds,
+      );
+
       setCountdown(
-        COUNTDOWN_SECONDS
+        COUNTDOWN_SECONDS,
       );
 
       setReferenceError(null);
 
       setPhase(
-        'countdown'
+        'countdown',
       );
 
       setTimeout(() => {
@@ -797,8 +893,10 @@ export default function VolumeControlStabilityScreen() {
         }
       }, 400);
     }, [
+      paramsReady,
       hasPlayedReference,
       isStarting,
+      totalExerciseSeconds,
     ]);
 
   /* =======================================================
@@ -818,21 +916,21 @@ export default function VolumeControlStabilityScreen() {
       setLiveHistory([]);
 
       setRemainingSeconds(
-        TOTAL_EXERCISE_SECONDS
+        totalExerciseSeconds,
       );
 
       setCountdown(
-        COUNTDOWN_SECONDS
+        COUNTDOWN_SECONDS,
       );
 
       setReferenceError(null);
 
       setHasPlayedReference(
-        false
+        false,
       );
 
       setReferencePlaying(
-        false
+        false,
       );
 
       recordingFinishedRef.current =
@@ -842,9 +940,11 @@ export default function VolumeControlStabilityScreen() {
         null;
 
       setPhase(
-        'directions'
+        'directions',
       );
-    }, []);
+    }, [
+      totalExerciseSeconds,
+    ]);
 
   /* =======================================================
      LIVE GRAPH
@@ -864,7 +964,7 @@ export default function VolumeControlStabilityScreen() {
       return liveHistory.map(
         (
           item,
-          index
+          index,
         ) => {
           const normalized =
             (item.value -
@@ -878,8 +978,8 @@ export default function VolumeControlStabilityScreen() {
               Math.min(
                 100,
                 normalized *
-                  100
-              )
+                  100,
+              ),
             );
 
           return {
@@ -887,7 +987,7 @@ export default function VolumeControlStabilityScreen() {
             height:
               barHeight,
           };
-        }
+        },
       );
     }, [liveHistory]);
 
@@ -1114,7 +1214,9 @@ export default function VolumeControlStabilityScreen() {
 
             {referenceError && (
               <Text
-                style={styles.errorText}
+                style={
+                  styles.errorText
+                }
               >
                 {referenceError}
               </Text>
@@ -1143,25 +1245,27 @@ export default function VolumeControlStabilityScreen() {
             >
               <ParameterItem
                 icon="musical-note-outline"
-                value="C4"
+                value={NOTE}
                 label="Note"
               />
 
               <ParameterItem
                 icon="timer-outline"
-                value="5 sec"
+                value={`${durationSeconds} sec`}
                 label="Per repetition"
               />
 
               <ParameterItem
                 icon="repeat-outline"
-                value="2"
+                value={`${repetitions}`}
                 label="Repetitions"
               />
 
               <ParameterItem
                 icon="analytics-outline"
-                value="70%"
+                value={`${Math.round(
+                  targetStability,
+                )}%`}
                 label="Stability target"
               />
             </View>
@@ -1194,7 +1298,7 @@ export default function VolumeControlStabilityScreen() {
 
             <DirectionRow
               number="3"
-              text="Sing C4 steadily for 5 seconds."
+              text={`Sing C4 steadily for ${durationSeconds} seconds.`}
             />
 
             <DirectionRow
@@ -1204,7 +1308,7 @@ export default function VolumeControlStabilityScreen() {
 
             <DirectionRow
               number="5"
-              text="Repeat the exercise twice."
+              text={`Repeat the exercise ${repetitions} times.`}
             />
           </View>
 
@@ -1233,7 +1337,7 @@ export default function VolumeControlStabilityScreen() {
           >
             Target amplitude variation:
             ±
-            {AMPLITUDE_VARIANCE_PERCENT}%
+            {amplitudeVariancePercent}%
           </Text>
 
           {/* START */}
@@ -1241,7 +1345,8 @@ export default function VolumeControlStabilityScreen() {
           <Pressable
             style={[
               styles.primaryButton,
-              !hasPlayedReference &&
+              (!hasPlayedReference ||
+                !paramsReady) &&
                 styles.primaryButtonDisabled,
             ]}
             onPress={
@@ -1249,6 +1354,7 @@ export default function VolumeControlStabilityScreen() {
             }
             disabled={
               !hasPlayedReference ||
+              !paramsReady ||
               isStarting
             }
           >
@@ -1275,14 +1381,24 @@ export default function VolumeControlStabilityScreen() {
             )}
           </Pressable>
 
-          {!hasPlayedReference && (
+          {!paramsReady ? (
             <Text
-              style={styles.helperText}
+              style={
+                styles.helperText
+              }
+            >
+              Preparing your exercise...
+            </Text>
+          ) : !hasPlayedReference ? (
+            <Text
+              style={
+                styles.helperText
+              }
             >
               Play the C4 reference
               before starting.
             </Text>
-          )}
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     );
@@ -1308,7 +1424,7 @@ export default function VolumeControlStabilityScreen() {
               paddingBottom:
                 Math.max(
                   16,
-                  insets.bottom
+                  insets.bottom,
                 ),
             },
           ]}
@@ -1409,7 +1525,7 @@ export default function VolumeControlStabilityScreen() {
               paddingBottom:
                 Math.max(
                   8,
-                  insets.bottom
+                  insets.bottom,
                 ),
             },
           ]}
@@ -1483,10 +1599,10 @@ export default function VolumeControlStabilityScreen() {
               ]}
             >
               {Number.isFinite(
-                liveVolume
+                liveVolume,
               )
                 ? `${Math.round(
-                    liveVolume
+                    liveVolume,
                   )} dB`
                 : '--'}
             </Text>
@@ -1542,7 +1658,11 @@ export default function VolumeControlStabilityScreen() {
                     styles.stabilitySubtitle
                   }
                 >
-                  Target: 70%
+                  Target:{' '}
+                  {Math.round(
+                    targetStability,
+                  )}
+                  %
                 </Text>
               </View>
 
@@ -1552,7 +1672,7 @@ export default function VolumeControlStabilityScreen() {
                 }
               >
                 {Math.round(
-                  liveStability
+                  liveStability,
                 )}
                 %
               </Text>
@@ -1569,7 +1689,7 @@ export default function VolumeControlStabilityScreen() {
                   {
                     width: `${Math.min(
                       100,
-                      liveStability
+                      liveStability,
                     )}%`,
                   },
                 ]}
@@ -1654,7 +1774,7 @@ export default function VolumeControlStabilityScreen() {
                         },
                       ]}
                     />
-                  )
+                  ),
                 )
               ) : (
                 <Text
@@ -1839,9 +1959,8 @@ export default function VolumeControlStabilityScreen() {
               styles.resultDescription
             }
           >
-            {resultPassed
-              ? 'Your vocal volume remained relatively stable during the exercise.'
-              : 'A consistent vocal signal was not detected. Try singing C4 steadily and holding the same volume.'}
+            {score?.feedback ??
+              'Your result has been calculated based on your volume stability and vocal coverage.'}
           </Text>
 
           {/* SCORE */}
@@ -1862,7 +1981,7 @@ export default function VolumeControlStabilityScreen() {
                 }
               >
                 {Math.round(
-                  finalScore
+                  finalScore,
                 )}
               </Text>
 
@@ -1896,7 +2015,7 @@ export default function VolumeControlStabilityScreen() {
               value={`${Math.round(
                 measurement
                   ?.repStability?.[0] ??
-                  0
+                  0,
               )}%`}
             />
 
@@ -1905,21 +2024,21 @@ export default function VolumeControlStabilityScreen() {
               value={`${Math.round(
                 measurement
                   ?.repStability?.[1] ??
-                  0
+                  0,
               )}%`}
             />
 
             <CompactResultRow
               label="Volume Stability"
               value={`${Math.round(
-                stabilityScore
+                stabilityScore,
               )}%`}
             />
 
             <CompactResultRow
               label="Duration Score"
               value={`${Math.round(
-                durationScore
+                durationScore,
               )}%`}
             />
 
@@ -1929,7 +2048,7 @@ export default function VolumeControlStabilityScreen() {
                 measurement?.averageDb !==
                 undefined
                   ? `${Math.round(
-                      measurement.averageDb
+                      measurement.averageDb,
                     )} dB`
                   : '--'
               }
@@ -1938,7 +2057,7 @@ export default function VolumeControlStabilityScreen() {
             <CompactResultRow
               label="Voiced Coverage"
               value={`${Math.round(
-                voicedCoverage
+                voicedCoverage,
               )}%`}
             />
 
@@ -1947,7 +2066,7 @@ export default function VolumeControlStabilityScreen() {
               value={`${Math.round(
                 measurement
                   ?.measurementQuality ??
-                  0
+                  0,
               )}%`}
               isLast
             />
@@ -2012,7 +2131,7 @@ export default function VolumeControlStabilityScreen() {
                   styles.targetCompactValue
                 }
               >
-                C4
+                {NOTE}
               </Text>
             </View>
 
@@ -2040,7 +2159,8 @@ export default function VolumeControlStabilityScreen() {
                   styles.targetCompactValue
                 }
               >
-                5 sec × 2
+                {durationSeconds} sec ×{' '}
+                {repetitions}
               </Text>
             </View>
 
@@ -2068,7 +2188,10 @@ export default function VolumeControlStabilityScreen() {
                   styles.targetCompactValue
                 }
               >
-                70%
+                {Math.round(
+                  targetStability,
+                )}
+                %
               </Text>
             </View>
           </View>
@@ -2085,7 +2208,7 @@ export default function VolumeControlStabilityScreen() {
               paddingBottom:
                 Math.max(
                   10,
-                  insets.bottom
+                  insets.bottom,
                 ),
             },
           ]}

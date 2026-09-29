@@ -1,9 +1,8 @@
 import type {
-    VolumeBandMeasurement,
+  VolumeBandMeasurement,
 } from '@/services/measurement/volume/volumeBandTargeting';
 
-const BEGINNER_TARGET_CONSISTENCY =
-  70;
+const DEFAULT_PASSING_SCORE = 70;
 
 export interface VolumeBandScore {
   consistency: number;
@@ -23,7 +22,7 @@ function clamp(
   value: number,
   min: number,
   max: number,
-) {
+): number {
   return Math.max(
     min,
     Math.min(max, value),
@@ -32,7 +31,7 @@ function clamp(
 
 function roundScore(
   value: number,
-) {
+): number {
   return Math.round(
     clamp(
       value,
@@ -48,7 +47,7 @@ export function scoreVolumeBandTargeting(
 ): VolumeBandScore {
   const passingScore =
     options.passingScore ??
-    BEGINNER_TARGET_CONSISTENCY;
+    DEFAULT_PASSING_SCORE;
 
   const score =
     measurement.targetReached

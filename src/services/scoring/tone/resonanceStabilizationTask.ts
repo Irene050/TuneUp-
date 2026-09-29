@@ -1,5 +1,10 @@
-import { RESONANCE_STABILIZATION_PARAMS, Tier } from '@/constants/exercises/tone';
-import { ResonanceStabilizationMeasurement } from '@/services/measurement/tone/resonanceStabilizationTask';
+import type {
+  ResonanceStabilizationParams,
+} from '@/constants/exercises/tone';
+
+import type {
+  ResonanceStabilizationMeasurement,
+} from '@/services/measurement/tone/resonanceStabilizationTask';
 
 export interface ResonanceStabilizationScoreResult {
   score: number;
@@ -8,11 +13,24 @@ export interface ResonanceStabilizationScoreResult {
 
 export function scoreResonanceStabilizationTask(
   measurement: ResonanceStabilizationMeasurement,
-  tier: Tier
+  params: ResonanceStabilizationParams,
 ): ResonanceStabilizationScoreResult {
-  const params = RESONANCE_STABILIZATION_PARAMS[tier];
-  const durationScore = Math.min(measurement.durationSec / params.durationSec, 1) * 100;
-  const score = Math.round(measurement.stabilityPct * 0.6 + durationScore * 0.4);
+  const durationScore =
+    Math.min(
+      measurement.durationSec /
+        params.durationSec,
+      1,
+    ) * 100;
 
-  return { score, passed: measurement.stabilityPct >= params.stabilityThreshold };
+  const score = Math.round(
+    measurement.stabilityPct * 0.6 +
+      durationScore * 0.4,
+  );
+
+  return {
+    score,
+    passed:
+      measurement.stabilityPct >=
+      params.stabilityThreshold,
+  };
 }

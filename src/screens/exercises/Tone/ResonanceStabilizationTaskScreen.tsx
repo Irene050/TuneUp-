@@ -21,13 +21,14 @@ import {
 } from 'react-native';
 
 import {
-  ResonanceBand,
   classifyResonanceBand,
+  ResonanceBand,
 } from '@/utils/dsp/spectral';
 
 import {
-  Tier,
   RESONANCE_STABILIZATION_PARAMS,
+  type ResonanceStabilizationParams,
+  type Tier,
 } from '@/constants/exercises/tone';
 
 import {
@@ -41,8 +42,8 @@ import {
 } from '@/services/measurement/tone/resonanceStabilizationTask';
 
 import {
-  scoreResonanceStabilizationTask,
   ResonanceStabilizationScoreResult,
+  scoreResonanceStabilizationTask,
 } from '@/services/scoring/tone/resonanceStabilizationTask';
 
 import {
@@ -50,8 +51,23 @@ import {
 } from '@/services/progress/exerciseProgressService';
 
 import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  generateResonanceStabilizationParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import {
   computeFFTMagnitudes,
 } from '@/utils/dsp/fft';
+
+import { auth } from '@/services/firebase/config';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -168,12 +184,22 @@ function getTargetForRepetition(
 }
 
 export default function ResonanceStabilizationTaskScreen({
-  tier = 'beginner',
+  tier,
 }: Props) {
-  const params =
-    RESONANCE_STABILIZATION_PARAMS[
-      tier
-    ];
+  const [currentTier, setCurrentTier] =
+    useState<Tier>(
+      tier ?? 'beginner'
+    );
+
+  const [params, setParams] =
+    useState<ResonanceStabilizationParams>(
+      RESONANCE_STABILIZATION_PARAMS[
+        tier ?? 'beginner'
+      ]
+    );
+
+  const [loadingParams, setLoadingParams] =
+    useState(true);
 
   const allowedBands =
     params.resonanceTypes;
@@ -309,9 +335,166 @@ export default function ResonanceStabilizationTaskScreen({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadAdaptiveParams() {
+      const user = auth.currentUser;
+
+      if (!user) {
+        if (!cancelled) {
+          const fallbackTier =
+            tier ?? 'beginner';
+
+          setCurrentTier(
+            fallbackTier
+          );
+
+          setParams(
+            RESONANCE_STABILIZATION_PARAMS[
+              fallbackTier
+            ]
+          );
+
+          setLoadingParams(false);
+        }
+
+        return;
+      }
+
+      try {
+        setLoadingParams(true);
+
+        const componentProgress =
+          await fetchComponentProgress(
+            user.uid,
+            'tone'
+          );
+
+        const resolvedTier =
+          tier ??
+          componentProgress?.currentTier ??
+          'beginner';
+
+        const records =
+          await fetchExerciseRecords(
+            user.uid,
+            'tone'
+          );
+
+        const currentTierRecords =
+          records
+            .filter(
+              record =>
+                record.tier ===
+                  resolvedTier &&
+                record.templateId ===
+                  'resonanceStabilizationTask'
+            )
+            .sort(
+              (a, b) =>
+                a.timestamp -
+                b.timestamp
+            );
+
+        let recentScores =
+          currentTierRecords
+            .slice(-5)
+            .map(
+              record =>
+                record.scorePct
+            );
+
+        if (
+          recentScores.length === 0
+        ) {
+          const assessment =
+            await getLatestAssessment();
+
+          const toneAssessment =
+            assessment?.scores.find(
+              score =>
+                score.componentId ===
+                'tone'
+            );
+
+          if (toneAssessment) {
+            recentScores = [
+              toneAssessment.scorePct,
+            ];
+          }
+        }
+
+        const generatedParams =
+          generateResonanceStabilizationParams({
+            tier: resolvedTier,
+            recentScores,
+          });
+
+        if (!cancelled) {
+          setCurrentTier(
+            resolvedTier
+          );
+
+          setParams(
+            generatedParams
+          );
+        }
+      } catch (error) {
+        console.error(
+          '❌ FAILED TO LOAD RESONANCE ADS PARAMS:',
+          error
+        );
+
+        if (!cancelled) {
+          const fallbackTier =
+            tier ?? 'beginner';
+
+          setCurrentTier(
+            fallbackTier
+          );
+
+          setParams(
+            RESONANCE_STABILIZATION_PARAMS[
+              fallbackTier
+            ]
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingParams(false);
+        }
+      }
+    }
+
+    void loadAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  useEffect(() => {
     selectedBandRef.current =
       selectedBand;
   }, [selectedBand]);
+
+  useEffect(() => {
+    const firstAllowedBand =
+      allowedBands[0] ?? 'chest';
+
+    if (
+      !allowedBands.includes(
+        selectedBandRef.current
+      )
+    ) {
+      selectedBandRef.current =
+        firstAllowedBand;
+
+      setSelectedBand(
+        firstAllowedBand
+      );
+    }
+  }, [allowedBands]);
 
   const clearTimers =
     useCallback(() => {
@@ -349,6 +532,8 @@ export default function ResonanceStabilizationTaskScreen({
         if (!mountedRef.current) {
           return;
         }
+
+        setLiveFrame(frame);
 
         const pitch =
           Number.isFinite(frame.pitch) &&
@@ -413,7 +598,7 @@ export default function ResonanceStabilizationTaskScreen({
         await saveCompletedExercise(
           'tone',
           'resonanceStabilizationTask',
-          tier,
+          currentTier,
           roundedScore
         );
 
@@ -427,7 +612,7 @@ export default function ResonanceStabilizationTaskScreen({
           'results'
         );
       },
-      [tier]
+      [currentTier]
     );
 
   const handleRecordingStop =
@@ -487,7 +672,7 @@ export default function ResonanceStabilizationTaskScreen({
           const scored =
             scoreResonanceStabilizationTask(
               measurement,
-              tier
+              params
             );
 
           const detectedBands =
@@ -645,8 +830,7 @@ export default function ResonanceStabilizationTaskScreen({
       [
         allowedBands,
         finishExercise,
-        params.repetitions,
-        tier,
+        params,
       ]
     );
 
@@ -830,7 +1014,8 @@ export default function ResonanceStabilizationTaskScreen({
         if (
           !mountedRef.current ||
           recordingRef.current ||
-          processingRef.current
+          processingRef.current ||
+          loadingParams
         ) {
           return;
         }
@@ -924,7 +1109,7 @@ export default function ResonanceStabilizationTaskScreen({
                     null;
                 }
 
-                beginRecording();
+                void beginRecording();
 
                 return;
               }
@@ -944,6 +1129,7 @@ export default function ResonanceStabilizationTaskScreen({
         allowedBands,
         beginRecording,
         clearTimers,
+        loadingParams,
       ]
     );
 
@@ -1069,6 +1255,55 @@ export default function ResonanceStabilizationTaskScreen({
           repetitionResults.length
         )
       : 0;
+
+  if (
+    loadingParams
+  ) {
+    return (
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
+        <View
+          style={
+            styles.iconCircle
+          }
+        >
+          <Ionicons
+            name="options-outline"
+            size={34}
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={
+            styles.phaseTitle
+          }
+        >
+          Preparing Your Exercise
+        </Text>
+
+        <Text
+          style={
+            styles.phaseSubtitle
+          }
+        >
+          Adjusting the exercise based on
+          your recent performance.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={
+            styles.processingIndicator
+          }
+        />
+      </View>
+    );
+  }
 
   if (
     phase ===
@@ -1364,7 +1599,7 @@ export default function ResonanceStabilizationTaskScreen({
               }
             >
               Available targets at this
-              difficulty:{" "}
+              difficulty:{' '}
               {allowedBands
                 .map(
                   bandLabel
@@ -1411,7 +1646,7 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.difficultyValue
               }
             >
-              {tier}
+              {currentTier}
             </Text>
           </View>
 
@@ -1575,10 +1810,10 @@ export default function ResonanceStabilizationTaskScreen({
             styles.phaseSubtitle
           }
         >
-          Prepare your{" "}
+          Prepare your{' '}
           {bandLabel(
             selectedBand
-          ).toLowerCase()}{" "}
+          ).toLowerCase()}{' '}
           resonance
         </Text>
 
@@ -1597,8 +1832,8 @@ export default function ResonanceStabilizationTaskScreen({
             styles.phaseSubtitle
           }
         >
-          Repetition{" "}
-          {repetition} /{" "}
+          Repetition{' '}
+          {repetition} /{' '}
           {params.repetitions}
         </Text>
       </View>
@@ -1656,8 +1891,7 @@ export default function ResonanceStabilizationTaskScreen({
             styles.largeBand
           }
         >
-          Next:
-          {" "}
+          Next:{' '}
           {bandLabel(
             selectedBand
           )}
@@ -1938,8 +2172,8 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.repetitionText
               }
             >
-              Repetition{" "}
-              {repetition} /{" "}
+              Repetition{' '}
+              {repetition} /{' '}
               {params.repetitions}
             </Text>
           </View>
@@ -2155,7 +2389,7 @@ export default function ResonanceStabilizationTaskScreen({
                         styles.repResultTarget
                       }
                     >
-                      Target:{" "}
+                      Target:{' '}
                       {bandLabel(
                         item.targetBand
                       )}
@@ -2166,7 +2400,7 @@ export default function ResonanceStabilizationTaskScreen({
                         styles.repResultDetected
                       }
                     >
-                      Detected indicator:{" "}
+                      Detected indicator:{' '}
                       {item.detectedBand
                         ? bandLabel(
                             item.detectedBand
@@ -2464,7 +2698,7 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: '#F2DDE5',
@@ -2475,7 +2709,7 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     borderRadius: 18,
     padding: 16,
-    marginBottom: 14,
+    marginTop: 18,
     borderWidth: 1,
     borderColor: '#F2DDE5',
   },

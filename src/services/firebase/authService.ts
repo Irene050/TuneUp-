@@ -1,17 +1,21 @@
 import {
-  confirmPasswordReset,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  type User,
+    confirmPasswordReset,
+    createUserWithEmailAndPassword,
+    deleteUser,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
+    sendPasswordResetEmail,
+    signInWithEmailAndPassword,
+    signOut,
+    updatePassword,
+    updateProfile,
+    type User,
 } from 'firebase/auth';
 
 import {
-  doc,
-  serverTimestamp,
-  writeBatch,
+    doc,
+    serverTimestamp,
+    writeBatch,
 } from 'firebase/firestore';
 
 import { auth, db } from './config';
@@ -258,4 +262,74 @@ export async function resetPassword(
 
 export async function logoutUser(): Promise<void> {
   await signOut(auth);
+}
+
+export async function updateCurrentUserProfile(
+  name: string,
+  photoURL?: string | null,
+): Promise<void> {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('You must be signed in to update your profile.');
+  }
+
+  const trimmedName = name.trim();
+
+  if (!trimmedName) {
+    throw new Error('Name is required.');
+  }
+
+  await updateProfile(user, {
+    displayName: trimmedName,
+    ...(photoURL === undefined ? {} : { photoURL }),
+  });
+}
+
+async function reauthenticateCurrentUser(
+  password: string,
+): Promise<User> {
+  const user = auth.currentUser;
+
+  if (!user?.email) {
+    throw new Error('Email/password authentication is required.');
+  }
+
+  if (!password) {
+    throw new Error('Current password is required.');
+  }
+
+  const credential = EmailAuthProvider.credential(
+    user.email,
+    password,
+  );
+
+  await reauthenticateWithCredential(user, credential);
+
+  return user;
+}
+
+export async function changeCurrentPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  if (newPassword.length < 6) {
+    throw new Error('New password must be at least 6 characters.');
+  }
+
+  const user = await reauthenticateCurrentUser(
+    currentPassword,
+  );
+
+  await updatePassword(user, newPassword);
+}
+
+export async function deleteCurrentAccount(
+  currentPassword: string,
+): Promise<void> {
+  const user = await reauthenticateCurrentUser(
+    currentPassword,
+  );
+
+  await deleteUser(user);
 }

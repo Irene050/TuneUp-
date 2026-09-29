@@ -1,3 +1,5 @@
+// src/screens/exercises/Agility/QuickIntervalJumpScreen.tsx
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -21,17 +23,19 @@ import {
   type Tier,
 } from '@/constants/exercises/agility';
 
-import {
-  measureQuickIntervalJump,
-} from '@/services/measurement/agility/quickIntervalJump';
+import { auth } from '@/services/firebase/config';
 
+import { measureQuickIntervalJump } from '@/services/measurement/agility/quickIntervalJump';
 import {
-  scoreQuickIntervalJump,
-} from '@/services/scoring/agility/quickIntervalJump';
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
 
-import {
-  frequencyToNoteName,
-} from '@/utils/music/notes';
+import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
+
+import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import { frequencyToNoteName } from '@/utils/music/notes';
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 
@@ -84,12 +88,32 @@ const sleep = (ms: number) =>
 // COMPONENT
 // ============================================================
 
-export default function QuickIntervalJumpScreen({
-  tier,
-}: {
-  tier: Tier;
-}) {
-  const config = QUICK_INTERVAL_JUMP_PARAMS[tier];
+export default function QuickIntervalJumpScreen() {
+  const [tier, setTier] =
+    useState<Tier>('beginner');
+
+  const [tierLoading, setTierLoading] =
+    useState(true);
+  // ----------------------------------------------------------
+  // BASE CONFIG
+  // ----------------------------------------------------------
+
+  const baseConfig =
+    QUICK_INTERVAL_JUMP_PARAMS[tier];
+
+  // ----------------------------------------------------------
+  // ADAPTIVE PARAMETERS
+  // ----------------------------------------------------------
+
+  const [
+    adaptiveConfig,
+    setAdaptiveConfig,
+  ] = useState(baseConfig);
+
+  const [
+    isLoadingAdaptiveParams,
+    setIsLoadingAdaptiveParams,
+  ] = useState(true);
 
   // ----------------------------------------------------------
   // STATE
@@ -143,9 +167,179 @@ export default function QuickIntervalJumpScreen({
   const processingRef =
     useRef(false);
 
-  // ----------------------------------------------------------
+    // ==========================================================
+// LOAD COMPONENT TIER
+// ==========================================================
+
+useEffect(() => {
+  let cancelled = false;
+
+  const loadComponentTier = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      if (!cancelled) {
+        setTier('beginner');
+        setTierLoading(false);
+      }
+
+      return;
+    }
+
+    try {
+      const progress =
+        await fetchComponentProgress(
+          user.uid,
+          'agility',
+        );
+
+      if (!cancelled) {
+        setTier(
+          (progress?.currentTier as Tier) ??
+            'beginner',
+        );
+      }
+    } catch (error) {
+      console.warn(
+        'Failed to load agility component tier:',
+        error,
+      );
+
+      if (!cancelled) {
+        setTier('beginner');
+      }
+    } finally {
+      if (!cancelled) {
+        setTierLoading(false);
+      }
+    }
+  };
+
+  void loadComponentTier();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+  // ==========================================================
+  // LOAD ADAPTIVE PARAMETERS
+  // ==========================================================
+
+useEffect(() => {
+  let cancelled = false;
+
+  const loadAdaptiveParameters =
+    async () => {
+      if (tierLoading) {
+        return;
+      }
+
+      setIsLoadingAdaptiveParams(true);
+
+        /*
+         * Always reset to the current tier's
+         * base parameters while loading.
+         *
+         * This prevents parameters from a previous
+         * tier from appearing temporarily.
+         */
+        const currentBaseParams =
+          QUICK_INTERVAL_JUMP_PARAMS[tier];
+
+        setAdaptiveConfig(
+          currentBaseParams,
+        );
+
+        const user =
+          auth.currentUser;
+
+        /*
+         * If there is no authenticated user,
+         * use the base parameters.
+         */
+        if (!user) {
+          if (!cancelled) {
+            setIsLoadingAdaptiveParams(false);
+          }
+
+          return;
+        }
+
+        try {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'agility',
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          /*
+           * Continuous ADS history:
+           *
+           * - component: agility
+           * - template: quickIntervalJump
+           * - tier: current tier
+           * - latest five completed exercise scores
+           *
+           * No assessment score is used here.
+           */
+          const recentScores =
+            records
+              .filter(
+                (exercise) =>
+                  exercise.templateId ===
+                    'quickIntervalJump' &&
+                  exercise.tier === tier,
+              )
+              .slice(-5)
+              .map(
+                (exercise) =>
+                  exercise.scorePct,
+              );
+
+          const generatedParams =
+            generateQuickIntervalJumpParams({
+              tier,
+              recentScores,
+            });
+
+          if (!cancelled) {
+            setAdaptiveConfig(
+              generatedParams,
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to load Quick Interval Jump adaptive parameters:',
+            error,
+          );
+
+          if (!cancelled) {
+            setAdaptiveConfig(
+              currentBaseParams,
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingAdaptiveParams(false);
+          }
+        }
+      };
+
+    void loadAdaptiveParameters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  // ==========================================================
   // CLEANUP
-  // ----------------------------------------------------------
+  // ==========================================================
 
   useEffect(() => {
     return () => {
@@ -159,9 +353,9 @@ export default function QuickIntervalJumpScreen({
     };
   }, []);
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // MICROPHONE PERMISSION
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const requestMicrophonePermission =
     async (): Promise<boolean> => {
@@ -175,9 +369,9 @@ export default function QuickIntervalJumpScreen({
       }
     };
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // REFERENCE PLAYBACK
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const playReference =
     async () => {
@@ -192,8 +386,32 @@ export default function QuickIntervalJumpScreen({
 
         await context.resume();
 
+        /*
+         * The current Quick Interval Jump
+         * configuration contains:
+         *
+         * - label
+         * - frequencies
+         * - speedLabel
+         * - accuracyThreshold
+         *
+         * It does NOT contain noteDurationSec
+         * or gapSec.
+         *
+         * Therefore reference timing is derived
+         * from the current tier.
+         */
+        const noteDurationSec =
+          tier === 'beginner'
+            ? 0.5
+            : tier === 'intermediate'
+              ? 0.4
+              : 0.3;
+
+        const gapSec = 0.1;
+
         for (
-          const frequency of config.frequencies
+          const frequency of adaptiveConfig.frequencies
         ) {
           const oscillator =
             context.createOscillator();
@@ -207,7 +425,9 @@ export default function QuickIntervalJumpScreen({
           gain.gain.value = 0.12;
 
           oscillator.connect(gain);
-          gain.connect(context.destination);
+          gain.connect(
+            context.destination,
+          );
 
           const startTime =
             context.currentTime;
@@ -215,10 +435,14 @@ export default function QuickIntervalJumpScreen({
           oscillator.start(startTime);
 
           oscillator.stop(
-            startTime + 0.3,
+            startTime +
+              noteDurationSec,
           );
 
-          await sleep(350);
+          await sleep(
+            noteDurationSec * 1000 +
+              gapSec * 1000,
+          );
         }
       } catch (error) {
         console.warn(
@@ -228,12 +452,16 @@ export default function QuickIntervalJumpScreen({
       }
     };
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // BEGIN EXERCISE
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const beginExercise =
     async () => {
+      if (isLoadingAdaptiveParams) {
+        return;
+      }
+
       const permission =
         await requestMicrophonePermission();
 
@@ -244,9 +472,9 @@ export default function QuickIntervalJumpScreen({
       setPhase('reference');
     };
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // START COUNTDOWN
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const startCountdown =
     async () => {
@@ -265,9 +493,9 @@ export default function QuickIntervalJumpScreen({
       await startRecording();
     };
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // START RECORDING
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const startRecording =
     async () => {
@@ -279,13 +507,15 @@ export default function QuickIntervalJumpScreen({
         const recorder =
           new AudioRecorder();
 
-        recorderRef.current = recorder;
+        recorderRef.current =
+          recorder;
 
         const callbackResult =
           recorder.onAudioReady(
             {
               sampleRate: SAMPLE_RATE,
-              bufferLength: BUFFER_SIZE,
+              bufferLength:
+                BUFFER_SIZE,
               channelCount: 1,
             },
             ({
@@ -294,7 +524,9 @@ export default function QuickIntervalJumpScreen({
             }) => {
               try {
                 const channelData =
-                  buffer.getChannelData(0);
+                  buffer.getChannelData(
+                    0,
+                  );
 
                 const frameCount =
                   Math.min(
@@ -323,7 +555,8 @@ export default function QuickIntervalJumpScreen({
             callbackResult.message,
           );
 
-          recorderRef.current = null;
+          recorderRef.current =
+            null;
 
           setPhase('instructions');
 
@@ -346,7 +579,8 @@ export default function QuickIntervalJumpScreen({
             recorder.clearOnAudioReady();
           } catch {}
 
-          recorderRef.current = null;
+          recorderRef.current =
+            null;
 
           setPhase('instructions');
 
@@ -396,9 +630,9 @@ export default function QuickIntervalJumpScreen({
       }
     };
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // STOP RECORDING
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const stopRecording =
     () => {
@@ -409,7 +643,8 @@ export default function QuickIntervalJumpScreen({
           recordingTimerRef.current,
         );
 
-        recordingTimerRef.current = null;
+        recordingTimerRef.current =
+          null;
       }
 
       if (recorderRef.current) {
@@ -421,132 +656,151 @@ export default function QuickIntervalJumpScreen({
           recorderRef.current.stop();
         } catch {}
 
-        recorderRef.current = null;
+        recorderRef.current =
+          null;
       }
     };
 
-  // ----------------------------------------------------------
-// PROCESS RECORDING
-// ----------------------------------------------------------
+  // ==========================================================
+  // PROCESS RECORDING
+  // ==========================================================
 
-const processRecording =
-  async () => {
-    if (processingRef.current) {
-      return;
-    }
-
-    processingRef.current = true;
-
-    stopRecording();
-
-    setPhase('processing');
-
-    await sleep(500);
-
-    try {
-      const samples =
-        new Float32Array(
-          samplesRef.current,
-        );
-
-      const measurement =
-        measureQuickIntervalJump(
-          samples,
-          SAMPLE_RATE,
-          config.frequencies,
-        );
-
-      const scored =
-        scoreQuickIntervalJump(
-          measurement,
-        );
-
-      const finalScore =
-        Math.round(scored.overall);
-
-      // ----------------------------------------------------
-      // SAVE PROGRESS
-      // ----------------------------------------------------
-
-      try {
-        await saveCompletedExercise(
-          'agility',
-          'quickIntervalJump',
-          tier,
-          finalScore,
-        );
-
-        console.log(
-          '💾 Quick Interval Jump progress saved:',
-          {
-            componentId: 'agility',
-            templateId: 'quickIntervalJump',
-            tier,
-            scorePct: finalScore,
-          },
-        );
-      } catch (saveError) {
-        console.error(
-          '❌ Failed to save Quick Interval Jump progress:',
-          saveError,
-        );
+  const processRecording =
+    async () => {
+      if (processingRef.current) {
+        return;
       }
 
-      // ----------------------------------------------------
-      // SET RESULTS
-      // ----------------------------------------------------
+      processingRef.current = true;
 
-      setResult({
-        overall: scored.overall,
-        pitchScore: scored.pitchScore,
-        intervalScore:
-          scored.intervalScore,
-        speedScore: scored.speedScore,
-        passed: scored.passed,
-        feedback: scored.feedback,
+      stopRecording();
 
-        noteCount:
-          measurement.noteCount,
+      setPhase('processing');
 
-        correctNoteCount:
-          measurement.correctNoteCount,
+      await sleep(500);
 
-        transitionCount:
-          measurement.transitionCount,
+      try {
+        const samples =
+          new Float32Array(
+            samplesRef.current,
+          );
 
-        correctTransitionCount:
-          measurement.correctTransitionCount,
+        const measurement =
+          measureQuickIntervalJump(
+            samples,
+            SAMPLE_RATE,
+            adaptiveConfig.frequencies,
+          );
 
-        averageTransitionTimeMs:
-          measurement.averageTransitionTimeMs,
+        const scored =
+          scoreQuickIntervalJump(
+            measurement,
+          );
 
-        durationMs:
-          measurement.durationMs,
-      });
+        const finalScore =
+          Math.round(
+            scored.overall,
+          );
 
-      setPhase('results');
-    } catch (error) {
-      console.warn(
-        'Processing failed:',
-        error,
-      );
+        // ------------------------------------------------------
+        // SAVE EXERCISE PROGRESS
+        // ------------------------------------------------------
 
-      processingRef.current = false;
+        try {
+          await saveCompletedExercise(
+            'agility',
+            'quickIntervalJump',
+            tier,
+            finalScore,
+          );
 
-      setPhase('instructions');
-    }
-  };
+          console.log(
+            '💾 Quick Interval Jump progress saved:',
+            {
+              componentId:
+                'agility',
+              templateId:
+                'quickIntervalJump',
+              tier,
+              scorePct:
+                finalScore,
+            },
+          );
+        } catch (saveError) {
+          console.error(
+            '❌ Failed to save Quick Interval Jump progress:',
+            saveError,
+          );
+        }
 
-  // ----------------------------------------------------------
+        // ------------------------------------------------------
+        // SET RESULTS
+        // ------------------------------------------------------
+
+        setResult({
+          overall:
+            scored.overall,
+
+          pitchScore:
+            scored.pitchScore,
+
+          intervalScore:
+            scored.intervalScore,
+
+          speedScore:
+            scored.speedScore,
+
+          passed:
+            scored.passed,
+
+          feedback:
+            scored.feedback,
+
+          noteCount:
+            measurement.noteCount,
+
+          correctNoteCount:
+            measurement.correctNoteCount,
+
+          transitionCount:
+            measurement.transitionCount,
+
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+
+          averageTransitionTimeMs:
+            measurement.averageTransitionTimeMs,
+
+          durationMs:
+            measurement.durationMs,
+        });
+
+        setPhase('results');
+      } catch (error) {
+        console.warn(
+          'Processing failed:',
+          error,
+        );
+
+        processingRef.current =
+          false;
+
+        setPhase('instructions');
+      }
+    };
+
+  // ==========================================================
   // RESET
-  // ----------------------------------------------------------
+  // ==========================================================
 
   const resetExercise =
     () => {
       processingRef.current = false;
 
       setResult(null);
+
       setRecordingTime(0);
+
       setCountdown(
         COUNTDOWN_SECONDS,
       );
@@ -556,9 +810,9 @@ const processRecording =
       setPhase('instructions');
     };
 
-  // ============================================================
+  // ==========================================================
   // INSTRUCTIONS
-  // ============================================================
+  // ==========================================================
 
   const renderInstructions =
     () => (
@@ -594,88 +848,139 @@ const processRecording =
         </Text>
 
         {/* Main Card */}
-        <View style={styles.instructionCard}>
-          <View style={styles.prepareCard}>
-            <View style={styles.prepareHeader}>
+        <View
+          style={styles.instructionCard}
+        >
+          <View
+            style={styles.prepareCard}
+          >
+            <View
+              style={styles.prepareHeader}
+            >
               <Ionicons
                 name="information-circle-outline"
                 size={21}
                 color={BROWN}
               />
 
-              <Text style={styles.prepareTitle}>
+              <Text
+                style={
+                  styles.prepareTitle
+                }
+              >
                 Before You Begin
               </Text>
             </View>
 
-            <View style={styles.prepareItem}>
+            <View
+              style={styles.prepareItem}
+            >
               <Ionicons
                 name="volume-mute-outline"
                 size={17}
                 color={BROWN}
               />
 
-              <Text style={styles.prepareText}>
+              <Text
+                style={
+                  styles.prepareText
+                }
+              >
                 Find a quiet area with minimal background noise.
               </Text>
             </View>
 
-            <View style={styles.prepareItem}>
+            <View
+              style={styles.prepareItem}
+            >
               <Ionicons
                 name="body-outline"
                 size={17}
                 color={BROWN}
               />
 
-              <Text style={styles.prepareText}>
+              <Text
+                style={
+                  styles.prepareText
+                }
+              >
                 Stand or sit upright with your shoulders relaxed.
               </Text>
             </View>
 
-            <View style={styles.prepareItem}>
+            <View
+              style={styles.prepareItem}
+            >
               <Ionicons
                 name="mic-outline"
                 size={17}
                 color={BROWN}
               />
 
-              <Text style={styles.prepareText}>
+              <Text
+                style={
+                  styles.prepareText
+                }
+              >
                 Keep a comfortable distance from the microphone while singing.
               </Text>
             </View>
           </View>
 
-          <Text style={styles.cardTitle}>
+          <Text
+            style={styles.cardTitle}
+          >
             Exercise Details
           </Text>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
+          <View
+            style={styles.detailRow}
+          >
+            <Text
+              style={styles.detailLabel}
+            >
               Difficulty
             </Text>
 
-            <Text style={styles.detailValue}>
-              {config.label}
+            <Text
+              style={styles.detailValue}
+            >
+              {adaptiveConfig.label}
             </Text>
           </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
+          <View
+            style={styles.detailRow}
+          >
+            <Text
+              style={styles.detailLabel}
+            >
               Speed
             </Text>
 
-            <Text style={styles.detailValue}>
-              {config.speedLabel}
+            <Text
+              style={styles.detailValue}
+            >
+              {adaptiveConfig.speedLabel}
             </Text>
           </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
+          <View
+            style={styles.detailRow}
+          >
+            <Text
+              style={styles.detailLabel}
+            >
               Notes
             </Text>
 
-            <Text style={styles.detailValue}>
-              {config.frequencies.length}
+            <Text
+              style={styles.detailValue}
+            >
+              {
+                adaptiveConfig
+                  .frequencies.length
+              }
             </Text>
           </View>
 
@@ -685,88 +990,137 @@ const processRecording =
               { marginTop: 14 },
             ]}
           >
-            Instructions
+            Exercise Instructions
           </Text>
 
-          <View style={styles.prepareItem}>
+          <View
+            style={styles.prepareItem}
+          >
             <Ionicons
               name="checkmark-circle-outline"
               size={17}
               color={BROWN}
             />
 
-            <Text style={styles.prepareText}>
+            <Text
+              style={
+                styles.prepareText
+              }
+            >
               Listen carefully to the reference note pattern.
             </Text>
           </View>
 
-          <View style={styles.prepareItem}>
+          <View
+            style={styles.prepareItem}
+          >
             <Ionicons
               name="checkmark-circle-outline"
               size={17}
               color={BROWN}
             />
 
-            <Text style={styles.prepareText}>
+            <Text
+              style={
+                styles.prepareText
+              }
+            >
               Identify each target pitch before singing.
             </Text>
           </View>
 
-          <View style={styles.prepareItem}>
+          <View
+            style={styles.prepareItem}
+          >
             <Ionicons
               name="checkmark-circle-outline"
               size={17}
               color={BROWN}
             />
 
-            <Text style={styles.prepareText}>
+            <Text
+              style={
+                styles.prepareText
+              }
+            >
               Sing each interval accurately and smoothly.
             </Text>
           </View>
 
-          <View style={styles.prepareItem}>
+          <View
+            style={styles.prepareItem}
+          >
             <Ionicons
               name="checkmark-circle-outline"
               size={17}
               color={BROWN}
             />
 
-            <Text style={styles.prepareText}>
+            <Text
+              style={
+                styles.prepareText
+              }
+            >
               Focus on clean pitch changes rather than forcing speed.
             </Text>
           </View>
         </View>
 
         {/* Reference Card */}
-        <View style={styles.referenceCard}>
-          <Text style={styles.cardTitle}>
+        <View
+          style={styles.referenceCard}
+        >
+          <Text
+            style={styles.cardTitle}
+          >
             Target Intervals
           </Text>
 
-          <Text style={styles.referenceLabel}>
+          <Text
+            style={styles.referenceLabel}
+          >
             NOTES TO REPRODUCE
           </Text>
 
-          <View style={styles.noteSequence}>
-            {config.frequencies.map(
-              (frequency, index) => (
+          <View
+            style={styles.noteSequence}
+          >
+            {adaptiveConfig.frequencies.map(
+              (
+                frequency,
+                index,
+              ) => (
                 <View
                   key={`${frequency}-${index}`}
-                  style={styles.notePill}
+                  style={
+                    styles.notePill
+                  }
                 >
-                  <Text style={styles.noteNumber}>
+                  <Text
+                    style={
+                      styles.noteNumber
+                    }
+                  >
                     {index + 1}
                   </Text>
 
-                  <Text style={styles.noteText}>
-  {frequencyToNoteName(frequency)}
-</Text>
+                  <Text
+                    style={
+                      styles.noteText
+                    }
+                  >
+                    {frequencyToNoteName(
+                      frequency,
+                    )}
+                  </Text>
                 </View>
               ),
             )}
           </View>
 
-          <Text style={styles.referenceHint}>
+          <Text
+            style={styles.referenceHint}
+          >
             The reference sequence will play before recording begins.
           </Text>
         </View>
@@ -785,41 +1139,67 @@ const processRecording =
         </View>
 
         {/* Difficulty */}
-        <View style={styles.difficultyRow}>
-          <Text style={styles.difficultyLabel}>
+        <View
+          style={styles.difficultyRow}
+        >
+          <Text
+            style={styles.difficultyLabel}
+          >
             Difficulty
           </Text>
 
-          <Text style={styles.difficultyValue}>
-            {config.label}
+          <Text
+            style={styles.difficultyValue}
+          >
+            {adaptiveConfig.label}
           </Text>
         </View>
 
         {/* Start */}
         <Pressable
-          style={styles.startButton}
+          style={[
+            styles.startButton,
+            isLoadingAdaptiveParams &&
+              styles.startButtonDisabled,
+          ]}
           onPress={beginExercise}
+          disabled={
+            isLoadingAdaptiveParams
+          }
         >
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
+          {isLoadingAdaptiveParams ? (
+            <ActivityIndicator
+              size="small"
+              color={WHITE}
+            />
+          ) : (
+            <Ionicons
+              name="play"
+              size={18}
+              color={WHITE}
+            />
+          )}
 
-          <Text style={styles.startButtonText}>
-            Start Exercise
+          <Text
+            style={styles.startButtonText}
+          >
+            {isLoadingAdaptiveParams
+              ? 'Preparing Exercise...'
+              : 'Start Exercise'}
           </Text>
         </Pressable>
       </View>
     );
 
-  // ============================================================
+  // ==========================================================
   // REFERENCE
-  // ============================================================
+  // ==========================================================
 
   const renderReference =
     () => (
-      <View style={styles.centerScreen}>
+      <View
+        style={styles.centerScreen}
+      >
         <View style={styles.iconCircle}>
           <Ionicons
             name="musical-notes-outline"
@@ -828,33 +1208,58 @@ const processRecording =
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Listen to the Sequence
         </Text>
 
-        <Text style={styles.phaseSubtitle}>
+        <Text
+          style={styles.phaseSubtitle}
+        >
           Pay attention to the pitch of each note and the size of the interval jumps.
         </Text>
 
-        <View style={styles.referenceCard}>
-          <Text style={styles.referenceLabel}>
+        <View
+          style={styles.referenceCard}
+        >
+          <Text
+            style={styles.referenceLabel}
+          >
             REFERENCE NOTES
           </Text>
 
-          <View style={styles.noteSequence}>
-            {config.frequencies.map(
-              (frequency, index) => (
+          <View
+            style={styles.noteSequence}
+          >
+            {adaptiveConfig.frequencies.map(
+              (
+                frequency,
+                index,
+              ) => (
                 <View
                   key={`${frequency}-${index}`}
-                  style={styles.notePill}
+                  style={
+                    styles.notePill
+                  }
                 >
-                  <Text style={styles.noteNumber}>
+                  <Text
+                    style={
+                      styles.noteNumber
+                    }
+                  >
                     {index + 1}
                   </Text>
 
-                  <Text style={styles.noteText}>
-  {frequencyToNoteName(frequency)}
-</Text>
+                  <Text
+                    style={
+                      styles.noteText
+                    }
+                  >
+                    {frequencyToNoteName(
+                      frequency,
+                    )}
+                  </Text>
                 </View>
               ),
             )}
@@ -871,7 +1276,9 @@ const processRecording =
             color={WHITE}
           />
 
-          <Text style={styles.startButtonText}>
+          <Text
+            style={styles.startButtonText}
+          >
             Play Reference
           </Text>
         </Pressable>
@@ -880,20 +1287,24 @@ const processRecording =
           style={styles.doneButton}
           onPress={startCountdown}
         >
-          <Text style={styles.doneButtonText}>
+          <Text
+            style={styles.doneButtonText}
+          >
             Continue
           </Text>
         </Pressable>
       </View>
     );
 
-  // ============================================================
+  // ==========================================================
   // COUNTDOWN
-  // ============================================================
+  // ==========================================================
 
   const renderCountdown =
     () => (
-      <View style={styles.centerScreen}>
+      <View
+        style={styles.centerScreen}
+      >
         <View style={styles.iconCircle}>
           <Ionicons
             name="flash-outline"
@@ -902,23 +1313,29 @@ const processRecording =
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Get Ready
         </Text>
 
-        <Text style={styles.countdownText}>
+        <Text
+          style={styles.countdownText}
+        >
           {countdown}
         </Text>
 
-        <Text style={styles.phaseSubtitle}>
+        <Text
+          style={styles.phaseSubtitle}
+        >
           Prepare for the interval jumps.
         </Text>
       </View>
     );
 
-  // ============================================================
+  // ==========================================================
   // RECORDING
-  // ============================================================
+  // ==========================================================
 
   const renderRecording =
     () => {
@@ -930,7 +1347,9 @@ const processRecording =
 
       return (
         <View style={styles.content}>
-          <View style={styles.recordingIcon}>
+          <View
+            style={styles.recordingIcon}
+          >
             <Ionicons
               name="mic"
               size={34}
@@ -938,61 +1357,112 @@ const processRecording =
             />
           </View>
 
-          <Text style={styles.recordingTitle}>
+          <Text
+            style={styles.recordingTitle}
+          >
             Jump Between Notes
           </Text>
 
-          <Text style={styles.recordingSubtitle}>
+          <Text
+            style={styles.recordingSubtitle}
+          >
             Sing each target note clearly and make each interval change precise.
           </Text>
 
-          <View style={styles.recordingBadge}>
-            <View style={styles.recordingDot} />
+          <View
+            style={styles.recordingBadge}
+          >
+            <View
+              style={styles.recordingDot}
+            />
 
-            <Text style={styles.recordingBadgeText}>
+            <Text
+              style={
+                styles.recordingBadgeText
+              }
+            >
               RECORDING
             </Text>
           </View>
 
-          <View style={styles.liveCard}>
-            <Text style={styles.liveLabel}>
+          <View
+            style={styles.liveCard}
+          >
+            <Text
+              style={styles.liveLabel}
+            >
               RECORDING TIME
             </Text>
 
-            <Text style={styles.liveCurrentNote}>
+            <Text
+              style={styles.liveCurrentNote}
+            >
               {recordingTime.toFixed(1)}s
             </Text>
 
-            <View style={styles.liveDivider} />
+            <View
+              style={styles.liveDivider}
+            />
 
-            <View style={styles.liveStats}>
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>
+            <View
+              style={styles.liveStats}
+            >
+              <View
+                style={styles.liveStat}
+              >
+                <Text
+                  style={
+                    styles.liveStatLabel
+                  }
+                >
                   Target Notes
                 </Text>
 
-                <Text style={styles.liveStatValue}>
-                  {config.frequencies.length}
+                <Text
+                  style={
+                    styles.liveStatValue
+                  }
+                >
+                  {
+                    adaptiveConfig
+                      .frequencies
+                      .length
+                  }
                 </Text>
               </View>
 
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>
+              <View
+                style={styles.liveStat}
+              >
+                <Text
+                  style={
+                    styles.liveStatLabel
+                  }
+                >
                   Max Time
                 </Text>
 
-                <Text style={styles.liveStatValue}>
+                <Text
+                  style={
+                    styles.liveStatValue
+                  }
+                >
                   {MAX_RECORDING_SECONDS}s
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.timerText}>
-            Recording Time: {recordingTime.toFixed(1)}s
+          <Text
+            style={styles.timerText}
+          >
+            Recording Time:{' '}
+            {recordingTime.toFixed(1)}s
           </Text>
 
-          <View style={styles.timerTrack}>
+          <View
+            style={styles.timerTrack}
+          >
             <View
               style={[
                 styles.timerFill,
@@ -1003,25 +1473,46 @@ const processRecording =
             />
           </View>
 
-          <View style={styles.referenceCard}>
-            <Text style={styles.cardTitle}>
+          <View
+            style={styles.referenceCard}
+          >
+            <Text
+              style={styles.cardTitle}
+            >
               Sing This Sequence
             </Text>
 
-            <View style={styles.noteSequence}>
-              {config.frequencies.map(
-                (frequency, index) => (
+            <View
+              style={styles.noteSequence}
+            >
+              {adaptiveConfig.frequencies.map(
+                (
+                  frequency,
+                  index,
+                ) => (
                   <View
                     key={`${frequency}-${index}`}
-                    style={styles.notePill}
+                    style={
+                      styles.notePill
+                    }
                   >
-                    <Text style={styles.noteNumber}>
+                    <Text
+                      style={
+                        styles.noteNumber
+                      }
+                    >
                       {index + 1}
                     </Text>
 
-                    <Text style={styles.noteText}>
-  {frequencyToNoteName(frequency)}
-</Text>
+                    <Text
+                      style={
+                        styles.noteText
+                      }
+                    >
+                      {frequencyToNoteName(
+                        frequency,
+                      )}
+                    </Text>
                   </View>
                 ),
               )}
@@ -1030,7 +1521,9 @@ const processRecording =
 
           <Pressable
             style={styles.finishButton}
-            onPress={processRecording}
+            onPress={
+              processRecording
+            }
           >
             <Ionicons
               name="stop"
@@ -1038,7 +1531,11 @@ const processRecording =
               color={BROWN}
             />
 
-            <Text style={styles.finishButtonText}>
+            <Text
+              style={
+                styles.finishButtonText
+              }
+            >
               Finish Recording
             </Text>
           </Pressable>
@@ -1046,13 +1543,15 @@ const processRecording =
       );
     };
 
-  // ============================================================
+  // ==========================================================
   // PROCESSING
-  // ============================================================
+  // ==========================================================
 
   const renderProcessing =
     () => (
-      <View style={styles.centerScreen}>
+      <View
+        style={styles.centerScreen}
+      >
         <View style={styles.iconCircle}>
           <ActivityIndicator
             size="large"
@@ -1060,19 +1559,23 @@ const processRecording =
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Analyzing Your Singing
         </Text>
 
-        <Text style={styles.phaseSubtitle}>
+        <Text
+          style={styles.phaseSubtitle}
+        >
           Measuring pitch accuracy, interval accuracy, and transition speed.
         </Text>
       </View>
     );
 
-  // ============================================================
+  // ==========================================================
   // RESULTS
-  // ============================================================
+  // ==========================================================
 
   const renderResults =
     () => {
@@ -1081,7 +1584,9 @@ const processRecording =
       }
 
       return (
-        <View style={styles.resultsContent}>
+        <View
+          style={styles.resultsContent}
+        >
           <View
             style={[
               styles.resultIcon,
@@ -1101,49 +1606,92 @@ const processRecording =
             />
           </View>
 
-          <Text style={styles.resultTitle}>
+          <Text
+            style={styles.resultTitle}
+          >
             {result.passed
               ? 'Great Job!'
               : 'Keep Practicing!'}
           </Text>
 
-          <Text style={styles.resultSubtitle}>
+          <Text
+            style={styles.resultSubtitle}
+          >
             Quick Interval Jump Result
           </Text>
 
           {/* Overall */}
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>
+          <View
+            style={styles.scoreCard}
+          >
+            <Text
+              style={styles.scoreLabel}
+            >
               OVERALL SCORE
             </Text>
 
-            <Text style={styles.scoreValue}>
-              {Math.round(result.overall)}
+            <Text
+              style={styles.scoreValue}
+            >
+              {Math.round(
+                result.overall,
+              )}
             </Text>
 
-            <Text style={styles.scoreDescription}>
+            <Text
+              style={
+                styles.scoreDescription
+              }
+            >
               out of 100
             </Text>
           </View>
 
           {/* Breakdown */}
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
+          <View
+            style={styles.resultCard}
+          >
+            <Text
+              style={
+                styles.resultCardTitle
+              }
+            >
               Performance Breakdown
             </Text>
 
-            <View style={styles.scoreRow}>
-              <View style={styles.scoreRowHeader}>
-                <Text style={styles.scoreRowLabel}>
+            <View
+              style={styles.scoreRow}
+            >
+              <View
+                style={
+                  styles.scoreRowHeader
+                }
+              >
+                <Text
+                  style={
+                    styles.scoreRowLabel
+                  }
+                >
                   Pitch Accuracy
                 </Text>
 
-                <Text style={styles.scoreRowValue}>
-                  {Math.round(result.pitchScore)}%
+                <Text
+                  style={
+                    styles.scoreRowValue
+                  }
+                >
+                  {Math.round(
+                    result.pitchScore,
+                  )}
+                  %
                 </Text>
               </View>
 
-              <View style={styles.progressBackground}>
+              <View
+                style={
+                  styles.progressBackground
+                }
+              >
                 <View
                   style={[
                     styles.progressFill,
@@ -1161,13 +1709,27 @@ const processRecording =
               </View>
             </View>
 
-            <View style={styles.scoreRow}>
-              <View style={styles.scoreRowHeader}>
-                <Text style={styles.scoreRowLabel}>
+            <View
+              style={styles.scoreRow}
+            >
+              <View
+                style={
+                  styles.scoreRowHeader
+                }
+              >
+                <Text
+                  style={
+                    styles.scoreRowLabel
+                  }
+                >
                   Interval Accuracy
                 </Text>
 
-                <Text style={styles.scoreRowValue}>
+                <Text
+                  style={
+                    styles.scoreRowValue
+                  }
+                >
                   {Math.round(
                     result.intervalScore,
                   )}
@@ -1175,7 +1737,11 @@ const processRecording =
                 </Text>
               </View>
 
-              <View style={styles.progressBackground}>
+              <View
+                style={
+                  styles.progressBackground
+                }
+              >
                 <View
                   style={[
                     styles.progressFill,
@@ -1193,13 +1759,27 @@ const processRecording =
               </View>
             </View>
 
-            <View style={styles.scoreRowLast}>
-              <View style={styles.scoreRowHeader}>
-                <Text style={styles.scoreRowLabel}>
+            <View
+              style={styles.scoreRowLast}
+            >
+              <View
+                style={
+                  styles.scoreRowHeader
+                }
+              >
+                <Text
+                  style={
+                    styles.scoreRowLabel
+                  }
+                >
                   Transition Speed
                 </Text>
 
-                <Text style={styles.scoreRowValue}>
+                <Text
+                  style={
+                    styles.scoreRowValue
+                  }
+                >
                   {Math.round(
                     result.speedScore,
                   )}
@@ -1207,7 +1787,11 @@ const processRecording =
                 </Text>
               </View>
 
-              <View style={styles.progressBackground}>
+              <View
+                style={
+                  styles.progressBackground
+                }
+              >
                 <View
                   style={[
                     styles.progressFill,
@@ -1227,40 +1811,70 @@ const processRecording =
           </View>
 
           {/* Metrics */}
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
+          <View
+            style={styles.resultCard}
+          >
+            <Text
+              style={
+                styles.resultCardTitle
+              }
+            >
               Performance Metrics
             </Text>
 
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>
+            <View
+              style={styles.metricRow}
+            >
+              <Text
+                style={styles.metricLabel}
+              >
                 Correct Notes
               </Text>
 
-              <Text style={styles.metricValue}>
+              <Text
+                style={styles.metricValue}
+              >
                 {result.correctNoteCount}/
                 {result.noteCount}
               </Text>
             </View>
 
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>
+            <View
+              style={styles.metricRow}
+            >
+              <Text
+                style={styles.metricLabel}
+              >
                 Correct Jumps
               </Text>
 
-              <Text style={styles.metricValue}>
-                {result.correctTransitionCount}/
-                {result.transitionCount}
+              <Text
+                style={styles.metricValue}
+              >
+                {
+                  result.correctTransitionCount
+                }
+                /
+                {
+                  result.transitionCount
+                }
               </Text>
             </View>
 
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>
+            <View
+              style={styles.metricRow}
+            >
+              <Text
+                style={styles.metricLabel}
+              >
                 Average Transition
               </Text>
 
-              <Text style={styles.metricValue}>
-                {result.averageTransitionTimeMs > 0
+              <Text
+                style={styles.metricValue}
+              >
+                {result.averageTransitionTimeMs >
+                0
                   ? result.averageTransitionTimeMs.toFixed(
                       0,
                     )
@@ -1275,13 +1889,18 @@ const processRecording =
                 styles.metricRowLast,
               ]}
             >
-              <Text style={styles.metricLabel}>
+              <Text
+                style={styles.metricLabel}
+              >
                 Duration
               </Text>
 
-              <Text style={styles.metricValue}>
+              <Text
+                style={styles.metricValue}
+              >
                 {(
-                  result.durationMs / 1000
+                  result.durationMs /
+                  1000
                 ).toFixed(1)}
                 s
               </Text>
@@ -1312,7 +1931,11 @@ const processRecording =
               color={WHITE}
             />
 
-            <Text style={styles.startButtonText}>
+            <Text
+              style={
+                styles.startButtonText
+              }
+            >
               Try Again
             </Text>
           </Pressable>
@@ -1326,7 +1949,11 @@ const processRecording =
               )
             }
           >
-            <Text style={styles.doneButtonText}>
+            <Text
+              style={
+                styles.doneButtonText
+              }
+            >
               Done
             </Text>
           </Pressable>
@@ -1334,9 +1961,9 @@ const processRecording =
       );
     };
 
-  // ============================================================
+  // ==========================================================
   // MAIN RENDER
-  // ============================================================
+  // ==========================================================
 
   return (
     <ScrollView
@@ -1346,7 +1973,9 @@ const processRecording =
           ? styles.resultsWrapper
           : undefined
       }
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={
+        false
+      }
     >
       {phase === 'instructions' &&
         renderInstructions()}
@@ -1374,9 +2003,9 @@ const processRecording =
 // ============================================================
 
 const styles = StyleSheet.create({
-  // ============================================================
+  // ==========================================================
   // SCREEN
-  // ============================================================
+  // ==========================================================
 
   screen: {
     flex: 1,
@@ -1414,9 +2043,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  // ============================================================
+  // ==========================================================
   // BACK
-  // ============================================================
+  // ==========================================================
 
   backButton: {
     position: 'absolute',
@@ -1431,9 +2060,9 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  // ============================================================
+  // ==========================================================
   // GENERAL HEADER
-  // ============================================================
+  // ==========================================================
 
   iconCircle: {
     width: 76,
@@ -1478,14 +2107,14 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
 
-  // ============================================================
+  // ==========================================================
   // INSTRUCTIONS
-  // ============================================================
+  // ==========================================================
 
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,
@@ -1559,9 +2188,9 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
 
-  // ============================================================
+  // ==========================================================
   // REFERENCE
-  // ============================================================
+  // ==========================================================
 
   referenceCard: {
     width: '100%',
@@ -1620,9 +2249,9 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ============================================================
+  // ==========================================================
   // TIP
-  // ============================================================
+  // ==========================================================
 
   tipCard: {
     width: '100%',
@@ -1645,9 +2274,9 @@ const styles = StyleSheet.create({
     marginLeft: 9,
   },
 
-  // ============================================================
+  // ==========================================================
   // DIFFICULTY
-  // ============================================================
+  // ==========================================================
 
   difficultyRow: {
     width: '100%',
@@ -1670,9 +2299,9 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ============================================================
+  // ==========================================================
   // BUTTONS
-  // ============================================================
+  // ==========================================================
 
   startButton: {
     width: '100%',
@@ -1684,6 +2313,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginTop: 14,
+  },
+
+  startButtonDisabled: {
+    opacity: 0.65,
   },
 
   startButtonText: {
@@ -1726,9 +2359,9 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ============================================================
+  // ==========================================================
   // COUNTDOWN
-  // ============================================================
+  // ==========================================================
 
   countdownText: {
     fontFamily: 'FredokaBold',
@@ -1737,9 +2370,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 
-  // ============================================================
+  // ==========================================================
   // RECORDING
-  // ============================================================
+  // ==========================================================
 
   recordingIcon: {
     width: 76,
@@ -1873,9 +2506,9 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
   },
 
-  // ============================================================
+  // ==========================================================
   // RESULTS
-  // ============================================================
+  // ==========================================================
 
   resultIcon: {
     width: 82,

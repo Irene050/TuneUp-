@@ -16,6 +16,7 @@ export function useAuth() {
         loading,    
         userId: user?.uid ?? null,    
         userName: user?.displayName ?? 'Singer',    
+        userPhotoURL: user?.photoURL ?? null,
         userEmail: user?.email ?? '',  
     };
 }

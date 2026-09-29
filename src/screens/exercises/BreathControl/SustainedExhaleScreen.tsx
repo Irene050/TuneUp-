@@ -5,7 +5,6 @@ import { router } from 'expo-router';
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -19,25 +18,36 @@ import {
 } from 'react-native';
 
 import {
-  SUSTAINED_EXHALE_PARAMS,
-  Tier,
+  type SustainedExhaleParams,
+  type Tier,
 } from '@/constants/exercises/breathControl';
 
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 import {
   measureSustainedExhale,
-  SustainedExhaleMeasurement,
+  type SustainedExhaleMeasurement,
 } from '@/services/measurement/breathControl/sustainedExhale';
 
 import {
   scoreSustainedExhale,
-  SustainedExhaleScoreResult,
+  type SustainedExhaleScoreResult,
 } from '@/services/scoring/breathControl/sustainedExhale';
 
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+
+import { auth } from '@/services/firebase/config';
+
 import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+
+import {
+  generateSustainedExhaleParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -64,12 +74,28 @@ interface SustainedExhaleScreenProps {
 }
 
 export default function SustainedExhaleScreen({
-  tier = 'beginner',
+  tier: initialTier,
 }: SustainedExhaleScreenProps) {
-  const params = useMemo(
-    () => SUSTAINED_EXHALE_PARAMS[tier],
-    [tier]
-  );
+  // ----------------------------------------------------------
+  // ADS INITIALIZATION STATE
+  // ----------------------------------------------------------
+
+  const [tier, setTier] =
+    useState<Tier | null>(
+      initialTier ?? null
+    );
+
+  const [params, setParams] =
+    useState<SustainedExhaleParams | null>(
+      null
+    );
+
+  const [loadingParams, setLoadingParams] =
+    useState(true);
+
+  // ----------------------------------------------------------
+  // EXERCISE STATE
+  // ----------------------------------------------------------
 
   const [screen, setScreen] =
     useState<Screen>('instructions');
@@ -95,13 +121,22 @@ export default function SustainedExhaleScreen({
   const [error, setError] =
     useState<string | null>(null);
 
-  const mountedRef = useRef(true);
+  // ----------------------------------------------------------
+  // REFS
+  // ----------------------------------------------------------
+
+  const mountedRef =
+    useRef(true);
 
   const countdownTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null
+    );
 
   const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null
+    );
 
   const startingRef =
     useRef(false);
@@ -118,232 +153,519 @@ export default function SustainedExhaleScreen({
   const repResultsRef =
     useRef<RepResult[]>([]);
 
-  const clearTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  }, []);
+  // ----------------------------------------------------------
+  // ADAPTIVE DIFFICULTY INITIALIZATION
+  // ----------------------------------------------------------
 
   useEffect(() => {
-    mountedRef.current = true;
+    let cancelled = false;
+
+    async function initializeAdaptiveExercise() {
+      try {
+        setLoadingParams(true);
+
+        /*
+         * Resolve the user's current tier.
+         *
+         * If a tier was explicitly supplied by the route,
+         * use that tier directly.
+         *
+         * Otherwise, retrieve the current Breath Control
+         * tier from the user's progress record.
+         */
+        let currentTier: Tier =
+          initialTier ?? 'beginner';
+
+        if (!initialTier) {
+          const user =
+            auth.currentUser;
+
+          if (user) {
+            const progress =
+              await fetchComponentProgress(
+                user.uid,
+                'breathControl'
+              );
+
+            currentTier =
+              progress?.currentTier ??
+              'beginner';
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * Retrieve completed Breath Control
+         * exercise history.
+         *
+         * ADS uses the latest five completed
+         * exercises from the CURRENT tier,
+         * regardless of which Breath Control
+         * template they came from.
+         */
+        let recentScores: number[] =
+          [];
+
+        const user =
+          auth.currentUser;
+
+        if (user) {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'breathControl'
+            );
+
+          const currentExerciseRecords =
+  records.filter(
+    record =>
+      record.templateId ===
+        'sustainedExhale' &&
+      record.tier ===
+        currentTier
+  );
+
+recentScores =
+  currentExerciseRecords
+    .slice(-5)
+    .map(
+      record =>
+        record.scorePct
+    );
+
+          /*
+           * If there is no completed exercise
+           * history for the current tier, use the
+           * corresponding Initial Assessment
+           * component score as the initial ADS
+           * reference.
+           */
+          if (
+            recentScores.length === 0
+          ) {
+            const assessment =
+              await getLatestAssessment();
+
+            const assessmentScore =
+              assessment?.scores.find(
+                score =>
+                  score.componentId ===
+                  'breathControl'
+              )?.scorePct;
+
+            if (
+              typeof assessmentScore ===
+              'number'
+            ) {
+              recentScores = [
+                assessmentScore,
+              ];
+            }
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * Generate the actual parameters for
+         * this Sustained Exhale session.
+         *
+         * The generator:
+         * - uses the latest five exercise scores
+         *   when available;
+         * - otherwise uses the Initial Assessment
+         *   component score;
+         * - otherwise returns the current tier's
+         *   default parameters unchanged.
+         */
+        const generatedParams =
+          generateSustainedExhaleParams({
+            tier: currentTier,
+            recentScores,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setTier(currentTier);
+        setParams(generatedParams);
+
+        console.log(
+          '🎯 Sustained Exhale adaptive parameters:',
+          {
+            tier: currentTier,
+            recentScores,
+            generatedParams,
+          }
+        );
+      } catch (
+        initializationError
+      ) {
+        console.error(
+          'Failed to initialize Sustained Exhale ADS:',
+          initializationError
+        );
+
+        if (!cancelled) {
+          /*
+           * Safe fallback:
+           * use the explicitly supplied tier,
+           * or Beginner if no tier was supplied.
+           *
+           * Empty history means no adaptive
+           * adjustment is applied.
+           */
+          const fallbackTier: Tier =
+            initialTier ??
+            'beginner';
+
+          const fallbackParams =
+            generateSustainedExhaleParams({
+              tier: fallbackTier,
+              recentScores: [],
+            });
+
+          setTier(fallbackTier);
+          setParams(fallbackParams);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingParams(false);
+        }
+      }
+    }
+
+    initializeAdaptiveExercise();
 
     return () => {
-      mountedRef.current = false;
+      cancelled = true;
+    };
+  }, [initialTier]);
+
+  // ----------------------------------------------------------
+  // TIMER CLEANUP
+  // ----------------------------------------------------------
+
+  const clearTimers =
+    useCallback(() => {
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current
+        );
+
+        countdownTimerRef.current =
+          null;
+      }
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current
+        );
+
+        recordingTimerRef.current =
+          null;
+      }
+    }, []);
+
+  // ----------------------------------------------------------
+  // MOUNT / UNMOUNT
+  // ----------------------------------------------------------
+
+  useEffect(() => {
+    mountedRef.current =
+      true;
+
+    return () => {
+      mountedRef.current =
+        false;
+
       clearTimers();
     };
   }, [clearTimers]);
 
-  const changeScreen = useCallback(
-    (nextScreen: Screen) => {
-      screenRef.current = nextScreen;
+  // ----------------------------------------------------------
+  // SCREEN CONTROL
+  // ----------------------------------------------------------
 
-      if (mountedRef.current) {
-        setScreen(nextScreen);
-      }
-    },
-    []
-  );
+  const changeScreen =
+    useCallback(
+      (nextScreen: Screen) => {
+        screenRef.current =
+          nextScreen;
+
+        if (
+          mountedRef.current
+        ) {
+          setScreen(nextScreen);
+        }
+      },
+      []
+    );
 
   // ----------------------------------------------------------
   // LIVE AUDIO
   // ----------------------------------------------------------
 
-  const handleLiveFrame = useCallback(
-    (frame: {
-      pitch: number | null;
-      note: string | null;
-      clarity: number;
-      volume: number;
-      stability: number;
-    }) => {
-      if (!mountedRef.current) return;
+  const handleLiveFrame =
+    useCallback(
+      (frame: {
+        pitch: number | null;
+        note: string | null;
+        clarity: number;
+        volume: number;
+        stability: number;
+      }) => {
+        if (
+          !mountedRef.current
+        ) {
+          return;
+        }
 
-      setLiveVolume(frame.volume);
-    },
-    []
-  );
+        setLiveVolume(
+          frame.volume
+        );
+      },
+      []
+    );
 
   // ----------------------------------------------------------
   // RECORDING STOP / ANALYSIS
   // ----------------------------------------------------------
 
-  const handleRecordingStop = useCallback(
-    async (
-      samples: Float32Array,
-      sampleRate: number
-    ) => {
-      if (!mountedRef.current) return;
-
-      clearTimers();
-
-      if (finishingRef.current) {
-        return;
-      }
-
-      finishingRef.current = true;
-
-      changeScreen('processing');
-
-      try {
-        const measurement =
-          measureSustainedExhale(
-            samples,
-            params.detectionThreshold,
-            sampleRate
-          );
-
-        const score =
-          scoreSustainedExhale(
-            measurement,
-            tier
-          );
-
-        const result: RepResult = {
-          measurement,
-          score,
-        };
-
-        const updatedResults = [
-          ...repResultsRef.current,
-          result,
-        ];
-
-        repResultsRef.current =
-          updatedResults;
-
-        if (!mountedRef.current) {
+  const handleRecordingStop =
+    useCallback(
+      async (
+        samples: Float32Array,
+        sampleRate: number
+      ) => {
+        if (
+          !mountedRef.current
+        ) {
           return;
         }
 
-        setRepResults(updatedResults);
+        clearTimers();
 
-        const isFinalRep =
-          currentRepRef.current >=
-          params.repetitions;
+        if (
+          finishingRef.current
+        ) {
+          return;
+        }
 
-        // ----------------------------------------------------
-        // FINAL REP
-        // ----------------------------------------------------
+        if (
+          !params ||
+          !tier
+        ) {
+          return;
+        }
 
-        if (isFinalRep) {
-          const totalScore =
-            updatedResults.length > 0
-              ? Math.round(
-                  updatedResults.reduce(
-                    (sum, item) =>
-                      sum + item.score.score,
-                    0
-                  ) / updatedResults.length
-                )
-              : 0;
+        finishingRef.current =
+          true;
 
-          setOverallScore(
-            totalScore
-          );
+        changeScreen(
+          'processing'
+        );
+
+        try {
+          const measurement =
+            measureSustainedExhale(
+              samples,
+              params.detectionThreshold,
+              sampleRate
+            );
 
           /*
-           * Save ONE exercise record after
-           * all repetitions have been completed.
-           *
-           * We save the overall exercise score,
-           * not the score of only the final repetition.
+           * IMPORTANT:
+           * Score against the generated ADS
+           * parameters for this session,
+           * not the static tier constants.
            */
-          try {
-            await saveCompletedExercise(
-              'breathControl',
-              'sustainedExhale',
-              tier,
-              totalScore
+          const score =
+            scoreSustainedExhale(
+              measurement,
+              params
             );
-          } catch (saveError) {
-            console.error(
-              'Failed to save Sustained Exhale progress:',
-              saveError
-            );
-          }
 
-          if (!mountedRef.current) {
+          const result: RepResult = {
+            measurement,
+            score,
+          };
+
+          const updatedResults = [
+            ...repResultsRef.current,
+            result,
+          ];
+
+          repResultsRef.current =
+            updatedResults;
+
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
-          setTimeout(() => {
-            if (!mountedRef.current) {
+          setRepResults(
+            updatedResults
+          );
+
+          const isFinalRep =
+            currentRepRef.current >=
+            params.repetitions;
+
+          // --------------------------------------------------
+          // FINAL REP
+          // --------------------------------------------------
+
+          if (isFinalRep) {
+            const totalScore =
+              updatedResults.length > 0
+                ? Math.round(
+                    updatedResults.reduce(
+                      (
+                        sum,
+                        item
+                      ) =>
+                        sum +
+                        item.score
+                          .score,
+                      0
+                    ) /
+                      updatedResults.length
+                  )
+                : 0;
+
+            setOverallScore(
+              totalScore
+            );
+
+            /*
+             * Save ONE exercise record after
+             * all repetitions have been completed.
+             *
+             * The saved score is the overall
+             * exercise score.
+             */
+            try {
+              await saveCompletedExercise(
+                'breathControl',
+                'sustainedExhale',
+                tier,
+                totalScore
+              );
+            } catch (
+              saveError
+            ) {
+              console.error(
+                'Failed to save Sustained Exhale progress:',
+                saveError
+              );
+            }
+
+            if (
+              !mountedRef.current
+            ) {
               return;
             }
 
-            finishingRef.current = false;
+            setTimeout(() => {
+              if (
+                !mountedRef.current
+              ) {
+                return;
+              }
 
-            changeScreen(
-              'results'
-            );
-          }, 500);
+              finishingRef.current =
+                false;
 
-          return;
-        }
+              changeScreen(
+                'results'
+              );
+            }, 500);
 
-        // ----------------------------------------------------
-        // NEXT REP
-        // ----------------------------------------------------
-
-        const nextRep =
-          currentRepRef.current + 1;
-
-        currentRepRef.current =
-          nextRep;
-
-        setCurrentRep(nextRep);
-
-        setTimeout(() => {
-          if (!mountedRef.current) {
             return;
           }
 
-          finishingRef.current = false;
+          // --------------------------------------------------
+          // NEXT REP
+          // --------------------------------------------------
 
-          beginCountdown();
-        }, 800);
-      } catch (analysisError) {
-        console.error(
-          'Sustained Exhale analysis failed:',
+          const nextRep =
+            currentRepRef.current +
+            1;
+
+          currentRepRef.current =
+            nextRep;
+
+          setCurrentRep(
+            nextRep
+          );
+
+          setTimeout(() => {
+            if (
+              !mountedRef.current
+            ) {
+              return;
+            }
+
+            finishingRef.current =
+              false;
+
+            beginCountdown();
+          }, 800);
+        } catch (
           analysisError
-        );
+        ) {
+          console.error(
+            'Sustained Exhale analysis failed:',
+            analysisError
+          );
 
-        if (!mountedRef.current) {
-          return;
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          finishingRef.current =
+            false;
+
+          setError(
+            'We could not analyze this recording. Please try again.'
+          );
+
+          changeScreen(
+            'instructions'
+          );
         }
-
-        finishingRef.current = false;
-
-        setError(
-          'We could not analyze this recording. Please try again.'
-        );
-
-        changeScreen(
-          'instructions'
-        );
-      }
-    },
-    [
-      changeScreen,
-      clearTimers,
-      params,
-      tier,
-    ]
-  );
+      },
+      [
+        changeScreen,
+        clearTimers,
+        params,
+        tier,
+      ]
+    );
 
   const {
     startRecording,
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame: handleLiveFrame,
-    onStop: handleRecordingStop,
+    onFrame:
+      handleLiveFrame,
+    onStop:
+      handleRecordingStop,
   });
 
   // ----------------------------------------------------------
@@ -354,7 +676,9 @@ export default function SustainedExhaleScreen({
     useCallback(() => {
       clearTimers();
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current
+      ) {
         return;
       }
 
@@ -370,7 +694,9 @@ export default function SustainedExhaleScreen({
         setInterval(() => {
           value -= 1;
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             clearTimers();
             return;
           }
@@ -383,7 +709,9 @@ export default function SustainedExhaleScreen({
             return;
           }
 
-          setCountdown(value);
+          setCountdown(
+            value
+          );
         }, 1000);
     }, [
       changeScreen,
@@ -397,25 +725,46 @@ export default function SustainedExhaleScreen({
   const startRecordingPhase =
     useCallback(
       async () => {
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return;
         }
 
-        if (startingRef.current) {
+        if (
+          startingRef.current
+        ) {
           return;
         }
 
-        startingRef.current = true;
-        finishingRef.current = false;
+        if (!params) {
+          return;
+        }
 
-        setRecordingSeconds(0);
-        setLiveVolume(null);
-        setError(null);
+        startingRef.current =
+          true;
+
+        finishingRef.current =
+          false;
+
+        setRecordingSeconds(
+          0
+        );
+
+        setLiveVolume(
+          null
+        );
+
+        setError(
+          null
+        );
 
         try {
           await startRecording();
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
@@ -429,7 +778,9 @@ export default function SustainedExhaleScreen({
             setInterval(() => {
               elapsedMs += 100;
 
-              if (!mountedRef.current) {
+              if (
+                !mountedRef.current
+              ) {
                 clearTimers();
                 return;
               }
@@ -441,13 +792,20 @@ export default function SustainedExhaleScreen({
                 seconds
               );
 
+              /*
+               * Automatically stop once the
+               * adaptive maximum duration is reached.
+               */
               if (
                 seconds >=
-                params.durationRangeSec[1]
+                params
+                  .durationRangeSec[1]
               ) {
                 clearTimers();
 
-                if (isRecording) {
+                if (
+                  isRecording
+                ) {
                   finishingRef.current =
                     false;
 
@@ -455,13 +813,17 @@ export default function SustainedExhaleScreen({
                 }
               }
             }, 100);
-        } catch (recordingError) {
+        } catch (
+          recordingError
+        ) {
           console.error(
             'Failed to start Sustained Exhale recording:',
             recordingError
           );
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
@@ -481,7 +843,7 @@ export default function SustainedExhaleScreen({
         changeScreen,
         clearTimers,
         isRecording,
-        params.durationRangeSec,
+        params,
         startRecording,
         stopRecording,
       ]
@@ -489,7 +851,9 @@ export default function SustainedExhaleScreen({
 
   const finishRecording =
     useCallback(() => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current
+      ) {
         return;
       }
 
@@ -497,7 +861,9 @@ export default function SustainedExhaleScreen({
         return;
       }
 
-      if (finishingRef.current) {
+      if (
+        finishingRef.current
+      ) {
         return;
       }
 
@@ -519,7 +885,9 @@ export default function SustainedExhaleScreen({
 
   const startExercise =
     useCallback(() => {
-      if (startingRef.current) {
+      if (
+        startingRef.current
+      ) {
         return;
       }
 
@@ -530,23 +898,38 @@ export default function SustainedExhaleScreen({
         return;
       }
 
+      if (
+        !params ||
+        !tier
+      ) {
+        return;
+      }
+
       setError(null);
 
       repResultsRef.current =
         [];
 
-      setRepResults([]);
+      setRepResults(
+        []
+      );
 
       currentRepRef.current =
         1;
 
-      setCurrentRep(1);
+      setCurrentRep(
+        1
+      );
 
-      setOverallScore(0);
+      setOverallScore(
+        0
+      );
 
       beginCountdown();
     }, [
       beginCountdown,
+      params,
+      tier,
     ]);
 
   // ----------------------------------------------------------
@@ -569,19 +952,33 @@ export default function SustainedExhaleScreen({
       startingRef.current =
         false;
 
-      setRepResults([]);
+      setRepResults(
+        []
+      );
 
-      setCurrentRep(1);
+      setCurrentRep(
+        1
+      );
 
-      setCountdown(3);
+      setCountdown(
+        3
+      );
 
-      setRecordingSeconds(0);
+      setRecordingSeconds(
+        0
+      );
 
-      setLiveVolume(null);
+      setLiveVolume(
+        null
+      );
 
-      setOverallScore(0);
+      setOverallScore(
+        0
+      );
 
-      setError(null);
+      setError(
+        null
+      );
 
       changeScreen(
         'instructions'
@@ -613,29 +1010,92 @@ export default function SustainedExhaleScreen({
     ]);
 
   // ----------------------------------------------------------
+  // ADS PARAMETER LOADING
+  // ----------------------------------------------------------
+
+  if (
+    loadingParams ||
+    !params ||
+    !tier
+  ) {
+    return (
+      <View
+        style={
+          styles.centeredScreen
+        }
+      >
+        <View
+          style={
+            styles.largeIconCircle
+          }
+        >
+          <Ionicons
+            name="options-outline"
+            size={46}
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={
+            styles.processingTitle
+          }
+        >
+          Preparing Your Exercise
+        </Text>
+
+        <Text
+          style={
+            styles.processingSubtitle
+          }
+        >
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={
+            styles.spinner
+          }
+        />
+      </View>
+    );
+  }
+
+  // ----------------------------------------------------------
   // DERIVED VALUES
   // ----------------------------------------------------------
 
   const averageDuration =
     repResults.length > 0
       ? repResults.reduce(
-          (sum, result) =>
+          (
+            sum,
+            result
+          ) =>
             sum +
             result.measurement
               .actualDurationSec,
           0
-        ) / repResults.length
+        ) /
+        repResults.length
       : 0;
 
   const averageConsistency =
     repResults.length > 0
       ? repResults.reduce(
-          (sum, result) =>
+          (
+            sum,
+            result
+          ) =>
             sum +
             result.measurement
               .consistencyPct,
           0
-        ) / repResults.length
+        ) /
+        repResults.length
       : 0;
 
   const passedReps =
@@ -666,7 +1126,11 @@ export default function SustainedExhaleScreen({
     'instructions'
   ) {
     return (
-      <View style={styles.container}>
+      <View
+        style={
+          styles.container
+        }
+      >
         <ScrollView
           contentContainerStyle={
             styles.scrollContent
@@ -679,7 +1143,9 @@ export default function SustainedExhaleScreen({
             style={
               styles.backButton
             }
-            onPress={goBack}
+            onPress={
+              goBack
+            }
           >
             <Ionicons
               name="arrow-back"
@@ -689,7 +1155,9 @@ export default function SustainedExhaleScreen({
           </Pressable>
 
           <View
-            style={styles.hero}
+            style={
+              styles.hero
+            }
           >
             <View
               style={
@@ -704,7 +1172,9 @@ export default function SustainedExhaleScreen({
             </View>
 
             <Text
-              style={styles.title}
+              style={
+                styles.title
+              }
             >
               Sustained Exhale
             </Text>
@@ -1051,7 +1521,9 @@ export default function SustainedExhaleScreen({
   ) {
     return (
       <View
-        style={styles.container}
+        style={
+          styles.container
+        }
       >
         <ScrollView
           contentContainerStyle={
@@ -1148,7 +1620,9 @@ export default function SustainedExhaleScreen({
           </View>
 
           <Text
-            style={styles.timerText}
+            style={
+              styles.timerText
+            }
           >
             {recordingSeconds.toFixed(
               1
@@ -1172,7 +1646,9 @@ export default function SustainedExhaleScreen({
           </View>
 
           <View
-            style={styles.rangeRow}
+            style={
+              styles.rangeRow
+            }
           >
             <Text
               style={
@@ -1379,7 +1855,9 @@ export default function SustainedExhaleScreen({
 
   return (
     <View
-      style={styles.container}
+      style={
+        styles.container
+      }
     >
       <ScrollView
         contentContainerStyle={
@@ -1595,7 +2073,8 @@ export default function SustainedExhaleScreen({
                     )}
                     s •{' '}
                     {Math.round(
-                      result.measurement
+                      result
+                        .measurement
                         .consistencyPct
                     )}
                     % consistency

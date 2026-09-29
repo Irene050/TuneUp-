@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -58,31 +59,31 @@ const openExercise = (
   switch (id) {
     case 'dynamic-range':
       router.push(
-        '/exercises/volume/dynamic-range' as any,
+        '/exercises/volume?exercise=dynamic-range' as any,
       );
       break;
 
     case 'controlled-crescendo':
       router.push(
-        '/exercises/volume/controlled-crescendo' as any,
+        '/exercises/volume?exercise=controlled-crescendo' as any,
       );
       break;
 
     case 'controlled-decrescendo':
       router.push(
-        '/exercises/volume/controlled-decrescendo' as any,
+        '/exercises/volume?exercise=controlled-decrescendo' as any,
       );
       break;
 
     case 'volume-band-targeting':
       router.push(
-        '/exercises/volume/volume-band-targeting' as any,
+        '/exercises/volume?exercise=volume-band-targeting' as any,
       );
       break;
 
     case 'volume-control-stability':
       router.push(
-        '/exercises/volume/volume-control-stability' as any,
+        '/exercises/volume?exercise=volume-control-stability' as any,
       );
       break;
   }
@@ -109,9 +110,11 @@ export default function VolumeExercisesScreen() {
           />
         </Pressable>
 
-        <Text style={styles.headerTitle}>
-          Volume
-        </Text>
+        <Image
+          source={require('@/assets/images/tuneup-icon.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
         <View style={styles.headerSpacer} />
 
@@ -157,64 +160,22 @@ export default function VolumeExercisesScreen() {
                 }
               >
 
-                {/* NUMBER */}
-
-                <View
-                  style={styles.numberCircle}
-                >
-                  <Text
-                    style={styles.numberText}
-                  >
-                    {exercise.number}
-                  </Text>
-                </View>
-
-                {/* ICON */}
-
-                <View
-                  style={styles.iconCircle}
-                >
-                  <Ionicons
-                    name="volume-medium"
-                    size={19}
-                    color={BROWN}
-                  />
-                </View>
-
-                {/* TEXT */}
-
-                <View
-                  style={styles.exerciseInfo}
-                >
-
-                  <Text
-                    style={styles.exerciseTitle}
-                    numberOfLines={2}
-                  >
+                <View style={styles.exerciseNameContainer}>
+                  <Text style={styles.exerciseName} numberOfLines={2}>
                     {exercise.title}
                   </Text>
-
-                  <Text
-                    style={
-                      styles.exerciseDescription
-                    }
-                    numberOfLines={2}
-                  >
-                    {exercise.description}
-                  </Text>
-
                 </View>
 
-                {/* PLAY */}
+                <View style={styles.levelBadge}>
+                  <Text style={styles.levelText}>Beginner</Text>
+                </View>
 
-                <View
-                  style={styles.playButton}
-                >
-                  <Ionicons
-                    name="play"
-                    size={15}
-                    color={BROWN}
-                  />
+                <Text style={styles.exerciseCategory} numberOfLines={1}>
+                  Volume
+                </Text>
+
+                <View style={styles.listPlayButton}>
+                  <Ionicons name="play" size={16} color={BROWN} />
                 </View>
 
               </Pressable>
@@ -235,7 +196,7 @@ export default function VolumeExercisesScreen() {
           ]}
           onPress={() =>
             router.push(
-              '/exercises/volume/free-mode' as any,
+              '/exercises/volume?mode=free' as any,
             )
           }
         >
@@ -293,12 +254,13 @@ const styles = StyleSheet.create({
   // =====================================
 
   header: {
-    height: 56,
+    height: 72,
 
     flexDirection: 'row',
     alignItems: 'center',
 
     paddingHorizontal: 17,
+    position: 'relative',
   },
 
   backButton: {
@@ -307,10 +269,11 @@ const styles = StyleSheet.create({
 
     borderRadius: 17,
 
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: 'transparent',
 
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 72,
   },
 
   headerTitle: {
@@ -333,16 +296,26 @@ const styles = StyleSheet.create({
   // =====================================
 
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
+    paddingTop: 36,
     paddingBottom: 35,
+  },
+
+  logo: {
+    width: 45,
+    height: 45,
+    marginBottom: 0,
+    marginTop: 68.4,
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -5.5,
   },
 
   pageTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 26,
+    fontSize: 32,
     color: BROWN,
-
-    marginTop: 5,
+    marginTop: 16,
   },
 
   pageSubtitle: {
@@ -353,7 +326,7 @@ const styles = StyleSheet.create({
     color: MUTED,
 
     marginTop: 2,
-    marginBottom: 15,
+    marginBottom: 16,
   },
 
   // =====================================
@@ -361,24 +334,68 @@ const styles = StyleSheet.create({
   // =====================================
 
   exerciseList: {
-    gap: 8,
+    gap: 5,
+    marginTop: 4,
   },
 
   exerciseCard: {
-    minHeight: 72,
-
+    minHeight: 64,
     backgroundColor: LIGHT_PINK,
-
-    borderRadius: 12,
-
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     flexDirection: 'row',
     alignItems: 'center',
+    borderWidth: 0,
+  },
 
-    borderWidth: 1,
-    borderColor: '#F0E0E4',
+  exerciseNameContainer: {
+    width: 108,
+  },
+
+  exerciseName: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 17,
+    color: BROWN,
+  },
+
+  levelBadge: {
+    width: 61,
+    backgroundColor: PINK,
+    borderRadius: 10,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  levelText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 8,
+    color: BROWN,
+  },
+
+  exerciseCategory: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 12,
+    color: BROWN,
+  },
+
+  listPlayButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
   pressed: {
@@ -409,17 +426,17 @@ const styles = StyleSheet.create({
   },
 
   iconCircle: {
-    width: 43,
-    height: 43,
+    width: 32,
+    height: 32,
 
-    borderRadius: 22,
+    borderRadius: 16,
 
     backgroundColor: PINK,
 
     alignItems: 'center',
     justifyContent: 'center',
 
-    marginRight: 9,
+    marginRight: 10,
   },
 
   exerciseInfo: {
@@ -476,7 +493,7 @@ const styles = StyleSheet.create({
   freeMode: {
     minHeight: 67,
 
-    marginTop: 13,
+    marginTop: 24,
 
     backgroundColor: PINK,
 

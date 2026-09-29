@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -81,9 +82,11 @@ export default function BreathControlExercisesScreen() {
           />
         </Pressable>
 
-        <Text style={styles.headerTitle}>
-          Breath Control
-        </Text>
+        <Image
+          source={require('@/assets/images/tuneup-icon.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
         <View style={styles.headerSpacer} />
       </View>
@@ -115,46 +118,22 @@ export default function BreathControlExercisesScreen() {
                 openExercise(exercise.templateId)
               }
             >
-              {/* NUMBER */}
-              <View style={styles.numberCircle}>
-                <Text style={styles.numberText}>
-                  {exercise.number}
-                </Text>
-              </View>
-
-              {/* ICON */}
-              <View style={styles.iconCircle}>
-                <Ionicons
-                  name="water-outline"
-                  size={19}
-                  color={BROWN}
-                />
-              </View>
-
-              {/* TEXT */}
-              <View style={styles.exerciseInfo}>
-                <Text
-                  style={styles.exerciseTitle}
-                  numberOfLines={2}
-                >
+              <View style={styles.exerciseNameContainer}>
+                <Text style={styles.exerciseName} numberOfLines={2}>
                   {exercise.title}
                 </Text>
-
-                <Text
-                  style={styles.exerciseDescription}
-                  numberOfLines={2}
-                >
-                  {exercise.description}
-                </Text>
               </View>
 
-              {/* PLAY */}
-              <View style={styles.playButton}>
-                <Ionicons
-                  name="play"
-                  size={15}
-                  color={BROWN}
-                />
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelText}>Beginner</Text>
+              </View>
+
+              <Text style={styles.exerciseCategory} numberOfLines={1}>
+                Breath Control
+              </Text>
+
+              <View style={styles.listPlayButton}>
+                <Ionicons name="play" size={16} color={BROWN} />
               </View>
             </Pressable>
           ))}
@@ -168,7 +147,7 @@ export default function BreathControlExercisesScreen() {
           ]}
           onPress={() =>
             router.push(
-              '/exercises/breath-control/free-mode' as any,
+              '/exercises/breath-control?mode=free' as any,
             )
           }
         >
@@ -209,19 +188,21 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 56,
+    height: 72,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 17,
+    position: 'relative',
   },
 
   backButton: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 68.4,
   },
 
   headerTitle: {
@@ -237,15 +218,26 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
+    paddingTop: 36,
     paddingBottom: 35,
+  },
+
+  logo: {
+    width: 45,
+    height: 45,
+    marginBottom: 0,
+    marginTop: 68.4,
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -5.5,
   },
 
   pageTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 26,
+    fontSize: 32,
     color: BROWN,
-    marginTop: 5,
+    marginTop: 16,
   },
 
   pageSubtitle: {
@@ -254,23 +246,72 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     color: MUTED,
     marginTop: 2,
-    marginBottom: 15,
+    marginBottom: 16,
   },
 
   exerciseList: {
-    gap: 8,
+    gap: 5,
+    marginTop: 4,
   },
 
   exerciseCard: {
-    minHeight: 72,
+    minHeight: 64,
     backgroundColor: LIGHT_PINK,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F0E0E4',
+    borderWidth: 0,
+  },
+
+  exerciseNameContainer: {
+    width: 108,
+  },
+
+  exerciseName: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 17,
+    color: BROWN,
+  },
+
+  levelBadge: {
+    width: 61,
+    backgroundColor: PINK,
+    borderRadius: 10,
+    paddingVertical: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  levelText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 8,
+    color: BROWN,
+  },
+
+  exerciseCategory: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 12,
+    color: BROWN,
+  },
+
+  listPlayButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
   pressed: {
@@ -296,13 +337,13 @@ const styles = StyleSheet.create({
   },
 
   iconCircle: {
-    width: 43,
-    height: 43,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 9,
+    marginRight: 10,
   },
 
   exerciseInfo: {
@@ -344,7 +385,7 @@ const styles = StyleSheet.create({
 
   freeMode: {
     minHeight: 67,
-    marginTop: 13,
+    marginTop: 24,
     backgroundColor: PINK,
     borderRadius: 12,
     paddingHorizontal: 10,

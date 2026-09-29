@@ -2,24 +2,27 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import {
-  useCallback,
-  useState,
+    useCallback,
+    useState,
 } from 'react';
 import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
 import type {
-  SavedAssessmentResult,
+    SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
+
+import { useAuth } from '@/hooks/useAuth';
+import { useProgress } from '@/hooks/useProgress';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -92,6 +95,13 @@ function frequencyToNoteName(
 ========================================================= */
 
 export default function DashboardScreen() {
+  const { userName } = useAuth();
+
+  const {
+    summaries: progressSummaries,
+    loading: progressLoading,
+  } = useProgress();
+
   const [
     latestAssessment,
     setLatestAssessment,
@@ -103,6 +113,43 @@ export default function DashboardScreen() {
     assessmentLoading,
     setAssessmentLoading,
   ] = useState(true);
+
+  const totalExercisesCompleted =
+    progressSummaries.reduce(
+      (total, summary) =>
+        total + summary.exercisesCompleted,
+      0,
+    );
+
+  const activeComponentCount =
+    progressSummaries.filter(
+      summary => summary.exercisesCompleted > 0,
+    ).length;
+
+  const displayName = userName.trim() || 'Singer';
+
+  const avatarInitial = displayName
+    .charAt(0)
+    .toUpperCase();
+
+  const tierRank = {
+    beginner: 0,
+    intermediate: 1,
+    advanced: 2,
+  } as const;
+
+  const overallTier = progressSummaries.reduce(
+    (highestTier, summary) =>
+      tierRank[summary.currentTier] >
+      tierRank[highestTier]
+        ? summary.currentTier
+        : highestTier,
+    'beginner' as keyof typeof tierRank,
+  );
+
+  const formattedTier =
+    overallTier.charAt(0).toUpperCase() +
+    overallTier.slice(1);
 
   /* =======================================================
      LOAD LATEST ASSESSMENT
@@ -194,7 +241,7 @@ export default function DashboardScreen() {
             <Text
               style={styles.avatarText}
             >
-              U
+              {avatarInitial}
             </Text>
           </View>
 
@@ -202,13 +249,15 @@ export default function DashboardScreen() {
             <Text
               style={styles.userName}
             >
-              User
+              {displayName}
             </Text>
 
             <Text
               style={styles.userLevel}
             >
-              lvl. 0
+              {progressLoading
+                ? 'Loading tier...'
+                : `${formattedTier} tier`}
             </Text>
           </View>
         </View>
@@ -360,6 +409,11 @@ export default function DashboardScreen() {
         >
           {/* CARD 1 */}
           <Pressable
+            onPress={() =>
+              router.push(
+                '/exercises/breath-control',
+              )
+            }
             style={styles.exerciseCard}
           >
             <View
@@ -402,6 +456,9 @@ export default function DashboardScreen() {
 
           {/* CARD 2 */}
           <Pressable
+            onPress={() =>
+              router.push('/exercises/pitch')
+            }
             style={styles.exerciseCard}
           >
             <View
@@ -444,6 +501,9 @@ export default function DashboardScreen() {
 
           {/* CARD 3 */}
           <Pressable
+            onPress={() =>
+              router.push('/exercises/tone')
+            }
             style={styles.exerciseCard}
           >
             <View
@@ -486,6 +546,9 @@ export default function DashboardScreen() {
 
           {/* CARD 4 */}
           <Pressable
+            onPress={() =>
+              router.push('/exercises/volume')
+            }
             style={styles.exerciseCard}
           >
             <View
@@ -528,6 +591,9 @@ export default function DashboardScreen() {
 
           {/* CARD 5 */}
           <Pressable
+            onPress={() =>
+              router.push('/exercises/agility')
+            }
             style={styles.exerciseCard}
           >
             <View
@@ -583,7 +649,7 @@ export default function DashboardScreen() {
         <View
           style={styles.progressCard}
         >
-          <View style={styles.progressTop}>
+          <View style={styles.progressOverview}>
             <View>
               <Text
                 style={styles.progressTitle}
@@ -600,13 +666,37 @@ export default function DashboardScreen() {
                 your skills.
               </Text>
             </View>
+
           </View>
 
-          <Text
-            style={styles.progressPercent}
-          >
-            0%
-          </Text>
+          <View style={styles.progressSummaryRow}>
+            <View style={styles.progressSummaryItem}>
+              <Text style={styles.progressSummaryValue}>
+                {progressLoading
+                  ? '...'
+                  : totalExercisesCompleted}
+              </Text>
+
+              <Text style={styles.progressSummaryLabel}>
+                exercises completed
+              </Text>
+            </View>
+
+            <View style={styles.progressSummaryDivider} />
+
+            <View style={styles.progressSummaryItem}>
+              <Text style={styles.progressSummaryValue}>
+                {progressLoading
+                  ? '...'
+                  : activeComponentCount}
+              </Text>
+
+              <Text style={styles.progressSummaryLabel}>
+                components active
+              </Text>
+            </View>
+          </View>
+
         </View>
       </ScrollView>
     </View>
@@ -960,7 +1050,7 @@ const styles = StyleSheet.create({
   },
 
   progressCard: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     backgroundColor: LIGHT_PINK,
 
     borderRadius: 18,
@@ -975,6 +1065,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+
+  progressOverview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  progressSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 18,
+  },
+
+  progressSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  progressSummaryValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    color: BROWN,
+  },
+
+  progressSummaryLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+
+  progressSummaryDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#F2DDE5',
   },
 
   progressTitle: {
@@ -1029,8 +1157,9 @@ const styles = StyleSheet.create({
 
   progressPercent: {
     fontFamily: 'FredokaBold',
-    fontSize: 50,
+    fontSize: 36,
     color: BROWN,
-    marginLeft: 30,
+    marginLeft: 18,
   },
+
 });

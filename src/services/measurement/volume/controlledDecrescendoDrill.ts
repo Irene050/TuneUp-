@@ -1,17 +1,14 @@
 import {
-    calcRMSWindows,
-    toDbArray,
+  calcRMSWindows,
+  toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
 
 const WINDOW_MS = 50;
-
-const START_VOLUME = 50;
-const END_VOLUME = 40;
-
-const DURATION_SECONDS = 4;
-const REPETITIONS = 2;
-
-const VOLUME_VARIANCE_PERCENT = 15;
+const DEFAULT_TARGET_RANGE: [number, number] = [35, 45];
+const DEFAULT_DURATION_SECONDS = 4;
+const DEFAULT_REPETITIONS = 2;
+const DEFAULT_VOLUME_DECREASE_THRESHOLD = 10;
+const TARGET_TOLERANCE_PERCENT = 15;
 
 export interface ControlledDecrescendoMeasurement {
   dbValues: number[];
@@ -32,10 +29,20 @@ export interface ControlledDecrescendoMeasurement {
 
   directionCorrect: boolean;
 
+  achievedVolumeDecrease: number;
+
   validWindowCount: number;
   expectedWindowCount: number;
 
   measurementQuality: number;
+}
+
+interface MeasureOptions {
+  windowMs?: number;
+  targetRange?: [number, number];
+  expectedDurationSeconds?: number;
+  repetitions?: number;
+  volumeDecreaseThreshold?: number;
 }
 
 function clamp(
@@ -84,11 +91,15 @@ function variance(
 }
 
 /**
- * Decrescendo smoothness.
-
+ * Calculates decrescendo smoothness.
+ *
  * Formula:
  * 100 - (derivative variance /
  *        absolute mean derivative) * 100
+ *
+ * A smooth decrescendo should have:
+ * - a negative mean derivative
+ * - relatively low derivative variance
  */
 export function calculateDecrescendoSmoothness(
   dbValues: number[],
@@ -145,8 +156,10 @@ function targetTolerance(
 ): number {
   return (
     target *
-    (VOLUME_VARIANCE_PERCENT /
-      100)
+    (
+      TARGET_TOLERANCE_PERCENT /
+      100
+    )
   );
 }
 
@@ -160,53 +173,121 @@ function withinTolerance(
   );
 }
 
-function emptyMeasurement(): ControlledDecrescendoMeasurement {
+function emptyMeasurement(
+  windowMs: number,
+  expectedDurationSeconds: number,
+  repetitions: number,
+): ControlledDecrescendoMeasurement {
   const expectedWindowCount =
-    Math.round(
-      (DURATION_SECONDS * 1000) /
-        WINDOW_MS,
-    ) * REPETITIONS;
+    Math.max(
+      1,
+      Math.round(
+        (
+          expectedDurationSeconds *
+          1000
+        ) /
+        windowMs,
+      ),
+    ) *
+    repetitions;
 
   return {
     dbValues: [],
-    repSmoothness: [0, 0],
+
+    repSmoothness:
+      Array.from(
+        {
+          length:
+            repetitions,
+        },
+        () => 0,
+      ),
+
     smoothness: 0,
+
     startDb: 0,
     endDb: 0,
+
     minDb: 0,
     maxDb: 0,
-    targetStartReached: false,
-    targetEndReached: false,
-    targetReached: false,
-    directionCorrect: false,
-    validWindowCount: 0,
+
+    targetStartReached:
+      false,
+
+    targetEndReached:
+      false,
+
+    targetReached:
+      false,
+
+    directionCorrect:
+      false,
+
+    achievedVolumeDecrease:
+      0,
+
+    validWindowCount:
+      0,
+
     expectedWindowCount,
-    measurementQuality: 0,
+
+    measurementQuality:
+      0,
   };
 }
 
 export function measureControlledDecrescendo(
   samples: Float32Array,
   sampleRate = 44100,
+  options: MeasureOptions = {},
 ): ControlledDecrescendoMeasurement {
+  const windowMs =
+    options.windowMs ??
+    WINDOW_MS;
+
+  const targetRange =
+    options.targetRange ??
+    DEFAULT_TARGET_RANGE;
+
+  const expectedDurationSeconds =
+    options.expectedDurationSeconds ??
+    DEFAULT_DURATION_SECONDS;
+
+  const repetitions =
+    Math.max(
+      1,
+      Math.round(
+        options.repetitions ??
+        DEFAULT_REPETITIONS,
+      ),
+    );
+
+  const volumeDecreaseThreshold =
+    options.volumeDecreaseThreshold ??
+    DEFAULT_VOLUME_DECREASE_THRESHOLD;
+
   if (
     samples.length === 0 ||
     sampleRate <= 0
   ) {
-    return emptyMeasurement();
+    return emptyMeasurement(
+      windowMs,
+      expectedDurationSeconds,
+      repetitions,
+    );
   }
 
   /*
    * PCM
    * ↓
-   * 50 ms RMS windows
+   * RMS windows
    * ↓
-   * dB
+   * dB magnitude
    */
   const rmsValues =
     calcRMSWindows(
       samples,
-      WINDOW_MS,
+      windowMs,
       sampleRate,
     );
 
@@ -225,23 +306,37 @@ export function measureControlledDecrescendo(
       );
 
   if (dbValues.length === 0) {
-    return emptyMeasurement();
+    return emptyMeasurement(
+      windowMs,
+      expectedDurationSeconds,
+      repetitions,
+    );
   }
 
+  /*
+   * Determine how many analysis windows
+   * belong to each repetition.
+   */
   const windowsPerRep =
     Math.max(
       1,
       Math.round(
-        (DURATION_SECONDS *
-          1000) /
-          WINDOW_MS,
+        (
+          expectedDurationSeconds *
+          1000
+        ) /
+        windowMs,
       ),
     );
 
   const expectedWindowCount =
     windowsPerRep *
-    REPETITIONS;
+    repetitions;
 
+  /*
+   * Ignore analysis data beyond the
+   * expected exercise duration.
+   */
   const effectiveValues =
     dbValues.slice(
       0,
@@ -251,9 +346,16 @@ export function measureControlledDecrescendo(
       ),
     );
 
+  /*
+   * Calculate smoothness separately
+   * for each repetition.
+   */
   const repSmoothness =
     Array.from(
-      { length: REPETITIONS },
+      {
+        length:
+          repetitions,
+      },
       (_, repIndex) => {
         const start =
           repIndex *
@@ -278,16 +380,25 @@ export function measureControlledDecrescendo(
       },
     );
 
+  const validRepSmoothness =
+    repSmoothness.filter(
+      Number.isFinite,
+    );
+
   const smoothness =
-    average(repSmoothness);
+    average(
+      validRepSmoothness,
+    );
 
   const startDb =
-    effectiveValues[0] ?? 0;
+    effectiveValues[0] ??
+    0;
 
   const endDb =
     effectiveValues[
       effectiveValues.length - 1
-    ] ?? 0;
+    ] ??
+    0;
 
   const minDb =
     effectiveValues.length > 0
@@ -303,21 +414,48 @@ export function measureControlledDecrescendo(
         )
       : 0;
 
+  /*
+   * For a decrescendo:
+   *
+   * targetRange = [minimum, maximum]
+   *
+   * Start should be near the upper
+   * end of the target range.
+   */
+  const targetStart =
+    targetRange[1];
+
+  /*
+   * End should be near the lower
+   * end of the target range.
+   */
+  const targetEnd =
+    targetRange[0];
+
   const targetStartReached =
     withinTolerance(
       startDb,
-      START_VOLUME,
+      targetStart,
     );
 
   const targetEndReached =
     withinTolerance(
       endDb,
-      END_VOLUME,
+      targetEnd,
     );
+
+  /*
+   * Positive value means the singer
+   * actually decreased volume.
+   */
+  const achievedVolumeDecrease =
+    startDb - endDb;
 
   const targetReached =
     targetStartReached &&
-    targetEndReached;
+    targetEndReached &&
+    achievedVolumeDecrease >=
+      volumeDecreaseThreshold;
 
   const directionCorrect =
     effectiveValues.length >= 2 &&
@@ -328,26 +466,43 @@ export function measureControlledDecrescendo(
       (
         effectiveValues.length /
         expectedWindowCount
-      ) * 100,
+      ) *
+        100,
       0,
       100,
     );
 
   return {
-    dbValues: effectiveValues,
+    dbValues:
+      effectiveValues,
+
     repSmoothness,
+
     smoothness,
+
     startDb,
+
     endDb,
+
     minDb,
+
     maxDb,
+
     targetStartReached,
+
     targetEndReached,
+
     targetReached,
+
     directionCorrect,
+
+    achievedVolumeDecrease,
+
     validWindowCount:
       effectiveValues.length,
+
     expectedWindowCount,
+
     measurementQuality,
   };
 }

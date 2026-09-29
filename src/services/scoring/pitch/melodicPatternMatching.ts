@@ -1,14 +1,13 @@
 import {
-    MELODIC_PATTERN_MATCHING_PARAMS,
-    Tier,
+  MelodicPatternMatchingParams,
 } from '@/constants/exercises/pitch';
 
 import {
-    MelodicPatternMeasurement,
+  MelodicPatternMeasurement,
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
 import {
-    calcPitchAccuracy,
+  calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 
 export interface MelodicPatternScoreResult {
@@ -26,11 +25,8 @@ export function scoreMelodicPatternMatching(
   measurement: MelodicPatternMeasurement,
   targetFreqs: number[],
   targetTimestamps: number[],
-  tier: Tier
+  params: MelodicPatternMatchingParams
 ): MelodicPatternScoreResult {
-  const params =
-    MELODIC_PATTERN_MATCHING_PARAMS[tier];
-
   const noteCount = Math.min(
     targetFreqs.length,
     measurement.detectedFreqs.length

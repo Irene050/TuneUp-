@@ -1,5 +1,6 @@
-import { STEADY_AIRFLOW_PARAMS, Tier } from '@/constants/exercises/breathControl';
-import { SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
+import type { SteadyAirflowParams } from '@/constants/exercises/breathControl';
+
+import type { SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 
 export interface SteadyAirflowScoreResult {
   score: number;
@@ -9,17 +10,62 @@ export interface SteadyAirflowScoreResult {
 
 export function scoreSteadyAirflow(
   measurement: SteadyAirflowMeasurement,
-  tier: Tier
+  params: SteadyAirflowParams,
 ): SteadyAirflowScoreResult {
   if (!measurement.detected) {
-    return { score: 0, passed: false, detected: false };
+    return {
+      score: 0,
+      passed: false,
+      detected: false,
+    };
   }
 
-  const params = STEADY_AIRFLOW_PARAMS[tier];
-  const durationScore = params.durationSec > 0
-    ? Math.min(measurement.durationSec / params.durationSec, 1) * 100
-    : 0;
-  const score = Math.round(measurement.stabilityPct * 0.7 + durationScore * 0.3);
+  /*
+   * ---------------------------------------------------
+   * DURATION SCORE
+   * ---------------------------------------------------
+   *
+   * A longer target duration represents greater
+   * sustained-airflow difficulty.
+   */
 
-  return { score, passed: measurement.stabilityPct >= params.stabilityThreshold, detected: true };
+  const durationScore =
+    params.durationSec > 0
+      ? Math.min(
+          measurement.durationSec /
+            params.durationSec,
+          1,
+        ) * 100
+      : 0;
+
+  /*
+   * ---------------------------------------------------
+   * STABILITY SCORE
+   * ---------------------------------------------------
+   */
+
+  const stabilityScore =
+    measurement.stabilityPct;
+
+  /*
+   * ---------------------------------------------------
+   * FINAL SCORE
+   * ---------------------------------------------------
+   *
+   * Duration and airflow stability are both relevant
+   * to this exercise.
+   */
+
+  const score = Math.round(
+    durationScore * 0.4 +
+      stabilityScore * 0.6,
+  );
+
+  return {
+    score,
+    passed:
+      measurement.stabilityPct >=
+      params.stabilityThreshold,
+    detected: true,
+  };
 }

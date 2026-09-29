@@ -1,6 +1,6 @@
 import {
-    ResonanceBand,
-    VowelBand,
+  ResonanceBand,
+  VowelBand,
 } from '@/utils/dsp/spectral';
 
 export type Tier =

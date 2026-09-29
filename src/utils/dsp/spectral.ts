@@ -69,9 +69,21 @@ export function trackDominantFrequency(
 
 export type ResonanceBand = 'chest' | 'head' | 'mixed';
 
-export function classifyResonanceBand(freq: number): ResonanceBand {
-  if (freq >= 80 && freq < 250) return 'chest';
-  if (freq >= 250 && freq < 500) return 'head';
+export function classifyResonanceBand(
+  centroid: number,
+): ResonanceBand {
+  if (!Number.isFinite(centroid) || centroid <= 0) {
+    return 'mixed';
+  }
+
+  if (centroid < 1200) {
+    return 'chest';
+  }
+
+  if (centroid < 2500) {
+    return 'head';
+  }
+
   return 'mixed';
 }
 

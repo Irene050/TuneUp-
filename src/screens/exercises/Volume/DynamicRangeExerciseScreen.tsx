@@ -1,3 +1,5 @@
+// src/screens/exercises/Volume/DynamicRangeExerciseScreen.tsx
+
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,19 +11,54 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AudioContext } from 'react-native-audio-api';
+
+import {
+  DYNAMIC_RANGE_PARAMS,
+  type DynamicRangeParams,
+  type Tier,
+} from '@/constants/exercises/volume';
 
 import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-import { measureDynamicRange } from '@/services/measurement/volume/dynamicRangeExercise';
-import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 
-const TARGET_MIN = 40;
-const TARGET_MAX = 55;
-const RAMP_SECONDS = 3;
-const REPETITIONS = 2;
+import {
+  generateDynamicRangeParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  playSingleNote,
+} from '@/services/assessment/notePlayer';
+
+import {
+  auth,
+} from '@/services/firebase/config';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
+import {
+  measureDynamicRange,
+} from '@/services/measurement/volume/dynamicRangeExercise';
+
+import {
+  scoreDynamicRange,
+} from '@/services/scoring/volume/dynamicRangeExercise';
+
+import {
+  createMusicalNote,
+} from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
@@ -35,13 +72,23 @@ const WHITE = '#FFFFFF';
 
 const BAR_COUNT = 32;
 
-type Phase = 'directions' | 'exercise' | 'results';
-
 const DBFS_MIN = -60;
 const DBFS_MAX = -10;
 
-const REFERENCE_NOTE = 'C4';
-const REFERENCE_AUDIO = require('../../../../assets/audio/volume/C4_reference.wav');
+const PHASES_PER_REPETITION = 3;
+const WINDOW_MS = 50;
+
+const REFERENCE_NOTE = createMusicalNote(60);
+const REFERENCE_NOTE_DURATION_SEC = 1.5;
+
+type Phase =
+  | 'directions'
+  | 'exercise'
+  | 'results';
+
+interface DynamicRangeExerciseProps {
+  tier?: Tier;
+}
 
 function normalizeVolume(value: number) {
   if (!Number.isFinite(value)) {
@@ -53,8 +100,8 @@ function normalizeVolume(value: number) {
     Math.min(
       1,
       (value - DBFS_MIN) /
-        (DBFS_MAX - DBFS_MIN)
-    )
+        (DBFS_MAX - DBFS_MIN),
+    ),
   );
 }
 
@@ -86,11 +133,13 @@ function VolumeVisualizer({
   const referenceBars = useMemo(
     () =>
       Array.from(
-        { length: BAR_COUNT },
+        {
+          length: BAR_COUNT,
+        },
         (_, index) =>
-          referenceHeight(index)
+          referenceHeight(index),
       ),
-    []
+    [],
   );
 
   /*
@@ -101,7 +150,9 @@ function VolumeVisualizer({
    * Newest data = right
    */
   const actualBars = Array.from(
-    { length: BAR_COUNT },
+    {
+      length: BAR_COUNT,
+    },
     (_, index) => {
       if (
         index < liveHistory.length
@@ -110,7 +161,7 @@ function VolumeVisualizer({
       }
 
       return 0;
-    }
+    },
   );
 
   return (
@@ -136,7 +187,7 @@ function VolumeVisualizer({
                 },
               ]}
             />
-          )
+          ),
         )}
       </View>
 
@@ -155,13 +206,13 @@ function VolumeVisualizer({
                     height > 0
                       ? `${Math.max(
                           5,
-                          height * 82
+                          height * 82,
                         )}%`
                       : '0%',
                 },
               ]}
             />
-          )
+          ),
         )}
       </View>
 
@@ -192,18 +243,34 @@ function VolumeVisualizer({
  * ========================================================
  */
 
-export default function DynamicRangeExercise() {
+export default function DynamicRangeExercise({
+  tier,
+}: DynamicRangeExerciseProps) {
+  const initialTier =
+    tier ?? 'beginner';
+
+  const [resolvedTier, setResolvedTier] =
+    useState<Tier>(initialTier);
+
+  const [params, setParams] =
+    useState<DynamicRangeParams>(
+      DYNAMIC_RANGE_PARAMS[
+        initialTier
+      ],
+    );
+
   const [phase, setPhase] =
     useState<Phase>('directions');
 
-  const [rep, setRep] = useState(1);
+  const [rep, setRep] =
+    useState(1);
 
   const [seconds, setSeconds] =
     useState(0);
 
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(
-      null
+      null,
     );
 
   const [liveHistory, setLiveHistory] =
@@ -218,87 +285,286 @@ export default function DynamicRangeExercise() {
   const [rampConsistency, setRampConsistency] =
     useState(0);
 
-  const finishingRef = useRef(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const referenceBufferRef = useRef<Awaited<ReturnType<AudioContext['decodeAudioData']>> | null>(null);
-  const referenceSourceRef = useRef<ReturnType<AudioContext['createBufferSource']> | null>(null);
+  const [passed, setPassed] =
+    useState(false);
 
-  const playReferenceNote = async () => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
-      }
+  /*
+   * Prevents incomplete/manual recordings
+   * from being scored or saved.
+   *
+   * This becomes true ONLY when the exercise
+   * naturally reaches its final repetition.
+   */
+  const shouldSaveResultRef =
+    useRef(false);
 
-      const audioContext = audioContextRef.current;
+  /*
+   * Prevents multiple natural-finish calls.
+   */
+  const finishingRef =
+    useRef(false);
 
-      if (!referenceBufferRef.current) {
-        referenceBufferRef.current =
-          await audioContext.decodeAudioData(
-            REFERENCE_AUDIO
-          );
-      }
+  /*
+   * ========================================================
+   * RESOLVED ADAPTIVE PARAMETERS
+   * ========================================================
+   */
 
-      if (referenceSourceRef.current) {
-        try {
-          referenceSourceRef.current.stop();
-        } catch { 
-        }
-        referenceSourceRef.current = null;
-      }
+  const targetMin =
+    params.targetDbRange[0];
 
-      await audioContext.resume();
+  const targetMax =
+    params.targetDbRange[1];
 
-      const source =
-        audioContext.createBufferSource();
+  const rampSeconds =
+    params.durationSec;
 
-      source.buffer = referenceBufferRef.current;
-      source.connect(audioContext.destination);
-      source.start(audioContext.currentTime);
+  const repetitions =
+    params.repetitions;
 
-      referenceSourceRef.current = source;
-    } catch (error) {
-      console.error(
-        'Unable to play reference note:',
-        error
-      );
-    }
-  };
+  /*
+   * ========================================================
+   * LOAD ADS PARAMETERS
+   * ========================================================
+   */
 
   useEffect(() => {
-    if (phase !== 'directions') {
+    let cancelled = false;
+
+    const initializeAdaptiveParams =
+      async () => {
+        try {
+          const user =
+            auth.currentUser;
+
+          let currentTier: Tier =
+            tier ?? 'beginner';
+
+          let referenceScores: number[] =
+            [];
+
+          /*
+           * ------------------------------------------------
+           * EXPLICIT TIER
+           * ------------------------------------------------
+           *
+           * When the route supplies a tier, that tier is
+           * authoritative.
+           */
+
+          if (!tier && user) {
+            /*
+             * ------------------------------------------------
+             * CURRENT COMPONENT TIER
+             * ------------------------------------------------
+             */
+
+            const componentProgress =
+              await fetchComponentProgress(
+                user.uid,
+                'volume',
+              );
+
+            if (
+              componentProgress?.currentTier ===
+                'beginner' ||
+              componentProgress?.currentTier ===
+                'intermediate' ||
+              componentProgress?.currentTier ===
+                'advanced'
+            ) {
+              currentTier =
+                componentProgress.currentTier;
+            }
+
+            /*
+             * ------------------------------------------------
+             * EXERCISE HISTORY
+             * ------------------------------------------------
+             *
+             * Only Dynamic Range records from the
+             * currently resolved tier are used for
+             * continuous ADS.
+             */
+
+            const records =
+              await fetchExerciseRecords(
+                user.uid,
+                'volume',
+              );
+
+            const recentRecords =
+              records
+                .filter(
+                  record =>
+                    record.templateId ===
+                      'dynamicRange' &&
+                    record.tier ===
+                      currentTier,
+                )
+                .sort(
+                  (a, b) =>
+                    Number(
+                      a.timestamp ?? 0,
+                    ) -
+                    Number(
+                      b.timestamp ?? 0,
+                    ),
+                );
+
+            referenceScores =
+              recentRecords
+                .slice(-5)
+                .map(
+                  record =>
+                    Number(
+                      record.scorePct ?? 0,
+                    ),
+                );
+
+            /*
+             * ------------------------------------------------
+             * INITIAL ASSESSMENT FALLBACK
+             * ------------------------------------------------
+             *
+             * Assessment is used only when there is
+             * no completed Dynamic Range exercise
+             * history for this tier.
+             */
+
+            if (
+              referenceScores.length === 0
+            ) {
+              const latestAssessment =
+                await getLatestAssessment();
+
+              const assessmentScore =
+                latestAssessment?.scores.find(
+                  score =>
+                    score.componentId ===
+                    'volume',
+                )?.scorePct;
+
+              if (
+                typeof assessmentScore ===
+                'number'
+              ) {
+                referenceScores = [
+                  assessmentScore,
+                ];
+              }
+            }
+          }
+
+          /*
+           * ------------------------------------------------
+           * GENERATE PARAMETERS
+           * ------------------------------------------------
+           */
+
+          const generatedParams =
+            generateDynamicRangeParams({
+              tier: currentTier,
+              recentScores:
+                referenceScores,
+            });
+
+          if (cancelled) {
+            return;
+          }
+
+          setResolvedTier(
+            currentTier,
+          );
+
+          setParams(
+            generatedParams,
+          );
+        } catch (error) {
+          console.error(
+            'Unable to initialize Dynamic Range adaptive parameters:',
+            error,
+          );
+
+          if (cancelled) {
+            return;
+          }
+
+          const fallbackTier =
+            tier ?? 'beginner';
+
+          setResolvedTier(
+            fallbackTier,
+          );
+
+          setParams(
+            generateDynamicRangeParams({
+              tier: fallbackTier,
+              recentScores: [],
+            }),
+          );
+        }
+      };
+
+    initializeAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  /*
+   * ========================================================
+   * REFERENCE NOTE
+   * ========================================================
+   *
+   * Uses the shared TuneUp! note player.
+   *
+   * The note itself comes from the shared musical-note
+   * utility. The audio service is responsible only for
+   * playback.
+   */
+
+  const playReferenceNote =
+    async () => {
+      try {
+        await playSingleNote(
+          REFERENCE_NOTE.frequency,
+          REFERENCE_NOTE_DURATION_SEC,
+        );
+      } catch (error) {
+        console.error(
+          'Unable to play reference note:',
+          error,
+        );
+      }
+    };
+
+  useEffect(() => {
+    if (
+      phase !== 'directions'
+    ) {
       return;
     }
 
-    playReferenceNote();
+    void playReferenceNote();
   }, [phase]);
 
-  useEffect(() => {
-    return () => {
-      if (referenceSourceRef.current) {
-        try {
-          referenceSourceRef.current.stop();
-        } catch {
-          // The source may already have finished.
-        }
-        referenceSourceRef.current = null;
-      }
-
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-
-      referenceBufferRef.current = null;
-    };
-  }, []);
+  /*
+   * ========================================================
+   * AUDIO RECORDER
+   * ========================================================
+   */
 
   const {
     startRecording,
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame: (frame) => {
-      if (phase !== 'exercise') {
+    onFrame: frame => {
+      if (
+        phase !== 'exercise'
+      ) {
         return;
       }
 
@@ -306,58 +572,123 @@ export default function DynamicRangeExercise() {
 
       const normalized =
         normalizeVolume(
-          frame.volume
+          frame.volume,
         );
 
       setLiveHistory(
-        (previous) => {
+        previous => {
           const next = [
             ...previous,
             normalized,
           ];
 
-          
           if (
             next.length >
             BAR_COUNT
           ) {
             return next.slice(
               next.length -
-                BAR_COUNT
+                BAR_COUNT,
             );
           }
 
           return next;
-        }
+        },
       );
     },
 
-    onStop: (samples, sampleRate) => {
-      const measurement = measureDynamicRange(
-        samples,
-        sampleRate,
-        {
-          windowMs: 50,
-          targetRange: [TARGET_MIN, TARGET_MAX],
-          expectedDurationSeconds:
-            RAMP_SECONDS * 3,
-        }
-      );
+    onStop: (
+      samples,
+      sampleRate,
+    ) => {
+      /*
+       * ----------------------------------------------------
+       * MANUAL / INCOMPLETE STOP
+       * ----------------------------------------------------
+       *
+       * Back navigation and Stop Exercise both call
+       * stopRecording(), but they must NOT create an
+       * exercise record.
+       */
 
-      const result = scoreDynamicRange(
-        measurement
-      );
+      if (
+        !shouldSaveResultRef.current
+      ) {
+        setSeconds(0);
+        setRep(1);
+        setLiveFrame(null);
+        setLiveHistory([]);
+        finishingRef.current =
+          false;
+
+        return;
+      }
+
+      /*
+       * The completed recording has now reached the
+       * natural end of the final repetition.
+       */
+
+      shouldSaveResultRef.current =
+        false;
+
+      const measurement =
+        measureDynamicRange(
+          samples,
+          sampleRate,
+          {
+            windowMs:
+              WINDOW_MS,
+
+            targetRange: [
+              targetMin,
+              targetMax,
+            ],
+
+            /*
+             * Each repetition consists of:
+             *
+             * soft → loud → soft
+             *
+             * Therefore the full expected duration is
+             * 3 ramp phases × number of repetitions.
+             */
+            expectedDurationSeconds:
+              rampSeconds *
+              PHASES_PER_REPETITION *
+              repetitions,
+          },
+        );
+
+      const result =
+        scoreDynamicRange(
+          measurement,
+        );
 
       setRangeAccuracy(
-        result.rangeAccuracy
+        result.rangeAccuracy,
       );
 
       setRampConsistency(
-        result.rampConsistency
+        result.rampConsistency,
       );
 
       setScore(
-        result.overallScore
+        result.overallScore,
+      );
+
+      setPassed(
+        result.passed,
+      );
+
+      /*
+       * Save ONLY naturally completed exercises.
+       */
+      void saveCompletedExercise(
+        'volume',
+        'dynamicRange',
+        resolvedTier,
+        result.overallScore,
       );
 
       setPhase('results');
@@ -365,51 +696,91 @@ export default function DynamicRangeExercise() {
       setRep(1);
       setLiveFrame(null);
       setLiveHistory([]);
-      finishingRef.current = false;
+      finishingRef.current =
+        false;
     },
   });
 
+  /*
+   * ========================================================
+   * EXERCISE TIMER
+   * ========================================================
+   */
+
   useEffect(() => {
-    if (phase !== 'exercise') {
+    if (
+      phase !== 'exercise'
+    ) {
       return;
     }
+
+    /*
+     * One repetition consists of:
+     *
+     * rampSeconds
+     * + rampSeconds
+     * + rampSeconds
+     */
+    const totalSeconds =
+      rampSeconds *
+      PHASES_PER_REPETITION;
 
     const interval =
       setInterval(() => {
         setSeconds(
-          (previous) => {
+          previous => {
             if (
               previous >=
-              RAMP_SECONDS * 3 - 1
+              totalSeconds - 1
             ) {
+              /*
+               * Move to the next repetition.
+               */
               if (
                 rep <
-                REPETITIONS
+                repetitions
               ) {
                 setRep(
-                  (current) =>
-                    current + 1
+                  current =>
+                    current + 1,
                 );
 
                 setLiveHistory(
-                  []
+                  [],
                 );
 
                 return 0;
               }
 
-              if (!finishingRef.current) {
-                finishingRef.current = true;
+              /*
+               * Final repetition completed.
+               *
+               * Mark the recording as a valid completed
+               * attempt BEFORE stopping the recorder so
+               * onStop knows this is a natural completion.
+               */
+              if (
+                !finishingRef.current
+              ) {
+                finishingRef.current =
+                  true;
+
+                shouldSaveResultRef.current =
+                  true;
 
                 stopRecording().catch(
-                  (error) => {
+                  error => {
                     console.error(
                       'Unable to finish recording:',
-                      error
+                      error,
                     );
 
-                    finishingRef.current = false;
-                  }
+                    finishingRef.current =
+                      false;
+
+                    shouldSaveResultRef.current =
+                      false;
+                  },
                 );
               }
 
@@ -417,7 +788,7 @@ export default function DynamicRangeExercise() {
             }
 
             return previous + 1;
-          }
+          },
         );
       }, 1000);
 
@@ -426,17 +797,27 @@ export default function DynamicRangeExercise() {
   }, [
     phase,
     rep,
+    repetitions,
+    rampSeconds,
     stopRecording,
   ]);
+
+  /*
+   * ========================================================
+   * CURRENT INSTRUCTION
+   * ========================================================
+   */
 
   const instruction =
     useMemo(() => {
       if (
         seconds <
-        RAMP_SECONDS
+        rampSeconds
       ) {
         return {
-          title: 'SOFT → LOUD',
+          title:
+            'SOFT → LOUD',
+
           subtitle:
             'Gradually increase your volume',
         };
@@ -444,21 +825,34 @@ export default function DynamicRangeExercise() {
 
       if (
         seconds <
-        RAMP_SECONDS * 2
+        rampSeconds * 2
       ) {
         return {
-          title: 'LOUD',
+          title:
+            'LOUD',
+
           subtitle:
             'Reach your loud target',
         };
       }
 
       return {
-        title: 'LOUD → SOFT',
+        title:
+          'LOUD → SOFT',
+
         subtitle:
           'Gradually decrease your volume',
       };
-    }, [seconds]);
+    }, [
+      seconds,
+      rampSeconds,
+    ]);
+
+  /*
+   * ========================================================
+   * START EXERCISE
+   * ========================================================
+   */
 
   const startExercise =
     async () => {
@@ -467,7 +861,14 @@ export default function DynamicRangeExercise() {
       setScore(0);
       setRangeAccuracy(0);
       setRampConsistency(0);
-      finishingRef.current = false;
+      setPassed(false);
+
+      finishingRef.current =
+        false;
+
+      shouldSaveResultRef.current =
+        false;
+
       setLiveFrame(null);
       setLiveHistory([]);
       setPhase('exercise');
@@ -477,34 +878,50 @@ export default function DynamicRangeExercise() {
       } catch (error) {
         console.error(
           'Unable to start recording:',
-          error
+          error,
         );
 
         setPhase(
-          'directions'
+          'directions',
         );
       }
     };
+
+  /*
+   * ========================================================
+   * TRY AGAIN
+   * ========================================================
+   */
 
   const tryAgain = () => {
     setRep(1);
     setSeconds(0);
     setScore(0);
+    setRangeAccuracy(0);
+    setRampConsistency(0);
+    setPassed(false);
+
+    finishingRef.current =
+      false;
+
+    shouldSaveResultRef.current =
+      false;
+
     setLiveFrame(null);
     setLiveHistory([]);
     setPhase('exercise');
 
     startRecording().catch(
-      (error) => {
+      error => {
         console.error(
           'Unable to restart recording:',
-          error
+          error,
         );
 
         setPhase(
-          'directions'
+          'directions',
         );
-      }
+      },
     );
   };
 
@@ -514,12 +931,16 @@ export default function DynamicRangeExercise() {
    * ========================================================
    */
 
-  if (phase === 'directions') {
+  if (
+    phase === 'directions'
+  ) {
     return (
       <SafeAreaView
         style={styles.screen}
       >
-        <View style={styles.topBar}>
+        <View
+          style={styles.topBar}
+        >
           <Pressable
             style={styles.back}
             onPress={() =>
@@ -618,13 +1039,13 @@ export default function DynamicRangeExercise() {
                       {
                         height: `${
                           referenceHeight(
-                            index
+                            index,
                           ) * 80
                         }%`,
                       },
                     ]}
                   />
-                )
+                ),
               )}
             </View>
 
@@ -700,7 +1121,7 @@ export default function DynamicRangeExercise() {
                     styles.referenceNoteValue
                   }
                 >
-                  {REFERENCE_NOTE}
+                  {REFERENCE_NOTE.name}
                 </Text>
               </View>
             </View>
@@ -834,7 +1255,7 @@ export default function DynamicRangeExercise() {
                 styles.targetSimpleValue
               }
             >
-              {TARGET_MIN}–{TARGET_MAX} dB
+              {targetMin}–{targetMax} dB
             </Text>
 
             <Text
@@ -842,8 +1263,8 @@ export default function DynamicRangeExercise() {
                 styles.targetSimpleSub
               }
             >
-              {RAMP_SECONDS}s ramp •{' '}
-              {REPETITIONS} repetitions
+              {rampSeconds}s ramp •{' '}
+              {repetitions} repetitions
             </Text>
           </View>
 
@@ -881,22 +1302,39 @@ export default function DynamicRangeExercise() {
    * ========================================================
    */
 
-  if (phase === 'exercise') {
+  if (
+    phase === 'exercise'
+  ) {
     const progress =
       Math.min(
         seconds /
-          (RAMP_SECONDS * 3),
-        1
+          (
+            rampSeconds *
+            PHASES_PER_REPETITION
+          ),
+        1,
       );
 
     return (
       <SafeAreaView
         style={styles.screen}
       >
-        <View style={styles.topBar}>
+        <View
+          style={styles.topBar}
+        >
           <Pressable
             style={styles.back}
             onPress={async () => {
+              /*
+               * Explicitly mark this as an incomplete
+               * recording before stopping.
+               */
+              shouldSaveResultRef.current =
+                false;
+
+              finishingRef.current =
+                false;
+
               if (isRecording) {
                 await stopRecording();
               }
@@ -958,7 +1396,7 @@ export default function DynamicRangeExercise() {
                 styles.exerciseReferenceText
               }
             >
-              Sing {REFERENCE_NOTE} while following the
+              Sing {REFERENCE_NOTE.name} while following the
               volume pattern
             </Text>
 
@@ -1187,7 +1625,7 @@ export default function DynamicRangeExercise() {
             >
               {liveFrame
                 ? liveFrame.volume.toFixed(
-                    1
+                    1,
                   )
                 : '--'}
 
@@ -1222,8 +1660,8 @@ export default function DynamicRangeExercise() {
                   styles.targetRowValue
                 }
               >
-                {TARGET_MIN}–
-                {TARGET_MAX} dB
+                {targetMin}–
+                {targetMax} dB
               </Text>
             </View>
 
@@ -1260,7 +1698,7 @@ export default function DynamicRangeExercise() {
                   styles.sessionValue
                 }
               >
-                {rep} / {REPETITIONS}
+                {rep} / {repetitions}
               </Text>
             </View>
 
@@ -1290,7 +1728,7 @@ export default function DynamicRangeExercise() {
               >
                 0:
                 {String(
-                  seconds
+                  seconds,
                 ).padStart(2, '0')}
               </Text>
             </View>
@@ -1318,13 +1756,23 @@ export default function DynamicRangeExercise() {
               styles.stopButton
             }
             onPress={async () => {
+              /*
+               * Manual stop must NEVER be saved.
+               */
+              shouldSaveResultRef.current =
+                false;
+
+              finishingRef.current =
+                false;
+
               if (isRecording) {
                 await stopRecording();
               }
 
               setPhase(
-                'directions'
+                'directions',
               );
+
               setSeconds(0);
               setRep(1);
               setLiveFrame(null);
@@ -1351,8 +1799,6 @@ export default function DynamicRangeExercise() {
     );
   }
 
-  const passed = score >= 75;
-
   /*
    * ========================================================
    * RESULTS
@@ -1363,7 +1809,9 @@ export default function DynamicRangeExercise() {
     <SafeAreaView
       style={styles.screen}
     >
-      <View style={styles.topBar}>
+      <View
+        style={styles.topBar}
+      >
         <Pressable
           style={styles.back}
           onPress={() =>
@@ -1492,7 +1940,7 @@ export default function DynamicRangeExercise() {
 
           <ResultItem
             label="Target Range"
-            value={`${TARGET_MIN}–${TARGET_MAX} dB`}
+            value={`${targetMin}–${targetMax} dB`}
           />
         </View>
 
@@ -1504,7 +1952,7 @@ export default function DynamicRangeExercise() {
               }
               onPress={() =>
                 router.replace(
-                  '/exercises/volume'
+                  '/exercises/volume',
                 )
               }
               activeOpacity={0.85}
@@ -1576,7 +2024,7 @@ export default function DynamicRangeExercise() {
               }
               onPress={() =>
                 router.replace(
-                  '/exercises/volume'
+                  '/exercises/volume',
                 )
               }
               activeOpacity={0.85}

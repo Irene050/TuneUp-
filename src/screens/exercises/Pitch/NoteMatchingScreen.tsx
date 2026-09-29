@@ -15,7 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
 } from 'react-native';
 
 import {
@@ -39,6 +39,25 @@ import {
 } from '@/services/assessment/notePlayer';
 
 import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import { auth } from '@/services/firebase/config';
+
+import {
+  generateNoteMatchingParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
+import {
   calcLiveStability,
   calcPitchAccuracy,
   frequencyToNote,
@@ -47,10 +66,6 @@ import {
 import {
   getRandomPitchNote,
 } from '@/utils/music/notes';
-
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
 
 // ============================================================
 // COLORS
@@ -206,12 +221,27 @@ function formatVolume(
 // ============================================================
 
 export default function NoteMatchingScreen({
-  tier = 'beginner',
+  tier,
 }: Props) {
   const [screen, setScreen] =
     useState<Screen>(
       'instructions'
     );
+
+  const [currentTier, setCurrentTier] =
+    useState<Tier>(
+      tier ?? 'beginner'
+    );
+
+  const [adaptiveParams, setAdaptiveParams] =
+    useState(
+      NOTE_MATCHING_PARAMS[
+        tier ?? 'beginner'
+      ]
+    );
+
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+    useState(true);
 
   const [countdown, setCountdown] =
     useState(
@@ -239,12 +269,194 @@ export default function NoteMatchingScreen({
     useState('');
 
   // ==========================================================
-  // TARGET NOTE
+  // ADAPTIVE DIFFICULTY
   // ==========================================================
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAdaptiveParameters() {
+      setIsLoadingAdaptiveParams(true);
+
+      try {
+        const user = auth.currentUser;
+
+        /*
+         * If a tier was explicitly supplied, use it.
+         * Otherwise resolve the current tier from
+         * component progress.
+         */
+        let resolvedTier: Tier =
+          tier ?? 'beginner';
+
+        if (!tier && user) {
+          const progress =
+            await fetchComponentProgress(
+              user.uid,
+              'pitch'
+            );
+
+          resolvedTier =
+            progress?.currentTier ??
+            'beginner';
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentTier(
+          resolvedTier
+        );
+
+        /*
+         * Retrieve completed Pitch exercises
+         * for the current tier and this specific
+         * Note Matching template.
+         */
+        let recentScores: number[] = [];
+
+        if (user) {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'pitch'
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          /*
+           * Only use Note Matching records from
+           * the currently resolved tier.
+           *
+           * The template ID must match the ID
+           * used when saving completed exercises.
+           */
+          const currentTierRecords =
+            records
+              .filter(
+                record =>
+                  record.tier ===
+                    resolvedTier &&
+                  record.templateId ===
+                    'noteMatchingExercise'
+              )
+              .sort(
+                (a, b) =>
+                  a.timestamp -
+                  b.timestamp
+              );
+
+          /*
+           * Use the latest five completed
+           * Note Matching scores.
+           */
+          recentScores =
+            currentTierRecords
+              .slice(-5)
+              .map(
+                record =>
+                  record.scorePct
+              );
+
+          /*
+           * If there is no exercise history for
+           * this template and tier, use the
+           * latest Assessment component score
+           * as the cold-start ADS reference.
+           */
+          if (
+            recentScores.length === 0
+          ) {
+            const assessment =
+              await getLatestAssessment();
+
+            if (cancelled) {
+              return;
+            }
+
+            const assessmentScore =
+              assessment?.scores.find(
+                score =>
+                  score.componentId ===
+                  'pitch'
+              );
+
+            if (
+              assessmentScore
+            ) {
+              recentScores = [
+                assessmentScore.scorePct,
+              ];
+            }
+          }
+        }
+
+        const generatedParams =
+          generateNoteMatchingParams({
+            tier: resolvedTier,
+            recentScores,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setAdaptiveParams(
+          generatedParams
+        );
+      } catch (error) {
+        console.error(
+          '❌ NOTE MATCHING ADS ERROR:',
+          error
+        );
+
+        /*
+         * If ADS loading fails, keep the
+         * resolved tier's default parameters.
+         */
+        const fallbackTier =
+          tier ?? 'beginner';
+
+        if (!cancelled) {
+          setCurrentTier(
+            fallbackTier
+          );
+
+          setAdaptiveParams(
+            NOTE_MATCHING_PARAMS[
+              fallbackTier
+            ]
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(
+            false
+          );
+        }
+      }
+    }
+
+    loadAdaptiveParameters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  // ============================================================
+  // TARGET NOTE
+  // ============================================================
+
   const target = useMemo(
-    () => getRandomPitchNote(tier),
-    [tier]
+    () =>
+      getRandomPitchNote(
+        currentTier
+      ),
+    [currentTier]
   );
 
   const targetFrequency =
@@ -253,9 +465,9 @@ export default function NoteMatchingScreen({
   const targetNote =
     target.name;
 
-  // ==========================================================
+  // ============================================================
   // REFS
-  // ==========================================================
+  // ============================================================
 
   const mountedRef =
     useRef(true);
@@ -279,9 +491,9 @@ export default function NoteMatchingScreen({
   const finishingRef =
     useRef(false);
 
-  // ==========================================================
+  // ============================================================
   // TIMER CLEANUP
-  // ==========================================================
+  // ============================================================
 
   const clearTimers =
     useCallback(() => {
@@ -308,9 +520,9 @@ export default function NoteMatchingScreen({
       }
     }, []);
 
-  // ==========================================================
+  // ============================================================
   // LIVE AUDIO FRAME
-  // ==========================================================
+  // ============================================================
 
   const handleLiveFrame =
     useCallback(
@@ -369,9 +581,9 @@ export default function NoteMatchingScreen({
       []
     );
 
-  // ==========================================================
+  // ============================================================
   // PROCESS COMPLETED RECORDING
-  // ==========================================================
+  // ============================================================
 
   const handleRecordingStop =
     useCallback(
@@ -396,24 +608,27 @@ export default function NoteMatchingScreen({
             measureNoteMatching(
               samples,
               sampleRate,
-              NOTE_MATCHING_PARAMS[
-                tier
-              ].minClarity
+              adaptiveParams.minClarity
             );
 
           const scored =
             scoreNoteMatching(
               measurement,
               targetFrequency,
-              tier
+              adaptiveParams
             );
 
-            await saveCompletedExercise(
-  'pitch',
-  'noteMatchingExercise',
-  tier,
-  scored.score,
-);
+          /*
+           * Save the result using the same
+           * template ID used by the ADS history
+           * lookup above.
+           */
+          await saveCompletedExercise(
+            'pitch',
+            'noteMatchingExercise',
+            currentTier,
+            scored.score,
+          );
 
           if (
             !mountedRef.current
@@ -463,15 +678,16 @@ export default function NoteMatchingScreen({
         }
       },
       [
+        adaptiveParams,
         clearTimers,
+        currentTier,
         targetFrequency,
-        tier,
       ]
     );
 
-  // ==========================================================
+  // ============================================================
   // AUDIO RECORDER
-  // ==========================================================
+  // ============================================================
 
   const {
     startRecording,
@@ -486,9 +702,9 @@ export default function NoteMatchingScreen({
         handleRecordingStop,
     });
 
-  // ==========================================================
+  // ============================================================
   // UNMOUNT CLEANUP
-  // ==========================================================
+  // ============================================================
 
   useEffect(() => {
     mountedRef.current = true;
@@ -510,14 +726,15 @@ export default function NoteMatchingScreen({
     };
   }, [clearTimers]);
 
-  // ==========================================================
+  // ============================================================
   // START EXERCISE
-  // ==========================================================
+  // ============================================================
 
   const startExercise =
     useCallback(() => {
       if (
-        startingRef.current
+        startingRef.current ||
+        isLoadingAdaptiveParams
       ) {
         return;
       }
@@ -681,14 +898,15 @@ export default function NoteMatchingScreen({
         }, 1000);
     }, [
       clearTimers,
+      isLoadingAdaptiveParams,
       startRecording,
       stopRecording,
       targetFrequency,
     ]);
 
-  // ==========================================================
+  // ============================================================
   // MANUAL FINISH
-  // ==========================================================
+  // ============================================================
 
   const finishRecording =
     useCallback(() => {
@@ -711,9 +929,9 @@ export default function NoteMatchingScreen({
       stopRecording,
     ]);
 
-  // ==========================================================
+  // ============================================================
   // RETRY
-  // ==========================================================
+  // ============================================================
 
   const retryExercise =
     useCallback(() => {
@@ -751,9 +969,9 @@ export default function NoteMatchingScreen({
       );
     }, [clearTimers]);
 
-  // ==========================================================
+  // ============================================================
   // GO BACK
-  // ==========================================================
+  // ============================================================
 
   const goBack =
     useCallback(() => {
@@ -764,9 +982,55 @@ export default function NoteMatchingScreen({
       );
     }, [clearTimers]);
 
-  // ==========================================================
+  // ============================================================
+  // ADAPTIVE PARAMETERS LOADING
+  // ============================================================
+
+  if (
+    screen === 'instructions' &&
+    isLoadingAdaptiveParams
+  ) {
+    return (
+      <View
+        style={styles.centerScreen}
+      >
+        <View
+          style={styles.iconCircle}
+        >
+          <Ionicons
+            name="musical-note-outline"
+            size={34}
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={styles.phaseTitle}
+        >
+          Preparing Exercise
+        </Text>
+
+        <Text
+          style={styles.phaseSubtitle}
+        >
+          Adjusting the exercise to your
+          current progress.
+        </Text>
+
+        <ActivityIndicator
+          size="small"
+          color={BROWN}
+          style={{
+            marginTop: 24,
+          }}
+        />
+      </View>
+    );
+  }
+
+  // ============================================================
   // INSTRUCTIONS
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'instructions'
@@ -821,7 +1085,36 @@ export default function NoteMatchingScreen({
               styles.instructionCard
             }
           >
-            {/* BEFORE YOU BEGIN */}
+            {/* INSTRUCTIONS */}
+
+            <Text
+              style={styles.cardTitle}
+            >
+              Exercise Instructions
+            </Text>
+
+            <Text
+              style={styles.instruction}
+            >
+              Listen carefully to the
+              target note first.
+            </Text>
+
+            <Text
+              style={styles.instruction}
+            >
+              After the target note
+              finishes, sing the same note
+              back.
+            </Text>
+
+            <Text
+              style={styles.instruction}
+            >
+              Hold the note steadily and
+              try to match the pitch as
+              closely as possible.
+            </Text>
 
             <View
               style={
@@ -916,37 +1209,6 @@ export default function NoteMatchingScreen({
               </View>
             </View>
 
-            {/* INSTRUCTIONS */}
-
-            <Text
-              style={styles.cardTitle}
-            >
-              Instructions
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Listen carefully to the
-              target note first.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              After the target note
-              finishes, sing the same note
-              back.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Hold the note steadily and
-              try to match the pitch as
-              closely as possible.
-            </Text>
-
             {/* TARGET */}
 
             <View
@@ -1040,7 +1302,7 @@ export default function NoteMatchingScreen({
                 styles.difficultyValue
               }
             >
-              {tier}
+              {currentTier}
             </Text>
           </View>
 
@@ -1089,9 +1351,9 @@ export default function NoteMatchingScreen({
     );
   }
 
-  // ==========================================================
+  // ============================================================
   // COUNTDOWN
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'countdown'
@@ -1145,9 +1407,9 @@ export default function NoteMatchingScreen({
     );
   }
 
-  // ==========================================================
+  // ============================================================
   // LISTENING
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'listening'
@@ -1214,9 +1476,9 @@ export default function NoteMatchingScreen({
     );
   }
 
-  // ==========================================================
+  // ============================================================
   // RECORDING
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'recording'
@@ -1313,7 +1575,9 @@ export default function NoteMatchingScreen({
           {/* MICROPHONE */}
 
           <View
-            style={styles.microphoneArea}
+            style={
+              styles.microphoneArea
+            }
           >
             <View
               style={
@@ -1527,9 +1791,9 @@ export default function NoteMatchingScreen({
     );
   }
 
-  // ==========================================================
+  // ============================================================
   // PROCESSING
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'processing'
@@ -1571,9 +1835,9 @@ export default function NoteMatchingScreen({
     );
   }
 
-  // ==========================================================
+  // ============================================================
   // RESULTS
-  // ==========================================================
+  // ============================================================
 
   if (
     screen === 'results' &&
@@ -1995,7 +2259,7 @@ const styles = StyleSheet.create({
 
     backgroundColor: LIGHT_PINK,
 
-    borderRadius: 20,
+    borderRadius: 24,
 
     padding: 20,
 
@@ -2012,7 +2276,7 @@ const styles = StyleSheet.create({
 
     padding: 16,
 
-    marginBottom: 14,
+    marginTop: 18,
 
     borderWidth: 1,
     borderColor: '#F2DDE5',

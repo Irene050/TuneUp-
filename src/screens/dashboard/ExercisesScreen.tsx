@@ -3,12 +3,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -308,7 +308,7 @@ export default function ExercisesScreen() {
         'Dynamic Range Exercise'
       ) {
         router.push(
-          '/exercises/volume/dynamic-range' as any,
+          '/exercises/volume?exercise=dynamic-range' as any,
         );
         return;
       }
@@ -318,7 +318,7 @@ export default function ExercisesScreen() {
         'Controlled Crescendo Drill'
       ) {
         router.push(
-          '/exercises/volume/controlled-crescendo' as any,
+          '/exercises/volume?exercise=controlled-crescendo' as any,
         );
         return;
       }
@@ -328,7 +328,7 @@ export default function ExercisesScreen() {
         'Controlled Decrescendo Drill'
       ) {
         router.push(
-          '/exercises/volume/controlled-decrescendo' as any,
+          '/exercises/volume?exercise=controlled-decrescendo' as any,
         );
         return;
       }
@@ -338,7 +338,7 @@ export default function ExercisesScreen() {
         'Volume Band Targeting'
       ) {
         router.push(
-          '/exercises/volume/volume-band-targeting' as any,
+          '/exercises/volume?exercise=volume-band-targeting' as any,
         );
         return;
       }
@@ -348,7 +348,7 @@ export default function ExercisesScreen() {
         'Volume Control Stability'
       ) {
         router.push(
-          '/exercises/volume/volume-control-stability' as any,
+          '/exercises/volume?exercise=volume-control-stability' as any,
         );
         return;
       }

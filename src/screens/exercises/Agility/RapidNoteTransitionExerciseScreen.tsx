@@ -38,10 +38,26 @@ import {
 } from '@/services/assessment/notePlayer';
 
 import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
   createMusicalNote,
 } from '@/utils/music/notes';
 
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
+import {
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import { auth } from '@/services/firebase/config';
+
+import {
+  generateRapidNoteTransitionParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
 // ============================================================
 // COLORS
@@ -184,14 +200,170 @@ export default function RapidNoteTransitionExerciseScreen({
   tier = 'beginner',
 }: Props) {
   // ----------------------------------------------------------
-  // PARAMETERS
+  // BASE PARAMETERS
   // ----------------------------------------------------------
 
-  const params = useMemo(
+  const baseParams = useMemo(
     () =>
       RAPID_NOTE_TRANSITION_PARAMS[tier],
     [tier],
   );
+  // ----------------------------------------------------------
+  // ADAPTIVE PARAMETERS
+  // ----------------------------------------------------------
+
+  const [adaptiveParams, setAdaptiveParams] =
+    useState(baseParams);
+
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+    useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParams = async () => {
+      setIsLoadingAdaptiveParams(true);
+
+      try {
+        const user = auth.currentUser;
+
+        if (!user) {
+          if (!cancelled) {
+            setAdaptiveParams(baseParams);
+          }
+
+          return;
+        }
+
+        const exerciseRecords =
+          await fetchExerciseRecords(
+            user.uid,
+            'agility',
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * ADS uses only records belonging to:
+         * - the agility component
+         * - this exact exercise template
+         * - the user's current tier
+         *
+         * If matching exercise history exists,
+         * the latest five exercise scores are used.
+         *
+         * If no matching exercise history exists,
+         * the latest Agility assessment score is used
+         * as the cold-start reference.
+         *
+         * The assessment score is NOT mixed with
+         * exercise scores once exercise history exists.
+         */
+        const matchingExerciseRecords =
+          exerciseRecords
+            .filter(
+              record =>
+                record.templateId ===
+                  'rapidNoteTransition' &&
+                record.tier === tier,
+            )
+            .sort(
+              (a, b) =>
+                a.timestamp -
+                b.timestamp,
+            );
+
+        let recentScores =
+          matchingExerciseRecords
+            .slice(-5)
+            .map(
+              record =>
+                record.scorePct,
+            );
+
+        // ----------------------------------------------------
+        // COLD-START ASSESSMENT FALLBACK
+        // ----------------------------------------------------
+
+        if (
+          matchingExerciseRecords.length ===
+          0
+        ) {
+          const latestAssessment =
+            await getLatestAssessment();
+
+          if (
+            latestAssessment &&
+            !cancelled
+          ) {
+            const agilityScore =
+              latestAssessment.scores.find(
+                score =>
+                  score.componentId ===
+                  'agility',
+              )?.scorePct;
+
+            if (
+              typeof agilityScore ===
+                'number' &&
+              Number.isFinite(
+                agilityScore,
+              )
+            ) {
+              recentScores = [
+                agilityScore,
+              ];
+            }
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const generatedParams =
+          generateRapidNoteTransitionParams({
+            tier,
+            recentScores,
+          });
+
+        console.log(
+          '🎯 Rapid Note Transition ADS parameters:',
+          {
+            tier,
+            recentScores,
+            baseParams,
+            generatedParams,
+          },
+        );
+
+        setAdaptiveParams(
+          generatedParams,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Failed to load Rapid Note Transition ADS parameters:',
+          error,
+        );
+
+        if (!cancelled) {
+          setAdaptiveParams(baseParams);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
+      }
+    };
+
+    void loadAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseParams, tier]);
 
   // ----------------------------------------------------------
   // EXERCISE CONFIGURATION
@@ -199,32 +371,36 @@ export default function RapidNoteTransitionExerciseScreen({
 
   const exerciseConfig = useMemo(() => {
     const noteCount = getRandomInteger(
-      params.minNotes,
-      params.maxNotes,
+      adaptiveParams.minNotes,
+      adaptiveParams.maxNotes,
     );
 
     return {
       noteCount,
 
       targetSpeed:
-        params.minSpeed +
+        adaptiveParams.minSpeed +
         Math.random() *
-          (params.maxSpeed - params.minSpeed),
+          (
+            adaptiveParams.maxSpeed -
+            adaptiveParams.minSpeed
+          ),
 
-      repetitions: params.repetitions,
+      repetitions:
+        adaptiveParams.repetitions,
 
       accuracyThreshold:
-        params.accuracyThreshold,
+        adaptiveParams.accuracyThreshold,
 
       sequence:
         generateExerciseSequence(
-          params.minMidi,
-          params.maxMidi,
+          adaptiveParams.minMidi,
+          adaptiveParams.maxMidi,
           noteCount,
-          params.noteDurationSec,
+          adaptiveParams.noteDurationSec,
         ),
     };
-  }, [params]);
+  }, [adaptiveParams]);
 
   // ----------------------------------------------------------
   // SCREEN STATE
@@ -450,129 +626,132 @@ export default function RapidNoteTransitionExerciseScreen({
     );
 
   // ----------------------------------------------------------
-// PROCESS COMPLETED RECORDING
-// ----------------------------------------------------------
+  // PROCESS COMPLETED RECORDING
+  // ----------------------------------------------------------
 
-const handleRecordingStop =
-  useCallback(
-    async (
-      samples: Float32Array,
-      sampleRate: number,
-    ) => {
-      clearTimers();
+  const handleRecordingStop =
+    useCallback(
+      async (
+        samples: Float32Array,
+        sampleRate: number,
+      ) => {
+        clearTimers();
 
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setScreen('processing');
-
-      try {
-        if (
-          !samples ||
-          samples.length === 0
-        ) {
-          throw new Error(
-            'No audio samples were recorded.',
-          );
+        if (!mountedRef.current) {
+          return;
         }
 
-        const measurement =
-          measureRapidNoteTransition(
-            samples,
-            sampleRate,
-            exerciseConfig.sequence.frequencies,
-          );
-
-        const scored =
-          scoreRapidNoteTransition(
-            measurement,
-          );
-
-        const finalScore =
-          Math.round(scored.overall);
-
-        // ----------------------------------------------------
-        // SAVE PROGRESS
-        // ----------------------------------------------------
+        setScreen('processing');
 
         try {
-          await saveCompletedExercise(
-            'agility',
-            'rapidNoteTransition',
-            tier,
-            finalScore,
-          );
+          if (
+            !samples ||
+            samples.length === 0
+          ) {
+            throw new Error(
+              'No audio samples were recorded.',
+            );
+          }
 
-          console.log(
-            '💾 Rapid Note Transition progress saved:',
-            {
-              componentId: 'agility',
-              templateId: 'rapidNoteTransition',
+          const measurement =
+            measureRapidNoteTransition(
+              samples,
+              sampleRate,
+              exerciseConfig.sequence.frequencies,
+            );
+
+          const scored =
+            scoreRapidNoteTransition(
+              measurement,
+            );
+
+          const finalScore =
+            Math.round(scored.overall);
+
+          // ----------------------------------------------------
+          // SAVE PROGRESS
+          // ----------------------------------------------------
+
+          try {
+            await saveCompletedExercise(
+              'agility',
+              'rapidNoteTransition',
               tier,
-              scorePct: finalScore,
-            },
-          );
-        } catch (saveError) {
+              finalScore,
+            );
+
+            console.log(
+              '💾 Rapid Note Transition progress saved:',
+              {
+                componentId: 'agility',
+                templateId:
+                  'rapidNoteTransition',
+                tier,
+                scorePct: finalScore,
+              },
+            );
+          } catch (saveError) {
+            console.error(
+              '❌ Failed to save Rapid Note Transition progress:',
+              saveError,
+            );
+          }
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          // ----------------------------------------------------
+          // SET RESULTS
+          // ----------------------------------------------------
+
+          setResult({
+            overall: scored.overall,
+            pitchScore:
+              scored.pitchScore,
+            sequenceScore:
+              scored.sequenceScore,
+            speedScore:
+              scored.speedScore,
+
+            passed: scored.passed,
+            feedback: scored.feedback,
+
+            transitionCount:
+              measurement.transitionCount,
+
+            transitionsPerSecond:
+              measurement.transitionsPerSecond,
+
+            averageTransitionTimeMs:
+              measurement.averageTransitionTimeMs,
+          });
+
+          setScreen('results');
+        } catch (error) {
           console.error(
-            '❌ Failed to save Rapid Note Transition progress:',
-            saveError,
+            'Rapid Note Transition processing failed:',
+            error,
           );
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setErrorMessage(
+            'We could not analyze this recording. Please try again.',
+          );
+
+          setScreen('instructions');
         }
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        // ----------------------------------------------------
-        // SET RESULTS
-        // ----------------------------------------------------
-
-        setResult({
-          overall: scored.overall,
-          pitchScore: scored.pitchScore,
-          sequenceScore:
-            scored.sequenceScore,
-          speedScore: scored.speedScore,
-
-          passed: scored.passed,
-          feedback: scored.feedback,
-
-          transitionCount:
-            measurement.transitionCount,
-
-          transitionsPerSecond:
-            measurement.transitionsPerSecond,
-
-          averageTransitionTimeMs:
-            measurement.averageTransitionTimeMs,
-        });
-
-        setScreen('results');
-      } catch (error) {
-        console.error(
-          'Rapid Note Transition processing failed:',
-          error,
-        );
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        setErrorMessage(
-          'We could not analyze this recording. Please try again.',
-        );
-
-        setScreen('instructions');
-      }
-    },
-    [
-      clearTimers,
-      exerciseConfig.sequence.frequencies,
-      setScreen,
-      tier,
-    ],
-  );
+      },
+      [
+        clearTimers,
+        exerciseConfig.sequence.frequencies,
+        setScreen,
+        tier,
+      ],
+    );
 
   // ----------------------------------------------------------
   // AUDIO RECORDER
@@ -632,11 +811,6 @@ const handleRecordingStop =
             '🎤 Reference finished. Starting recording...',
           );
 
-          /*
-           * Set the UI state before starting the recorder.
-           * This makes sure live audio callbacks know
-           * that we are now in the recording phase.
-           */
           setScreen('recording');
 
           recordingStartRef.current =
@@ -801,10 +975,6 @@ const handleRecordingStop =
 
       void disposeNotePlayer();
 
-      /*
-       * The recorder is stopped only during actual unmount.
-       * Do not put isRecording in this effect's dependency list.
-       */
       void stopRecording();
     };
   }, [
@@ -945,106 +1115,225 @@ const handleRecordingStop =
         onPress={() => router.back()}
         hitSlop={10}
       >
-        <Ionicons name="arrow-back" size={24} color={BROWN} />
+        <Ionicons
+          name="arrow-back"
+          size={24}
+          color={BROWN}
+        />
       </Pressable>
 
       <View style={styles.iconCircle}>
-        <Ionicons name="flash-outline" size={34} color={BROWN} />
+        <Ionicons
+          name="flash-outline"
+          size={34}
+          color={BROWN}
+        />
       </View>
 
-      <Text style={styles.title}>Rapid Note Transition</Text>
-      <Text style={styles.subtitle}>VOCAL AGILITY</Text>
+      <Text style={styles.title}>
+        Rapid Note Transition
+      </Text>
+
+      <Text style={styles.subtitle}>
+        VOCAL AGILITY
+      </Text>
 
       <View style={styles.instructionCard}>
         <View style={styles.prepareCard}>
           <View style={styles.prepareHeader}>
-            <Ionicons name="information-circle-outline" size={21} color={BROWN} />
-            <Text style={styles.prepareTitle}>Before You Begin</Text>
+            <Ionicons
+              name="information-circle-outline"
+              size={21}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareTitle}>
+              Before You Begin
+            </Text>
           </View>
 
           <View style={styles.prepareItem}>
-            <Ionicons name="volume-mute-outline" size={17} color={BROWN} />
+            <Ionicons
+              name="volume-mute-outline"
+              size={17}
+              color={BROWN}
+            />
+
             <Text style={styles.prepareText}>
               Find a quiet area with minimal background noise.
             </Text>
           </View>
 
           <View style={styles.prepareItem}>
-            <Ionicons name="body-outline" size={17} color={BROWN} />
+            <Ionicons
+              name="body-outline"
+              size={17}
+              color={BROWN}
+            />
+
             <Text style={styles.prepareText}>
               Stand or sit upright with your shoulders relaxed.
             </Text>
           </View>
 
           <View style={styles.prepareItem}>
-            <Ionicons name="mic-outline" size={17} color={BROWN} />
+            <Ionicons
+              name="mic-outline"
+              size={17}
+              color={BROWN}
+            />
+
             <Text style={styles.prepareText}>
               Keep a comfortable distance from the microphone while singing.
             </Text>
           </View>
         </View>
 
-        <Text style={styles.cardTitle}>Exercise Details</Text>
+        <Text style={styles.cardTitle}>
+          Exercise Details
+        </Text>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Difficulty</Text>
+          <Text style={styles.detailLabel}>
+            Difficulty
+          </Text>
+
           <Text style={styles.detailValue}>
-            {tier.charAt(0).toUpperCase() + tier.slice(1)}
+            {tier.charAt(0).toUpperCase() +
+              tier.slice(1)}
           </Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Notes</Text>
-          <Text style={styles.detailValue}>{exerciseConfig.noteCount}</Text>
-        </View>
+          <Text style={styles.detailLabel}>
+            Notes
+          </Text>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Target Speed</Text>
           <Text style={styles.detailValue}>
-            {exerciseConfig.targetSpeed.toFixed(1)} notes/sec
+            {isLoadingAdaptiveParams
+              ? '...'
+              : exerciseConfig.noteCount}
           </Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Repetitions</Text>
-          <Text style={styles.detailValue}>{exerciseConfig.repetitions}</Text>
+          <Text style={styles.detailLabel}>
+            Target Speed
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {isLoadingAdaptiveParams
+              ? '...'
+              : `${exerciseConfig.targetSpeed.toFixed(
+                  1,
+                )} notes/sec`}
+          </Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Accuracy Goal</Text>
-          <Text style={styles.detailValue}>{exerciseConfig.accuracyThreshold}%</Text>
+          <Text style={styles.detailLabel}>
+            Repetitions
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {isLoadingAdaptiveParams
+              ? '...'
+              : exerciseConfig.repetitions}
+          </Text>
         </View>
 
-        <Text style={[styles.cardTitle, { marginTop: 14 }]}>Instructions</Text>
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Accuracy Goal
+          </Text>
+
+          <Text style={styles.detailValue}>
+            {exerciseConfig.accuracyThreshold}%
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.cardTitle,
+            { marginTop: 14 },
+          ]}
+        >
+          Exercise Instructions
+        </Text>
 
         <View style={styles.prepareItem}>
-          <Ionicons name="checkmark-circle-outline" size={17} color={BROWN} />
-          <Text style={styles.prepareText}>Listen carefully to the reference sequence.</Text>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={17}
+            color={BROWN}
+          />
+
+          <Text style={styles.prepareText}>
+            Listen carefully to the reference sequence.
+          </Text>
         </View>
+
         <View style={styles.prepareItem}>
-          <Ionicons name="checkmark-circle-outline" size={17} color={BROWN} />
-          <Text style={styles.prepareText}>Sing the same notes in the same order.</Text>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={17}
+            color={BROWN}
+          />
+
+          <Text style={styles.prepareText}>
+            Sing the same notes in the same order.
+          </Text>
         </View>
+
         <View style={styles.prepareItem}>
-          <Ionicons name="checkmark-circle-outline" size={17} color={BROWN} />
-          <Text style={styles.prepareText}>Move quickly and smoothly between each note.</Text>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={17}
+            color={BROWN}
+          />
+
+          <Text style={styles.prepareText}>
+            Move quickly and smoothly between each note.
+          </Text>
         </View>
+
         <View style={styles.prepareItem}>
-          <Ionicons name="checkmark-circle-outline" size={17} color={BROWN} />
-          <Text style={styles.prepareText}>Focus on maintaining accurate pitch throughout the sequence.</Text>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={17}
+            color={BROWN}
+          />
+
+          <Text style={styles.prepareText}>
+            Focus on maintaining accurate pitch throughout the sequence.
+          </Text>
         </View>
       </View>
 
       <View style={styles.referenceCard}>
-        <Text style={styles.cardTitle}>Reference Sequence</Text>
-        <Text style={styles.referenceLabel}>LISTEN AND REMEMBER THE NOTE ORDER</Text>
+        <Text style={styles.cardTitle}>
+          Reference Sequence
+        </Text>
+
+        <Text style={styles.referenceLabel}>
+          LISTEN AND REMEMBER THE NOTE ORDER
+        </Text>
+
         <View style={styles.noteSequence}>
-          {exerciseConfig.sequence.names.map((name, index) => (
-            <View key={`${name}-${index}`} style={styles.notePill}>
-              <Text style={styles.noteText}>{name}</Text>
-            </View>
-          ))}
+          {exerciseConfig.sequence.names.map(
+            (name, index) => (
+              <View
+                key={`${name}-${index}`}
+                style={styles.notePill}
+              >
+                <Text style={styles.noteText}>
+                  {name}
+                </Text>
+              </View>
+            ),
+          )}
         </View>
+
         <Text style={styles.referenceHint}>
           The sequence will play automatically before recording begins.
         </Text>
@@ -1052,28 +1341,68 @@ const handleRecordingStop =
 
       {errorMessage ? (
         <View style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={BROWN} />
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={BROWN}
+          />
+
+          <Text style={styles.errorText}>
+            {errorMessage}
+          </Text>
         </View>
       ) : null}
 
       <View style={styles.tipCard}>
-        <Ionicons name="bulb-outline" size={19} color={BROWN} />
+        <Ionicons
+          name="bulb-outline"
+          size={19}
+          color={BROWN}
+        />
+
         <Text style={styles.tipText}>
           Focus on clean transitions first. Speed should come naturally after the notes are accurate.
         </Text>
       </View>
 
       <View style={styles.difficultyRow}>
-        <Text style={styles.difficultyLabel}>Difficulty</Text>
+        <Text style={styles.difficultyLabel}>
+          Difficulty
+        </Text>
+
         <Text style={styles.difficultyValue}>
-          {tier.charAt(0).toUpperCase() + tier.slice(1)}
+          {tier.charAt(0).toUpperCase() +
+            tier.slice(1)}
         </Text>
       </View>
 
-      <Pressable style={styles.startButton} onPress={startExercise}>
-        <Ionicons name="play" size={18} color={WHITE} />
-        <Text style={styles.startButtonText}>Start Exercise</Text>
+      <Pressable
+        style={[
+          styles.startButton,
+          isLoadingAdaptiveParams &&
+            styles.disabledButton,
+        ]}
+        onPress={startExercise}
+        disabled={isLoadingAdaptiveParams}
+      >
+        {isLoadingAdaptiveParams ? (
+          <ActivityIndicator
+            size="small"
+            color={WHITE}
+          />
+        ) : (
+          <Ionicons
+            name="play"
+            size={18}
+            color={WHITE}
+          />
+        )}
+
+        <Text style={styles.startButtonText}>
+          {isLoadingAdaptiveParams
+            ? 'Preparing Exercise...'
+            : 'Start Exercise'}
+        </Text>
       </Pressable>
     </View>
   );
@@ -1085,10 +1414,21 @@ const handleRecordingStop =
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons name="flash-outline" size={34} color={BROWN} />
+        <Ionicons
+          name="flash-outline"
+          size={34}
+          color={BROWN}
+        />
       </View>
-      <Text style={styles.phaseTitle}>Get Ready</Text>
-      <Text style={styles.countdownText}>{countdown}</Text>
+
+      <Text style={styles.phaseTitle}>
+        Get Ready
+      </Text>
+
+      <Text style={styles.countdownText}>
+        {countdown}
+      </Text>
+
       <Text style={styles.phaseSubtitle}>
         Get ready to listen to the reference sequence.
       </Text>
@@ -1102,25 +1442,48 @@ const handleRecordingStop =
   const renderListening = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons name="musical-notes-outline" size={34} color={BROWN} />
+        <Ionicons
+          name="musical-notes-outline"
+          size={34}
+          color={BROWN}
+        />
       </View>
-      <Text style={styles.phaseTitle}>Listen to the Sequence</Text>
+
+      <Text style={styles.phaseTitle}>
+        Listen to the Sequence
+      </Text>
+
       <Text style={styles.phaseSubtitle}>
         Pay attention to the order and pitch of each note.
       </Text>
 
       <View style={styles.referenceCard}>
-        <Text style={styles.referenceLabel}>REFERENCE NOTES</Text>
+        <Text style={styles.referenceLabel}>
+          REFERENCE NOTES
+        </Text>
+
         <View style={styles.noteSequence}>
-          {exerciseConfig.sequence.names.map((name, index) => (
-            <View key={`${name}-${index}`} style={styles.notePill}>
-              <Text style={styles.noteText}>{name}</Text>
-            </View>
-          ))}
+          {exerciseConfig.sequence.names.map(
+            (name, index) => (
+              <View
+                key={`${name}-${index}`}
+                style={styles.notePill}
+              >
+                <Text style={styles.noteText}>
+                  {name}
+                </Text>
+              </View>
+            ),
+          )}
         </View>
       </View>
 
-      <ActivityIndicator size="small" color={BROWN} style={{ marginTop: 20 }} />
+      <ActivityIndicator
+        size="small"
+        color={BROWN}
+        style={{ marginTop: 20 }}
+      />
+
       <Text style={styles.phaseSubtitle}>
         The microphone will start after the reference sequence finishes.
       </Text>
@@ -1132,79 +1495,165 @@ const handleRecordingStop =
   // ============================================================
 
   const renderRecording = () => {
-    const progress = Math.min(elapsedSeconds / MAX_RECORDING_SECONDS, 1);
+    const progress = Math.min(
+      elapsedSeconds /
+        MAX_RECORDING_SECONDS,
+      1,
+    );
 
     return (
       <View style={styles.content}>
         <View style={styles.recordingIcon}>
-          <Ionicons name="mic" size={34} color={BROWN} />
+          <Ionicons
+            name="mic"
+            size={34}
+            color={BROWN}
+          />
         </View>
 
-        <Text style={styles.recordingTitle}>Sing the Sequence</Text>
+        <Text style={styles.recordingTitle}>
+          Sing the Sequence
+        </Text>
+
         <Text style={styles.recordingSubtitle}>
           Follow the reference notes as quickly and accurately as possible.
         </Text>
 
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingBadgeText}>RECORDING</Text>
+
+          <Text style={styles.recordingBadgeText}>
+            RECORDING
+          </Text>
         </View>
 
         <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>CURRENT NOTE</Text>
-          <Text style={styles.liveCurrentNote}>{livePitch.note}</Text>
+          <Text style={styles.liveLabel}>
+            CURRENT NOTE
+          </Text>
+
+          <Text style={styles.liveCurrentNote}>
+            {livePitch.note}
+          </Text>
+
           <Text style={styles.liveFrequency}>
-            {livePitch.pitch > 0 ? `${livePitch.pitch.toFixed(1)} Hz` : '--'}
+            {livePitch.pitch > 0
+              ? `${livePitch.pitch.toFixed(
+                  1,
+                )} Hz`
+              : '--'}
           </Text>
 
           <View style={styles.liveDivider} />
 
           <View style={styles.liveStats}>
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Transitions</Text>
-              <Text style={styles.liveStatValue}>{liveTransitionCount}</Text>
+              <Text style={styles.liveStatLabel}>
+                Transitions
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {liveTransitionCount}
+              </Text>
             </View>
+
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Notes/sec</Text>
-              <Text style={styles.liveStatValue}>{liveTransitionSpeed.toFixed(1)}</Text>
+              <Text style={styles.liveStatLabel}>
+                Notes/sec
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {liveTransitionSpeed.toFixed(
+                  1,
+                )}
+              </Text>
             </View>
           </View>
 
           <View style={styles.liveStats}>
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Clarity</Text>
-              <Text style={styles.liveStatValue}>{Math.round(livePitch.clarity * 100)}%</Text>
+              <Text style={styles.liveStatLabel}>
+                Clarity
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {Math.round(
+                  livePitch.clarity * 100,
+                )}
+                %
+              </Text>
             </View>
+
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Stability</Text>
-              <Text style={styles.liveStatValue}>{Math.round(livePitch.stability)}%</Text>
+              <Text style={styles.liveStatLabel}>
+                Stability
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {Math.round(
+                  livePitch.stability,
+                )}
+                %
+              </Text>
             </View>
           </View>
         </View>
 
-        <Text style={styles.timerText}>Recording Time: {elapsedSeconds.toFixed(1)}s</Text>
+        <Text style={styles.timerText}>
+          Recording Time:{' '}
+          {elapsedSeconds.toFixed(1)}s
+        </Text>
+
         <View style={styles.timerTrack}>
-          <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
+          <View
+            style={[
+              styles.timerFill,
+              {
+                width: `${progress * 100}%`,
+              },
+            ]}
+          />
         </View>
 
         <View style={styles.referenceCard}>
-          <Text style={styles.cardTitle}>Sing This Sequence</Text>
+          <Text style={styles.cardTitle}>
+            Sing This Sequence
+          </Text>
+
           <View style={styles.noteSequence}>
-            {exerciseConfig.sequence.names.map((name, index) => (
-              <View key={`${name}-${index}`} style={styles.notePill}>
-                <Text style={styles.noteText}>{name}</Text>
-              </View>
-            ))}
+            {exerciseConfig.sequence.names.map(
+              (name, index) => (
+                <View
+                  key={`${name}-${index}`}
+                  style={styles.notePill}
+                >
+                  <Text style={styles.noteText}>
+                    {name}
+                  </Text>
+                </View>
+              ),
+            )}
           </View>
         </View>
 
         <Pressable
-          style={[styles.finishButton, !isRecording && styles.disabledButton]}
+          style={[
+            styles.finishButton,
+            !isRecording &&
+              styles.disabledButton,
+          ]}
           onPress={finishRecording}
           disabled={!isRecording}
         >
-          <Ionicons name="stop" size={18} color={BROWN} />
-          <Text style={styles.finishButtonText}>Finish Recording</Text>
+          <Ionicons
+            name="stop"
+            size={18}
+            color={BROWN}
+          />
+
+          <Text style={styles.finishButtonText}>
+            Finish Recording
+          </Text>
         </Pressable>
       </View>
     );
@@ -1217,9 +1666,16 @@ const handleRecordingStop =
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <ActivityIndicator size="large" color={BROWN} />
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+        />
       </View>
-      <Text style={styles.phaseTitle}>Analyzing Your Singing</Text>
+
+      <Text style={styles.phaseTitle}>
+        Analyzing Your Singing
+      </Text>
+
       <Text style={styles.phaseSubtitle}>
         Measuring note transitions, speed, sequence accuracy, and pitch accuracy.
       </Text>
@@ -1231,99 +1687,232 @@ const handleRecordingStop =
   // ============================================================
 
   const renderResults = () => {
-    if (!result) return null;
+    if (!result) {
+      return null;
+    }
 
     return (
       <View style={styles.resultsContent}>
         <View
           style={[
             styles.resultIcon,
-            result.passed ? styles.resultIconPassed : styles.resultIconFailed,
+            result.passed
+              ? styles.resultIconPassed
+              : styles.resultIconFailed,
           ]}
         >
           <Ionicons
-            name={result.passed ? 'checkmark' : 'refresh'}
+            name={
+              result.passed
+                ? 'checkmark'
+                : 'refresh'
+            }
             size={40}
             color={BROWN}
           />
         </View>
 
         <Text style={styles.resultTitle}>
-          {result.passed ? 'Great Job!' : 'Keep Practicing!'}
+          {result.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'}
         </Text>
-        <Text style={styles.resultSubtitle}>Rapid Note Transition Result</Text>
+
+        <Text style={styles.resultSubtitle}>
+          Rapid Note Transition Result
+        </Text>
 
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>OVERALL SCORE</Text>
-          <Text style={styles.scoreValue}>{result.overall}</Text>
-          <Text style={styles.scoreDescription}>out of 100</Text>
+          <Text style={styles.scoreLabel}>
+            OVERALL SCORE
+          </Text>
+
+          <Text style={styles.scoreValue}>
+            {result.overall}
+          </Text>
+
+          <Text style={styles.scoreDescription}>
+            out of 100
+          </Text>
         </View>
 
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>Performance Breakdown</Text>
+          <Text style={styles.resultCardTitle}>
+            Performance Breakdown
+          </Text>
 
           <View style={styles.scoreRow}>
             <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>Pitch Accuracy</Text>
-              <Text style={styles.scoreRowValue}>{result.pitchScore}%</Text>
+              <Text style={styles.scoreRowLabel}>
+                Pitch Accuracy
+              </Text>
+
+              <Text style={styles.scoreRowValue}>
+                {result.pitchScore}%
+              </Text>
             </View>
+
             <View style={styles.progressBackground}>
-              <View style={[styles.progressFill, { width: `${Math.min(Math.max(result.pitchScore, 0), 100)}%` }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.min(
+                      Math.max(
+                        result.pitchScore,
+                        0,
+                      ),
+                      100,
+                    )}%`,
+                  },
+                ]}
+              />
             </View>
           </View>
 
           <View style={styles.scoreRow}>
             <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>Sequence Accuracy</Text>
-              <Text style={styles.scoreRowValue}>{result.sequenceScore}%</Text>
+              <Text style={styles.scoreRowLabel}>
+                Sequence Accuracy
+              </Text>
+
+              <Text style={styles.scoreRowValue}>
+                {result.sequenceScore}%
+              </Text>
             </View>
+
             <View style={styles.progressBackground}>
-              <View style={[styles.progressFill, { width: `${Math.min(Math.max(result.sequenceScore, 0), 100)}%` }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.min(
+                      Math.max(
+                        result.sequenceScore,
+                        0,
+                      ),
+                      100,
+                    )}%`,
+                  },
+                ]}
+              />
             </View>
           </View>
 
           <View style={styles.scoreRowLast}>
             <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>Transition Speed</Text>
-              <Text style={styles.scoreRowValue}>{result.speedScore}%</Text>
+              <Text style={styles.scoreRowLabel}>
+                Transition Speed
+              </Text>
+
+              <Text style={styles.scoreRowValue}>
+                {result.speedScore}%
+              </Text>
             </View>
+
             <View style={styles.progressBackground}>
-              <View style={[styles.progressFill, { width: `${Math.min(Math.max(result.speedScore, 0), 100)}%` }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.min(
+                      Math.max(
+                        result.speedScore,
+                        0,
+                      ),
+                      100,
+                    )}%`,
+                  },
+                ]}
+              />
             </View>
           </View>
         </View>
 
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>Performance Metrics</Text>
+          <Text style={styles.resultCardTitle}>
+            Performance Metrics
+          </Text>
+
           <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Transitions</Text>
-            <Text style={styles.metricValue}>{result.transitionCount}</Text>
+            <Text style={styles.metricLabel}>
+              Transitions
+            </Text>
+
+            <Text style={styles.metricValue}>
+              {result.transitionCount}
+            </Text>
           </View>
+
           <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Transitions/sec</Text>
-            <Text style={styles.metricValue}>{result.transitionsPerSecond.toFixed(1)}</Text>
+            <Text style={styles.metricLabel}>
+              Transitions/sec
+            </Text>
+
+            <Text style={styles.metricValue}>
+              {result.transitionsPerSecond.toFixed(
+                1,
+              )}
+            </Text>
           </View>
-          <View style={[styles.metricRow, styles.metricRowLast]}>
-            <Text style={styles.metricLabel}>Average Transition</Text>
-            <Text style={styles.metricValue}>{result.averageTransitionTimeMs.toFixed(0)} ms</Text>
+
+          <View
+            style={[
+              styles.metricRow,
+              styles.metricRowLast,
+            ]}
+          >
+            <Text style={styles.metricLabel}>
+              Average Transition
+            </Text>
+
+            <Text style={styles.metricValue}>
+              {result.averageTransitionTimeMs.toFixed(
+                0,
+              )}{' '}
+              ms
+            </Text>
           </View>
         </View>
 
         <View style={styles.tipCard}>
-          <Ionicons name="bulb-outline" size={20} color={BROWN} />
-          <Text style={styles.tipText}>{result.feedback}</Text>
+          <Ionicons
+            name="bulb-outline"
+            size={20}
+            color={BROWN}
+          />
+
+          <Text style={styles.tipText}>
+            {result.feedback}
+          </Text>
         </View>
 
-        <Pressable style={styles.startButton} onPress={retryExercise}>
-          <Ionicons name="refresh" size={18} color={WHITE} />
-          <Text style={styles.startButtonText}>Try Again</Text>
+        <Pressable
+          style={styles.startButton}
+          onPress={retryExercise}
+        >
+          <Ionicons
+            name="refresh"
+            size={18}
+            color={WHITE}
+          />
+
+          <Text style={styles.startButtonText}>
+            Try Again
+          </Text>
         </Pressable>
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => router.replace('/dashboard/exercises')}
+          onPress={() =>
+            router.replace(
+              '/dashboard/exercises',
+            )
+          }
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Text style={styles.doneButtonText}>
+            Done
+          </Text>
         </Pressable>
       </View>
     );
@@ -1382,10 +1971,6 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  // ============================================================
-  // SCREEN / CONTENT
-  // ============================================================
-
   screen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1413,10 +1998,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  // ============================================================
-  // GENERAL ICON / TITLE
-  // ============================================================
-
   iconCircle: {
     width: 76,
     height: 76,
@@ -1442,14 +2023,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  // ============================================================
-  // INSTRUCTIONS
-  // ============================================================
-
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,
@@ -1545,10 +2122,6 @@ const styles = StyleSheet.create({
     marginLeft: 9,
   },
 
-  // ============================================================
-  // BUTTONS
-  // ============================================================
-
   startButton: {
     width: '100%',
     height: 54,
@@ -1588,10 +2161,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.55,
   },
-
-  // ============================================================
-  // REFERENCE / SEQUENCE
-  // ============================================================
 
   referenceCard: {
     width: '100%',
@@ -1643,10 +2212,6 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ============================================================
-  // COUNTDOWN / CENTER STATES
-  // ============================================================
-
   centerScreen: {
     flexGrow: 1,
     minHeight: 700,
@@ -1680,10 +2245,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 20,
   },
-
-  // ============================================================
-  // RECORDING
-  // ============================================================
 
   recordingIcon: {
     width: 76,
@@ -1794,10 +2355,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: PINK,
   },
-
-  // ============================================================
-  // RESULTS
-  // ============================================================
 
   resultIcon: {
     width: 82,

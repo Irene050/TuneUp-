@@ -1,5 +1,5 @@
-import { fetchAllProgress } from '@/services/firebase/progressRepo';
 import { ComponentProgressSummary } from '@/services/progress/progressModule';
+import { fetchAllProgress } from '@/services/progress/progressRepo';
 import { useEffect, useState } from 'react';
 import { useAuth } from './useAuth';
 

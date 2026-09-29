@@ -1,6 +1,6 @@
 import { Tier } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 import type { ComponentId } from '@/services/assessment/assessmentModule';
-import { fetchComponentProgress } from '@/services/firebase/progressRepo';
+import { fetchComponentProgress } from '@/services/progress/progressRepo';
 import { useEffect, useState } from 'react';
 
 export function useComponentTier(userId: string | null, componentId: ComponentId) {  

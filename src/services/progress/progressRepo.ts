@@ -25,8 +25,9 @@ import {
   summarizeProgress,
 } from '@/services/progress/progressModule';
 
-import type {
-  Tier,
+import {
+  checkTierProgression,
+  type Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 
 /* ============================================================
@@ -177,10 +178,25 @@ export async function saveExerciseAndUpdateProgress(
   userId: string,
   record: ExerciseRecord
 ): Promise<ComponentProgressSummary> {
+  /*
+   * ----------------------------------------------------------
+   * STEP 1: SAVE THE COMPLETED EXERCISE
+   * ----------------------------------------------------------
+   */
+
   await saveExerciseRecord(
     userId,
     record
   );
+
+  /*
+   * ----------------------------------------------------------
+   * STEP 2: GET THE USER'S CURRENT TIER
+   * ----------------------------------------------------------
+   *
+   * If no progress summary exists yet, use the tier supplied
+   * by the exercise record.
+   */
 
   const existingSummary =
     await fetchComponentProgress(
@@ -188,9 +204,15 @@ export async function saveExerciseAndUpdateProgress(
       record.componentId
     );
 
-  const currentTier: Tier =
+  let currentTier: Tier =
     existingSummary?.currentTier ??
     record.tier;
+
+  /*
+   * ----------------------------------------------------------
+   * STEP 3: FETCH COMPLETE COMPONENT HISTORY
+   * ----------------------------------------------------------
+   */
 
   const records =
     await fetchExerciseRecords(
@@ -198,18 +220,81 @@ export async function saveExerciseAndUpdateProgress(
       record.componentId
     );
 
+  /*
+   * ----------------------------------------------------------
+   * STEP 4: CHECK TIER PROGRESSION
+   * ----------------------------------------------------------
+   *
+   * Only exercises completed in the user's CURRENT tier
+   * are considered for unlocking the next tier.
+   *
+   * Beginner records therefore cannot contribute toward
+   * Intermediate → Advanced progression.
+   */
+
+  const currentTierRecords =
+    records.filter(
+      exercise =>
+        exercise.tier === currentTier
+    );
+
+  const progressionHistory =
+    currentTierRecords.map(
+      exercise => ({
+        templateId:
+          exercise.templateId,
+        scorePct:
+          exercise.scorePct,
+      })
+    );
+
+  const progression =
+    checkTierProgression(
+      currentTier,
+      progressionHistory
+    );
+
+  if (
+    progression.canUnlock &&
+    progression.nextTier
+  ) {
+    console.log(
+      `🎉 ${record.componentId} unlocked ${progression.nextTier} tier.`
+    );
+
+    currentTier =
+      progression.nextTier;
+  } else {
+    console.log(
+      `📈 ${record.componentId} remains at ${currentTier} tier.`
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * STEP 5: BUILD CURRENT PROGRESS SUMMARIES
+   * ----------------------------------------------------------
+   *
+   * The updated currentTier is used when creating the
+   * component summary.
+   */
+
   const currentTiers: Record<
     ComponentId,
     Tier
   > = {
     breathControl:
       'beginner',
+
     pitch:
       'beginner',
+
     tone:
       'beginner',
+
     volume:
       'beginner',
+
     agility:
       'beginner',
   };
@@ -236,6 +321,12 @@ export async function saveExerciseAndUpdateProgress(
       `Unable to create progress summary for ${record.componentId}.`
     );
   }
+
+  /*
+   * ----------------------------------------------------------
+   * STEP 6: SAVE UPDATED COMPONENT SUMMARY
+   * ----------------------------------------------------------
+   */
 
   await saveComponentProgress(
     userId,

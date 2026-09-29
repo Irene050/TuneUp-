@@ -1,14 +1,9 @@
-import {
-    NOTE_MATCHING_PARAMS,
-    Tier,
-} from '@/constants/exercises/pitch';
+import type { NoteMatchingParams } from '@/constants/exercises/pitch';
+
+import type { NoteMatchingMeasurement } from '@/services/measurement/pitch/noteMatching';
 
 import {
-    NoteMatchingMeasurement,
-} from '@/services/measurement/pitch/noteMatching';
-
-import {
-    calcPitchAccuracy,
+  calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 
 
@@ -28,12 +23,8 @@ export interface NoteMatchingScoreResult {
 export function scoreNoteMatching(
   measurement: NoteMatchingMeasurement,
   targetFrequency: number,
-  tier: Tier
+  params: NoteMatchingParams,
 ): NoteMatchingScoreResult {
-
-  const params =
-    NOTE_MATCHING_PARAMS[tier];
-
 
   // ----------------------------------------------------------
   // Invalid target

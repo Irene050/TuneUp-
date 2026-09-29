@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,6 +22,23 @@ import {
 } from '@/constants/exercises/agility';
 
 import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  auth,
+} from '@/services/firebase/config';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  generateRapidScaleTrillParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import {
   measureRapidScaleTrill,
 } from '@/services/measurement/agility/rapidScaleTrill';
 
@@ -33,7 +50,9 @@ import {
   frequencyToNoteName,
 } from '@/utils/music/notes';
 
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
 
 // ============================================================
 // COLORS
@@ -46,8 +65,6 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
-
-const GREEN = '#39734A';
 
 // ============================================================
 // CONFIG
@@ -83,17 +100,92 @@ const sleep = (ms: number) =>
 // COMPONENT
 // ============================================================
 
-export default function RapidScaleTrillScreen({
-  tier,
-}: {
-  tier: Tier;
-}) {
-  const config =
-    RAPID_SCALE_TRILL_PARAMS[tier];
+export default function RapidScaleTrillScreen() {
+  // ----------------------------------------------------------
+  // CURRENT USER + TIER
+  // ----------------------------------------------------------
+
+  const currentUserId =
+    auth.currentUser?.uid ?? null;
+
+  const [tier, setTier] =
+    useState<Tier | null>(null);
+
+  const [tierLoading, setTierLoading] =
+    useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCurrentTier =
+      async () => {
+        setTierLoading(true);
+
+        if (!currentUserId) {
+          if (!cancelled) {
+            setTier('beginner');
+            setTierLoading(false);
+          }
+
+          return;
+        }
+
+        try {
+          const progress =
+            await fetchComponentProgress(
+              currentUserId,
+              'agility',
+            );
+
+          if (!cancelled) {
+            setTier(
+              progress?.currentTier ??
+                'beginner',
+            );
+
+            setTierLoading(false);
+          }
+        } catch (error) {
+          console.error(
+            '❌ Failed to load current Agility tier:',
+            error,
+          );
+
+          if (!cancelled) {
+            setTier('beginner');
+            setTierLoading(false);
+          }
+        }
+      };
+
+    void loadCurrentTier();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
+
+  // ----------------------------------------------------------
+  // BASE CONFIG
+  // ----------------------------------------------------------
+
+  const activeTier: Tier =
+    tier ?? 'beginner';
+
+  const baseConfig = useMemo(
+    () =>
+      RAPID_SCALE_TRILL_PARAMS[
+        activeTier
+      ],
+    [activeTier],
+  );
 
   // ----------------------------------------------------------
   // STATE
   // ----------------------------------------------------------
+
+  const [config, setConfig] =
+    useState(baseConfig);
 
   const [phase, setPhase] =
     useState<Phase>('instructions');
@@ -144,6 +236,138 @@ export default function RapidScaleTrillScreen({
 
   const processingRef =
     useRef(false);
+
+  // ----------------------------------------------------------
+  // CONTINUOUS ADAPTIVE DIFFICULTY SCALING
+  // ----------------------------------------------------------
+  //
+  // Rapid Scale Trill uses:
+  // - rapidScaleTrill exercise records
+  // - the currently active tier
+  // - the latest five scores for that exercise and tier
+  //
+  // If there are no Rapid Scale Trill records for the
+  // currently active tier, the latest Agility assessment
+  // score is used as the cold-start ADS reference.
+  // ----------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParameters =
+      async () => {
+        if (
+          tierLoading ||
+          !tier
+        ) {
+          return;
+        }
+
+        const user =
+          auth.currentUser;
+
+        if (!user) {
+          if (!cancelled) {
+            setConfig(baseConfig);
+          }
+
+          return;
+        }
+
+        try {
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'agility',
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          const currentExerciseRecords =
+            records
+              .filter(
+                (record) =>
+                  record.templateId ===
+                    'rapidScaleTrill' &&
+                  record.tier === tier,
+              )
+              .sort(
+                (a, b) =>
+                  a.timestamp -
+                  b.timestamp,
+              );
+
+          let recentScores: number[] = [];
+
+          if (
+            currentExerciseRecords.length >
+            0
+          ) {
+            recentScores =
+              currentExerciseRecords
+                .slice(-5)
+                .map(
+                  (record) =>
+                    record.scorePct,
+                );
+          } else {
+            const latestAssessment =
+              await getLatestAssessment();
+
+            if (cancelled) {
+              return;
+            }
+
+            const agilityAssessmentScore =
+              latestAssessment?.scores.find(
+                (score) =>
+                  score.componentId ===
+                  'agility',
+              )?.scorePct;
+
+            if (
+              typeof agilityAssessmentScore ===
+              'number'
+            ) {
+              recentScores = [
+                agilityAssessmentScore,
+              ];
+            }
+          }
+
+          const generated =
+            generateRapidScaleTrillParams({
+              tier,
+              recentScores,
+            });
+
+          if (!cancelled) {
+            setConfig(generated);
+          }
+        } catch (error) {
+          console.error(
+            '❌ Failed to load Rapid Scale Trill adaptive parameters:',
+            error,
+          );
+
+          if (!cancelled) {
+            setConfig(baseConfig);
+          }
+        }
+      };
+
+    void loadAdaptiveParameters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    tier,
+    tierLoading,
+    baseConfig,
+  ]);
 
   // ----------------------------------------------------------
   // CLEANUP
@@ -214,6 +438,7 @@ export default function RapidScaleTrillScreen({
           gain.gain.value = 0.12;
 
           oscillator.connect(gain);
+
           gain.connect(
             context.destination,
           );
@@ -373,6 +598,7 @@ export default function RapidScaleTrillScreen({
           Date.now();
 
         setRecordingTime(0);
+
         setPhase('recording');
 
         recordingTimerRef.current =
@@ -447,106 +673,123 @@ export default function RapidScaleTrillScreen({
   // ----------------------------------------------------------
 
   const processRecording =
-  async () => {
-    if (processingRef.current) {
-      return;
-    }
-
-    processingRef.current = true;
-
-    stopRecording();
-
-    setPhase('processing');
-
-    await sleep(500);
-
-    try {
-      const samples =
-        new Float32Array(
-          samplesRef.current,
-        );
-
-      const measurement =
-        measureRapidScaleTrill(
-          samples,
-          SAMPLE_RATE,
-          config.frequencies,
-        );
-
-      const scored =
-        scoreRapidScaleTrill(
-          measurement,
-        );
-
-      // Save completed exercise progress
-      try {
-        await saveCompletedExercise(
-          'agility',
-          'rapidScaleTrill',
-          tier,
-          scored.overall,
-        );
-
-        console.log(
-          '💾 Rapid Scale Trill progress saved:',
-          scored.overall,
-        );
-      } catch (saveError) {
-        console.error(
-          '❌ Failed to save Rapid Scale Trill progress:',
-          saveError,
-        );
+    async () => {
+      if (processingRef.current) {
+        return;
       }
 
-      setResult({
-        overall: scored.overall,
-        pitchScore:
-          scored.pitchScore,
-        sequenceScore:
-          scored.sequenceScore,
-        transitionScore:
-          scored.transitionScore,
-        speedScore:
-          scored.speedScore,
-        passed: scored.passed,
-        feedback:
-          scored.feedback,
+      processingRef.current = true;
 
-        noteCount:
-          measurement.noteCount,
+      stopRecording();
 
-        correctNoteCount:
-          measurement.correctNoteCount,
+      setPhase('processing');
 
-        transitionCount:
-          measurement.transitionCount,
+      await sleep(500);
 
-        correctTransitionCount:
-          measurement.correctTransitionCount,
+      try {
+        const samples =
+          new Float32Array(
+            samplesRef.current,
+          );
 
-        averageTransitionTimeMs:
-          measurement.averageTransitionTimeMs,
+        const measurement =
+          measureRapidScaleTrill(
+            samples,
+            SAMPLE_RATE,
+            config.frequencies,
+          );
 
-        notesPerSecond:
-          measurement.notesPerSecond,
+        const scored =
+          scoreRapidScaleTrill(
+            measurement,
+          );
 
-        durationMs:
-          measurement.durationMs,
-      });
+        // ----------------------------------------------------
+        // SAVE EXERCISE PROGRESS
+        // ----------------------------------------------------
 
-      setPhase('results');
-    } catch (error) {
-      console.warn(
-        'Processing failed:',
-        error,
-      );
+        try {
+          if (tier) {
+            await saveCompletedExercise(
+              'agility',
+              'rapidScaleTrill',
+              tier,
+              scored.overall,
+            );
+          }
 
-      processingRef.current =
-        false;
+          console.log(
+            '💾 Rapid Scale Trill progress saved:',
+            scored.overall,
+          );
+        } catch (saveError) {
+          console.error(
+            '❌ Failed to save Rapid Scale Trill progress:',
+            saveError,
+          );
+        }
 
-      setPhase('instructions');
-    }
-  };
+        // ----------------------------------------------------
+        // RESULTS
+        // ----------------------------------------------------
+
+        setResult({
+          overall:
+            scored.overall,
+
+          pitchScore:
+            scored.pitchScore,
+
+          sequenceScore:
+            scored.sequenceScore,
+
+          transitionScore:
+            scored.transitionScore,
+
+          speedScore:
+            scored.speedScore,
+
+          passed:
+            scored.passed,
+
+          feedback:
+            scored.feedback,
+
+          noteCount:
+            measurement.noteCount,
+
+          correctNoteCount:
+            measurement.correctNoteCount,
+
+          transitionCount:
+            measurement.transitionCount,
+
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+
+          averageTransitionTimeMs:
+            measurement.averageTransitionTimeMs,
+
+          notesPerSecond:
+            measurement.notesPerSecond,
+
+          durationMs:
+            measurement.durationMs,
+        });
+
+        setPhase('results');
+      } catch (error) {
+        console.warn(
+          'Processing failed:',
+          error,
+        );
+
+        processingRef.current =
+          false;
+
+        setPhase('instructions');
+      }
+    };
 
   // ----------------------------------------------------------
   // RESET
@@ -557,7 +800,9 @@ export default function RapidScaleTrillScreen({
       processingRef.current = false;
 
       setResult(null);
+
       setRecordingTime(0);
+
       setCountdown(
         COUNTDOWN_SECONDS,
       );
@@ -706,7 +951,7 @@ export default function RapidScaleTrillScreen({
               { marginTop: 14 },
             ]}
           >
-            Instructions
+            Exercise Instructions
           </Text>
 
           <View style={styles.prepareItem}>
@@ -1559,7 +1804,7 @@ const styles = StyleSheet.create({
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,

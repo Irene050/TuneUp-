@@ -22,7 +22,8 @@ import {
 
 import {
   STEADY_TONE_HOLDING_PARAMS,
-  Tier,
+  type SteadyToneHoldingParams,
+  type Tier,
 } from '@/constants/exercises/tone';
 
 import {
@@ -43,6 +44,21 @@ import {
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
+
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  generateSteadyToneHoldingParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
+import { auth } from '@/services/firebase/config';
 
 import {
   samplesToFFTFrames,
@@ -117,14 +133,27 @@ function formatNumber(
 // ============================================================
 
 export default function SteadyToneHoldingScreen({
-  tier = 'beginner',
+  tier,
 }: Props) {
-  const params =
-    STEADY_TONE_HOLDING_PARAMS[tier];
+  const fallbackTier: Tier =
+    tier ?? 'beginner';
 
   // ==========================================================
   // STATE
   // ==========================================================
+
+  const [currentTier, setCurrentTier] =
+    useState<Tier>(fallbackTier);
+
+  const [params, setParams] =
+    useState<SteadyToneHoldingParams>(
+      STEADY_TONE_HOLDING_PARAMS[
+        fallbackTier
+      ],
+    );
+
+  const [loadingParams, setLoadingParams] =
+    useState(true);
 
   const [phase, setPhase] =
     useState<Phase>('instructions');
@@ -150,6 +179,182 @@ export default function SteadyToneHoldingScreen({
 
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
+
+  // ==========================================================
+  // ADS PARAMETER LOADING
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadParams = async () => {
+      try {
+        setLoadingParams(true);
+
+        const user = auth.currentUser;
+
+        // ------------------------------------------------------
+        // No authenticated user
+        // ------------------------------------------------------
+
+        if (!user) {
+          if (!cancelled) {
+            setCurrentTier(fallbackTier);
+
+            setParams(
+              STEADY_TONE_HOLDING_PARAMS[
+                fallbackTier
+              ],
+            );
+          }
+
+          return;
+        }
+
+        // ------------------------------------------------------
+        // Resolve current component tier
+        // ------------------------------------------------------
+
+        const componentProgress =
+          await fetchComponentProgress(
+            user.uid,
+            'tone',
+          );
+
+        const resolvedTier: Tier =
+          tier ??
+          componentProgress?.currentTier ??
+          'beginner';
+
+        // ------------------------------------------------------
+        // Load exercise history
+        // ------------------------------------------------------
+
+        const records =
+          await fetchExerciseRecords(
+            user.uid,
+            'tone',
+          );
+
+        // ------------------------------------------------------
+        // Use only Steady Tone Holding records from the
+        // currently resolved tier.
+        // ------------------------------------------------------
+
+        const currentTierRecords =
+          records
+            .filter(
+              record =>
+                record.tier ===
+                  resolvedTier &&
+                record.templateId ===
+                  'steadyToneHolding',
+            )
+            .sort(
+              (a, b) =>
+                a.timestamp -
+                b.timestamp,
+            );
+
+        // ------------------------------------------------------
+        // ADS reference:
+        // latest five completed exercise scores
+        // ------------------------------------------------------
+
+        let recentScores =
+          currentTierRecords
+            .slice(-5)
+            .map(
+              record =>
+                record.scorePct,
+            );
+
+        // ------------------------------------------------------
+        // Cold-start fallback:
+        // if this exercise has no history for the current
+        // tier, use the latest Tone assessment score.
+        // ------------------------------------------------------
+
+        if (
+          recentScores.length === 0
+        ) {
+          const latestAssessment =
+            await getLatestAssessment();
+
+          const assessmentToneScore =
+            latestAssessment?.scores.find(
+              score =>
+                score.componentId ===
+                'tone',
+            )?.scorePct;
+
+          if (
+            assessmentToneScore !==
+            undefined &&
+            Number.isFinite(
+              assessmentToneScore,
+            )
+          ) {
+            recentScores = [
+              assessmentToneScore,
+            ];
+          }
+        }
+
+        // ------------------------------------------------------
+        // Generate adaptive parameters
+        // ------------------------------------------------------
+
+        const generatedParams =
+          generateSteadyToneHoldingParams({
+            tier: resolvedTier,
+            recentScores,
+          });
+
+        if (!cancelled) {
+          setCurrentTier(
+            resolvedTier,
+          );
+
+          setParams(
+            generatedParams,
+          );
+        }
+      } catch (error) {
+        console.error(
+          '❌ FAILED TO LOAD STEADY TONE HOLDING PARAMETERS:',
+          error,
+        );
+
+        // ----------------------------------------------------
+        // Safe fallback to the explicitly supplied tier,
+        // or Beginner when no tier was supplied.
+        // ----------------------------------------------------
+
+        if (!cancelled) {
+          setCurrentTier(
+            fallbackTier,
+          );
+
+          setParams(
+            STEADY_TONE_HOLDING_PARAMS[
+              fallbackTier
+            ],
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingParams(false);
+        }
+      }
+    };
+
+    void loadParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier, fallbackTier]);
 
   // ==========================================================
   // REFS
@@ -189,41 +394,41 @@ export default function SteadyToneHoldingScreen({
   // CLEANUP
   // ==========================================================
 
-useEffect(() => {
-  mountedRef.current = true;
+  useEffect(() => {
+    mountedRef.current = true;
 
-  return () => {
-    const wasRecording =
-      recordingRef.current;
+    return () => {
+      const wasRecording =
+        recordingRef.current;
 
-    mountedRef.current = false;
+      mountedRef.current = false;
 
-    if (countdownTimerRef.current) {
-      clearInterval(
-        countdownTimerRef.current,
-      );
+      if (countdownTimerRef.current) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
 
-      countdownTimerRef.current = null;
-    }
+        countdownTimerRef.current = null;
+      }
 
-    if (recordingTimerRef.current) {
-      clearInterval(
-        recordingTimerRef.current,
-      );
+      if (recordingTimerRef.current) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
 
-      recordingTimerRef.current = null;
-    }
+        recordingTimerRef.current = null;
+      }
 
-    // Only stop the recorder if this screen
-    // actually started a recording.
-    if (wasRecording) {
-      void stopRecordingRef.current?.();
-    }
+      // Only stop the recorder if this screen
+      // actually started a recording.
+      if (wasRecording) {
+        void stopRecordingRef.current?.();
+      }
 
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
-  };
-}, []);
+      recordingRef.current = false;
+      stopRequestedRef.current = false;
+    };
+  }, []);
 
   // ==========================================================
   // LIVE AUDIO
@@ -265,6 +470,7 @@ useEffect(() => {
           clearInterval(
             recordingTimerRef.current,
           );
+
           recordingTimerRef.current = null;
         }
 
@@ -310,11 +516,13 @@ useEffect(() => {
           const scored =
             scoreSteadyToneHolding(
               measured,
-              tier,
+              params,
             );
 
           if (
-            !Number.isFinite(scored.score)
+            !Number.isFinite(
+              scored.score,
+            )
           ) {
             throw new Error(
               'The tone score could not be calculated.',
@@ -325,13 +533,18 @@ useEffect(() => {
             return;
           }
 
-          setMeasurement(measured);
-          setResult(scored);
+          setMeasurement(
+            measured,
+          );
+
+          setResult(
+            scored,
+          );
 
           await saveCompletedExercise(
             'tone',
             'steadyToneHolding',
-            tier,
+            currentTier,
             scored.score,
           );
 
@@ -350,14 +563,17 @@ useEffect(() => {
             setErrorMessage(
               'We could not analyze your recording. Please try again.',
             );
-            setPhase('instructions');
+
+            setPhase(
+              'instructions',
+            );
           }
         } finally {
           processingRef.current = false;
           stopRequestedRef.current = false;
         }
       },
-      [tier],
+      [currentTier, params],
     );
 
   // ==========================================================
@@ -394,7 +610,8 @@ useEffect(() => {
       if (
         !mountedRef.current ||
         recordingRef.current ||
-        processingRef.current
+        processingRef.current ||
+        loadingParams
       ) {
         return;
       }
@@ -435,6 +652,7 @@ useEffect(() => {
             }
 
             elapsedRef.current += 100;
+
             setElapsedMs(
               elapsedRef.current,
             );
@@ -449,6 +667,7 @@ useEffect(() => {
                 clearInterval(
                   recordingTimerRef.current,
                 );
+
                 recordingTimerRef.current =
                   null;
               }
@@ -463,13 +682,15 @@ useEffect(() => {
                 true;
 
               stopRecording().catch(
-                (error) => {
+                error => {
                   console.error(
                     '❌ FAILED TO STOP STEADY TONE RECORDING:',
                     error,
                   );
 
-                  recordingRef.current = false;
+                  recordingRef.current =
+                    false;
+
                   stopRequestedRef.current =
                     false;
 
@@ -479,6 +700,7 @@ useEffect(() => {
                     setErrorMessage(
                       'We could not finish the recording. Please try again.',
                     );
+
                     setPhase(
                       'instructions',
                     );
@@ -506,6 +728,7 @@ useEffect(() => {
         }
       }
     }, [
+      loadingParams,
       params.durationSec,
       startRecording,
       stopRecording,
@@ -519,7 +742,8 @@ useEffect(() => {
     useCallback(() => {
       if (
         recordingRef.current ||
-        processingRef.current
+        processingRef.current ||
+        loadingParams
       ) {
         return;
       }
@@ -528,6 +752,7 @@ useEffect(() => {
         clearInterval(
           countdownTimerRef.current,
         );
+
         countdownTimerRef.current = null;
       }
 
@@ -546,6 +771,7 @@ useEffect(() => {
       setCountdown(
         COUNTDOWN_SECONDS,
       );
+
       setPhase('countdown');
 
       let value =
@@ -562,11 +788,13 @@ useEffect(() => {
               clearInterval(
                 countdownTimerRef.current,
               );
+
               countdownTimerRef.current =
                 null;
             }
 
             void beginRecording();
+
             return;
           }
 
@@ -574,7 +802,10 @@ useEffect(() => {
             setCountdown(value);
           }
         }, 1000);
-    }, [beginRecording]);
+    }, [
+      beginRecording,
+      loadingParams,
+    ]);
 
   // ==========================================================
   // RETRY
@@ -586,6 +817,7 @@ useEffect(() => {
         clearInterval(
           countdownTimerRef.current,
         );
+
         countdownTimerRef.current = null;
       }
 
@@ -593,6 +825,7 @@ useEffect(() => {
         clearInterval(
           recordingTimerRef.current,
         );
+
         recordingTimerRef.current = null;
       }
 
@@ -603,6 +836,7 @@ useEffect(() => {
       setCountdown(
         COUNTDOWN_SECONDS,
       );
+
       setElapsedMs(0);
       elapsedRef.current = 0;
 
@@ -624,6 +858,7 @@ useEffect(() => {
         clearInterval(
           countdownTimerRef.current,
         );
+
         countdownTimerRef.current = null;
       }
 
@@ -631,13 +866,14 @@ useEffect(() => {
         clearInterval(
           recordingTimerRef.current,
         );
+
         recordingTimerRef.current = null;
       }
 
       recordingRef.current = false;
       stopRequestedRef.current = true;
 
-      stopRecordingRef.current?.();
+      void stopRecordingRef.current?.();
 
       router.replace(
         '/dashboard/exercises',
@@ -661,7 +897,9 @@ useEffect(() => {
 
   const livePitchNote =
     liveFrame &&
-    Number.isFinite(liveFrame.pitch) &&
+    Number.isFinite(
+      liveFrame.pitch,
+    ) &&
     liveFrame.pitch > 0
       ? frequencyToNote(
           liveFrame.pitch,
@@ -670,7 +908,9 @@ useEffect(() => {
 
   const livePitchHz =
     liveFrame &&
-    Number.isFinite(liveFrame.pitch) &&
+    Number.isFinite(
+      liveFrame.pitch,
+    ) &&
     liveFrame.pitch > 0
       ? `${Math.round(
           liveFrame.pitch,
@@ -679,7 +919,9 @@ useEffect(() => {
 
   const liveClarity =
     liveFrame &&
-    Number.isFinite(liveFrame.clarity)
+    Number.isFinite(
+      liveFrame.clarity,
+    )
       ? `${Math.round(
           liveFrame.clarity * 100,
         )}%`
@@ -687,7 +929,9 @@ useEffect(() => {
 
   const liveVolume =
     liveFrame &&
-    Number.isFinite(liveFrame.volume)
+    Number.isFinite(
+      liveFrame.volume,
+    )
       ? `${Math.round(
           liveFrame.volume,
         )} dB`
@@ -906,7 +1150,7 @@ useEffect(() => {
             <Text
               style={styles.difficultyValue}
             >
-              {tier}
+              {currentTier}
             </Text>
           </View>
 
@@ -941,20 +1185,30 @@ useEffect(() => {
           <Pressable
             style={styles.startButton}
             onPress={startCountdown}
+            disabled={loadingParams}
           >
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Start Exercise
-            </Text>
+            {loadingParams ? (
+              <ActivityIndicator
+                size="small"
+                color={WHITE}
+              />
+            ) : (
+              <>
+                <Text
+                  style={
+                    styles.startButtonText
+                  }
+                >
+                  Start Exercise
+                </Text>
 
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={WHITE}
+                />
+              </>
+            )}
           </Pressable>
 
           {errorMessage && (
@@ -1529,7 +1783,7 @@ const styles =
     instructionCard: {
       width: '100%',
       backgroundColor: LIGHT_PINK,
-      borderRadius: 20,
+      borderRadius: 24,
       padding: 20,
       borderWidth: 1,
       borderColor: '#F2DDE5',
@@ -1548,7 +1802,7 @@ const styles =
     prepareHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 14,
+      marginTop: 18,
     },
 
     prepareTitle: {

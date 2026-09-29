@@ -1,17 +1,18 @@
 import {
-    calcRMSWindows,
-    toDbArray,
+  calcRMSWindows,
+  toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
 
-const WINDOW_MS = 50;
+const DEFAULT_WINDOW_MS = 50;
 
-const TARGET_MIN = 40;
-const TARGET_MAX = 55;
+const DEFAULT_TARGET_RANGE: [number, number] = [
+  40,
+  55,
+];
 
-const DURATION_SECONDS = 3;
-const REPETITIONS = 2;
-
-const TOLERANCE_DB = 5;
+const DEFAULT_DURATION_SECONDS = 3;
+const DEFAULT_REPETITIONS = 2;
+const DEFAULT_TOLERANCE_DB = 5;
 
 export interface VolumeBandMeasurement {
   dbValues: number[];
@@ -34,11 +35,19 @@ export interface VolumeBandMeasurement {
   measurementQuality: number;
 }
 
+interface MeasureOptions {
+  windowMs?: number;
+  targetDbRange?: [number, number];
+  durationSec?: number;
+  repetitions?: number;
+  toleranceDb?: number;
+}
+
 function clamp(
   value: number,
   min: number,
   max: number,
-) {
+): number {
   return Math.max(
     min,
     Math.min(max, value),
@@ -47,7 +56,7 @@ function clamp(
 
 function average(
   values: number[],
-) {
+): number {
   if (values.length === 0) {
     return 0;
   }
@@ -63,7 +72,7 @@ function average(
 
 function standardDeviation(
   values: number[],
-) {
+): number {
   if (values.length < 2) {
     return 0;
   }
@@ -86,7 +95,7 @@ function standardDeviation(
 
 export function calculateVolumeConsistency(
   dbValues: number[],
-) {
+): number {
   if (dbValues.length < 2) {
     return 0;
   }
@@ -127,40 +136,85 @@ export function calculateVolumeConsistency(
 
 function isInsideTargetBand(
   value: number,
-) {
+  targetDbRange: [number, number],
+  toleranceDb: number,
+): boolean {
   if (!Number.isFinite(value)) {
     return false;
   }
 
+  const targetMin =
+    Math.min(
+      targetDbRange[0],
+      targetDbRange[1],
+    );
+
+  const targetMax =
+    Math.max(
+      targetDbRange[0],
+      targetDbRange[1],
+    );
+
   return (
     value >=
-      TARGET_MIN - TOLERANCE_DB &&
+      targetMin - toleranceDb &&
     value <=
-      TARGET_MAX + TOLERANCE_DB
+      targetMax + toleranceDb
   );
 }
 
-function emptyMeasurement(): VolumeBandMeasurement {
+function createEmptyMeasurement(
+  windowMs: number,
+  durationSec: number,
+  repetitions: number,
+): VolumeBandMeasurement {
+  const windowsPerRep =
+    Math.max(
+      1,
+      Math.round(
+        (durationSec * 1000) /
+          windowMs,
+      ),
+    );
+
   const expectedWindowCount =
-    Math.round(
-      (DURATION_SECONDS * 1000) /
-        WINDOW_MS,
-    ) * REPETITIONS;
+    windowsPerRep *
+    repetitions;
 
   return {
     dbValues: [],
-    repConsistency: [0, 0],
+
+    repConsistency:
+      Array.from(
+        {
+          length:
+            repetitions,
+        },
+        () => 0,
+      ),
+
     consistency: 0,
+
     averageDb: 0,
+
     minDb: 0,
     maxDb: 0,
+
     targetReached: false,
-    repTargetReached: [
-      false,
-      false,
-    ],
+
+    repTargetReached:
+      Array.from(
+        {
+          length:
+            repetitions,
+        },
+        () => false,
+      ),
+
     validWindowCount: 0,
+
     expectedWindowCount,
+
     measurementQuality: 0,
   };
 }
@@ -168,25 +222,58 @@ function emptyMeasurement(): VolumeBandMeasurement {
 export function measureVolumeBandTargeting(
   samples: Float32Array,
   sampleRate = 44100,
+  options: MeasureOptions = {},
 ): VolumeBandMeasurement {
+  const windowMs =
+    options.windowMs ??
+    DEFAULT_WINDOW_MS;
+
+  const targetDbRange =
+    options.targetDbRange ??
+    DEFAULT_TARGET_RANGE;
+
+  const durationSec =
+    options.durationSec ??
+    DEFAULT_DURATION_SECONDS;
+
+  const repetitions =
+    Math.max(
+      1,
+      Math.round(
+        options.repetitions ??
+          DEFAULT_REPETITIONS,
+      ),
+    );
+
+  const toleranceDb =
+    Math.max(
+      0,
+      options.toleranceDb ??
+        DEFAULT_TOLERANCE_DB,
+    );
+
   if (
     samples.length === 0 ||
     sampleRate <= 0
   ) {
-    return emptyMeasurement();
+    return createEmptyMeasurement(
+      windowMs,
+      durationSec,
+      repetitions,
+    );
   }
 
   /*
    * PCM
    * ↓
-   * 50 ms RMS
+   * RMS windows
    * ↓
-   * dB
+   * dB magnitude
    */
   const rmsValues =
     calcRMSWindows(
       samples,
-      WINDOW_MS,
+      windowMs,
       sampleRate,
     );
 
@@ -200,22 +287,25 @@ export function measureVolumeBandTargeting(
       );
 
   if (dbValues.length === 0) {
-    return emptyMeasurement();
+    return createEmptyMeasurement(
+      windowMs,
+      durationSec,
+      repetitions,
+    );
   }
 
   const windowsPerRep =
     Math.max(
       1,
       Math.round(
-        (DURATION_SECONDS *
-          1000) /
-          WINDOW_MS,
+        (durationSec * 1000) /
+          windowMs,
       ),
     );
 
   const expectedWindowCount =
     windowsPerRep *
-    REPETITIONS;
+    repetitions;
 
   const effectiveValues =
     dbValues.slice(
@@ -228,7 +318,10 @@ export function measureVolumeBandTargeting(
 
   const repConsistency =
     Array.from(
-      { length: REPETITIONS },
+      {
+        length:
+          repetitions,
+      },
       (_, repIndex) => {
         const start =
           repIndex *
@@ -252,7 +345,10 @@ export function measureVolumeBandTargeting(
 
   const repTargetReached =
     Array.from(
-      { length: REPETITIONS },
+      {
+        length:
+          repetitions,
+      },
       (_, repIndex) => {
         const start =
           repIndex *
@@ -282,6 +378,8 @@ export function measureVolumeBandTargeting(
 
         return isInsideTargetBand(
           repAverage,
+          targetDbRange,
+          toleranceDb,
         );
       },
     );
@@ -297,18 +395,24 @@ export function measureVolumeBandTargeting(
     );
 
   const minDb =
-    Math.min(
-      ...effectiveValues,
-    );
+    effectiveValues.length > 0
+      ? Math.min(
+          ...effectiveValues,
+        )
+      : 0;
 
   const maxDb =
-    Math.max(
-      ...effectiveValues,
-    );
+    effectiveValues.length > 0
+      ? Math.max(
+          ...effectiveValues,
+        )
+      : 0;
 
   const targetReached =
     isInsideTargetBand(
       averageDb,
+      targetDbRange,
+      toleranceDb,
     );
 
   const measurementQuality =

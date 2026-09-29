@@ -1,9 +1,9 @@
 import {
-  Fredoka_300Light,
-  Fredoka_400Regular,
-  Fredoka_500Medium,
-  Fredoka_600SemiBold,
-  Fredoka_700Bold,
+    Fredoka_300Light,
+    Fredoka_400Regular,
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
 } from '@expo-google-fonts/fredoka';
 import { useFonts } from 'expo-font';
 import { router, Slot, usePathname } from 'expo-router';
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
 
   backArrow: {
     fontSize: 36,
-    fontWeight: '300',
+    fontFamily: 'FredokaLight',
     color: '#4A302F',
     lineHeight: 40,
   },

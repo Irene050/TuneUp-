@@ -1,15 +1,15 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
 import { sendPasswordResetCode } from '@/services/firebase/authService';
@@ -179,14 +179,14 @@ const styles = StyleSheet.create({
 
   backArrow: {
     fontSize: 32,
-    fontWeight: '300',
+    fontFamily: 'FredokaLight',
     color: '#4A302F',
   },
 
   title: {
     textAlign: 'center',
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'FredokaBold',
     color: '#4A302F',
     marginBottom: 12,
   },
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
 
   buttonText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'FredokaBold',
     color: '#4A302F',
   },
 });
