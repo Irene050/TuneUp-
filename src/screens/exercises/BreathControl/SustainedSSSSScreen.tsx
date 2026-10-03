@@ -1,6 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from 'react';
+
 import {
   ActivityIndicator,
   Pressable,
@@ -19,12 +25,12 @@ import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 import {
   measureSustainedSSSS,
-  SustainedSSSSMeasurement,
+  type SustainedSSSSMeasurement,
 } from '@/services/measurement/breathControl/sustainedSSSS';
 
 import {
   scoreSustainedSSSS,
-  SustainedSSSSScoreResult,
+  type SustainedSSSSScoreResult,
 } from '@/services/scoring/breathControl/sustainedSSSS';
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -40,6 +46,12 @@ import { getLatestAssessment } from '@/services/assessment/assessmentRepository'
 
 import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -47,8 +59,9 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
+const PREPARATION_COUNTDOWN = 3;
 
-type Screen =
+type Phases =
   | 'instructions'
   | 'countdown'
   | 'recording'
@@ -56,22 +69,18 @@ type Screen =
   | 'results';
 
 interface RepResult {
+  rep: number;
   measurement: SustainedSSSSMeasurement;
   score: SustainedSSSSScoreResult;
 }
 
-interface SustainedSSSSScreenProps {
+interface Props {
   tier?: Tier;
 }
 
 export default function SustainedSSSSScreen({
   tier: initialTier,
-}: SustainedSSSSScreenProps) {
-  /*
-   * =================================================
-   * ADAPTIVE EXERCISE STATE
-   * =================================================
-   */
+}: Props) {
 
   const [tier, setTier] = useState<Tier | null>(
     initialTier ?? null
@@ -83,37 +92,16 @@ export default function SustainedSSSSScreen({
   const [loadingParams, setLoadingParams] =
     useState(true);
 
-  /*
-   * Refs contain the currently generated adaptive
-   * configuration so asynchronous callbacks never
-   * have to access nullable React state.
-   */
-
-  const paramsRef =
-    useRef<SustainedExhaleParams | null>(null);
-
-  const tierRef =
-    useRef<Tier | null>(initialTier ?? null);
-
-  /*
-   * =================================================
-   * SCREEN STATE
-   * =================================================
-   */
-
-  const [screen, setScreen] =
-    useState<Screen>('instructions');
-
-  const [countdown, setCountdown] =
-    useState(3);
+  const [phase, setPhase] =
+    useState<Phases>('instructions');
 
   const [currentRep, setCurrentRep] =
     useState(1);
 
-  const [elapsed, setElapsed] =
-    useState(0);
+  const [countdown, setCountdown] =
+    useState(PREPARATION_COUNTDOWN);
 
-  const [liveVolume, setLiveVolume] =
+  const [volume, setVolume] =
     useState<number | null>(null);
 
   const [repResults, setRepResults] =
@@ -122,11 +110,11 @@ export default function SustainedSSSSScreen({
   const [error, setError] =
     useState<string | null>(null);
 
-  /*
-   * =================================================
-   * REFS
-   * =================================================
-   */
+  const paramsRef =
+    useRef<SustainedExhaleParams | null>(null);
+
+  const tierRef =
+    useRef<Tier | null>(initialTier ?? null);
 
   const countdownTimerRef = useRef<
     ReturnType<typeof setInterval> | null
@@ -140,6 +128,9 @@ export default function SustainedSSSSScreen({
     ReturnType<typeof setTimeout> | null
   >(null);
 
+  const [elapsed, setElapsed] =
+    useState(0);
+
   const mountedRef = useRef(true);
 
   const startingRef = useRef(false);
@@ -151,23 +142,13 @@ export default function SustainedSSSSScreen({
   const currentRepRef =
     useRef(1);
 
-  /*
-   * Recorder refs prevent recorder functions from
-   * being referenced before useAudioRecorder is
-   * initialized.
-   */
-
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
 
   const stopRecordingRef =
     useRef<(() => void) | null>(null);
 
-  /*
-   * =================================================
-   * INITIALIZE ADAPTIVE DIFFICULTY
-   * =================================================
-   */
+
 
   useEffect(() => {
     let cancelled = false;
@@ -175,12 +156,6 @@ export default function SustainedSSSSScreen({
     async function initializeAdaptiveExercise() {
       try {
         setLoadingParams(true);
-
-        /*
-         * ------------------------------------------
-         * DETERMINE CURRENT TIER
-         * ------------------------------------------
-         */
 
         let currentTier: Tier =
           initialTier ?? 'beginner';
@@ -202,22 +177,6 @@ export default function SustainedSSSSScreen({
           return;
         }
 
-        /*
-         * ------------------------------------------
-         * GET REFERENCE SCORES
-         * ------------------------------------------
-         *
-         * First use the latest five completed
-         * Sustained SSSS exercises in the current tier.
-         *
-         * If none exist, use the latest Initial
-         * Assessment Breath Control score.
-         *
-         * If neither exists, recentScores remains empty
-         * and the generator uses the default tier
-         * parameters.
-         */
-
         let recentScores: number[] = [];
 
         if (user) {
@@ -226,14 +185,6 @@ export default function SustainedSSSSScreen({
               user.uid,
               'breathControl'
             );
-
-          /*
-           * Only use history from this exact exercise
-           * template and the user's current tier.
-           *
-           * This prevents scores from other Breath Control
-           * exercises from influencing Sustained SSSS ADS.
-           */
 
           const currentExerciseRecords =
             records.filter(
@@ -250,13 +201,6 @@ export default function SustainedSSSSScreen({
                 record =>
                   record.scorePct
               );
-
-          /*
-           * No Sustained SSSS exercise history for this
-           * tier yet — use the latest Assessment
-           * Breath Control score as the initial ADS
-           * reference.
-           */
 
           if (recentScores.length === 0) {
             const assessment =
@@ -284,12 +228,6 @@ export default function SustainedSSSSScreen({
           return;
         }
 
-        /*
-         * ------------------------------------------
-         * GENERATE ADAPTIVE PARAMETERS
-         * ------------------------------------------
-         */
-
         const generatedParams =
           generateSustainedSSSSParams({
             tier: currentTier,
@@ -299,10 +237,6 @@ export default function SustainedSSSSScreen({
         if (cancelled) {
           return;
         }
-
-        /*
-         * Store both state and refs.
-         */
 
         setTier(currentTier);
         setParams(generatedParams);
@@ -398,22 +332,10 @@ export default function SustainedSSSSScreen({
         return;
       }
 
-      setLiveVolume(frame.volume);
+      setVolume(frame.volume);
     },
     []
   );
-
-  /*
-   * =================================================
-   * HANDLE RECORDING STOP
-   * =================================================
-   *
-   * This is declared before the recording phase
-   * because useAudioRecorder needs it.
-   *
-   * The callback reads adaptive configuration
-   * through refs, so params can never be null here.
-   */
 
   const handleRecordingStop =
     useCallback(
@@ -431,8 +353,8 @@ export default function SustainedSSSSScreen({
 
         clearTimers();
 
-        setScreen('processing');
-        setLiveVolume(null);
+        setPhase('processing');
+        setVolume(null);
 
         startingRef.current = false;
         finishingRef.current = false;
@@ -443,12 +365,6 @@ export default function SustainedSSSSScreen({
         const currentTier =
           tierRef.current;
 
-        /*
-         * The recorder should never stop before
-         * adaptive parameters have been prepared.
-         * Still, protect against that possibility.
-         */
-
         if (!adaptiveParams || !currentTier) {
           console.error(
             '❌ Sustained SSSS adaptive parameters are unavailable.'
@@ -458,17 +374,12 @@ export default function SustainedSSSSScreen({
             'Exercise parameters are unavailable. Please try again.'
           );
 
-          setScreen('instructions');
+          setPhase('instructions');
 
           return;
         }
 
         try {
-          /*
-           * ----------------------------------------
-           * MEASURE
-           * ----------------------------------------
-           */
 
           const measurement =
             measureSustainedSSSS(
@@ -482,16 +393,6 @@ export default function SustainedSSSSScreen({
             measurement
           );
 
-          /*
-           * ----------------------------------------
-           * SCORE
-           * ----------------------------------------
-           *
-           * IMPORTANT:
-           * The scorer receives the exact adaptive
-           * parameters used for this exercise.
-           */
-
           const score =
             scoreSustainedSSSS(
               measurement,
@@ -504,15 +405,10 @@ export default function SustainedSSSSScreen({
           );
 
           const result: RepResult = {
+            rep: currentRepRef.current,
             measurement,
             score,
           };
-
-          /*
-           * ----------------------------------------
-           * STORE RESULT
-           * ----------------------------------------
-           */
 
           const updatedResults = [
             ...repResultsRef.current,
@@ -529,12 +425,6 @@ export default function SustainedSSSSScreen({
           console.log(
             `📊 Completed rep ${currentRepRef.current}/${adaptiveParams.repetitions}`
           );
-
-          /*
-           * ----------------------------------------
-           * MORE REPS
-           * ----------------------------------------
-           */
 
           if (
             currentRepRef.current <
@@ -560,7 +450,7 @@ export default function SustainedSSSSScreen({
                 );
 
                 setElapsed(0);
-                setLiveVolume(null);
+                setVolume(null);
 
                 startingRef.current =
                   false;
@@ -648,7 +538,7 @@ export default function SustainedSSSSScreen({
                 finalResults
               );
 
-              setScreen('results');
+              setPhase('results');
 
               startingRef.current =
                 false;
@@ -672,7 +562,7 @@ export default function SustainedSSSSScreen({
             'We could not analyze your recording. Please try again.'
           );
 
-          setScreen('instructions');
+          setPhase('instructions');
 
           startingRef.current = false;
           finishingRef.current = false;
@@ -740,7 +630,7 @@ export default function SustainedSSSSScreen({
           'Exercise parameters are not ready. Please try again.'
         );
 
-        setScreen('instructions');
+        setPhase('instructions');
 
         return;
       }
@@ -760,7 +650,7 @@ export default function SustainedSSSSScreen({
           'Audio recorder is not ready. Please try again.'
         );
 
-        setScreen('instructions');
+        setPhase('instructions');
 
         return;
       }
@@ -771,9 +661,9 @@ export default function SustainedSSSSScreen({
       clearTimers();
 
       setElapsed(0);
-      setLiveVolume(null);
+      setVolume(null);
       setError(null);
-      setScreen('recording');
+      setPhase('recording');
 
       console.log(
         '🎤 Starting Sustained SSSS recording...'
@@ -842,7 +732,7 @@ export default function SustainedSSSSScreen({
           'Microphone access or recording failed. Please try again.'
         );
 
-        setScreen('instructions');
+        setPhase('instructions');
 
         startingRef.current = false;
         finishingRef.current = false;
@@ -867,8 +757,8 @@ export default function SustainedSSSSScreen({
 
       clearTimers();
 
-      setCountdown(3);
-      setScreen('countdown');
+      setCountdown(PREPARATION_COUNTDOWN);
+      setPhase('countdown');
 
       let value = 3;
 
@@ -970,9 +860,9 @@ export default function SustainedSSSSScreen({
       setRepResults([]);
       setCurrentRep(1);
       setElapsed(0);
-      setLiveVolume(null);
+      setVolume(null);
       setError(null);
-      setCountdown(3);
+      setCountdown(PREPARATION_COUNTDOWN);
 
       console.log(
         '🟢 Starting SSSS countdown'
@@ -1053,10 +943,10 @@ export default function SustainedSSSSScreen({
       setRepResults([]);
       setCurrentRep(1);
       setElapsed(0);
-      setLiveVolume(null);
+      setVolume(null);
       setError(null);
-      setCountdown(3);
-      setScreen('instructions');
+      setCountdown(PREPARATION_COUNTDOWN);
+      setPhase('instructions');
     }, [clearTimers]);
 
   /*
@@ -1080,7 +970,7 @@ export default function SustainedSSSSScreen({
       }
 
       router.replace(
-        '/dashboard/exercises'
+        '/dashboard?tab=exercises'
       );
     }, [clearTimers]);
 
@@ -1112,7 +1002,7 @@ export default function SustainedSSSSScreen({
         ) / repResults.length
       : 0;
 
-  const totalScore =
+  const averageScore =
     repResults.length > 0
       ? Math.round(
           repResults.reduce(
@@ -1176,280 +1066,32 @@ export default function SustainedSSSSScreen({
 
   /*
    * =================================================
-   * INSTRUCTION ROW
-   * =================================================
-   */
-
-  function InstructionRow({
-    icon,
-    text,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    text: string;
-  }) {
-    return (
-      <View
-        style={styles.instructionRow}
-      >
-        <Ionicons
-          name={icon}
-          size={15}
-          color={BROWN}
-        />
-
-        <Text
-          style={
-            styles.instructionRowText
-          }
-        >
-          {text}
-        </Text>
-      </View>
-    );
-  }
-
-  /*
-   * =================================================
    * INSTRUCTIONS
    * =================================================
    */
 
-  if (screen === 'instructions') {
+    if (phase === 'instructions') {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={
-          styles.content
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
-      >
-        <Pressable
-          style={styles.backButton}
-          onPress={goBack}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={25}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="cloud-outline"
-            size={36}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.title}>
-          Sustained "SSSS"
-        </Text>
-
-        <Text
-          style={styles.subtitle}
-        >
-          Breath Control
-        </Text>
-
-        <View
-          style={styles.instructionCard}
-        >
-          <Text
-            style={styles.cardTitle}
-          >
-            Exercise Instructions
-          </Text>
-
-          <Text
-            style={styles.instructionText}
-          >
-            Take a comfortable breath, then
-            release the air through your teeth
-            using a steady "ssss" hissing sound.
-          </Text>
-
-          <View
-            style={styles.beforeCard}
-          >
-            <Text
-              style={styles.beforeTitle}
-            >
-              Before You Begin
-            </Text>
-
-            <InstructionRow
-              icon="leaf-outline"
-              text="Sit or stand with a relaxed posture."
-            />
-
-            <InstructionRow
-              icon="body-outline"
-              text="Take a comfortable breath without overfilling your lungs."
-            />
-
-            <InstructionRow
-              icon="volume-low-outline"
-              text={'Release the air using a continuous "ssss" sound.'}
-            />
-
-            <InstructionRow
-              icon="mic-outline"
-              text="Keep the sound steady and stay close to the microphone."
-            />
-          </View>
-
-          <View
-            style={styles.targetBox}
-          >
-            <View
-              style={styles.targetInfo}
-            >
-              <Text
-                style={styles.targetLabel}
-              >
-                TARGET
-              </Text>
-
-              <Text
-                style={styles.targetValue}
-              >
-                {params.durationRangeSec[0]}–
-                {params.durationRangeSec[1]} sec
-              </Text>
-
-              <Text
-                style={styles.targetHint}
-              >
-                sustained "ssss"
-              </Text>
-            </View>
-
-            <View
-              style={styles.targetDivider}
-            />
-
-            <View
-              style={styles.targetInfo}
-            >
-              <Text
-                style={styles.targetLabel}
-              >
-                REPETITIONS
-              </Text>
-
-              <Text
-                style={styles.targetValue}
-              >
-                {params.repetitions}
-              </Text>
-
-              <Text
-                style={styles.targetHint}
-              >
-                attempts
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={22}
-              color={BROWN}
-            />
-
-            <Text
-              style={styles.tipText}
-            >
-              Focus on keeping the "ssss"
-              sound smooth and consistent
-              instead of forcing a burst of air.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={styles.difficultyRow}
-        >
-          <View>
-            <Text
-              style={styles.difficultyLabel}
-            >
-              DIFFICULTY
-            </Text>
-
-            <Text
-              style={styles.difficultyText}
-            >
-              {tier.charAt(0).toUpperCase() +
-                tier.slice(1)}
-            </Text>
-          </View>
-
-          <View
-            style={styles.difficultyDots}
-          >
-            {[
-              'beginner',
-              'intermediate',
-              'advanced',
-            ].map(level => (
-              <View
-                key={level}
-                style={[
-                  styles.difficultyDot,
-                  level === tier &&
-                    styles.difficultyDotActive,
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-
-        {error && (
-          <View
-            style={styles.errorCard}
-          >
-            <Ionicons
-              name="alert-circle-outline"
-              size={20}
-              color="#B84A4A"
-            />
-
-            <Text
-              style={styles.errorText}
-            >
-              {error}
-            </Text>
-          </View>
-        )}
-
-        <Pressable
-          style={styles.primaryButton}
-          onPress={startExercise}
-        >
-          <Ionicons
-            name="play"
-            size={20}
-            color={WHITE}
-          />
-
-          <Text
-            style={
-              styles.primaryButtonText
-            }
-          >
-            Start Exercise
-          </Text>
-        </Pressable>
-      </ScrollView>
+      <ExerciseScreen
+      category="Breath Control"
+      title={'Sustained "SSSS"'} 
+      icon="cloud-outline"
+        instructions={'Take a comfortable breath, then release the air through your teeth using a steady "ssss" hissing sound.'}
+        preparationSteps={[
+          { icon: 'leaf-outline', text: 'Sit or stand with a relaxed posture.' },
+          { icon: 'body-outline', text: 'Take a comfortable breath without overfilling your lungs.' },
+          { icon: 'volume-low-outline', text: 'Release the air using a continuous "ssss" sound.' },
+          { icon: 'mic-outline', text: 'Keep the sound steady and stay close to the microphone.' },
+        ]}
+        targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
+        targetHint={'sustained "ssss"'}
+        repetitions={params.repetitions}
+        tip={'Focus on keeping the "ssss" sound smooth and consistent instead of forcing a burst of air.'}
+        tier={tier}
+        error={error}
+        onBack={goBack}
+        onStart={startExercise}
+      />
     );
   }
 
@@ -1459,47 +1101,17 @@ export default function SustainedSSSSScreen({
    * =================================================
    */
 
-  if (screen === 'countdown') {
+  if (phase === 'countdown') {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.largeIconCircle}
-        >
-          <Ionicons
-            name="cloud-outline"
-            size={44}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.countdownTitle}
-        >
-          Get Ready
-        </Text>
-
-        <Text
-          style={styles.countdownSubtitle}
-        >
-          Rep {currentRep} of{' '}
-          {params.repetitions}
-        </Text>
-
-        <Text
-          style={styles.countdownNumber}
-        >
-          {countdown}
-        </Text>
-
-        <Text
-          style={styles.countdownHint}
-        >
-          Prepare to make a steady
-          "ssss" sound
-        </Text>
-      </View>
+      <ExerciseCountdownScreen
+        icon="cloud-outline"
+        title="Get Ready"
+        currentRep={currentRep}
+        repetitions={params.repetitions}
+        countdown={countdown}
+        promptTitle="Prepare to make a steady SSSS sound"
+        prompt="Keep the hiss smooth and continuous."
+      />
     );
   }
 
@@ -1509,7 +1121,7 @@ export default function SustainedSSSSScreen({
    * =================================================
    */
 
-  if (screen === 'recording') {
+  if (phase === 'recording') {
     const maxDuration =
       params.durationRangeSec[1];
 
@@ -1556,7 +1168,7 @@ export default function SustainedSSSSScreen({
                   styles.recordingSubtitle
                 }
               >
-                Rep {currentRep} of{' '}
+                Repetition {currentRep} of{' '}
                 {params.repetitions}
               </Text>
             </View>
@@ -1648,8 +1260,8 @@ export default function SustainedSSSSScreen({
                   styles.liveMetricValue
                 }
               >
-                {liveVolume !== null
-                  ? liveVolume.toFixed(1)
+                {volume !== null
+                  ? volume.toFixed(1)
                   : '--'}
               </Text>
             </View>
@@ -1705,49 +1317,17 @@ export default function SustainedSSSSScreen({
    * =================================================
    */
 
-  if (screen === 'processing') {
+  if (phase === 'processing') {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.largeIconCircle}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={44}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.processingTitle}
-        >
-          Analyzing Your SSSS
-        </Text>
-
-        <Text
-          style={styles.processingSubtitle}
-        >
-          Checking duration and consistency...
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-
-        {currentRep <
-          params.repetitions && (
-          <Text
-            style={styles.repProcessingText}
-          >
-            Preparing rep {currentRep + 1} of{' '}
-            {params.repetitions}
-          </Text>
-        )}
-      </View>
+      <ExerciseProcessingScreen
+        icon="analytics-outline"
+        title="Analyzing Your SSSS"
+        message={
+          currentRep < params.repetitions
+            ? `Checking duration and consistency. Preparing repetition ${currentRep + 1} of ${params.repetitions}.`
+            : 'Checking duration and consistency...'
+        }
+      />
     );
   }
 
@@ -1758,56 +1338,14 @@ export default function SustainedSSSSScreen({
    */
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={
-        styles.content
-      }
-      showsVerticalScrollIndicator={
-        false
-      }
+    <ExerciseResultsScreen
+      title="Exercise Complete!"
+      subtitle="Here's how you performed"
+      score={averageScore}
+      resultIcon="checkmark"
+      onRetry={retryExercise}
+      onExit={goBack}
     >
-      <View
-        style={styles.resultsIconCircle}
-      >
-        <Ionicons
-          name="checkmark"
-          size={42}
-          color={BROWN}
-        />
-      </View>
-
-      <Text
-        style={styles.resultsTitle}
-      >
-        Exercise Complete!
-      </Text>
-
-      <Text
-        style={styles.resultsSubtitle}
-      >
-        Here's how you performed
-      </Text>
-
-      <View style={styles.scoreCard}>
-        <Text
-          style={styles.scoreLabel}
-        >
-          OVERALL SCORE
-        </Text>
-
-        <Text
-          style={styles.scoreValue}
-        >
-          {totalScore}
-          <Text
-            style={styles.scorePercent}
-          >
-            %
-          </Text>
-        </Text>
-      </View>
-
       <View
         style={styles.metricsGrid}
       >
@@ -1941,11 +1479,11 @@ export default function SustainedSSSSScreen({
           <Text
             style={styles.feedbackText}
           >
-            {totalScore >= 85
+            {averageScore >= 85
               ? 'Excellent control! Your SSSS sound was sustained with strong consistency.'
-              : totalScore >= 70
+              : averageScore >= 70
                 ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
-                : totalScore >= 50
+                : averageScore >= 50
                   ? 'Keep practicing. Try to maintain a smoother and more consistent SSSS sound.'
                   : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous SSSS sound.'}
           </Text>
@@ -1959,9 +1497,9 @@ export default function SustainedSSSSScreen({
       </Text>
 
       {repResults.map(
-        (result, index) => (
+        result => (
           <View
-            key={`rep-${index}`}
+            key={`rep-${result.rep}`}
             style={
               styles.repResultCard
             }
@@ -1979,7 +1517,7 @@ export default function SustainedSSSSScreen({
                     styles.repNumberText
                   }
                 >
-                  {index + 1}
+                  {result.rep}
                 </Text>
               </View>
 
@@ -1989,7 +1527,7 @@ export default function SustainedSSSSScreen({
                     styles.repResultTitle
                   }
                 >
-                  Rep {index + 1}
+                  Repetition {result.rep}
                 </Text>
 
                 <Text
@@ -2031,38 +1569,7 @@ export default function SustainedSSSSScreen({
         )
       )}
 
-      <Pressable
-        style={styles.primaryButton}
-        onPress={retryExercise}
-      >
-        <Ionicons
-          name="refresh"
-          size={20}
-          color={WHITE}
-        />
-
-        <Text
-          style={
-            styles.primaryButtonText
-          }
-        >
-          Try Again
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.secondaryButton}
-        onPress={goBack}
-      >
-        <Text
-          style={
-            styles.secondaryButtonText
-          }
-        >
-          Back to Exercises
-        </Text>
-      </Pressable>
-    </ScrollView>
+    </ExerciseResultsScreen>
   );
 }
 
@@ -2077,228 +1584,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 78,
-    paddingBottom: 40,
-  },
-
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 18,
-  },
-
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 16,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 24,
-  },
-
-  instructionCard: {
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: BROWN,
-    marginBottom: 12,
-  },
-
-  instructionText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 23,
-    color: BROWN,
-    marginBottom: 0,
-  },
-
-  beforeCard: {
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-  },
-
-  beforeTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 16,
-    color: BROWN,
-    marginBottom: 12,
-  },
-
-  instructionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 11,
-  },
-
-  instructionRowText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: BROWN,
-    marginLeft: 10,
-  },
-
-  targetBox: {
-    marginTop: 16,
-    paddingVertical: 17,
-    backgroundColor: WHITE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 18,
-    flexDirection: 'row',
-  },
-
-  targetIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-
-  targetDivider: {
-    width: 1,
-    backgroundColor: BORDER,
-  },
-
-  targetInfo: {
-    flex: 1,
-    alignItems: 'center',
-  },
-
-  targetLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: MUTED,
-    letterSpacing: 0.5,
-  },
-
-  targetValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  targetHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 2,
-  },
-
-  tipCard: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: PINK,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: MUTED,
-    marginLeft: 10,
-  },
-
-  difficultyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 22,
-    paddingHorizontal: 4,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: MUTED,
-    letterSpacing: 0.5,
-  },
-
-  difficultyText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  difficultyDots: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-
-  difficultyDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: LIGHT_GRAY,
-  },
-
-  difficultyDotActive: {
-    backgroundColor: PINK,
-    borderWidth: 2,
-    borderColor: BROWN,
-  },
-
-  errorCard: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#FFF1F1',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  errorText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: '#B84A4A',
-    marginLeft: 8,
-  },
-
   primaryButton: {
     height: 54,
     borderRadius: 27,
@@ -2308,29 +1593,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 24,
   },
-
   primaryButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
     color: WHITE,
     marginLeft: 8,
   },
-
-  secondaryButton: {
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-
-  secondaryButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 16,
-    color: BROWN,
-  },
-
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2338,7 +1606,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   largeIconCircle: {
     width: 96,
     height: 96,
@@ -2348,47 +1615,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-
-  countdownTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 26,
-    color: BROWN,
-  },
-
-  countdownSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 16,
-    color: MUTED,
-    marginTop: 5,
-  },
-
-  countdownNumber: {
-    fontFamily: 'FredokaBold',
-    fontSize: 86,
-    color: BROWN,
-    marginTop: 20,
-  },
-
-  countdownHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-
   recordingContent: {
     paddingHorizontal: 24,
     paddingTop: 64,
     paddingBottom: 40,
   },
-
   recordingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-
   smallIconCircle: {
     width: 54,
     height: 54,
@@ -2398,24 +1634,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   recordingHeaderText: {
     flex: 1,
   },
-
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
   },
-
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 2,
   },
-
   sssssCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 22,
@@ -2425,26 +1657,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   sssssText: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     letterSpacing: 3,
     color: BROWN,
   },
-
   sssssHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 5,
   },
-
   micArea: {
     alignItems: 'center',
     marginTop: 28,
   },
-
   outerMicCircle: {
     width: 164,
     height: 164,
@@ -2453,7 +1681,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   innerMicCircle: {
     width: 116,
     height: 116,
@@ -2462,7 +1689,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   recordingBadge: {
     marginTop: 14,
     flexDirection: 'row',
@@ -2472,7 +1698,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
-
   recordingDot: {
     width: 8,
     height: 8,
@@ -2480,14 +1705,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#C94D5B',
     marginRight: 7,
   },
-
   recordingBadgeText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
     color: BROWN,
     letterSpacing: 0.5,
   },
-
   timerText: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
@@ -2495,7 +1718,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
   },
-
   progressTrack: {
     height: 10,
     borderRadius: 5,
@@ -2503,19 +1725,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 12,
   },
-
   progressFill: {
     height: '100%',
     backgroundColor: PINK,
     borderRadius: 5,
   },
-
   liveMetrics: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 18,
   },
-
   liveMetricCard: {
     flex: 1,
     backgroundColor: LIGHT_PINK,
@@ -2523,28 +1742,24 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
   },
-
   liveMetricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.4,
   },
-
   liveMetricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 4,
   },
-
   processingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   processingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
@@ -2552,78 +1767,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
-
   spinner: {
     marginTop: 28,
   },
-
-  repProcessingText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: MUTED,
-    marginTop: 18,
-  },
-
-  resultsIconCircle: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-  },
-
-  resultsTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: BROWN,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-
-  resultsSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-
-  scoreCard: {
-    backgroundColor: PINK,
-    borderRadius: 24,
-    alignItems: 'center',
-    paddingVertical: 24,
-    marginTop: 22,
-  },
-
-  scoreLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: BROWN,
-    letterSpacing: 0.8,
-  },
-
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 54,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  scorePercent: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-  },
-
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
     marginTop: 16,
   },
-
   resultMetricCard: {
     width: '48%',
     flexGrow: 1,
@@ -2632,21 +1784,18 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
-
   resultMetricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
     color: BROWN,
     marginTop: 5,
   },
-
   resultMetricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
     marginTop: 2,
   },
-
   feedbackCard: {
     backgroundColor: PINK,
     borderRadius: 18,
@@ -2655,18 +1804,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: 16,
   },
-
   feedbackContent: {
     flex: 1,
     marginLeft: 10,
   },
-
   feedbackTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   feedbackText: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -2674,7 +1820,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 4,
   },
-
   repResultsTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
@@ -2682,7 +1827,6 @@ const styles = StyleSheet.create({
     marginTop: 22,
     marginBottom: 10,
   },
-
   repResultCard: {
     backgroundColor: WHITE,
     borderWidth: 1,
@@ -2694,13 +1838,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-
   repResultLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-
   repNumber: {
     width: 38,
     height: 38,
@@ -2710,37 +1852,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-
   repNumberText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   repResultTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
   },
-
   repResultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   repScore: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
-
   repScoreText: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
     color: BROWN,
   },
-
   repScorePercent: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,

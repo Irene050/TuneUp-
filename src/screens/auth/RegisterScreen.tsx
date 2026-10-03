@@ -2,17 +2,17 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 import { registerUser } from '@/services/firebase/authService';
@@ -148,7 +148,7 @@ export default function RegisterScreen() {
 
           {/* TuneUp Logo */}
           <Image
-            source={require('@/assets/images/tuneup-logo.png')}
+            source={require('@/assets/images/tabIcons/tuneup-logo.png')}
             style={styles.logo}
             resizeMode="contain"
           />

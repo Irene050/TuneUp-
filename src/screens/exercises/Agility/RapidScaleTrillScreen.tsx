@@ -58,6 +58,8 @@ import {
 // COLORS
 // ============================================================
 
+import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -816,348 +818,33 @@ export default function RapidScaleTrillScreen() {
   // INSTRUCTIONS
   // ============================================================
 
-  const renderInstructions =
-    () => (
-      <View style={styles.content}>
-        {/* Back */}
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-          hitSlop={10}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={BROWN}
-          />
-        </Pressable>
+    const renderInstructions = () => (
+    <ExerciseScreen
+      title="Rapid Scale Trill"
+      category="Vocal Agility"
+      icon="flash-outline"
+      instructions="Listen carefully to the reference scale pattern, follow the notes in order, and sing rapidly while keeping each note clear."
+      preparationSteps={[
+        { icon: 'volume-mute-outline', text: 'Find a quiet area with minimal background noise.' },
+        { icon: 'body-outline', text: 'Sit or stand upright with relaxed shoulders.' },
+        { icon: 'mic-outline', text: 'Keep a comfortable distance from the microphone.' },
+      ]}
+      summary={[
+        { label: 'DIFFICULTY', value: config.label },
+        { label: 'SPEED', value: config.speedLabel },
+        { label: 'NOTES', value: String(config.frequencies.length) },
+        { label: 'NOTE DURATION', value: `${config.noteDurationSec.toFixed(2)}s` },
+        { label: 'SCALE', value: config.frequencies.map(frequencyToNoteName).join(' • ') },
+      ]}
+      tip="Focus on clean pitch changes first. Build speed naturally while maintaining accuracy."
+      tier={tier}
+      startDisabled={tierLoading}
+      startLabel={tierLoading ? 'Preparing Exercise...' : 'Start Exercise'}
+      onBack={() => router.back()}
+      onStart={beginExercise}
+    />
+  );
 
-        {/* Icon */}
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="flash-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.title}>
-          Rapid Scale Trill
-        </Text>
-
-        <Text style={styles.subtitle}>
-          VOCAL AGILITY
-        </Text>
-
-        {/* Main Card */}
-        <View style={styles.instructionCard}>
-          <View style={styles.prepareCard}>
-            <View style={styles.prepareHeader}>
-              <Ionicons
-                name="information-circle-outline"
-                size={21}
-                color={BROWN}
-              />
-
-              <Text style={styles.prepareTitle}>
-                Before You Begin
-              </Text>
-            </View>
-
-            <View style={styles.prepareItem}>
-              <Ionicons
-                name="volume-mute-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text style={styles.prepareText}>
-                Find a quiet area with minimal background noise.
-              </Text>
-            </View>
-
-            <View style={styles.prepareItem}>
-              <Ionicons
-                name="body-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text style={styles.prepareText}>
-                Stand or sit upright with your shoulders relaxed.
-              </Text>
-            </View>
-
-            <View style={styles.prepareItem}>
-              <Ionicons
-                name="mic-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text style={styles.prepareText}>
-                Keep a comfortable distance from the microphone while singing.
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.cardTitle}>
-            Exercise Details
-          </Text>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
-              Difficulty
-            </Text>
-
-            <Text style={styles.detailValue}>
-              {config.label}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
-              Speed
-            </Text>
-
-            <Text style={styles.detailValue}>
-              {config.speedLabel}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
-              Notes
-            </Text>
-
-            <Text style={styles.detailValue}>
-              {config.frequencies.length}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>
-              Note Duration
-            </Text>
-
-            <Text style={styles.detailValue}>
-              {config.noteDurationSec.toFixed(2)}s
-            </Text>
-          </View>
-
-          <Text
-            style={[
-              styles.cardTitle,
-              { marginTop: 14 },
-            ]}
-          >
-            Exercise Instructions
-          </Text>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Listen carefully to the reference scale pattern.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Follow the notes in the correct order.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Sing the pattern rapidly while keeping each note clear.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Focus on accurate transitions rather than forcing speed.
-            </Text>
-          </View>
-        </View>
-
-        {/* Reference Card */}
-        <View style={styles.referenceCard}>
-          <Text style={styles.cardTitle}>
-            Target Scale
-          </Text>
-
-          <Text style={styles.referenceLabel}>
-            NOTES TO REPRODUCE
-          </Text>
-
-          <View style={styles.noteSequence}>
-            {config.frequencies.map(
-              (frequency, index) => (
-                <View
-                  key={`${frequency}-${index}`}
-                  style={styles.notePill}
-                >
-                  <Text style={styles.noteNumber}>
-                    {index + 1}
-                  </Text>
-
-                  <Text style={styles.noteText}>
-                    {frequencyToNoteName(
-                      frequency,
-                    )}
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
-
-          <Text style={styles.referenceHint}>
-            The reference sequence will play before recording begins.
-          </Text>
-        </View>
-
-        {/* Tip */}
-        <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={19}
-            color={BROWN}
-          />
-
-          <Text style={styles.tipText}>
-            Focus on clean pitch changes first. Build speed naturally while maintaining accuracy.
-          </Text>
-        </View>
-
-        {/* Difficulty */}
-        <View style={styles.difficultyRow}>
-          <Text style={styles.difficultyLabel}>
-            Difficulty
-          </Text>
-
-          <Text style={styles.difficultyValue}>
-            {config.label}
-          </Text>
-        </View>
-
-        {/* Start */}
-        <Pressable
-          style={styles.startButton}
-          onPress={beginExercise}
-        >
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
-
-          <Text style={styles.startButtonText}>
-            Start Exercise
-          </Text>
-        </Pressable>
-      </View>
-    );
-
-  // ============================================================
-  // REFERENCE
-  // ============================================================
-
-  const renderReference =
-    () => (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Listen to the Scale
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Pay attention to each note and the speed of the scale pattern.
-        </Text>
-
-        <View style={styles.referenceCard}>
-          <Text style={styles.referenceLabel}>
-            REFERENCE NOTES
-          </Text>
-
-          <View style={styles.noteSequence}>
-            {config.frequencies.map(
-              (frequency, index) => (
-                <View
-                  key={`${frequency}-${index}`}
-                  style={styles.notePill}
-                >
-                  <Text style={styles.noteNumber}>
-                    {index + 1}
-                  </Text>
-
-                  <Text style={styles.noteText}>
-                    {frequencyToNoteName(
-                      frequency,
-                    )}
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
-        </View>
-
-        <Pressable
-          style={styles.startButton}
-          onPress={playReference}
-        >
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
-
-          <Text style={styles.startButtonText}>
-            Play Reference
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.doneButton}
-          onPress={startCountdown}
-        >
-          <Text style={styles.doneButtonText}>
-            Continue
-          </Text>
-        </Pressable>
-      </View>
-    );
-
-  // ============================================================
   // COUNTDOWN
   // ============================================================
 
@@ -1641,7 +1328,7 @@ export default function RapidScaleTrillScreen() {
             style={styles.doneButton}
             onPress={() =>
               router.replace(
-                '/dashboard/exercises',
+                '/dashboard?tab=exercises',
               )
             }
           >

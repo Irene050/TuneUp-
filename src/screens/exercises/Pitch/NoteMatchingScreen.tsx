@@ -36,7 +36,7 @@ import {
 import {
   disposeNotePlayer,
   playSingleNote,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   getLatestAssessment,
@@ -66,6 +66,13 @@ import {
 import {
   getRandomPitchNote,
 } from '@/utils/music/notes';
+
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '../ExerciseScreen';
 
 // ============================================================
 // COLORS
@@ -281,11 +288,6 @@ export default function NoteMatchingScreen({
       try {
         const user = auth.currentUser;
 
-        /*
-         * If a tier was explicitly supplied, use it.
-         * Otherwise resolve the current tier from
-         * component progress.
-         */
         let resolvedTier: Tier =
           tier ?? 'beginner';
 
@@ -309,11 +311,6 @@ export default function NoteMatchingScreen({
           resolvedTier
         );
 
-        /*
-         * Retrieve completed Pitch exercises
-         * for the current tier and this specific
-         * Note Matching template.
-         */
         let recentScores: number[] = [];
 
         if (user) {
@@ -327,13 +324,6 @@ export default function NoteMatchingScreen({
             return;
           }
 
-          /*
-           * Only use Note Matching records from
-           * the currently resolved tier.
-           *
-           * The template ID must match the ID
-           * used when saving completed exercises.
-           */
           const currentTierRecords =
             records
               .filter(
@@ -349,10 +339,6 @@ export default function NoteMatchingScreen({
                   b.timestamp
               );
 
-          /*
-           * Use the latest five completed
-           * Note Matching scores.
-           */
           recentScores =
             currentTierRecords
               .slice(-5)
@@ -361,12 +347,6 @@ export default function NoteMatchingScreen({
                   record.scorePct
               );
 
-          /*
-           * If there is no exercise history for
-           * this template and tier, use the
-           * latest Assessment component score
-           * as the cold-start ADS reference.
-           */
           if (
             recentScores.length === 0
           ) {
@@ -413,10 +393,6 @@ export default function NoteMatchingScreen({
           error
         );
 
-        /*
-         * If ADS loading fails, keep the
-         * resolved tier's default parameters.
-         */
         const fallbackTier =
           tier ?? 'beginner';
 
@@ -618,11 +594,6 @@ export default function NoteMatchingScreen({
               adaptiveParams
             );
 
-          /*
-           * Save the result using the same
-           * template ID used by the ADS history
-           * lookup above.
-           */
           await saveCompletedExercise(
             'pitch',
             'noteMatchingExercise',
@@ -802,12 +773,8 @@ export default function NoteMatchingScreen({
           );
 
           /*
-           * Play the reference note BEFORE
-           * starting the microphone.
-           *
-           * This prevents the generated
-           * reference tone from being
-           * included in the recording.
+           * The reference note is played before
+           * microphone recording begins.
            */
           playSingleNote(
             targetFrequency,
@@ -978,12 +945,12 @@ export default function NoteMatchingScreen({
       clearTimers();
 
       router.replace(
-        '/dashboard/exercises'
+        '/dashboard?tab=exercises'
       );
     }, [clearTimers]);
 
   // ============================================================
-  // ADAPTIVE PARAMETERS LOADING
+  // LOADING
   // ============================================================
 
   if (
@@ -1029,455 +996,131 @@ export default function NoteMatchingScreen({
   }
 
   // ============================================================
-  // INSTRUCTIONS
+  // INSTRUCTIONS — SHARED
   // ============================================================
 
   if (
     screen === 'instructions'
   ) {
     return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={goBack}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          {/* ICON */}
-
-          <View
-            style={styles.iconCircle}
-          >
-            <Ionicons
-              name="musical-note-outline"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          {/* TITLE */}
-
-          <Text style={styles.title}>
-            Note Matching Exercise
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Pitch
-          </Text>
-
-          {/* INSTRUCTION CARD */}
-
-          <View
-            style={
-              styles.instructionCard
-            }
-          >
-            {/* INSTRUCTIONS */}
-
-            <Text
-              style={styles.cardTitle}
-            >
-              Exercise Instructions
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Listen carefully to the
-              target note first.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              After the target note
-              finishes, sing the same note
-              back.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Hold the note steadily and
-              try to match the pitch as
-              closely as possible.
-            </Text>
-
-            <View
-              style={
-                styles.prepareCard
-              }
-            >
-              <View
-                style={
-                  styles.prepareHeader
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareTitle
-                  }
-                >
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Find a quiet room or area
-                  with minimal background
-                  noise.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Sit upright or stand with
-                  your back straight and
-                  your shoulders relaxed.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  If available, an external
-                  microphone or audio
-                  recording equipment is
-                  recommended.
-                </Text>
-              </View>
-            </View>
-
-            {/* TARGET */}
-
-            <View
-              style={styles.targetBox}
-            >
-              <Ionicons
-                name="musical-note-outline"
-                size={25}
-                color={BROWN}
-              />
-
-              <View
-                style={
-                  styles.targetInfo
-                }
-              >
-                <Text
-                  style={
-                    styles.targetLabel
-                  }
-                >
-                  Target Note
-                </Text>
-
-                <Text
-                  style={
-                    styles.targetText
-                  }
-                >
-                  {targetNote}
-                </Text>
-              </View>
-
-              <Text
-                style={
-                  styles.targetFrequency
-                }
-              >
-                {formatFrequency(
-                  targetFrequency
-                )}
-              </Text>
-            </View>
-
-            <Text
-              style={styles.helperText}
-            >
-              Focus on matching the target
-              pitch comfortably without
-              straining your voice.
-            </Text>
-          </View>
-
-          {/* TIP */}
-
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text
-              style={styles.tipText}
-            >
-              Sing comfortably and make
-              small adjustments until your
-              pitch matches the target.
-            </Text>
-          </View>
-
-          {/* DIFFICULTY */}
-
-          <View
-            style={
-              styles.difficultyRow
-            }
-          >
-            <Text
-              style={
-                styles.difficultyLabel
-              }
-            >
-              Difficulty
-            </Text>
-
-            <Text
-              style={
-                styles.difficultyValue
-              }
-            >
-              {currentTier}
-            </Text>
-          </View>
-
-          {/* ERROR */}
-
-          {errorMessage ? (
-            <View
-              style={styles.errorCard}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={21}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.errorText}
-              >
-                {errorMessage}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* START */}
-
-          <Pressable
-            style={styles.startButton}
-            onPress={startExercise}
-          >
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Start Exercise
-            </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-        </ScrollView>
-      </View>
+      <ExerciseScreen
+        title="Note Matching Exercise"
+        category="Pitch"
+        icon="musical-note-outline"
+        instructions={
+          'Listen carefully to the target note first.\n\n' +
+          'After the target note finishes, sing the same note back.\n\n' +
+          'Hold the note steadily and try to match the pitch as closely as possible.'
+        }
+        preparationSteps={[
+          {
+            icon: 'volume-mute-outline',
+            text:
+              'Find a quiet room or area with minimal background noise.',
+          },
+          {
+            icon: 'body-outline',
+            text:
+              'Sit upright or stand with your back straight and your shoulders relaxed.',
+          },
+          {
+            icon: 'mic-outline',
+            text:
+              'If available, an external microphone or audio recording equipment is recommended.',
+          },
+        ]}
+        summary={[
+          {
+            label: 'Target Note',
+            value: targetNote,
+          },
+          {
+            label: 'Frequency',
+            value:
+              formatFrequency(
+                targetFrequency
+              ),
+          },
+        ]}
+        tip={
+          'Sing comfortably and make small adjustments until your pitch matches the target.'
+        }
+        tier={currentTier}
+        onBack={goBack}
+        onStart={startExercise}
+        error={errorMessage}
+        startDisabled={
+          isLoadingAdaptiveParams
+        }
+      />
     );
   }
 
   // ============================================================
-  // COUNTDOWN
+  // COUNTDOWN — SHARED
   // ============================================================
 
   if (
     screen === 'countdown'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Get Ready
-        </Text>
-
-        <Text
-          style={styles.countdownText}
-        >
-          {countdown}
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Your target note is
-        </Text>
-
-        <Text
-          style={styles.largeNote}
-        >
-          {targetNote}
-        </Text>
-
-        <Text
-          style={styles.stateFrequency}
-        >
-          {formatFrequency(
-            targetFrequency
-          )}
-        </Text>
-      </View>
+      <ExerciseCountdownScreen
+        icon="musical-notes-outline"
+        title="Get Ready"
+        countdown={countdown}
+        promptTitle="Your target note is"
+        prompt={`${targetNote} • ${formatFrequency(
+          targetFrequency
+        )}`}
+      />
     );
   }
 
   // ============================================================
-  // LISTENING
+  // LISTENING — SHARED
   // ============================================================
 
   if (
     screen === 'listening'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="volume-high-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Listen to the Note
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Listen carefully, then sing
-          the same note.
-        </Text>
-
-        <View
-          style={styles.listenNoteBox}
-        >
-          <Text
-            style={styles.listenLabel}
+      <ExerciseListeningScreen
+        icon="volume-high-outline"
+        title="Listen to the Note"
+        promptTitle="Listen carefully"
+        prompt="Listen to the reference note, then sing the same note."
+        liveContent={
+          <View
+            style={styles.sharedListenNoteBox}
           >
-            TARGET NOTE
-          </Text>
+            <Text
+              style={styles.listenLabel}
+            >
+              TARGET NOTE
+            </Text>
 
-          <Text
-            style={styles.largeNote}
-          >
-            {targetNote}
-          </Text>
+            <Text
+              style={styles.largeNote}
+            >
+              {targetNote}
+            </Text>
 
-          <Text
-            style={styles.stateFrequency}
-          >
-            {formatFrequency(
-              targetFrequency
-            )}
-          </Text>
-        </View>
-
-        <ActivityIndicator
-          size="small"
-          color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
-        />
-      </View>
+            <Text
+              style={styles.stateFrequency}
+            >
+              {formatFrequency(
+                targetFrequency
+              )}
+            </Text>
+          </View>
+        }
+        progress={100}
+      />
     );
   }
 
   // ============================================================
-  // RECORDING
+  // RECORDING — EXERCISE SPECIFIC
   // ============================================================
 
   if (
@@ -1544,8 +1187,6 @@ export default function NoteMatchingScreen({
             as you can.
           </Text>
 
-          {/* TARGET */}
-
           <View
             style={styles.smallTargetCard}
           >
@@ -1571,8 +1212,6 @@ export default function NoteMatchingScreen({
               )}
             </Text>
           </View>
-
-          {/* MICROPHONE */}
 
           <View
             style={
@@ -1618,8 +1257,6 @@ export default function NoteMatchingScreen({
             </View>
           </View>
 
-          {/* DETECTED PITCH */}
-
           <View
             style={styles.detectedArea}
           >
@@ -1660,8 +1297,6 @@ export default function NoteMatchingScreen({
             </Text>
           </View>
 
-          {/* ACCURACY */}
-
           <View
             style={
               styles.accuracyTrack
@@ -1688,8 +1323,6 @@ export default function NoteMatchingScreen({
               ? formatCents(cents)
               : 'Waiting for pitch...'}
           </Text>
-
-          {/* LIVE METRICS */}
 
           <View
             style={styles.metricsGrid}
@@ -1736,8 +1369,6 @@ export default function NoteMatchingScreen({
             />
           </View>
 
-          {/* TIMER */}
-
           <Text
             style={styles.timerText}
           >
@@ -1763,8 +1394,6 @@ export default function NoteMatchingScreen({
               ]}
             />
           </View>
-
-          {/* FINISH */}
 
           <Pressable
             style={styles.finishButton}
@@ -1792,51 +1421,23 @@ export default function NoteMatchingScreen({
   }
 
   // ============================================================
-  // PROCESSING
+  // PROCESSING — SHARED
   // ============================================================
 
   if (
     screen === 'processing'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Analyzing Your Singing
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Checking your pitch accuracy.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={{
-            marginTop: 28,
-          }}
-        />
-      </View>
+      <ExerciseProcessingScreen
+        icon="analytics-outline"
+        title="Analyzing Your Singing"
+        message="Checking your pitch accuracy."
+      />
     );
   }
 
   // ============================================================
-  // RESULTS
+  // RESULTS — SHARED
   // ============================================================
 
   if (
@@ -1857,273 +1458,181 @@ export default function NoteMatchingScreen({
       );
 
     return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.resultsContent
-          }
+      <ExerciseResultsScreen
+        title={
+          result.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'
+        }
+        subtitle="Note Matching Result"
+        score={result.score}
+        resultIcon={
+          result.passed
+            ? 'checkmark'
+            : 'refresh'
+        }
+        scoreMessage={
+          result.passed
+            ? 'You matched the target note accurately.'
+            : 'Keep practicing your pitch placement.'
+        }
+        onRetry={
+          retryExercise
+        }
+        onExit={goBack}
+      >
+        <View
+          style={styles.resultCard}
         >
-          <View
-            style={[
-              styles.resultIcon,
-              result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
-            ]}
-          >
-            <Ionicons
-              name={
-                result.passed
-                  ? 'checkmark'
-                  : 'refresh'
-              }
-              size={40}
-              color={BROWN}
-            />
-          </View>
-
           <Text
-            style={styles.resultTitle}
+            style={
+              styles.resultCardTitle
+            }
           >
-            {result.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
+            Pitch Comparison
           </Text>
 
-          <Text
-            style={styles.resultSubtitle}
-          >
-            Note Matching Result
-          </Text>
-
-          {/* SCORE */}
-
           <View
-            style={styles.scoreCard}
+            style={styles.comparisonRow}
           >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Overall Score
-            </Text>
-
-            <Text
-              style={styles.scoreValue}
-            >
-              {result.score}%
-            </Text>
-
-            <Text
-              style={
-                styles.scoreDescription
-              }
-            >
-              {result.passed
-                ? 'You matched the target note accurately.'
-                : 'Keep practicing your pitch placement.'}
-            </Text>
-          </View>
-
-          {/* COMPARISON */}
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Pitch Comparison
-            </Text>
-
-            <View
-              style={styles.comparisonRow}
-            >
-              <View
-                style={
-                  styles.comparisonSide
-                }
-              >
-                <Text
-                  style={
-                    styles.comparisonLabel
-                  }
-                >
-                  TARGET
-                </Text>
-
-                <Text
-                  style={
-                    styles.comparisonNote
-                  }
-                >
-                  {targetNote}
-                </Text>
-
-                <Text
-                  style={
-                    styles.comparisonFrequency
-                  }
-                >
-                  {formatFrequency(
-                    targetFrequency
-                  )}
-                </Text>
-              </View>
-
-              <Ionicons
-                name="arrow-forward"
-                size={23}
-                color={MUTED}
-              />
-
-              <View
-                style={[
-                  styles.comparisonSide,
-                  styles.detectedComparison,
-                ]}
-              >
-                <Text
-                  style={
-                    styles.comparisonLabel
-                  }
-                >
-                  DETECTED
-                </Text>
-
-                <Text
-                  style={
-                    styles.comparisonNote
-                  }
-                >
-                  {detectedNote}
-                </Text>
-
-                <Text
-                  style={
-                    styles.comparisonFrequency
-                  }
-                >
-                  {formatFrequency(
-                    result.detectedFrequency
-                  )}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* METRICS */}
-
-          <View
-            style={styles.resultsGrid}
-          >
-            <MetricCard
-              label="PITCH ACCURACY"
-              value={`${result.score}%`}
-            />
-
-            <MetricCard
-              label="DEVIATION"
-              value={formatCents(cents)}
-            />
-
-            <MetricCard
-              label="AVG. CLARITY"
-              value={`${Math.round(
-                result.averageClarity *
-                  100
-              )}%`}
-            />
-
-            <MetricCard
-              label="VOICED FRAMES"
-              value={String(
-                result.voicedFrames
-              )}
-            />
-          </View>
-
-          {/* FEEDBACK */}
-
-          <View
-            style={styles.feedbackCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
             <View
               style={
-                styles.feedbackContent
+                styles.comparisonSide
               }
             >
               <Text
                 style={
-                  styles.feedbackTitle
+                  styles.comparisonLabel
                 }
               >
-                Feedback
+                TARGET
               </Text>
 
               <Text
                 style={
-                  styles.feedbackText
+                  styles.comparisonNote
                 }
               >
-                {getFeedback(
-                  result,
-                  cents,
-                  targetNote
+                {targetNote}
+              </Text>
+
+              <Text
+                style={
+                  styles.comparisonFrequency
+                }
+              >
+                {formatFrequency(
+                  targetFrequency
+                )}
+              </Text>
+            </View>
+
+            <Ionicons
+              name="arrow-forward"
+              size={23}
+              color={MUTED}
+            />
+
+            <View
+              style={[
+                styles.comparisonSide,
+                styles.detectedComparison,
+              ]}
+            >
+              <Text
+                style={
+                  styles.comparisonLabel
+                }
+              >
+                DETECTED
+              </Text>
+
+              <Text
+                style={
+                  styles.comparisonNote
+                }
+              >
+                {detectedNote}
+              </Text>
+
+              <Text
+                style={
+                  styles.comparisonFrequency
+                }
+              >
+                {formatFrequency(
+                  result.detectedFrequency
                 )}
               </Text>
             </View>
           </View>
+        </View>
 
-          {/* RETRY */}
+        <View
+          style={styles.resultsGrid}
+        >
+          <MetricCard
+            label="PITCH ACCURACY"
+            value={`${result.score}%`}
+          />
 
-          <Pressable
-            style={styles.startButton}
-            onPress={
-              retryExercise
+          <MetricCard
+            label="DEVIATION"
+            value={formatCents(cents)}
+          />
+
+          <MetricCard
+            label="AVG. CLARITY"
+            value={`${Math.round(
+              result.averageClarity *
+                100
+            )}%`}
+          />
+
+          <MetricCard
+            label="VOICED FRAMES"
+            value={String(
+              result.voicedFrames
+            )}
+          />
+        </View>
+
+        <View
+          style={styles.feedbackCard}
+        >
+          <Ionicons
+            name="bulb-outline"
+            size={21}
+            color={BROWN}
+          />
+
+          <View
+            style={
+              styles.feedbackContent
             }
           >
             <Text
               style={
-                styles.startButtonText
+                styles.feedbackTitle
               }
             >
-              Try Again
+              Feedback
             </Text>
 
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.doneButton}
-            onPress={
-              goBack
-            }
-          >
             <Text
               style={
-                styles.doneButtonText
+                styles.feedbackText
               }
             >
-              Back to Exercises
+              {getFeedback(
+                result,
+                cents,
+                targetNote
+              )}
             </Text>
-          </Pressable>
-        </ScrollView>
-      </View>
+          </View>
+        </View>
+      </ExerciseResultsScreen>
     );
   }
 
@@ -2200,317 +1709,29 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  // ========================================================
-  // INSTRUCTIONS
-  // ========================================================
-
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 60,
-    alignItems: 'center',
-  },
-
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-
-    width: 40,
-    height: 40,
-
+  centerScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 24,
   },
 
   iconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
-
     backgroundColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginBottom: 20,
-  },
-
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-
-    marginTop: 3,
-    marginBottom: 24,
-  },
-
-  instructionCard: {
-    width: '100%',
-
-    backgroundColor: LIGHT_PINK,
-
-    borderRadius: 24,
-
-    padding: 20,
-
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareCard: {
-    width: '100%',
-
-    backgroundColor: PINK,
-
-    borderRadius: 18,
-
-    padding: 16,
-
-    marginTop: 18,
-
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    marginBottom: 12,
-  },
-
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-
-    marginLeft: 9,
-  },
-
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-
-    marginTop: 8,
-  },
-
-  prepareText: {
-    flex: 1,
-
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-
-    marginLeft: 9,
-  },
-
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: BROWN,
-
-    marginBottom: 14,
-  },
-
-  instruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: BROWN,
-
-    marginBottom: 10,
-  },
-
-  targetBox: {
-    backgroundColor: PINK,
-
-    borderRadius: 14,
-
-    minHeight: 72,
-
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    marginVertical: 8,
-  },
-
-  targetInfo: {
-    flex: 1,
-    marginLeft: 9,
-  },
-
-  targetLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-
-    textTransform: 'uppercase',
-  },
-
-  targetText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: BROWN,
-
-    marginTop: 1,
-  },
-
-  targetFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  helperText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: MUTED,
-
-    textAlign: 'center',
-
-    marginTop: 6,
-  },
-
-  tipCard: {
-    width: '100%',
-
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    backgroundColor: PINK,
-
-    borderRadius: 15,
-
-    padding: 14,
-
-    marginTop: 14,
-  },
-
-  tipText: {
-    flex: 1,
-
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-
-    marginLeft: 10,
-  },
-
-  difficultyRow: {
-    width: '100%',
-
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-
-    marginTop: 18,
-    marginBottom: 20,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-
-    textTransform: 'capitalize',
-  },
-
-  errorCard: {
-    width: '100%',
-
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    backgroundColor: LIGHT_PINK,
-
-    borderRadius: 15,
-
-    padding: 14,
-
-    marginBottom: 14,
-
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  errorText: {
-    flex: 1,
-
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-
-    marginLeft: 9,
-  },
-
-  startButton: {
-    width: '100%',
-    height: 54,
-
-    borderRadius: 27,
-
-    backgroundColor: BROWN,
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    gap: 8,
-  },
-
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: WHITE,
-  },
-
-  // ========================================================
-  // CENTER STATES
-  // ========================================================
-
-  centerScreen: {
-    flex: 1,
-
-    backgroundColor: WHITE,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    paddingHorizontal: 24,
   },
 
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
-
     textAlign: 'center',
-
     marginTop: 20,
   },
 
@@ -2519,48 +1740,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: MUTED,
-
     textAlign: 'center',
-
     marginTop: 8,
   },
 
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: BROWN,
+  // ==========================================================
+  // LISTENING
+  // ==========================================================
 
-    marginTop: 20,
-  },
-
-  largeNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 55,
-    color: BROWN,
-
-    marginTop: 10,
-  },
-
-  stateFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-
-    marginTop: 1,
-  },
-
-  listenNoteBox: {
+  sharedListenNoteBox: {
     minWidth: 180,
-
     backgroundColor: PINK,
-
     borderRadius: 20,
-
     paddingVertical: 18,
     paddingHorizontal: 30,
-
     alignItems: 'center',
-
     marginTop: 22,
   },
 
@@ -2568,35 +1762,42 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
-
     letterSpacing: 0.8,
   },
 
-  // ========================================================
+  largeNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 55,
+    color: BROWN,
+    marginTop: 10,
+  },
+
+  stateFrequency: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 1,
+  },
+
+  // ==========================================================
   // RECORDING
-  // ========================================================
+  // ==========================================================
 
   recordingContent: {
     flexGrow: 1,
-
     paddingHorizontal: 24,
     paddingTop: 82,
     paddingBottom: 50,
-
     alignItems: 'center',
   },
 
   recordingIcon: {
     width: 76,
     height: 76,
-
     borderRadius: 38,
-
     backgroundColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginBottom: 18,
   },
 
@@ -2604,7 +1805,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 26,
     color: BROWN,
-
     textAlign: 'center',
   },
 
@@ -2612,29 +1812,20 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
-
     textAlign: 'center',
-
     marginTop: 3,
   },
 
   smallTargetCard: {
     width: '100%',
-
     marginTop: 20,
-
     backgroundColor: LIGHT_PINK,
-
     borderRadius: 18,
-
     borderWidth: 1,
     borderColor: '#F2DDE5',
-
     paddingHorizontal: 18,
     paddingVertical: 13,
-
     flexDirection: 'row',
-
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -2642,9 +1833,7 @@ const styles = StyleSheet.create({
   smallLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-
     color: MUTED,
-
     letterSpacing: 0.7,
   },
 
@@ -2652,7 +1841,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 28,
     color: BROWN,
-
     marginTop: 1,
   },
 
@@ -2664,7 +1852,6 @@ const styles = StyleSheet.create({
 
   microphoneArea: {
     alignItems: 'center',
-
     marginTop: 24,
     marginBottom: 18,
   },
@@ -2672,12 +1859,9 @@ const styles = StyleSheet.create({
   outerMicCircle: {
     width: 150,
     height: 150,
-
     borderRadius: 75,
-
     borderWidth: 8,
     borderColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2685,25 +1869,18 @@ const styles = StyleSheet.create({
   innerMicCircle: {
     width: 118,
     height: 118,
-
     borderRadius: 59,
-
     backgroundColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   recordingBadge: {
     marginTop: 12,
-
     flexDirection: 'row',
     alignItems: 'center',
-
     backgroundColor: LIGHT_PINK,
-
     borderRadius: 20,
-
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
@@ -2711,20 +1888,15 @@ const styles = StyleSheet.create({
   recordingDot: {
     width: 8,
     height: 8,
-
     borderRadius: 4,
-
     backgroundColor: BROWN,
-
     marginRight: 7,
   },
 
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
-
     letterSpacing: 0.6,
-
     color: BROWN,
   },
 
@@ -2734,306 +1906,150 @@ const styles = StyleSheet.create({
 
   detectedLabel: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 10,
-
     letterSpacing: 0.7,
-
     color: MUTED,
   },
 
   detectedNote: {
     fontFamily: 'FredokaBold',
-
     fontSize: 48,
-
     color: BROWN,
-
     marginTop: 2,
   },
 
   detectedFrequency: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 12,
-
     color: MUTED,
   },
 
   pitchMessage: {
     fontFamily: 'FredokaBold',
-
     fontSize: 15,
-
     color: BROWN,
-
     marginTop: 5,
   },
 
   accuracyTrack: {
     width: '100%',
-
     height: 9,
-
     backgroundColor: LIGHT_GRAY,
-
     borderRadius: 5,
-
     overflow: 'hidden',
-
     marginTop: 17,
   },
 
   accuracyFill: {
     height: '100%',
-
     backgroundColor: PINK,
-
     borderRadius: 5,
   },
 
   centsText: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 11,
-
     color: MUTED,
-
     textAlign: 'center',
-
     marginTop: 7,
   },
 
   metricsGrid: {
     width: '100%',
-
     flexDirection: 'row',
-
     flexWrap: 'wrap',
-
     gap: 10,
-
     marginTop: 18,
   },
 
   metricCard: {
     flex: 1,
-
     minWidth: '47%',
-
     backgroundColor: LIGHT_PINK,
-
     borderRadius: 16,
-
     padding: 14,
-
     borderWidth: 1,
     borderColor: '#F2DDE5',
   },
 
   metricLabel: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 9,
-
     letterSpacing: 0.6,
-
     color: MUTED,
   },
 
   metricValue: {
     fontFamily: 'FredokaBold',
-
     fontSize: 17,
-
     color: BROWN,
-
     marginTop: 3,
   },
 
   timerText: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 11,
-
     color: MUTED,
-
     textAlign: 'center',
-
     marginTop: 18,
     marginBottom: 7,
   },
 
   timerTrack: {
     width: '100%',
-
     height: 7,
-
     backgroundColor: LIGHT_GRAY,
-
     borderRadius: 4,
-
     overflow: 'hidden',
   },
 
   timerFill: {
     height: '100%',
-
     backgroundColor: PINK,
   },
 
   finishButton: {
     width: '100%',
-
     height: 53,
-
     borderRadius: 27,
-
     backgroundColor: LIGHT_GRAY,
-
     flexDirection: 'row',
-
     alignItems: 'center',
     justifyContent: 'center',
-
     gap: 8,
-
     marginTop: 18,
   },
 
   finishButtonText: {
     fontFamily: 'FredokaBold',
-
     fontSize: 15,
-
     color: BROWN,
   },
 
-  // ========================================================
+  // ==========================================================
   // RESULTS
-  // ========================================================
-
-  resultsContent: {
-    flexGrow: 1,
-
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
-
-    alignItems: 'center',
-  },
-
-  resultIcon: {
-    width: 82,
-    height: 82,
-
-    borderRadius: 41,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginBottom: 18,
-  },
-
-  resultIconPassed: {
-    backgroundColor: PINK,
-  },
-
-  resultIconFailed: {
-    backgroundColor: LIGHT_GRAY,
-  },
-
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-
-    fontSize: 27,
-
-    color: BROWN,
-
-    textAlign: 'center',
-  },
-
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-
-    fontSize: 12,
-
-    color: MUTED,
-
-    marginTop: 3,
-    marginBottom: 22,
-  },
-
-  scoreCard: {
-    width: '100%',
-
-    backgroundColor: PINK,
-
-    borderRadius: 22,
-
-    padding: 22,
-
-    alignItems: 'center',
-  },
-
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-
-    fontSize: 12,
-
-    color: BROWN,
-  },
-
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-
-    fontSize: 52,
-
-    color: BROWN,
-
-    marginVertical: 3,
-  },
-
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-
-    fontSize: 11,
-
-    color: MUTED,
-
-    textAlign: 'center',
-  },
+  // ==========================================================
 
   resultCard: {
     width: '100%',
-
     backgroundColor: LIGHT_PINK,
-
     borderRadius: 20,
-
     padding: 18,
-
     marginTop: 14,
-
     borderWidth: 1,
     borderColor: '#F2DDE5',
   },
 
   resultCardTitle: {
     fontFamily: 'FredokaBold',
-
     fontSize: 17,
-
     color: BROWN,
-
     marginBottom: 12,
   },
 
   comparisonRow: {
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
   },
 
@@ -3047,108 +2063,59 @@ const styles = StyleSheet.create({
 
   comparisonLabel: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 10,
-
     letterSpacing: 0.7,
-
     color: MUTED,
   },
 
   comparisonNote: {
     fontFamily: 'FredokaBold',
-
     fontSize: 30,
-
     color: BROWN,
-
     marginTop: 2,
   },
 
   comparisonFrequency: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 11,
-
     color: MUTED,
-
     marginTop: 1,
   },
 
   resultsGrid: {
     width: '100%',
-
     flexDirection: 'row',
-
     flexWrap: 'wrap',
-
     gap: 10,
-
     marginTop: 14,
   },
 
   feedbackCard: {
     width: '100%',
-
     flexDirection: 'row',
-
     backgroundColor: PINK,
-
     borderRadius: 15,
-
     padding: 14,
-
     marginTop: 14,
-
     marginBottom: 18,
   },
 
   feedbackContent: {
     flex: 1,
-
     marginLeft: 10,
   },
 
   feedbackTitle: {
     fontFamily: 'FredokaBold',
-
     fontSize: 16,
-
     color: BROWN,
   },
 
   feedbackText: {
     fontFamily: 'FredokaRegular',
-
     fontSize: 11,
-
     lineHeight: 16,
-
     color: BROWN,
-
     marginTop: 4,
-  },
-
-  doneButton: {
-    width: '100%',
-
-    height: 50,
-
-    borderRadius: 25,
-
-    backgroundColor: LIGHT_GRAY,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginTop: 10,
-  },
-
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-
-    fontSize: 14,
-
-    color: BROWN,
   },
 });

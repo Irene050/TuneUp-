@@ -893,7 +893,7 @@ export default function ToneConsistencyExerciseScreen({
       }
 
       router.replace(
-        '/dashboard/exercises',
+        '/dashboard?tab=exercises',
       );
     }, []);
 

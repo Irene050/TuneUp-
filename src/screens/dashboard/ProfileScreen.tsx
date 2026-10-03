@@ -6,24 +6,24 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 import {
-    changeCurrentPassword,
-    deleteCurrentAccount,
-    logoutUser,
-    updateCurrentUserProfile,
+  changeCurrentPassword,
+  deleteCurrentAccount,
+  logoutUser,
+  updateCurrentUserProfile,
 } from '@/services/firebase/authService';
 
 const BROWN = '#4E2F1F';
@@ -248,7 +248,12 @@ export default function ProfileScreen() {
 
           <Pressable
             style={styles.optionCard}
-            onPress={() => router.push('/progress' as any)}
+            onPress={() =>
+              router.push({
+                pathname: '/dashboard',
+                params: { tab: 'progress' },
+              })
+            }
           >
             <View style={styles.progressIcon}>
               <Ionicons

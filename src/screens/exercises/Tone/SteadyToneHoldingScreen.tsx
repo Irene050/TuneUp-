@@ -876,7 +876,7 @@ export default function SteadyToneHoldingScreen({
       void stopRecordingRef.current?.();
 
       router.replace(
-        '/dashboard/exercises',
+        '/dashboard?tab=exercises',
       );
     }, []);
 

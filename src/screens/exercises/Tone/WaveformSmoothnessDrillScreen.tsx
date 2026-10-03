@@ -1092,7 +1092,7 @@ export default function WaveformSmoothnessDrillScreen({
       }
 
       router.replace(
-        '/dashboard/exercises',
+        '/dashboard?tab=exercises',
       );
     }, []);
 

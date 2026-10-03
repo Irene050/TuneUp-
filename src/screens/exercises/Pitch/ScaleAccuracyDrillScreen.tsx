@@ -9,13 +9,10 @@ import {
   useState,
 } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from 'react-native';
 
 import {
@@ -41,7 +38,7 @@ import {
 import {
   disposeNotePlayer,
   playNoteSequence,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   getLatestAssessment,
@@ -75,6 +72,13 @@ import {
   auth,
 } from '@/services/firebase/config';
 
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '../ExerciseScreen';
+
 // ============================================================
 // COLORS
 // ============================================================
@@ -85,6 +89,7 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
+const BORDER = '#F2DDE5';
 
 // ============================================================
 // TYPES
@@ -97,7 +102,7 @@ interface Props {
 type Phase =
   | 'instructions'
   | 'countdown'
-  | 'playing'
+  | 'listening'
   | 'recording'
   | 'processing'
   | 'results';
@@ -107,20 +112,8 @@ type Phase =
 // ============================================================
 
 function generateScale(
-  params: ScaleAccuracyParams
+  params: ScaleAccuracyParams,
 ) {
-  /*
-   * C major:
-   *
-   * Beginner:
-   * C4 D4 E4 F4 G4
-   *
-   * Intermediate:
-   * C4 D4 E4 F4 G4 A4 B4
-   *
-   * Advanced:
-   * C4 D4 E4 F4 G4 A4 B4 C5
-   */
 
   const baseMidi = 60;
 
@@ -135,26 +128,20 @@ function generateScale(
     12,
   ];
 
-  /*
-   * The available scale contains eight
-   * predefined notes. Clamp the generated
-   * note count so the actual target sequence
-   * always matches the available notes.
-   */
   const noteCount = Math.min(
     Math.max(
       1,
-      Math.round(params.noteCount)
+      Math.round(params.noteCount),
     ),
-    scaleIntervals.length
+    scaleIntervals.length,
   );
 
   return scaleIntervals
     .slice(0, noteCount)
     .map((interval) =>
       createMusicalNote(
-        baseMidi + interval
-      )
+        baseMidi + interval,
+      ),
     );
 }
 
@@ -171,14 +158,14 @@ export default function ScaleAccuracyDrillScreen({
 
   const [currentTier, setCurrentTier] =
     useState<Tier>(
-      tier ?? 'beginner'
+      tier ?? 'beginner',
     );
 
   const [params, setParams] =
     useState<ScaleAccuracyParams>(
       SCALE_ACCURACY_PARAMS[
         tier ?? 'beginner'
-      ]
+      ],
     );
 
   const [
@@ -204,8 +191,8 @@ export default function ScaleAccuracyDrillScreen({
       generateScale(
         SCALE_ACCURACY_PARAMS[
           tier ?? 'beginner'
-        ]
-      )
+        ],
+      ),
     );
 
   const [liveFrame, setLiveFrame] =
@@ -216,7 +203,7 @@ export default function ScaleAccuracyDrillScreen({
 
   const [result, setResult] =
     useState<ScaleAccuracyScoreResult | null>(
-      null
+      null,
     );
 
   const [errorMessage, setErrorMessage] =
@@ -238,23 +225,18 @@ export default function ScaleAccuracyDrillScreen({
             auth.currentUser;
 
           /*
-           * If a tier was explicitly supplied
-           * by the route, use it.
-           *
-           * Otherwise resolve the user's current
-           * tier from Pitch component progress.
+           * Use an explicitly supplied tier when
+           * available. Otherwise use the user's
+           * current Pitch progress tier.
            */
           let resolvedTier: Tier =
             tier ?? 'beginner';
 
-          if (
-            !tier &&
-            user
-          ) {
+          if (!tier && user) {
             const progress =
               await fetchComponentProgress(
                 user.uid,
-                'pitch'
+                'pitch',
               );
 
             resolvedTier =
@@ -267,63 +249,55 @@ export default function ScaleAccuracyDrillScreen({
           }
 
           setCurrentTier(
-            resolvedTier
+            resolvedTier,
           );
 
           let recentScores: number[] =
             [];
 
           /*
-           * Retrieve completed exercise
-           * history for the Pitch component.
-           *
-           * The repository already scopes the
-           * records to:
-           *
-           * users/{uid}/progress/pitch/exercises
-           *
-           * Therefore only the current tier
-           * needs to be filtered here.
+           * Retrieve Scale Accuracy Drill
+           * history for the resolved tier.
            */
           if (user) {
             const records =
               await fetchExerciseRecords(
                 user.uid,
-                'pitch'
+                'pitch',
               );
 
             const currentTierRecords =
               records
                 .filter(
-                  record =>
-                    record.tier === resolvedTier &&
-                    record.templateId === 'scaleAccuracyDrill'
+                  (record) =>
+                    record.tier ===
+                      resolvedTier &&
+                    record.templateId ===
+                      'scaleAccuracyDrill',
                 )
                 .sort(
                   (a, b) =>
                     a.timestamp -
-                    b.timestamp
+                    b.timestamp,
                 );
 
             /*
-             * Use the latest five completed
-             * exercise scores for Pitch and
-             * the current tier.
+             * Use only the latest five
+             * completed exercise scores.
              */
             recentScores =
               currentTierRecords
                 .slice(-5)
                 .map(
-                  record =>
-                    record.scorePct
+                  (record) =>
+                    record.scorePct,
                 );
           }
 
           /*
-           * If there is no completed exercise
-           * history for the current component
-           * and tier, use the latest Assessment
-           * Pitch score as the ADS reference.
+           * If there is no exercise history,
+           * use the latest Pitch Assessment
+           * score as the cold-start ADS reference.
            */
           if (
             recentScores.length === 0 &&
@@ -334,14 +308,12 @@ export default function ScaleAccuracyDrillScreen({
 
             const pitchScore =
               assessment?.scores.find(
-                score =>
+                (score) =>
                   score.componentId ===
-                  'pitch'
+                  'pitch',
               );
 
-            if (
-              pitchScore
-            ) {
+            if (pitchScore) {
               recentScores = [
                 pitchScore.scorePct,
               ];
@@ -349,9 +321,7 @@ export default function ScaleAccuracyDrillScreen({
           }
 
           /*
-           * Generate the actual exercise
-           * parameters using the resolved tier
-           * and ADS reference scores.
+           * Generate the adaptive parameters.
            */
           const generatedParams =
             generateScaleAccuracyParams({
@@ -364,37 +334,32 @@ export default function ScaleAccuracyDrillScreen({
           }
 
           setParams(
-            generatedParams
+            generatedParams,
           );
         } catch (error) {
           console.error(
             '❌ FAILED TO LOAD SCALE ACCURACY ADS PARAMETERS:',
-            error
+            error,
           );
 
           if (!cancelled) {
-            /*
-             * Preserve an explicitly supplied tier
-             * as the fallback. Otherwise default to
-             * Beginner.
-             */
             const fallbackTier =
               tier ?? 'beginner';
 
             setCurrentTier(
-              fallbackTier
+              fallbackTier,
             );
 
             setParams(
               SCALE_ACCURACY_PARAMS[
                 fallbackTier
-              ]
+              ],
             );
           }
         } finally {
           if (!cancelled) {
             setIsLoadingAdaptiveParams(
-              false
+              false,
             );
           }
         }
@@ -416,16 +381,12 @@ export default function ScaleAccuracyDrillScreen({
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
-      null
+      null,
     );
 
-  /*
-   * Used to keep the currently displayed
-   * target note synchronized with recording.
-   */
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
-      null
+      null,
     );
 
   const stopRequestedRef =
@@ -437,27 +398,68 @@ export default function ScaleAccuracyDrillScreen({
   const recordingRef =
     useRef(false);
 
-  /*
-   * Stores pitch values received from
-   * live microphone frames.
-   */
   const pitchHistoryRef =
     useRef<number[]>([]);
 
-  /*
-   * Tracks recording duration.
-   */
   const recordingElapsedRef =
     useRef(0);
 
-  /*
-   * Keeps the latest stop function available
-   * for unmount cleanup.
-   */
   const stopRecordingRef =
     useRef<
       (() => Promise<void>) | null
     >(null);
+
+  // ==========================================================
+  // TIMER CLEANUP
+  // ==========================================================
+
+  const clearTimers =
+    useCallback(() => {
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
+
+        countdownTimerRef.current =
+          null;
+      }
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+
+        recordingTimerRef.current =
+          null;
+      }
+    }, []);
+
+  // ==========================================================
+  // GO BACK
+  // ==========================================================
+
+  const goBack =
+    useCallback(() => {
+      clearTimers();
+
+      stopRequestedRef.current =
+        true;
+
+      if (recordingRef.current) {
+        stopRecordingRef.current?.();
+      }
+
+      disposeNotePlayer()
+        .catch(() => {});
+
+      router.replace(
+        '/dashboard?tab=exercises',
+      );
+    }, [clearTimers]);
 
   // ==========================================================
   // CLEANUP
@@ -469,40 +471,16 @@ export default function ScaleAccuracyDrillScreen({
     return () => {
       mountedRef.current = false;
 
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current
-        );
+      clearTimers();
 
-        countdownTimerRef.current = null;
-      }
-
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current
-        );
-
-        recordingTimerRef.current = null;
-      }
-
-      /*
-       * Stop recording if the user leaves
-       * while the microphone is active.
-       */
-      if (
-        recordingRef.current
-      ) {
+      if (recordingRef.current) {
         stopRecordingRef.current?.();
       }
 
       disposeNotePlayer()
         .catch(() => {});
     };
-  }, []);
+  }, [clearTimers]);
 
   // ==========================================================
   // LIVE FRAME
@@ -520,7 +498,9 @@ export default function ScaleAccuracyDrillScreen({
         setLiveFrame(frame);
 
         if (
-          Number.isFinite(frame.pitch) &&
+          Number.isFinite(
+            frame.pitch,
+          ) &&
           frame.pitch > 0
         ) {
           pitchHistoryRef.current = [
@@ -529,11 +509,11 @@ export default function ScaleAccuracyDrillScreen({
           ].slice(-30);
 
           setLiveFrequencies(
-            pitchHistoryRef.current
+            pitchHistoryRef.current,
           );
         }
       },
-      []
+      [],
     );
 
   // ==========================================================
@@ -544,7 +524,7 @@ export default function ScaleAccuracyDrillScreen({
     useCallback(
       async (
         samples: Float32Array,
-        sampleRate: number
+        sampleRate: number,
       ) => {
         if (
           !mountedRef.current
@@ -564,17 +544,15 @@ export default function ScaleAccuracyDrillScreen({
         recordingRef.current =
           false;
 
-        /*
-         * Stop the target-note timer immediately.
-         */
         if (
           recordingTimerRef.current
         ) {
           clearInterval(
-            recordingTimerRef.current
+            recordingTimerRef.current,
           );
 
-          recordingTimerRef.current = null;
+          recordingTimerRef.current =
+            null;
         }
 
         setPhase('processing');
@@ -582,54 +560,45 @@ export default function ScaleAccuracyDrillScreen({
         try {
           const targetFreqs =
             targetNotes.map(
-              note =>
-                note.frequency
+              (note) =>
+                note.frequency,
             );
 
           /*
            * Divide the recording into one
-           * segment for each target note.
+           * segment for every target note.
            */
           const segments =
             segmentIntoNotes(
               samples,
               targetFreqs.length,
               0.01,
-              sampleRate
+              sampleRate,
             );
 
-          /*
-           * Measure using the adaptive
-           * minimum clarity.
-           */
           const measurement =
             measureScaleAccuracyDrill(
               segments,
               targetFreqs,
               sampleRate,
-              params.minClarity
+              params.minClarity,
             );
 
-          /*
-           * Score using the exact same
-           * adaptive parameters used by
-           * this exercise.
-           */
           const score =
             scoreScaleAccuracyDrill(
               measurement,
-              params
+              params,
             );
 
           /*
-           * Save under the user's actual
-           * current Pitch tier.
+           * Save the completed exercise
+           * under the user's current Pitch tier.
            */
           await saveCompletedExercise(
             'pitch',
             'scaleAccuracyDrill',
             currentTier,
-            score.score
+            score.score,
           );
 
           if (
@@ -639,23 +608,22 @@ export default function ScaleAccuracyDrillScreen({
           }
 
           setResult(score);
-
           setPhase('results');
         } catch (error) {
           console.error(
             '❌ SCALE PROCESSING ERROR:',
-            error
+            error,
           );
 
           if (
             mountedRef.current
           ) {
             setErrorMessage(
-              'We could not analyze your recording. Please try again.'
+              'We could not analyze your recording. Please try again.',
             );
 
             setPhase(
-              'instructions'
+              'instructions',
             );
           }
         } finally {
@@ -670,7 +638,7 @@ export default function ScaleAccuracyDrillScreen({
         currentTier,
         params,
         targetNotes,
-      ]
+      ],
     );
 
   // ==========================================================
@@ -724,15 +692,15 @@ export default function ScaleAccuracyDrillScreen({
         }
 
         try {
-          /*
-           * Reset live data.
-           */
-          pitchHistoryRef.current = [];
+          pitchHistoryRef.current =
+            [];
 
           recordingElapsedRef.current =
             0;
 
-          setLiveFrequencies([]);
+          setLiveFrequencies(
+            [],
+          );
 
           setLiveFrame(null);
 
@@ -742,16 +710,9 @@ export default function ScaleAccuracyDrillScreen({
           processingRef.current =
             false;
 
-          /*
-           * Start on the first note.
-           */
           setCurrentNoteIndex(0);
-
           setPhase('recording');
 
-          /*
-           * Start microphone first.
-           */
           await startRecording();
 
           if (
@@ -764,32 +725,20 @@ export default function ScaleAccuracyDrillScreen({
             true;
 
           /*
-           * Give approximately 1.25 seconds
-           * for each target note.
-           *
-           * Use targetNotes.length rather than
-           * params.noteCount so recording duration
-           * always matches the actual generated
-           * scale.
+           * Allocate approximately 1.25 seconds
+           * for each generated target note.
            */
           const recordingDuration =
             Math.max(
               5,
-              targetNotes.length * 1250
+              targetNotes.length *
+                1250,
             );
 
-          /*
-           * Divide the recording equally among
-           * the actual target notes.
-           */
           const noteDuration =
             recordingDuration /
             targetNotes.length;
 
-          /*
-           * Update the target note every
-           * 100 milliseconds.
-           */
           recordingTimerRef.current =
             setInterval(
               async () => {
@@ -807,26 +756,20 @@ export default function ScaleAccuracyDrillScreen({
                 const elapsedMs =
                   recordingElapsedRef.current;
 
-                /*
-                 * Determine which note the
-                 * singer should currently sing.
-                 */
                 const nextNoteIndex =
                   Math.min(
                     Math.floor(
                       elapsedMs /
-                        noteDuration
+                        noteDuration,
                     ),
-                    targetNotes.length - 1
+                    targetNotes.length -
+                      1,
                   );
 
                 setCurrentNoteIndex(
-                  nextNoteIndex
+                  nextNoteIndex,
                 );
 
-                /*
-                 * Recording is complete.
-                 */
                 if (
                   elapsedMs >=
                   recordingDuration
@@ -835,7 +778,7 @@ export default function ScaleAccuracyDrillScreen({
                     recordingTimerRef.current
                   ) {
                     clearInterval(
-                      recordingTimerRef.current
+                      recordingTimerRef.current,
                     );
 
                     recordingTimerRef.current =
@@ -856,7 +799,7 @@ export default function ScaleAccuracyDrillScreen({
                   } catch (error) {
                     console.error(
                       '❌ FAILED TO STOP SCALE RECORDING:',
-                      error
+                      error,
                     );
 
                     recordingRef.current =
@@ -869,22 +812,22 @@ export default function ScaleAccuracyDrillScreen({
                       mountedRef.current
                     ) {
                       setErrorMessage(
-                        'We could not finish the recording. Please try again.'
+                        'We could not finish the recording. Please try again.',
                       );
 
                       setPhase(
-                        'instructions'
+                        'instructions',
                       );
                     }
                   }
                 }
               },
-              100
+              100,
             );
         } catch (error) {
           console.error(
             '❌ FAILED TO START SCALE RECORDING:',
-            error
+            error,
           );
 
           recordingRef.current =
@@ -897,12 +840,12 @@ export default function ScaleAccuracyDrillScreen({
             mountedRef.current
           ) {
             setPhase(
-              'instructions'
+              'instructions',
             );
 
             Alert.alert(
               'Microphone Error',
-              'Unable to start the microphone. Please check your microphone permission and try again.'
+              'Unable to start the microphone. Please check your microphone permission and try again.',
             );
           }
         }
@@ -911,7 +854,7 @@ export default function ScaleAccuracyDrillScreen({
         startRecording,
         stopRecording,
         targetNotes.length,
-      ]
+      ],
     );
 
   // ==========================================================
@@ -928,31 +871,28 @@ export default function ScaleAccuracyDrillScreen({
         }
 
         try {
-          setPhase('playing');
+          setPhase('listening');
 
           setCurrentNoteIndex(0);
 
           const sequence =
             targetNotes.map(
-              note => ({
+              (note) => ({
                 frequencyHz:
                   note.frequency,
 
                 durationSec:
                   0.8,
-              })
+              }),
             );
 
           /*
-           * Play target scale first.
-           *
-           * The microphone starts only after
-           * playback finishes so the generated
-           * notes are not captured as the singer's
-           * recording.
+           * Play the reference scale before
+           * starting the microphone so the
+           * generated audio is not recorded.
            */
           await playNoteSequence(
-            sequence
+            sequence,
           );
 
           if (
@@ -965,19 +905,19 @@ export default function ScaleAccuracyDrillScreen({
         } catch (error) {
           console.error(
             '❌ FAILED TO PLAY SCALE:',
-            error
+            error,
           );
 
           if (
             mountedRef.current
           ) {
             setPhase(
-              'instructions'
+              'instructions',
             );
 
             Alert.alert(
               'Audio Error',
-              'Unable to play the target scale. Please try again.'
+              'Unable to play the target scale. Please try again.',
             );
           }
         }
@@ -985,7 +925,7 @@ export default function ScaleAccuracyDrillScreen({
       [
         beginRecording,
         targetNotes,
-      ]
+      ],
     );
 
   // ==========================================================
@@ -1001,25 +941,23 @@ export default function ScaleAccuracyDrillScreen({
       }
 
       /*
-       * Generate a fresh scale using the
-       * current adaptive parameters.
+       * Generate a fresh scale using
+       * the current adaptive parameters.
        */
       const newScale =
         generateScale(params);
 
       setTargetNotes(
-        newScale
+        newScale,
       );
 
       setResult(null);
-
       setErrorMessage(null);
-
       setLiveFrame(null);
-
       setLiveFrequencies([]);
 
-      pitchHistoryRef.current = [];
+      pitchHistoryRef.current =
+        [];
 
       recordingElapsedRef.current =
         0;
@@ -1034,9 +972,7 @@ export default function ScaleAccuracyDrillScreen({
         false;
 
       setCurrentNoteIndex(-1);
-
       setCountdown(3);
-
       setPhase('countdown');
 
       let value = 3;
@@ -1045,7 +981,7 @@ export default function ScaleAccuracyDrillScreen({
         countdownTimerRef.current
       ) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
       }
 
@@ -1053,14 +989,12 @@ export default function ScaleAccuracyDrillScreen({
         setInterval(() => {
           value--;
 
-          if (
-            value <= 0
-          ) {
+          if (value <= 0) {
             if (
               countdownTimerRef.current
             ) {
               clearInterval(
-                countdownTimerRef.current
+                countdownTimerRef.current,
               );
             }
 
@@ -1072,9 +1006,7 @@ export default function ScaleAccuracyDrillScreen({
             return;
           }
 
-          setCountdown(
-            value
-          );
+          setCountdown(value);
         }, 1000);
     }, [
       isLoadingAdaptiveParams,
@@ -1088,33 +1020,14 @@ export default function ScaleAccuracyDrillScreen({
 
   const retry =
     useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current
-        );
-
-        countdownTimerRef.current = null;
-      }
-
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current
-        );
-
-        recordingTimerRef.current = null;
-      }
+      clearTimers();
 
       setResult(null);
-
       setLiveFrame(null);
-
       setLiveFrequencies([]);
 
-      pitchHistoryRef.current = [];
+      pitchHistoryRef.current =
+        [];
 
       recordingElapsedRef.current =
         0;
@@ -1129,11 +1042,9 @@ export default function ScaleAccuracyDrillScreen({
         false;
 
       setCurrentNoteIndex(-1);
-
-      setPhase(
-        'instructions'
-      );
-    }, []);
+      setErrorMessage(null);
+      setPhase('instructions');
+    }, [clearTimers]);
 
   // ==========================================================
   // CURRENT TARGET
@@ -1158,13 +1069,13 @@ export default function ScaleAccuracyDrillScreen({
     liveFrame.pitch > 0
       ? calcPitchAccuracy(
           liveFrame.pitch,
-          currentTarget.frequency
+          currentTarget.frequency,
         )
       : 0;
 
   const liveStability =
     calcLiveStability(
-      liveFrequencies
+      liveFrequencies,
     );
 
   // ==========================================================
@@ -1175,327 +1086,47 @@ export default function ScaleAccuracyDrillScreen({
     phase === 'instructions'
   ) {
     return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            router.replace(
-              '/dashboard/exercises'
-            )
-          }
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          <View
-            style={styles.iconCircle}
-          >
-            <Ionicons
-              name="stats-chart-outline"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.title}>
-            Scale Accuracy Drill
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Pitch
-          </Text>
-
-          <View
-            style={
-              styles.instructionCard
-            }
-          >
-            <Text
-              style={styles.cardTitle}
-            >
-              Exercise Instructions
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Listen to the target scale
-              first.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              After the scale finishes,
-              sing the notes back one at
-              a time in the same order.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Try to land accurately on
-              every note and make each
-              transition smooth.
-            </Text>
-
-            <View
-              style={
-                styles.prepareCard
-              }
-            >
-              <View
-                style={
-                  styles.prepareHeader
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareTitle
-                  }
-                >
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Find a quiet room or area
-                  with minimal background
-                  noise.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Sit upright or stand with
-                  your back straight and
-                  your shoulders relaxed.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  If available, an external
-                  microphone or audio
-                  recording equipment is
-                  recommended.
-                </Text>
-              </View>
-            </View>
-
-            <View
-              style={styles.targetBox}
-            >
-              <Ionicons
-                name="trending-up"
-                size={25}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.targetText}
-              >
-                {targetNotes.length} note scale
-              </Text>
-            </View>
-
-            <Text
-              style={styles.helperText}
-            >
-              Focus on accurate note
-              changes rather than singing
-              as quickly as possible.
-            </Text>
-          </View>
-
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text
-              style={styles.tipText}
-            >
-              Sing each note clearly before
-              moving to the next one.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.difficultyRow
-            }
-          >
-            <Text
-              style={
-                styles.difficultyLabel
-              }
-            >
-              Difficulty
-            </Text>
-
-            <Text
-              style={
-                styles.difficultyValue
-              }
-            >
-              {currentTier}
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.difficultyRow
-            }
-          >
-            <Text
-              style={
-                styles.difficultyLabel
-              }
-            >
-              Scale Length
-            </Text>
-
-            <Text
-              style={
-                styles.difficultyValue
-              }
-            >
-              {targetNotes.length} notes
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.difficultyRow
-            }
-          >
-            <Text
-              style={
-                styles.difficultyLabel
-              }
-            >
-              Pitch Tolerance
-            </Text>
-
-            <Text
-              style={
-                styles.difficultyValue
-              }
-            >
-              ±{params.tolerancePct}%
-            </Text>
-          </View>
-
-          <Pressable
-            style={[
-              styles.startButton,
-              isLoadingAdaptiveParams &&
-                {
-                  opacity: 0.6,
-                },
-            ]}
-            onPress={startCountdown}
-            disabled={
-              isLoadingAdaptiveParams
-            }
-          >
-            <Text
-              style={styles.startButtonText}
-            >
-              {isLoadingAdaptiveParams
-                ? 'Preparing Exercise...'
-                : 'Start Exercise'}
-            </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-
-          {errorMessage && (
-            <Text
-              style={{
-                fontFamily:
-                  'FredokaRegular',
-                fontSize: 11,
-                color: MUTED,
-                textAlign: 'center',
-                marginTop: 12,
-              }}
-            >
-              {errorMessage}
-            </Text>
-          )}
-        </ScrollView>
-      </View>
+      <ExerciseScreen
+        title="Scale Accuracy Drill"
+        category="Pitch"
+        icon="stats-chart-outline"
+        tier={currentTier}
+        instructions={
+          'Listen to the target scale first. After the scale finishes, sing the notes back one at a time in the same order. Try to land accurately on every note and make each transition smooth.'
+        }
+        preparationSteps={[
+          {
+            icon: 'volume-mute-outline',
+            text:
+              'Find a quiet room or area with minimal background noise.',
+          },
+          {
+            icon: 'body-outline',
+            text:
+              'Sit upright or stand with your back straight and your shoulders relaxed.',
+          },
+          {
+            icon: 'mic-outline',
+            text:
+              'If available, an external microphone or audio recording equipment is recommended.',
+          },
+        ]}
+        
+        targetValue={`${targetNotes.length} notes`}
+        
+        tip="Sing each note clearly before moving to the next one."
+        onBack={goBack}
+        onStart={startCountdown}
+        error={errorMessage}
+        startDisabled={
+          isLoadingAdaptiveParams
+        }
+        startLabel={
+          isLoadingAdaptiveParams
+            ? 'Preparing Exercise...'
+            : 'Start Exercise'
+        }
+      />
     );
   }
 
@@ -1507,105 +1138,59 @@ export default function ScaleAccuracyDrillScreen({
     phase === 'countdown'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Get Ready
-        </Text>
-
-        <Text
-          style={styles.countdownText}
-        >
-          {countdown}
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Listen carefully to the
-          scale.
-        </Text>
-      </View>
+      <ExerciseCountdownScreen
+        icon="musical-notes-outline"
+        title="Get Ready"
+        countdown={countdown}
+        promptTitle="Listen carefully"
+        prompt="The target scale will play before you begin singing."
+        onBack={goBack}
+      />
     );
   }
 
   // ==========================================================
-  // PLAYING
+  // LISTENING
   // ==========================================================
 
   if (
-    phase === 'playing'
+    phase === 'listening'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="volume-high-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Listen to the Scale
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          The target scale is playing.
-        </Text>
-
-        <View
-          style={styles.scalePreview}
-        >
-          {targetNotes.map(
-            (note, index) => (
-              <View
-                key={`${note.name}-${index}`}
-                style={
-                  styles.previewNote
-                }
-              >
-                <Text
+      <ExerciseListeningScreen
+        icon="volume-high-outline"
+        title="Listen to the Scale"
+        promptTitle="Listen carefully"
+        prompt="Listen to the target scale first. After it finishes, sing the notes back in the same order."
+        liveContent={
+          <View
+            style={
+              styles.sharedScalePreview
+            }
+          >
+            {targetNotes.map(
+              (note, index) => (
+                <View
+                  key={`${note.name}-${index}`}
                   style={
-                    styles.previewNoteText
+                    styles.sharedScaleNote
                   }
                 >
-                  {note.name}
-                </Text>
-              </View>
-            )
-          )}
-        </View>
-
-        <ActivityIndicator
-          size="small"
-          color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
-        />
-      </View>
+                  <Text
+                    style={
+                      styles.sharedScaleNoteText
+                    }
+                  >
+                    {note.name}
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
+        }
+        progress={100}
+        onBack={goBack}
+      />
     );
   }
 
@@ -1618,7 +1203,9 @@ export default function ScaleAccuracyDrillScreen({
   ) {
     return (
       <View
-        style={styles.centerScreen}
+        style={
+          styles.recordingScreen
+        }
       >
         <View
           style={
@@ -1633,13 +1220,17 @@ export default function ScaleAccuracyDrillScreen({
         </View>
 
         <Text
-          style={styles.phaseTitle}
+          style={
+            styles.recordingTitle
+          }
         >
           Sing the Scale
         </Text>
 
         <Text
-          style={styles.phaseSubtitle}
+          style={
+            styles.recordingSubtitle
+          }
         >
           Sing each note in the same
           order.
@@ -1682,7 +1273,7 @@ export default function ScaleAccuracyDrillScreen({
             {liveFrame &&
             liveFrame.pitch > 0
               ? `${Math.round(
-                  liveFrame.pitch
+                  liveFrame.pitch,
                 )} Hz`
               : '--'}
           </Text>
@@ -1707,7 +1298,7 @@ export default function ScaleAccuracyDrillScreen({
                 }
               >
                 {Math.round(
-                  liveAccuracy
+                  liveAccuracy,
                 )}
                 %
               </Text>
@@ -1730,7 +1321,7 @@ export default function ScaleAccuracyDrillScreen({
                 }
               >
                 {Math.round(
-                  liveStability
+                  liveStability,
                 )}
                 %
               </Text>
@@ -1767,7 +1358,7 @@ export default function ScaleAccuracyDrillScreen({
                   </Text>
                 </View>
               );
-            }
+            },
           )}
         </View>
 
@@ -1804,40 +1395,11 @@ export default function ScaleAccuracyDrillScreen({
     phase === 'processing'
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Analyzing Your Singing
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Checking your note accuracy
-          and transitions.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={{
-            marginTop: 28,
-          }}
-        />
-      </View>
+      <ExerciseProcessingScreen
+        icon="analytics-outline"
+        title="Analyzing Your Singing"
+        message="Checking your note accuracy and transitions."
+      />
     );
   }
 
@@ -1850,322 +1412,251 @@ export default function ScaleAccuracyDrillScreen({
     result
   ) {
     return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.resultsContent
-          }
+      <ExerciseResultsScreen
+        title={
+          result.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'
+        }
+        subtitle="Scale Accuracy Result"
+        score={result.score}
+        resultIcon={
+          result.passed
+            ? 'checkmark'
+            : 'refresh'
+        }
+        scoreSuffix="%"
+        scoreMessage={`${result.correctNotes} of ${result.totalNotes} notes matched accurately`}
+        onBack={goBack}
+        onRetry={retry}
+        onExit={goBack}
+      >
+        {/* ==================================================
+            SCORE DETAILS
+            ================================================== */}
+
+        <View
+          style={styles.resultCard}
         >
-          <View
-            style={[
-              styles.resultIcon,
-              result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
-            ]}
-          >
-            <Ionicons
-              name={
-                result.passed
-                  ? 'checkmark'
-                  : 'refresh'
-              }
-              size={40}
-              color={BROWN}
-            />
-          </View>
-
           <Text
-            style={styles.resultTitle}
-          >
-            {result.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
-          </Text>
-
-          <Text
-            style={styles.resultSubtitle}
-          >
-            Scale Accuracy Result
-          </Text>
-
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Overall Score
-            </Text>
-
-            <Text
-              style={styles.scoreValue}
-            >
-              {result.score}%
-            </Text>
-
-            <Text
-              style={
-                styles.scoreDescription
-              }
-            >
-              {result.correctNotes} of{' '}
-              {result.totalNotes} notes
-              matched accurately
-            </Text>
-          </View>
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Note Accuracy
-            </Text>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Accurate notes
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {Math.round(
-                  result.noteAccuracy
-                )}
-                %
-              </Text>
-            </View>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Transition smoothness
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {Math.round(
-                  result.transitionSmoothness
-                )}
-                %
-              </Text>
-            </View>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Average clarity
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {Math.round(
-                  result.averageClarity *
-                    100
-                )}
-                %
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Your Notes
-            </Text>
-
-            {targetNotes.map(
-              (target, index) => {
-                const detected =
-                  result.detectedFreqs[
-                    index
-                  ];
-
-                const noteScore =
-                  result.noteScores[
-                    index
-                  ] ?? 0;
-
-                const noteName =
-                  detected &&
-                  detected > 0
-                    ? frequencyToNote(
-                        detected
-                      )
-                    : '--';
-
-                const correct =
-                  result.noteDeviations[
-                    index
-                  ] <=
-                  params.tolerancePct;
-
-                return (
-                  <View
-                    key={`${target.name}-${index}`}
-                    style={
-                      styles.noteResultRow
-                    }
-                  >
-                    <View
-                      style={
-                        styles.noteNumber
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.noteNumberText
-                        }
-                      >
-                        {index + 1}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.noteResultInfo
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.targetNoteText
-                        }
-                      >
-                        Target: {target.name}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.detectedNoteText
-                        }
-                      >
-                        Detected: {noteName}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.noteStatus,
-                        correct &&
-                          styles.noteStatusCorrect,
-                      ]}
-                    >
-                      <Ionicons
-                        name={
-                          correct
-                            ? 'checkmark'
-                            : 'close'
-                        }
-                        size={15}
-                        color={BROWN}
-                      />
-
-                      <Text
-                        style={
-                          styles.noteStatusText
-                        }
-                      >
-                        {noteScore}%
-                      </Text>
-                    </View>
-                  </View>
-                );
-              }
-            )}
-          </View>
-
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text
-              style={styles.tipText}
-            >
-              {result.passed
-                ? 'Your notes were mostly accurate. Continue practicing smooth transitions for even greater consistency.'
-                : 'Focus on landing directly on each target note before moving to the next one.'}
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.startButton}
-            onPress={retry}
-          >
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Try Again
-            </Text>
-
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.doneButton}
-            onPress={() =>
-              router.replace(
-                '/dashboard/exercises'
-              )
+            style={
+              styles.resultCardTitle
             }
           >
+            Note Accuracy
+          </Text>
+
+          <View
+            style={styles.resultRow}
+          >
             <Text
               style={
-                styles.doneButtonText
+                styles.resultRowLabel
               }
             >
-              Done
+              Accurate notes
             </Text>
-          </Pressable>
-        </ScrollView>
-      </View>
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
+              {Math.round(
+                result.noteAccuracy,
+              )}
+              %
+            </Text>
+          </View>
+
+          <View
+            style={styles.resultRow}
+          >
+            <Text
+              style={
+                styles.resultRowLabel
+              }
+            >
+              Transition smoothness
+            </Text>
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
+              {Math.round(
+                result.transitionSmoothness,
+              )}
+              %
+            </Text>
+          </View>
+
+          <View
+            style={styles.resultRow}
+          >
+            <Text
+              style={
+                styles.resultRowLabel
+              }
+            >
+              Average clarity
+            </Text>
+
+            <Text
+              style={
+                styles.resultRowValue
+              }
+            >
+              {Math.round(
+                result.averageClarity *
+                  100,
+              )}
+              %
+            </Text>
+          </View>
+        </View>
+
+        {/* ==================================================
+            NOTE-BY-NOTE RESULTS
+            ================================================== */}
+
+        <View
+          style={styles.resultCard}
+        >
+          <Text
+            style={
+              styles.resultCardTitle
+            }
+          >
+            Your Notes
+          </Text>
+
+          {targetNotes.map(
+            (target, index) => {
+              const detected =
+                result.detectedFreqs[
+                  index
+                ];
+
+              const noteScore =
+                result.noteScores[
+                  index
+                ] ?? 0;
+
+              const deviation =
+                result.noteDeviations[
+                  index
+                ] ?? Infinity;
+
+              const noteName =
+                detected &&
+                detected > 0
+                  ? frequencyToNote(
+                      detected,
+                    )
+                  : '--';
+
+              const correct =
+                deviation <=
+                params.tolerancePct;
+
+              return (
+                <View
+                  key={`${target.name}-${index}`}
+                  style={
+                    styles.noteResultRow
+                  }
+                >
+                  <View
+                    style={
+                      styles.noteNumber
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.noteNumberText
+                      }
+                    >
+                      {index + 1}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.noteResultInfo
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.targetNoteText
+                      }
+                    >
+                      Target: {target.name}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.detectedNoteText
+                      }
+                    >
+                      Detected: {noteName}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.noteStatus,
+                      correct &&
+                        styles.noteStatusCorrect,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        correct
+                          ? 'checkmark'
+                          : 'close'
+                      }
+                      size={15}
+                      color={BROWN}
+                    />
+
+                    <Text
+                      style={
+                        styles.noteStatusText
+                      }
+                    >
+                      {noteScore}%
+                    </Text>
+                  </View>
+                </View>
+              );
+            },
+          )}
+        </View>
+
+        {/* ==================================================
+            RESULT TIP
+            ================================================== */}
+
+        <View
+          style={styles.resultTip}
+        >
+          <Ionicons
+            name="bulb-outline"
+            size={21}
+            color={BROWN}
+          />
+
+          <Text
+            style={styles.tipText}
+          >
+            {result.passed
+              ? 'Your notes were mostly accurate. Continue practicing smooth transitions for even greater consistency.'
+              : 'Focus on landing directly on each target note before moving to the next one.'}
+          </Text>
+        </View>
+      </ExerciseResultsScreen>
     );
   }
 
@@ -2177,269 +1668,16 @@ export default function ScaleAccuracyDrillScreen({
 // ============================================================
 
 const styles = StyleSheet.create({
-  screen: {
+  // ==========================================================
+  // RECORDING
+  // ==========================================================
+
+  recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
-  },
-
-  centerScreen: {
-    flex: 1,
-    backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-  },
-
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 60,
-    alignItems: 'center',
-  },
-
-  resultsContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 24,
-  },
-
-  instructionCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
-
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: BROWN,
-    marginBottom: 14,
-  },
-
-  instruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: BROWN,
-    marginBottom: 10,
-  },
-
-  targetBox: {
-    backgroundColor: PINK,
-    borderRadius: 14,
-    paddingVertical: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginVertical: 8,
-  },
-
-  targetText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-  },
-
-  helperText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: PINK,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-    marginLeft: 10,
-  },
-
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 20,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-    textTransform: 'capitalize',
-  },
-
-  startButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: WHITE,
-  },
-
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: BROWN,
-    marginTop: 20,
-  },
-
-  scalePreview: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 24,
-    maxWidth: 350,
-  },
-
-  previewNote: {
-    minWidth: 48,
-    height: 44,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  previewNoteActive: {
-    backgroundColor: PINK,
-  },
-
-  previewNoteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: MUTED,
-  },
-
-  previewNoteTextActive: {
-    color: BROWN,
   },
 
   recordingIcon: {
@@ -2452,12 +1690,28 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  recordingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  recordingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     padding: 20,
     marginTop: 25,
     alignItems: 'center',
@@ -2479,7 +1733,7 @@ const styles = StyleSheet.create({
   liveDivider: {
     width: '70%',
     height: 1,
-    backgroundColor: '#F2DDE5',
+    backgroundColor: BORDER,
     marginVertical: 12,
   },
 
@@ -2521,6 +1775,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  scalePreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+    maxWidth: 350,
+  },
+
+  previewNote: {
+    minWidth: 48,
+    height: 44,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  previewNoteActive: {
+    backgroundColor: PINK,
+  },
+
+  previewNoteText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: MUTED,
+  },
+
+  previewNoteTextActive: {
+    color: BROWN,
+  },
+
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2541,65 +1828,39 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
+  // ==========================================================
+  // LISTENING
+  // ==========================================================
+
+  sharedScalePreview: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  sharedScaleNote: {
+    minWidth: 44,
+    height: 40,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
   },
 
-  resultIconPassed: {
-    backgroundColor: PINK,
-  },
-
-  resultIconFailed: {
-    backgroundColor: LIGHT_GRAY,
-  },
-
-  resultTitle: {
+  sharedScaleNoteText: {
     fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 22,
-  },
-
-  scoreCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
   },
 
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: BROWN,
-    marginVertical: 3,
-  },
-
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-  },
+  // ==========================================================
+  // RESULTS
+  // ==========================================================
 
   resultCard: {
     width: '100%',
@@ -2608,7 +1869,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
   },
 
   resultCardTitle: {
@@ -2642,7 +1903,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2DDE5',
+    borderBottomColor: BORDER,
   },
 
   noteNumber: {
@@ -2700,19 +1961,22 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  doneButton: {
+  resultTip: {
     width: '100%',
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: LIGHT_GRAY,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
+    backgroundColor: PINK,
+    borderRadius: 15,
+    padding: 14,
+    marginTop: 14,
   },
 
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
+  tipText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
     color: BROWN,
+    marginLeft: 10,
   },
 });

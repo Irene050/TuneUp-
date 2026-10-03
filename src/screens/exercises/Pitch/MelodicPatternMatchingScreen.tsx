@@ -39,7 +39,7 @@ import {
 
 import {
   playSingleNote,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   createMusicalNote,
@@ -1225,7 +1225,7 @@ export default function MelodicPatternMatchingScreen({
           style={styles.backButton}
           onPress={() =>
             router.replace(
-              '/dashboard/exercises',
+              '/dashboard?tab=exercises',
             )
           }
         >
@@ -2247,7 +2247,7 @@ export default function MelodicPatternMatchingScreen({
             style={styles.doneButton}
             onPress={() =>
               router.replace(
-                '/dashboard/exercises',
+                '/dashboard?tab=exercises',
               )
             }
           >

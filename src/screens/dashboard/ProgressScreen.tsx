@@ -4,41 +4,41 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import {
-    router,
-    useFocusEffect,
+  router,
+  useFocusEffect,
 } from 'expo-router';
 
 import {
-    useCallback,
-    useState,
+  useCallback,
+  useState,
 } from 'react';
 
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    auth,
+  auth,
 } from '@/services/firebase/config';
 
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
 import type {
-    SavedAssessmentResult,
+  SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
 
 import {
-    fetchAllProgress,
+  fetchAllProgress,
 } from '@/services/progress/progressRepo';
 
 import type {
-    ComponentProgressSummary,
+  ComponentProgressSummary,
 } from '@/services/progress/progressModule';
 
 // ============================================================
@@ -826,7 +826,10 @@ export default function ProgressScreen() {
               }
               onPress={() =>
                 router.push(
-                  '/assessment',
+                  {
+                    pathname: '/dashboard',
+                    params: { tab: 'assessment' },
+                  },
                 )
               }
             >
@@ -891,7 +894,10 @@ export default function ProgressScreen() {
               }
               onPress={() =>
                 router.push(
-                  '/assessment',
+                  {
+                    pathname: '/dashboard',
+                    params: { tab: 'assessment' },
+                  },
                 )
               }
             >

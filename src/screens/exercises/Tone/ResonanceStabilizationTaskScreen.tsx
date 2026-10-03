@@ -1215,7 +1215,7 @@ export default function ResonanceStabilizationTaskScreen({
           true;
 
         router.replace(
-          '/dashboard/exercises'
+          '/dashboard?tab=exercises'
         );
       },
       [clearTimers]

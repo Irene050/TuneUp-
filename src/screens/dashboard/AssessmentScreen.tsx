@@ -33,7 +33,7 @@ import { saveAssessment } from '@/services/assessment/assessmentRepository';
 import {
   NoteToPlay,
   playNoteSequence,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   LiveAudioFrame,

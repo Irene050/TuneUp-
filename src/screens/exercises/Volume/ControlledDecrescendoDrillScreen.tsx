@@ -51,7 +51,7 @@ import {
 
 import {
   playSingleNote,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';

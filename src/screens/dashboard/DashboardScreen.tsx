@@ -2,23 +2,23 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import {
-    useCallback,
-    useState,
+  useCallback,
+  useState,
 } from 'react';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
 import type {
-    SavedAssessmentResult,
+  SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
 
 import { useAuth } from '@/hooks/useAuth';
@@ -266,7 +266,10 @@ export default function DashboardScreen() {
         <Pressable
           style={styles.assessmentCard}
           onPress={() =>
-            router.push('/assessment')
+            router.push({
+              pathname: '/dashboard',
+              params: { tab: 'assessment' },
+            })
           }
         >
           <View
@@ -383,11 +386,7 @@ export default function DashboardScreen() {
           </Text>
 
           <Pressable
-            onPress={() =>
-              router.push(
-                '/dashboard/exercises',
-              )
-            }
+            onPress={() => router.setParams({ tab: 'exercises' })}
           >
             <Text
               style={styles.viewMore}

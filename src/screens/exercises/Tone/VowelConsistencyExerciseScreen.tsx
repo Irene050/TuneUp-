@@ -949,7 +949,7 @@ export default function VowelConsistencyExerciseScreen({
       }
 
       router.replace(
-        '/dashboard/exercises',
+        '/dashboard?tab=exercises',
       );
     }, []);
 

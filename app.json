@@ -4,16 +4,16 @@
     "slug": "TuneUp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/tuneup-logo.png",
+    "icon": "./assets/images/tabIcons/tuneup-logo.png",
     "scheme": "tuneup",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/tuneup-logo.png"
+      "icon": "./assets/images/tabIcons/tuneup-logo.png"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/images/tuneup-logo.png"
+        "foregroundImage": "./assets/images/tabIcons/tuneup-logo.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.fmadera.TuneUp",
@@ -34,7 +34,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#FFFFFF",
-          "image": "./assets/images/tuneup-logo.png",
+          "image": "./assets/images/tabIcons/tuneup-logo.png",
           "imageWidth": 180
         }
       ],

@@ -52,6 +52,8 @@ import {
 // COLORS
 // ============================================================
 
+import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -928,354 +930,33 @@ export default function ArpeggioSpeedDrillScreen() {
   // INSTRUCTIONS
   // ==========================================================
 
-  const renderInstructions = () => (
-    <View style={styles.content}>
-      <Pressable
-        style={styles.backButton}
-        onPress={goBack}
-        hitSlop={10}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
-
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="musical-notes-outline"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.title}>
-        Arpeggio Speed Drill
-      </Text>
-
-      <Text style={styles.subtitle}>
-        VOCAL AGILITY
-      </Text>
-
-      <View style={styles.instructionCard}>
-        <View style={styles.prepareCard}>
-          <View style={styles.prepareHeader}>
-            <Ionicons
-              name="information-circle-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareTitle}>
-              Before You Begin
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="volume-mute-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Find a quiet area with minimal
-              background noise.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="body-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Stand or sit upright with your
-              shoulders relaxed.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="mic-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Keep a comfortable distance from
-              the microphone while singing.
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.cardTitle}>
-          Exercise Details
-        </Text>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Difficulty
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {tier.charAt(0).toUpperCase() +
-              tier.slice(1)}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Pattern
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {config.name}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Speed
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {config.speedLabel}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Notes
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {config.notes.join(' • ')}
-          </Text>
-        </View>
-
-        <Text
-          style={[
-            styles.cardTitle,
-            { marginTop: 14 },
-          ]}
-        >
-          Exercise Instructions
-        </Text>
-
-        <InstructionItem
-          icon="checkmark-circle-outline"
-          text="Listen carefully to the reference arpeggio."
-        />
-
-        <InstructionItem
-          icon="checkmark-circle-outline"
-          text="Sing the same notes in the same order."
-        />
-
-        <InstructionItem
-          icon="checkmark-circle-outline"
-          text="Keep each transition clean and controlled."
-        />
-
-        <InstructionItem
-          icon="checkmark-circle-outline"
-          text="Maintain accurate pitch while developing speed."
-        />
-      </View>
-
-      <View style={styles.referenceCard}>
-        <Text style={styles.cardTitle}>
-          Reference Arpeggio
-        </Text>
-
-        <Text style={styles.referenceLabel}>
-          NOTES TO SING
-        </Text>
-
-        <View style={styles.noteSequence}>
-          {config.notes.map(
-            (note, index) => (
-              <View
-                key={`${note}-${index}`}
-                style={styles.notePill}
-              >
-                <Text
-                  style={styles.noteText}
-                >
-                  {note}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
-
-        <Text style={styles.referenceHint}>
-          The reference arpeggio will play
-          before recording begins.
-        </Text>
-      </View>
-
-      {adaptiveError ? (
-        <ErrorBox
-          message={adaptiveError}
-        />
-      ) : null}
-
-      {error ? (
-        <ErrorBox message={error} />
-      ) : null}
-
-      <View style={styles.tipCard}>
-        <Ionicons
-          name="bulb-outline"
-          size={19}
-          color={BROWN}
-        />
-
-        <Text style={styles.tipText}>
-          Focus on clean pitch transitions
-          first. Speed should develop
-          naturally as your accuracy improves.
-        </Text>
-      </View>
-
-      <View style={styles.difficultyRow}>
-        <Text style={styles.difficultyLabel}>
-          Difficulty
-        </Text>
-
-        <Text style={styles.difficultyValue}>
-          {tier.charAt(0).toUpperCase() +
-            tier.slice(1)}
-        </Text>
-      </View>
-
-      <Pressable
-        style={styles.startButton}
-        onPress={startExercise}
-      >
-        <Ionicons
-          name="play"
-          size={18}
-          color={WHITE}
-        />
-
-        <Text style={styles.startButtonText}>
-          Start Exercise
-        </Text>
-      </Pressable>
-    </View>
+    const renderInstructions = () => (
+    <ExerciseScreen
+      title="Arpeggio Speed Drill"
+      category="Vocal Agility"
+      icon="musical-notes-outline"
+      instructions="Listen to the reference arpeggio, then sing the same notes in order. Keep transitions clean and controlled; prioritize accuracy over speed."
+      preparationSteps={[
+        { icon: 'volume-mute-outline', text: 'Find a quiet area with minimal background noise.' },
+        { icon: 'body-outline', text: 'Sit or stand upright with relaxed shoulders.' },
+        { icon: 'mic-outline', text: 'Keep a comfortable distance from the microphone.' },
+      ]}
+      summary={[
+        { label: 'DIFFICULTY', value: tier },
+        { label: 'PATTERN', value: config.name },
+        { label: 'SPEED', value: config.speedLabel },
+        { label: 'NOTES', value: config.notes.join(' • ') },
+      ]}
+      tip="Focus on clean pitch transitions first. Speed should develop naturally as your accuracy improves."
+      tier={tier}
+      error={adaptiveError ?? error}
+      startDisabled={isLoadingAdaptiveParams}
+      startLabel={isLoadingAdaptiveParams ? 'Preparing Exercise...' : 'Start Exercise'}
+      onBack={goBack}
+      onStart={startExercise}
+    />
   );
 
-  // ==========================================================
-  // REFERENCE
-  // ==========================================================
-
-  const renderReference = () => (
-    <View style={styles.centerContent}>
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="musical-notes-outline"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.phaseTitle}>
-        Listen to the Reference
-      </Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Listen carefully to the complete
-        arpeggio before singing.
-      </Text>
-
-      <View style={styles.referenceCard}>
-        <Text style={styles.referenceLabel}>
-          REFERENCE NOTES
-        </Text>
-
-        <View style={styles.noteSequence}>
-          {config.notes.map(
-            (note, index) => (
-              <View
-                key={`${note}-${index}`}
-                style={styles.notePill}
-              >
-                <Text
-                  style={styles.noteText}
-                >
-                  {note}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
-
-        <Pressable
-          onPress={playReferenceArpeggio}
-          disabled={isPlayingReference}
-          style={[
-            styles.referenceButton,
-            isPlayingReference &&
-              styles.disabledButton,
-          ]}
-        >
-          <Ionicons
-            name={
-              isPlayingReference
-                ? 'volume-high-outline'
-                : 'play'
-            }
-            size={18}
-            color={BROWN}
-          />
-
-          <Text
-            style={
-              styles.referenceButtonText
-            }
-          >
-            {isPlayingReference
-              ? 'Playing...'
-              : 'Play Reference'}
-          </Text>
-        </Pressable>
-
-        {isPlayingReference ? (
-          <ActivityIndicator
-            size="small"
-            color={BROWN}
-            style={{
-              marginTop: 16,
-            }}
-          />
-        ) : null}
-      </View>
-
-      <Pressable
-        onPress={startCountdown}
-        disabled={isPlayingReference}
-        style={[
-          styles.startButton,
-          isPlayingReference &&
-            styles.disabledButton,
-        ]}
-      >
-        <Text style={styles.startButtonText}>
-          {isPlayingReference
-            ? 'Listen First'
-            : 'Continue'}
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  // ==========================================================
   // COUNTDOWN
   // ==========================================================
 

@@ -34,7 +34,7 @@ import {
 
 import {
   playNoteSequence,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   scoreIntervalRecognitionTask,
@@ -1320,7 +1320,7 @@ export default function IntervalRecognitionTaskScreen({
           style={styles.backButton}
           onPress={() =>
             router.replace(
-              '/dashboard/exercises',
+              '/dashboard?tab=exercises',
             )
           }
         >
@@ -2522,7 +2522,7 @@ export default function IntervalRecognitionTaskScreen({
             style={styles.doneButton}
             onPress={() =>
               router.replace(
-                '/dashboard/exercises',
+                '/dashboard?tab=exercises',
               )
             }
           >

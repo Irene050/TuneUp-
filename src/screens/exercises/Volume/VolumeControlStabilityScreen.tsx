@@ -60,7 +60,7 @@ import {
 
 import {
   playSingleNote,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 /* =========================================================
    DEFAULT CONFIGURATION

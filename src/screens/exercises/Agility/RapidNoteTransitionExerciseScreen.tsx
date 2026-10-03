@@ -35,7 +35,7 @@ import {
   disposeNotePlayer,
   playNoteSequence,
   type NoteToPlay,
-} from '@/services/assessment/notePlayer';
+} from '@/utils/music/notePlayer';
 
 import {
   getLatestAssessment,
@@ -1906,7 +1906,7 @@ export default function RapidNoteTransitionExerciseScreen({
           style={styles.doneButton}
           onPress={() =>
             router.replace(
-              '/dashboard/exercises',
+              '/dashboard?tab=exercises',
             )
           }
         >

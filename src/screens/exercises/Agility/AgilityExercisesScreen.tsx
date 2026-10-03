@@ -80,7 +80,7 @@ export default function AgilityExercisesScreen() {
 				</Pressable>
 
 						<Image
-							source={require('@/assets/images/tuneup-icon.png')}
+							source={require('@/assets/images/tabIcons/tuneup-logo.png')}
 							style={styles.logo}
 							resizeMode="contain"
 						/>

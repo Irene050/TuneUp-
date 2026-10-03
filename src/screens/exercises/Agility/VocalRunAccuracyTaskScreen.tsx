@@ -1,47 +1,47 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  RAPID_VOCAL_RUN_PARAMS,
-  type Tier,
+    RAPID_VOCAL_RUN_PARAMS,
+    type Tier,
 } from '@/constants/exercises/agility';
 
 import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
+    AudioContext,
+    AudioManager,
+    AudioRecorder,
 } from 'react-native-audio-api';
 
 import { auth } from '@/services/firebase/config';
 
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 
 import {
-  generateVocalRunAccuracyParams,
+    generateVocalRunAccuracyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  measureVocalRunAccuracy,
+    measureVocalRunAccuracy,
 } from '@/services/measurement/agility/vocalRunAccuracyTask';
 
 import {
-  scoreVocalRunAccuracy,
+    scoreVocalRunAccuracy,
 } from '@/services/scoring/agility/vocalRunAccuracyTask';
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -2365,7 +2365,7 @@ export default function VocalRunAccuracyTaskScreen() {
             }
             onPress={() =>
               router.replace(
-                '/dashboard/exercises',
+                '/dashboard?tab=exercises',
               )
             }
           >
