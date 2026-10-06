@@ -4,17 +4,6 @@ export interface OnsetOffsetResult {
   durationSeconds: number;
 }
 
-/**
- * Detects the active audio region of a recording using
- * short RMS windows instead of individual samples.
- *
- * This is more resistant to microphone noise and isolated
- * amplitude spikes.
- *
- * `threshold` is still an amplitude threshold, so existing
- * callers such as detectOnsetOffset(samples, 0.02, sampleRate)
- * remain compatible.
- */
 export function detectOnsetOffset(
   samples: Float32Array,
   threshold: number,

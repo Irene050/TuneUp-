@@ -32,7 +32,7 @@ export default function AgilityRoute() {
      * Determines the user's current Agility tier
      * internally.
      */
-    case 'arpeggioSpeedDrill':
+    case 'arpeggioSpeed':
       return <ArpeggioSpeedDrillScreen />;
 
     /*

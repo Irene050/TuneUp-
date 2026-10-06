@@ -55,21 +55,6 @@ const LIGHT_GRAY = '#F2F2F2';
 // AUDIO VALIDATION
 // ============================================================
 
-/*
- * Your working AudioTestScreen proved that the recorder can
- * capture microphone data.
- *
- * Assessment should therefore reject recordings that contain
- * essentially no audio rather than allowing the DSP to interpret
- * silence/noise as a musical note.
- *
- * Current broken recordings were around:
- *
- * RMS  ≈ 0.00013
- * dB   ≈ -77
- *
- * A recording below this threshold is considered unusable.
- */
 const MIN_RECORDING_RMS = 0.001;
 
 // ============================================================
@@ -87,6 +72,11 @@ type AssessmentStep =
   | 'processing'
   | 'results';
 
+type RecordedSection = {
+  samples: Float32Array;
+  sampleRate: number;
+};
+
 // ============================================================
 // STEP ORDER
 // ============================================================
@@ -100,9 +90,6 @@ const STEP_ORDER: AssessmentStep[] = [
   'agility',
 ];
 
-/**
- * Steps where the system plays a reference note.
- */
 const NOTE_GUIDED_STEPS: AssessmentStep[] = [
   'pitch',
   'tone',
@@ -114,7 +101,9 @@ const NOTE_GUIDED_STEPS: AssessmentStep[] = [
 // HELPERS
 // ============================================================
 
-function getStepTitle(step: AssessmentStep): string {
+function getStepTitle(
+  step: AssessmentStep
+): string {
   switch (step) {
     case 'lowHum':
       return 'Lowest Comfortable Note';
@@ -139,13 +128,15 @@ function getStepTitle(step: AssessmentStep): string {
   }
 }
 
-function getStepInstruction(step: AssessmentStep): string {
+function getStepInstruction(
+  step: AssessmentStep
+): string {
   switch (step) {
     case 'lowHum':
-      return 'Sing the lowest note that feels comfortable. Do not strain your voice. Hold it steadily.';
+      return 'Sing the lowest note that feels comfortable. Do not strain your voice. Hold the same note steadily for the recording.';
 
     case 'highHum':
-      return 'Sing the highest note that feels comfortable. Do not strain your voice. Hold it steadily.';
+      return 'Sing the highest note that feels comfortable. Do not strain your voice. Hold the same note steadily for the recording.';
 
     case 'pitch':
       return 'Listen to the note, then sing it back and try to hold the pitch steady.';
@@ -164,7 +155,9 @@ function getStepInstruction(step: AssessmentStep): string {
   }
 }
 
-function getStepDuration(step: AssessmentStep): number {
+function getStepDuration(
+  step: AssessmentStep
+): number {
   switch (step) {
     case 'pitch':
       return ASSESSMENT_DURATION.pitch;
@@ -187,9 +180,6 @@ function getStepDuration(step: AssessmentStep): number {
   }
 }
 
-/**
- * Returns the reference note(s) for the current assessment step.
- */
 function getStepReferenceNotes(
   step: AssessmentStep,
   targetNotes: TargetNotes | null
@@ -204,16 +194,20 @@ function getStepReferenceNotes(
     case 'volume':
       return [
         {
-          frequencyHz: targetNotes.rootHz,
+          frequencyHz:
+            targetNotes.rootHz,
+
           durationSec: 1.4,
         },
       ];
 
     case 'agility':
-      return targetNotes.agilityRun.map(frequencyHz => ({
-        frequencyHz,
-        durationSec: 0.4,
-      }));
+      return targetNotes.agilityRun.map(
+        frequencyHz => ({
+          frequencyHz,
+          durationSec: 0.4,
+        })
+      );
 
     default:
       return [];
@@ -224,8 +218,13 @@ function getStepReferenceNotes(
 // FREQUENCY → NOTE
 // ============================================================
 
-function frequencyToNoteName(frequency: number): string {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
+function frequencyToNoteName(
+  frequency: number
+): string {
+  if (
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
     return '--';
   }
 
@@ -244,9 +243,14 @@ function frequencyToNoteName(frequency: number): string {
     'B',
   ];
 
-  const midi = Math.round(
-    69 + 12 * Math.log2(frequency / 440)
-  );
+  const midi =
+    Math.round(
+      69 +
+        12 *
+          Math.log2(
+            frequency / 440
+          )
+    );
 
   const noteIndex =
     ((midi % 12) + 12) % 12;
@@ -264,29 +268,44 @@ function frequencyToNoteName(frequency: number): string {
 function calculateRMS(
   samples: Float32Array
 ): number {
-  if (samples.length === 0) {
+  if (
+    samples.length === 0
+  ) {
     return 0;
   }
 
   let sum = 0;
   let count = 0;
 
-  for (let i = 0; i < samples.length; i++) {
-    const value = samples[i];
+  for (
+    let i = 0;
+    i < samples.length;
+    i++
+  ) {
+    const value =
+      samples[i];
 
-    if (!Number.isFinite(value)) {
+    if (
+      !Number.isFinite(value)
+    ) {
       continue;
     }
 
-    sum += value * value;
+    sum +=
+      value * value;
+
     count++;
   }
 
-  if (count === 0) {
+  if (
+    count === 0
+  ) {
     return 0;
   }
 
-  return Math.sqrt(sum / count);
+  return Math.sqrt(
+    sum / count
+  );
 }
 
 function calculatePeak(
@@ -294,10 +313,17 @@ function calculatePeak(
 ): number {
   let peak = 0;
 
-  for (let i = 0; i < samples.length; i++) {
-    const value = samples[i];
+  for (
+    let i = 0;
+    i < samples.length;
+    i++
+  ) {
+    const value =
+      samples[i];
 
-    if (!Number.isFinite(value)) {
+    if (
+      !Number.isFinite(value)
+    ) {
       continue;
     }
 
@@ -313,18 +339,29 @@ function calculatePeak(
 function hasUsableAudio(
   samples: Float32Array
 ): boolean {
-  if (samples.length === 0) {
+  if (
+    samples.length === 0
+  ) {
     return false;
   }
 
-  const rms = calculateRMS(samples);
-  const peak = calculatePeak(samples);
+  const rms =
+    calculateRMS(
+      samples
+    );
+
+  const peak =
+    calculatePeak(
+      samples
+    );
 
   return (
     Number.isFinite(rms) &&
     Number.isFinite(peak) &&
-    rms >= MIN_RECORDING_RMS &&
-    peak >= MIN_RECORDING_RMS * 2
+    rms >=
+      MIN_RECORDING_RMS &&
+    peak >=
+      MIN_RECORDING_RMS * 2
   );
 }
 
@@ -334,26 +371,38 @@ function hasUsableAudio(
 
 export default function AssessmentScreen() {
   const [step, setStep] =
-    useState<AssessmentStep>('intro');
+    useState<AssessmentStep>(
+      'intro'
+    );
 
-  const [isRecordingSection, setIsRecordingSection] =
-    useState(false);
+  const [
+    isRecordingSection,
+    setIsRecordingSection,
+  ] = useState(false);
 
-  const [remainingSeconds, setRemainingSeconds] =
-    useState(0);
+  const [
+    remainingSeconds,
+    setRemainingSeconds,
+  ] = useState(0);
 
   const [result, setResult] =
-    useState<AssessmentResult | null>(null);
+    useState<AssessmentResult | null>(
+      null
+    );
 
   const [error, setError] =
-    useState<string | null>(null);
+    useState<string | null>(
+      null
+    );
 
   // ==========================================================
   // LIVE AUDIO
   // ==========================================================
 
   const [liveAudio, setLiveAudio] =
-    useState<LiveAudioFrame | null>(null);
+    useState<LiveAudioFrame | null>(
+      null
+    );
 
   // ==========================================================
   // RECORDED SECTIONS
@@ -364,33 +413,26 @@ export default function AssessmentScreen() {
       Partial<
         Record<
           AssessmentStep,
-          Float32Array
+          RecordedSection
         >
       >
     >({});
 
   /*
-   * IMPORTANT:
-   *
-   * Do not rely on the `step` value captured inside
-   * onStop().
-   *
-   * This ref stores the step that actually started
-   * the recording.
+   * Stores the actual step that started recording.
    */
   const recordingStepRef =
-    useRef<AssessmentStep | null>(null);
+    useRef<AssessmentStep | null>(
+      null
+    );
 
-  /*
-   * Timer reference.
-   */
   const timerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
+    useRef<
+      ReturnType<
+        typeof setInterval
+      > | null
+    >(null);
 
-  /*
-   * Prevent multiple stop calls if the timer and another
-   * lifecycle event happen at nearly the same time.
-   */
   const stoppingRef =
     useRef(false);
 
@@ -399,7 +441,9 @@ export default function AssessmentScreen() {
   // ==========================================================
 
   const [vocalRange, setVocalRange] =
-    useState<VocalRange | null>(null);
+    useState<VocalRange | null>(
+      null
+    );
 
   // ==========================================================
   // TARGET NOTES
@@ -428,7 +472,9 @@ export default function AssessmentScreen() {
     useState(false);
 
   const needsReferenceNote =
-    NOTE_GUIDED_STEPS.includes(step);
+    NOTE_GUIDED_STEPS.includes(
+      step
+    );
 
   useEffect(() => {
     setHasPlayedNote(false);
@@ -442,7 +488,9 @@ export default function AssessmentScreen() {
           targetNotes
         );
 
-      if (notes.length === 0) {
+      if (
+        notes.length === 0
+      ) {
         return;
       }
 
@@ -450,7 +498,9 @@ export default function AssessmentScreen() {
         setError(null);
         setIsPlayingNote(true);
 
-        await playNoteSequence(notes);
+        await playNoteSequence(
+          notes
+        );
 
         setHasPlayedNote(true);
       } catch (err) {
@@ -459,16 +509,16 @@ export default function AssessmentScreen() {
           err
         );
 
-        /*
-         * Playback failure should not prevent the assessment.
-         */
         setError(
           'Could not play the reference note. You can still continue.'
         );
       } finally {
         setIsPlayingNote(false);
       }
-    }, [step, targetNotes]);
+    }, [
+      step,
+      targetNotes,
+    ]);
 
   // ==========================================================
   // CLEANUP TIMER
@@ -476,9 +526,15 @@ export default function AssessmentScreen() {
 
   const clearRecordingTimer =
     useCallback(() => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (
+        timerRef.current
+      ) {
+        clearInterval(
+          timerRef.current
+        );
+
+        timerRef.current =
+          null;
       }
     }, []);
 
@@ -488,37 +544,57 @@ export default function AssessmentScreen() {
 
   const moveToNextStep =
     useCallback(
-      (currentStep: AssessmentStep) => {
+      (
+        currentStep: AssessmentStep
+      ) => {
         const index =
-          STEP_ORDER.indexOf(currentStep);
+          STEP_ORDER.indexOf(
+            currentStep
+          );
 
-        if (index === -1) {
+        if (
+          index === -1
+        ) {
           return;
         }
 
         const nextStep =
-          STEP_ORDER[index + 1];
+          STEP_ORDER[
+            index + 1
+          ];
 
         if (nextStep) {
-          setStep(nextStep);
+          setStep(
+            nextStep
+          );
         } else {
-          setStep('processing');
+          setStep(
+            'processing'
+          );
         }
       },
       []
     );
 
   // ==========================================================
-  // RECORDER CALLBACKS
+  // AUDIO FRAME
   // ==========================================================
 
   const handleAudioFrame =
     useCallback(
-      (frame: LiveAudioFrame) => {
-        setLiveAudio(frame);
+      (
+        frame: LiveAudioFrame
+      ) => {
+        setLiveAudio(
+          frame
+        );
       },
       []
     );
+
+  // ==========================================================
+  // AUDIO STOP
+  // ==========================================================
 
   const handleAudioStop =
     useCallback(
@@ -526,22 +602,30 @@ export default function AssessmentScreen() {
         samples: Float32Array,
         sampleRate: number
       ) => {
-        /*
-         * Capture the step that actually started recording.
-         */
         const recordedStep =
           recordingStepRef.current;
 
-        recordingStepRef.current = null;
+        recordingStepRef.current =
+          null;
 
         clearRecordingTimer();
 
-        setIsRecordingSection(false);
-        setLiveAudio(null);
-        setRemainingSeconds(0);
-        stoppingRef.current = false;
+        setIsRecordingSection(
+          false
+        );
 
-        if (!recordedStep) {
+        setLiveAudio(null);
+
+        setRemainingSeconds(
+          0
+        );
+
+        stoppingRef.current =
+          false;
+
+        if (
+          !recordedStep
+        ) {
           console.warn(
             '⚠️ Recording stopped but no assessment step was active.'
           );
@@ -552,27 +636,41 @@ export default function AssessmentScreen() {
         console.log(
           '🎤 ASSESSMENT SECTION COMPLETE:',
           {
-            step: recordedStep,
-            samples: samples.length,
+            step:
+              recordedStep,
+
+            samples:
+              samples.length,
+
             sampleRate,
+
             durationSeconds:
-              samples.length / sampleRate,
-            rms: calculateRMS(samples),
-            peak: calculatePeak(samples),
+              sampleRate > 0
+                ? samples.length /
+                  sampleRate
+                : 0,
+
+            rms:
+              calculateRMS(
+                samples
+              ),
+
+            peak:
+              calculatePeak(
+                samples
+              ),
           }
         );
 
-        /*
-         * ----------------------------------------------------
-         * AUDIO VALIDATION
-         * ----------------------------------------------------
-         *
-         * This is extremely important.
-         *
-         * If the microphone returns an all-zero buffer,
-         * do NOT store it as a valid assessment section.
-         */
-        if (!hasUsableAudio(samples)) {
+        // ======================================================
+        // AUDIO VALIDATION
+        // ======================================================
+
+        if (
+          !hasUsableAudio(
+            samples
+          )
+        ) {
           console.warn(
             '⚠️ ASSESSMENT AUDIO REJECTED: signal too quiet.'
           );
@@ -581,40 +679,52 @@ export default function AssessmentScreen() {
             'We could not hear enough microphone audio. Please make sure your microphone is working and sing closer to it.'
           );
 
-          /*
-           * Keep the user on the same step so they can retry.
-           */
-          setStep(recordedStep);
+          setStep(
+            recordedStep
+          );
 
           return;
         }
 
-        /*
-         * Store the successfully captured section.
-         */
-        setSections(previous => ({
-          ...previous,
-          [recordedStep]: samples,
-        }));
+        // ======================================================
+        // STORE SAMPLES + REAL SAMPLE RATE
+        // ======================================================
+
+        setSections(
+          previous => ({
+            ...previous,
+
+            [recordedStep]: {
+              samples,
+              sampleRate,
+            },
+          })
+        );
+
+        // ======================================================
+        // HIGH NOTE
+        // ======================================================
 
         /*
-         * ----------------------------------------------------
-         * LOW / HIGH RANGE STEPS
-         * ----------------------------------------------------
-         *
-         * HighHum is handled separately because both recordings
-         * must be available before vocal range can be calculated.
+         * Once highHum has finished, the useEffect below will
+         * wait for React to commit both lowHum and highHum,
+         * then calculate the range.
          */
-        if (recordedStep === 'highHum') {
+        if (
+          recordedStep ===
+          'highHum'
+        ) {
           return;
         }
 
-        /*
-         * Small delay gives React time to commit the section
-         * before the next screen is rendered.
-         */
+        // ======================================================
+        // NEXT STEP
+        // ======================================================
+
         setTimeout(() => {
-          moveToNextStep(recordedStep);
+          moveToNextStep(
+            recordedStep
+          );
         }, 100);
       },
       [
@@ -631,83 +741,166 @@ export default function AssessmentScreen() {
     startRecording,
     stopRecording,
     isRecording,
-  } = useAudioRecorder({
-    onFrame: handleAudioFrame,
-    onStop: handleAudioStop,
-  });
+  } =
+    useAudioRecorder({
+      onFrame:
+        handleAudioFrame,
+
+      onStop:
+        handleAudioStop,
+    });
 
   // ==========================================================
   // DETECT VOCAL RANGE
   // ==========================================================
 
   useEffect(() => {
-    if (step !== 'highHum') {
+    if (
+      step !==
+      'highHum'
+    ) {
       return;
     }
 
-    const lowSamples =
+    const lowRecording =
       sections.lowHum;
 
-    const highSamples =
+    const highRecording =
       sections.highHum;
 
-    if (!lowSamples || !highSamples) {
-      return;
-    }
-
-    if (vocalRange) {
-      return;
-    }
-
-    /*
-     * Validate again before sending data to the range detector.
-     */
     if (
-      !hasUsableAudio(lowSamples) ||
-      !hasUsableAudio(highSamples)
+      !lowRecording ||
+      !highRecording
+    ) {
+      return;
+    }
+
+    if (
+      vocalRange
+    ) {
+      return;
+    }
+
+    if (
+      !hasUsableAudio(
+        lowRecording.samples
+      ) ||
+      !hasUsableAudio(
+        highRecording.samples
+      )
     ) {
       setError(
         'We could not hear enough audio to determine your vocal range. Please try both notes again.'
       );
 
-      setSections(previous => {
-        const updated = {
-          ...previous,
-        };
+      setSections(
+        previous => {
+          const updated = {
+            ...previous,
+          };
 
-        delete updated.lowHum;
-        delete updated.highHum;
+          delete updated.lowHum;
+          delete updated.highHum;
 
-        return updated;
-      });
+          return updated;
+        }
+      );
 
-      setStep('lowHum');
+      setVocalRange(null);
+      setStep(
+        'lowHum'
+      );
+
+      return;
+    }
+
+    /*
+     * The low and high recordings should normally use the same
+     * recorder sample rate.
+     *
+     * If they differ, the current assessment bundle cannot safely
+     * analyze both recordings under one sample rate, so ask the
+     * user to retry rather than silently producing an incorrect
+     * vocal range.
+     */
+    if (
+      lowRecording.sampleRate !==
+      highRecording.sampleRate
+    ) {
+      console.error(
+        '❌ Assessment sample-rate mismatch:',
+        {
+          low:
+            lowRecording.sampleRate,
+
+          high:
+            highRecording.sampleRate,
+        }
+      );
+
+      setError(
+        'The microphone sample rate changed during the range recording. Please try the range assessment again.'
+      );
+
+      setSections(
+        previous => {
+          const updated = {
+            ...previous,
+          };
+
+          delete updated.lowHum;
+          delete updated.highHum;
+
+          return updated;
+        }
+      );
+
+      setVocalRange(null);
+      setStep(
+        'lowHum'
+      );
 
       return;
     }
 
     try {
-      /*
-       * The current recorder returns 44100 Hz.
-       *
-       * AssessmentScreen's section callbacks receive the actual
-       * sample rate, but the existing sections structure only
-       * stores Float32Array values.
-       *
-       * Your current recorder is configured for 44100 Hz, so this
-       * remains consistent with the rest of the assessment.
-       */
       const range =
         detectVocalRangeFromHums(
-          lowSamples,
-          highSamples,
-          44100
+          lowRecording.samples,
+          highRecording.samples,
+          lowRecording.sampleRate
         );
 
-      setVocalRange(range);
+      console.log(
+        '🎵 DETECTED VOCAL RANGE:',
+        {
+          lowHz:
+            range.lowHz,
+
+          highHz:
+            range.highHz,
+
+          lowNote:
+            frequencyToNoteName(
+              range.lowHz
+            ),
+
+          highNote:
+            frequencyToNoteName(
+              range.highHz
+            ),
+        }
+      );
+
+      setVocalRange(
+        range
+      );
+
       setError(null);
 
-      setStep('pitch');
+      setStep(
+        'pitch'
+      );
     } catch (err) {
       console.error(
         'Vocal range detection error:',
@@ -720,19 +913,26 @@ export default function AssessmentScreen() {
           : 'We could not detect your vocal range. Please try humming both notes again.'
       );
 
-      setSections(previous => {
-        const updated = {
-          ...previous,
-        };
+      setSections(
+        previous => {
+          const updated = {
+            ...previous,
+          };
 
-        delete updated.lowHum;
-        delete updated.highHum;
+          delete updated.lowHum;
+          delete updated.highHum;
 
-        return updated;
-      });
+          return updated;
+        }
+      );
 
-      setVocalRange(null);
-      setStep('lowHum');
+      setVocalRange(
+        null
+      );
+
+      setStep(
+        'lowHum'
+      );
     }
   }, [
     step,
@@ -742,12 +942,15 @@ export default function AssessmentScreen() {
   ]);
 
   // ==========================================================
-  // START RECORDING SECTION
+  // START RECORDING
   // ==========================================================
 
   const beginSection =
     useCallback(async () => {
-      if (isRecording || isRecordingSection) {
+      if (
+        isRecording ||
+        isRecordingSection
+      ) {
         return;
       }
 
@@ -755,15 +958,16 @@ export default function AssessmentScreen() {
         step;
 
       const duration =
-        getStepDuration(currentStep);
+        getStepDuration(
+          currentStep
+        );
 
-      if (duration <= 0) {
+      if (
+        duration <= 0
+      ) {
         return;
       }
 
-      /*
-       * Reference-note steps require the user to listen first.
-       */
       if (
         NOTE_GUIDED_STEPS.includes(
           currentStep
@@ -781,25 +985,22 @@ export default function AssessmentScreen() {
 
       setError(null);
       setLiveAudio(null);
-      setRemainingSeconds(duration);
+      setRemainingSeconds(
+        duration
+      );
 
       recordingStepRef.current =
         currentStep;
 
-      stoppingRef.current = false;
+      stoppingRef.current =
+        false;
 
       try {
-        /*
-         * IMPORTANT:
-         *
-         * Start the recorder FIRST.
-         *
-         * Only mark the UI as recording after the recorder
-         * successfully starts.
-         */
         await startRecording();
 
-        setIsRecordingSection(true);
+        setIsRecordingSection(
+          true
+        );
 
         let remaining =
           duration;
@@ -809,33 +1010,41 @@ export default function AssessmentScreen() {
             remaining -= 1;
 
             setRemainingSeconds(
-              Math.max(remaining, 0)
+              Math.max(
+                remaining,
+                0
+              )
             );
 
-            if (remaining <= 0) {
+            if (
+              remaining <=
+              0
+            ) {
               clearRecordingTimer();
 
-              /*
-               * Prevent duplicate stop calls.
-               */
-              if (stoppingRef.current) {
+              if (
+                stoppingRef.current
+              ) {
                 return;
               }
 
               stoppingRef.current =
                 true;
 
-              stopRecording().catch(err => {
-                console.error(
-                  'Assessment automatic stop error:',
-                  err
-                );
+              stopRecording()
+                .catch(err => {
+                  console.error(
+                    'Assessment automatic stop error:',
+                    err
+                  );
 
-                stoppingRef.current =
-                  false;
+                  stoppingRef.current =
+                    false;
 
-                setIsRecordingSection(false);
-              });
+                  setIsRecordingSection(
+                    false
+                  );
+                });
             }
           }, 1000);
       } catch (err) {
@@ -852,9 +1061,15 @@ export default function AssessmentScreen() {
         stoppingRef.current =
           false;
 
-        setIsRecordingSection(false);
+        setIsRecordingSection(
+          false
+        );
+
         setLiveAudio(null);
-        setRemainingSeconds(0);
+
+        setRemainingSeconds(
+          0
+        );
 
         setError(
           err instanceof Error
@@ -885,11 +1100,14 @@ export default function AssessmentScreen() {
         return;
       }
 
-      if (stoppingRef.current) {
+      if (
+        stoppingRef.current
+      ) {
         return;
       }
 
-      stoppingRef.current = true;
+      stoppingRef.current =
+        true;
 
       clearRecordingTimer();
 
@@ -904,7 +1122,9 @@ export default function AssessmentScreen() {
         stoppingRef.current =
           false;
 
-        setIsRecordingSection(false);
+        setIsRecordingSection(
+          false
+        );
 
         setError(
           'Something went wrong while stopping the recording. Please try this section again.'
@@ -918,46 +1138,68 @@ export default function AssessmentScreen() {
     ]);
 
   // ==========================================================
-  // CLEANUP ON UNMOUNT
+  // CLEANUP
   // ==========================================================
 
   useEffect(() => {
     return () => {
       clearRecordingTimer();
     };
-  }, [clearRecordingTimer]);
+  }, [
+    clearRecordingTimer,
+  ]);
 
   // ==========================================================
   // BUILD ASSESSMENT AUDIO
   // ==========================================================
 
   const createAssessmentBundle =
-    useCallback((): AssessmentAudioBundle => {
-      const empty =
-        new Float32Array(0);
+    useCallback(
+      (): AssessmentAudioBundle => {
+        const empty =
+          new Float32Array(0);
 
-      return {
-        pitchSamples:
-          sections.pitch ?? empty,
+        /*
+         * All sections should use the same recorder sample rate.
+         *
+         * Prefer the pitch section, then fall back to the
+         * range recording.
+         */
+        const sampleRate =
+          sections.pitch?.sampleRate ??
+          sections.lowHum?.sampleRate ??
+          44100;
 
-        toneSamples:
-          sections.tone ?? empty,
+        return {
+          pitchSamples:
+            sections.pitch?.samples ??
+            empty,
 
-        volumeSamples:
-          sections.volume ?? empty,
+          toneSamples:
+            sections.tone?.samples ??
+            empty,
 
-        agilitySamples:
-          sections.agility ?? empty,
+          volumeSamples:
+            sections.volume?.samples ??
+            empty,
 
-        lowestComfortableNoteSamples:
-          sections.lowHum ?? empty,
+          agilitySamples:
+            sections.agility?.samples ??
+            empty,
 
-        highestComfortableNoteSamples:
-          sections.highHum ?? empty,
+          lowestComfortableNoteSamples:
+            sections.lowHum?.samples ??
+            empty,
 
-        sampleRate: 44100,
-      };
-    }, [sections]);
+          highestComfortableNoteSamples:
+            sections.highHum?.samples ??
+            empty,
+
+          sampleRate,
+        };
+      },
+      [sections]
+    );
 
   // ==========================================================
   // PROCESS ASSESSMENT
@@ -968,25 +1210,29 @@ export default function AssessmentScreen() {
       try {
         setError(null);
 
-        /*
-         * Make sure all required sections exist.
-         */
-        const requiredSteps: AssessmentStep[] = [
-          'lowHum',
-          'highHum',
-          'pitch',
-          'tone',
-          'volume',
-          'agility',
-        ];
+        const requiredSteps:
+          AssessmentStep[] = [
+            'lowHum',
+            'highHum',
+            'pitch',
+            'tone',
+            'volume',
+            'agility',
+          ];
 
-        for (const requiredStep of requiredSteps) {
-          const samples =
-            sections[requiredStep];
+        for (
+          const requiredStep
+            of requiredSteps
+        ) {
+          const recording =
+            sections[
+              requiredStep
+            ];
 
           if (
-            !samples ||
-            samples.length === 0
+            !recording ||
+            recording.samples.length ===
+              0
           ) {
             throw new Error(
               `The ${getStepTitle(
@@ -995,13 +1241,46 @@ export default function AssessmentScreen() {
             );
           }
 
-          if (!hasUsableAudio(samples)) {
+          if (
+            !hasUsableAudio(
+              recording.samples
+            )
+          ) {
             throw new Error(
               `The ${getStepTitle(
                 requiredStep
               )} recording did not contain enough microphone audio.`
             );
           }
+        }
+
+        /*
+         * Make sure all recordings use the same sample rate.
+         */
+        const sampleRates =
+          requiredSteps.map(
+            requiredStep =>
+              sections[
+                requiredStep
+              ]!.sampleRate
+          );
+
+        const firstSampleRate =
+          sampleRates[0];
+
+        const hasSampleRateMismatch =
+          sampleRates.some(
+            rate =>
+              rate !==
+              firstSampleRate
+          );
+
+        if (
+          hasSampleRateMismatch
+        ) {
+          throw new Error(
+            'The microphone sample rate changed during the assessment. Please complete the assessment again.'
+          );
         }
 
         const audio =
@@ -1030,23 +1309,26 @@ export default function AssessmentScreen() {
 
             sampleRate:
               audio.sampleRate,
+
+            lowDuration:
+              audio.lowestComfortableNoteSamples.length /
+              audio.sampleRate,
+
+            highDuration:
+              audio.highestComfortableNoteSamples.length /
+              audio.sampleRate,
           }
         );
 
-        /*
-         * Run all five fundamentals + vocal range.
-         */
         const assessmentResult =
-          runAssessment(audio);
+          runAssessment(
+            audio
+          );
 
         setResult(
           assessmentResult
         );
 
-        /*
-         * Firebase saving should never prevent the local
-         * assessment result from being shown.
-         */
         try {
           await saveAssessment(
             assessmentResult
@@ -1055,7 +1337,9 @@ export default function AssessmentScreen() {
           console.log(
             '✅ Assessment successfully saved.'
           );
-        } catch (saveError) {
+        } catch (
+          saveError
+        ) {
           console.error(
             'Could not save assessment to Firebase:',
             saveError
@@ -1066,7 +1350,9 @@ export default function AssessmentScreen() {
           );
         }
 
-        setStep('results');
+        setStep(
+          'results'
+        );
       } catch (err) {
         console.error(
           'Assessment processing error:',
@@ -1079,16 +1365,19 @@ export default function AssessmentScreen() {
             : 'Unable to process the assessment.'
         );
 
-        /*
-         * Return to the first recording step.
-         */
         setSections({});
-        setVocalRange(null);
+        setVocalRange(
+          null
+        );
         setResult(null);
         setLiveAudio(null);
-        setRemainingSeconds(0);
+        setRemainingSeconds(
+          0
+        );
 
-        setStep('lowHum');
+        setStep(
+          'lowHum'
+        );
       }
     }, [
       sections,
@@ -1096,7 +1385,7 @@ export default function AssessmentScreen() {
     ]);
 
   // ==========================================================
-  // RESET ASSESSMENT
+  // RESET
   // ==========================================================
 
   const resetAssessment =
@@ -1110,50 +1399,93 @@ export default function AssessmentScreen() {
         false;
 
       setSections({});
-      setVocalRange(null);
+      setVocalRange(
+        null
+      );
       setResult(null);
       setError(null);
       setLiveAudio(null);
-      setRemainingSeconds(0);
-      setIsRecordingSection(false);
-      setHasPlayedNote(false);
+      setRemainingSeconds(
+        0
+      );
+      setIsRecordingSection(
+        false
+      );
+      setHasPlayedNote(
+        false
+      );
 
-      setStep('intro');
-    }, [clearRecordingTimer]);
+      setStep(
+        'intro'
+      );
+    }, [
+      clearRecordingTimer,
+    ]);
 
   // ==========================================================
-  // PROCESSING SCREEN
+  // PROCESSING
   // ==========================================================
 
-  if (step === 'processing') {
+  if (
+    step ===
+    'processing'
+  ) {
     return (
-      <View style={styles.centerScreen}>
+      <View
+        style={
+          styles.centerScreen
+        }
+      >
         <ActivityIndicator
           size="large"
           color={BROWN}
         />
 
-        <Text style={styles.processingTitle}>
+        <Text
+          style={
+            styles.processingTitle
+          }
+        >
           Analyzing your voice...
         </Text>
 
-        <Text style={styles.processingText}>
+        <Text
+          style={
+            styles.processingText
+          }
+        >
           We're checking your five vocal fundamentals and vocal range.
         </Text>
 
         {error && (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>
+          <View
+            style={
+              styles.errorCard
+            }
+          >
+            <Text
+              style={
+                styles.errorText
+              }
+            >
               {error}
             </Text>
           </View>
         )}
 
         <Pressable
-          style={styles.primaryButton}
-          onPress={processAssessment}
+          style={
+            styles.primaryButton
+          }
+          onPress={
+            processAssessment
+          }
         >
-          <Text style={styles.primaryButtonText}>
+          <Text
+            style={
+              styles.primaryButtonText
+            }
+          >
             Analyze My Voice
           </Text>
         </Pressable>
@@ -1171,36 +1503,66 @@ export default function AssessmentScreen() {
   ) {
     return (
       <ScrollView
-        style={styles.screen}
+        style={
+          styles.screen
+        }
         contentContainerStyle={
           styles.resultsContent
         }
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={
+          false
+        }
       >
-        <Text style={styles.resultsTitle}>
+        <Text
+          style={
+            styles.resultsTitle
+          }
+        >
           Your Vocal Assessment
         </Text>
 
-        <Text style={styles.resultsSubtitle}>
+        <Text
+          style={
+            styles.resultsSubtitle
+          }
+        >
           Here's your current vocal foundation.
         </Text>
 
         {error && (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>
+          <View
+            style={
+              styles.errorCard
+            }
+          >
+            <Text
+              style={
+                styles.errorText
+              }
+            >
               {error}
             </Text>
           </View>
         )}
 
-        {/* VOCAL RANGE */}
-
-        <View style={styles.rangeCard}>
-          <Text style={styles.cardTitle}>
+        <View
+          style={
+            styles.rangeCard
+          }
+        >
+          <Text
+            style={
+              styles.cardTitle
+            }
+          >
             Vocal Range
           </Text>
 
-          <Text style={styles.rangeText}>
+          <Text
+            style={
+              styles.rangeText
+            }
+          >
             {frequencyToNoteName(
               result.vocalRangeLowHz
             )}
@@ -1210,97 +1572,139 @@ export default function AssessmentScreen() {
             )}
           </Text>
 
-          <Text style={styles.rangeHzText}>
-            {result.vocalRangeLowHz.toFixed(1)}
+          <Text
+            style={
+              styles.rangeHzText
+            }
+          >
+            {result.vocalRangeLowHz.toFixed(
+              1
+            )}
             {' Hz  –  '}
-            {result.vocalRangeHighHz.toFixed(1)}
+            {result.vocalRangeHighHz.toFixed(
+              1
+            )}
             {' Hz'}
           </Text>
         </View>
 
-        {/* COMPONENT SCORES */}
+        {result.scores.map(
+          score => {
+            const recommendation =
+              result
+                .recommendations[
+                score.componentId
+              ];
 
-        {result.scores.map(score => {
-          const recommendation =
-            result.recommendations[
-              score.componentId
-            ];
+            const componentName =
+              score.componentId ===
+              'breathControl'
+                ? 'Breath Control'
+                : score.componentId ===
+                  'pitch'
+                ? 'Pitch'
+                : score.componentId ===
+                  'tone'
+                ? 'Tone'
+                : score.componentId ===
+                  'volume'
+                ? 'Volume'
+                : 'Agility';
 
-          const componentName =
-            score.componentId ===
-            'breathControl'
-              ? 'Breath Control'
-              : score.componentId === 'pitch'
-              ? 'Pitch'
-              : score.componentId === 'tone'
-              ? 'Tone'
-              : score.componentId === 'volume'
-              ? 'Volume'
-              : 'Agility';
-
-          return (
-            <View
-              key={score.componentId}
-              style={styles.scoreCard}
-            >
-              <View style={styles.scoreHeader}>
-                <Text style={styles.scoreName}>
-                  {componentName}
-                </Text>
-
-                <Text style={styles.scoreValue}>
-                  {score.scorePct}%
-                </Text>
-              </View>
-
+            return (
               <View
+                key={
+                  score.componentId
+                }
                 style={
-                  styles.progressBackground
+                  styles.scoreCard
                 }
               >
                 <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.max(
-                        0,
-                        Math.min(
-                          100,
-                          score.scorePct
-                        )
-                      )}%`,
-                    },
-                  ]}
-                />
-              </View>
+                  style={
+                    styles.scoreHeader
+                  }
+                >
+                  <Text
+                    style={
+                      styles.scoreName
+                    }
+                  >
+                    {componentName}
+                  </Text>
 
-              <Text
-                style={styles.recommendation}
-              >
-                {recommendation ===
-                'needsSignificantImprovement'
-                  ? 'Needs significant improvement'
-                  : recommendation ===
-                    'moderateImprovement'
-                  ? 'Moderate improvement'
-                  : 'Good foundation'}
-              </Text>
-            </View>
-          );
-        })}
+                  <Text
+                    style={
+                      styles.scoreValue
+                    }
+                  >
+                    {score.scorePct}%
+                  </Text>
+                </View>
+
+                <View
+                  style={
+                    styles.progressBackground
+                  }
+                >
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            score.scorePct
+                          )
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+
+                <Text
+                  style={
+                    styles.recommendation
+                  }
+                >
+                  {recommendation ===
+                  'needsSignificantImprovement'
+                    ? 'Needs significant improvement'
+                    : recommendation ===
+                      'moderateImprovement'
+                    ? 'Moderate improvement'
+                    : 'Good foundation'}
+                </Text>
+              </View>
+            );
+          }
+        )}
 
         <Pressable
-          style={styles.primaryButton}
-          onPress={resetAssessment}
+          style={
+            styles.primaryButton
+          }
+          onPress={
+            resetAssessment
+          }
         >
-          <Text style={styles.primaryButtonText}>
+          <Text
+            style={
+              styles.primaryButtonText
+            }
+          >
             Retake Assessment
           </Text>
         </Pressable>
 
         <Pressable
-          style={styles.backButtonResults}
-          onPress={() => router.back()}
+          style={
+            styles.backButtonResults
+          }
+          onPress={() =>
+            router.back()
+          }
         >
           <Ionicons
             name="arrow-back"
@@ -1316,18 +1720,28 @@ export default function AssessmentScreen() {
   // INTRO
   // ==========================================================
 
-  if (step === 'intro') {
+  if (
+    step === 'intro'
+  ) {
     return (
       <ScrollView
-        style={styles.screen}
+        style={
+          styles.screen
+        }
         contentContainerStyle={
           styles.content
         }
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={
+          false
+        }
       >
         <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
+          style={
+            styles.backButton
+          }
+          onPress={() =>
+            router.back()
+          }
         >
           <Ionicons
             name="arrow-back"
@@ -1336,7 +1750,11 @@ export default function AssessmentScreen() {
           />
         </Pressable>
 
-        <View style={styles.iconCircle}>
+        <View
+          style={
+            styles.iconCircle
+          }
+        >
           <Ionicons
             name="mic"
             size={32}
@@ -1344,56 +1762,108 @@ export default function AssessmentScreen() {
           />
         </View>
 
-        <Text style={styles.title}>
+        <Text
+          style={
+            styles.title
+          }
+        >
           Vocal Assessment
         </Text>
 
-        <Text style={styles.description}>
+        <Text
+          style={
+            styles.description
+          }
+        >
           First, we'll find your comfortable vocal range. Then we'll play a few notes for you to sing back so we can check your vocal fundamentals.
         </Text>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.cardTitle}>
+        <View
+          style={
+            styles.infoCard
+          }
+        >
+          <Text
+            style={
+              styles.cardTitle
+            }
+          >
             What we'll check
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Vocal Range
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Pitch
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Tone
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Volume
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Agility
           </Text>
 
-          <Text style={styles.infoItem}>
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
             • Breath Control
           </Text>
         </View>
 
-        <Text style={styles.warning}>
+        <Text
+          style={
+            styles.warning
+          }
+        >
           Find a quiet place and make sure your microphone is not covered.
         </Text>
 
         <Pressable
-          style={styles.primaryButton}
+          style={
+            styles.primaryButton
+          }
           onPress={() => {
             setError(null);
-            setStep('lowHum');
+            setStep(
+              'lowHum'
+            );
           }}
         >
-          <Text style={styles.primaryButtonText}>
+          <Text
+            style={
+              styles.primaryButtonText
+            }
+          >
             Start Assessment
           </Text>
 
@@ -1412,14 +1882,22 @@ export default function AssessmentScreen() {
   // ==========================================================
 
   const duration =
-    getStepDuration(step);
+    getStepDuration(
+      step
+    );
 
   const isSection =
-    STEP_ORDER.includes(step);
+    STEP_ORDER.includes(
+      step
+    );
 
-  if (isSection) {
+  if (
+    isSection
+  ) {
     const stepIndex =
-      STEP_ORDER.indexOf(step);
+      STEP_ORDER.indexOf(
+        step
+      );
 
     const progress =
       (stepIndex + 1) /
@@ -1432,17 +1910,20 @@ export default function AssessmentScreen() {
       );
 
     const targetNoteLabel =
-      referenceNotes.length === 1
+      referenceNotes.length ===
+      1
         ? frequencyToNoteName(
             referenceNotes[0]
               .frequencyHz
           )
-        : referenceNotes.length > 1
+        : referenceNotes.length >
+          1
         ? referenceNotes
-            .map(note =>
-              frequencyToNoteName(
-                note.frequencyHz
-              )
+            .map(
+              note =>
+                frequencyToNoteName(
+                  note.frequencyHz
+                )
             )
             .join(' → ')
         : null;
@@ -1451,18 +1932,28 @@ export default function AssessmentScreen() {
       !needsReferenceNote ||
       hasPlayedNote;
 
+    const isRangeRecording =
+      step ===
+        'lowHum' ||
+      step ===
+        'highHum';
+
     return (
       <ScrollView
-        style={styles.screen}
+        style={
+          styles.screen
+        }
         contentContainerStyle={
           styles.content
         }
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={
+          false
+        }
       >
-        {/* BACK */}
-
         <Pressable
-          style={styles.backButton}
+          style={
+            styles.backButton
+          }
           onPress={() => {
             if (
               isRecordingSection ||
@@ -1484,17 +1975,23 @@ export default function AssessmentScreen() {
         {/* PROGRESS */}
 
         <View
-          style={styles.progressHeader}
+          style={
+            styles.progressHeader
+          }
         >
           <Text
-            style={styles.progressText}
+            style={
+              styles.progressText
+            }
           >
             Step {stepIndex + 1} of{' '}
             {STEP_ORDER.length}
           </Text>
 
           <Text
-            style={styles.progressText}
+            style={
+              styles.progressText
+            }
           >
             {Math.round(
               progress * 100
@@ -1521,7 +2018,9 @@ export default function AssessmentScreen() {
         {/* ICON */}
 
         <View
-          style={styles.sectionIcon}
+          style={
+            styles.sectionIcon
+          }
         >
           <Ionicons
             name={
@@ -1536,23 +2035,65 @@ export default function AssessmentScreen() {
 
         {/* TITLE */}
 
-        <Text style={styles.title}>
-          {getStepTitle(step)}
+        <Text
+          style={
+            styles.title
+          }
+        >
+          {getStepTitle(
+            step
+          )}
         </Text>
 
         <Text
-          style={styles.description}
+          style={
+            styles.description
+          }
         >
-          {getStepInstruction(step)}
+          {getStepInstruction(
+            step
+          )}
         </Text>
+
+        {/* RANGE HELPER */}
+
+        {isRangeRecording && (
+          <View
+            style={
+              styles.rangeInstructionCard
+            }
+          >
+            <Text
+              style={
+                styles.rangeInstructionTitle
+              }
+            >
+              4-second recording
+            </Text>
+
+            <Text
+              style={
+                styles.rangeInstructionText
+              }
+            >
+              Keep singing the same comfortable note throughout the recording. The app will analyze the stable portions of the entire recording to determine your range.
+            </Text>
+          </View>
+        )}
 
         {/* REFERENCE NOTE */}
 
         {needsReferenceNote && (
-          <View style={styles.noteCard}>
+          <View
+            style={
+              styles.noteCard
+            }
+          >
             {targetNoteLabel && (
               <Text
-                style={styles.noteLabel}
+                style={
+                  styles.noteLabel
+                }
               >
                 Target: {targetNoteLabel}
               </Text>
@@ -1610,10 +2151,14 @@ export default function AssessmentScreen() {
         {/* TIMER */}
 
         <View
-          style={styles.timerCircle}
+          style={
+            styles.timerCircle
+          }
         >
           <Text
-            style={styles.timerText}
+            style={
+              styles.timerText
+            }
           >
             {isRecordingSection
               ? remainingSeconds
@@ -1621,7 +2166,9 @@ export default function AssessmentScreen() {
           </Text>
 
           <Text
-            style={styles.timerLabel}
+            style={
+              styles.timerLabel
+            }
           >
             seconds
           </Text>
@@ -1630,27 +2177,41 @@ export default function AssessmentScreen() {
         {/* LIVE AUDIO */}
 
         {isRecordingSection && (
-          <View style={styles.liveCard}>
+          <View
+            style={
+              styles.liveCard
+            }
+          >
             <Text
-              style={styles.liveTitle}
+              style={
+                styles.liveTitle
+              }
             >
               Live Audio
             </Text>
 
             <View
-              style={styles.liveGrid}
+              style={
+                styles.liveGrid
+              }
             >
               <View
-                style={styles.liveItem}
+                style={
+                  styles.liveItem
+                }
               >
                 <Text
-                  style={styles.liveLabel}
+                  style={
+                    styles.liveLabel
+                  }
                 >
                   Pitch
                 </Text>
 
                 <Text
-                  style={styles.liveValue}
+                  style={
+                    styles.liveValue
+                  }
                 >
                   {liveAudio &&
                   liveAudio.pitch > 0
@@ -1662,16 +2223,22 @@ export default function AssessmentScreen() {
               </View>
 
               <View
-                style={styles.liveItem}
+                style={
+                  styles.liveItem
+                }
               >
                 <Text
-                  style={styles.liveLabel}
+                  style={
+                    styles.liveLabel
+                  }
                 >
                   Note
                 </Text>
 
                 <Text
-                  style={styles.liveValue}
+                  style={
+                    styles.liveValue
+                  }
                 >
                   {liveAudio?.note ??
                     '--'}
@@ -1679,16 +2246,22 @@ export default function AssessmentScreen() {
               </View>
 
               <View
-                style={styles.liveItem}
+                style={
+                  styles.liveItem
+                }
               >
                 <Text
-                  style={styles.liveLabel}
+                  style={
+                    styles.liveLabel
+                  }
                 >
                   Clarity
                 </Text>
 
                 <Text
-                  style={styles.liveValue}
+                  style={
+                    styles.liveValue
+                  }
                 >
                   {liveAudio
                     ? `${(
@@ -1700,16 +2273,22 @@ export default function AssessmentScreen() {
               </View>
 
               <View
-                style={styles.liveItem}
+                style={
+                  styles.liveItem
+                }
               >
                 <Text
-                  style={styles.liveLabel}
+                  style={
+                    styles.liveLabel
+                  }
                 >
                   Volume
                 </Text>
 
                 <Text
-                  style={styles.liveValue}
+                  style={
+                    styles.liveValue
+                  }
                 >
                   {liveAudio
                     ? `${liveAudio.volume.toFixed(
@@ -1720,16 +2299,22 @@ export default function AssessmentScreen() {
               </View>
 
               <View
-                style={styles.liveItem}
+                style={
+                  styles.liveItem
+                }
               >
                 <Text
-                  style={styles.liveLabel}
+                  style={
+                    styles.liveLabel
+                  }
                 >
                   Stability
                 </Text>
 
                 <Text
-                  style={styles.liveValue}
+                  style={
+                    styles.liveValue
+                  }
                 >
                   {liveAudio
                     ? `${liveAudio.stability.toFixed(
@@ -1756,7 +2341,9 @@ export default function AssessmentScreen() {
             isRecording ||
             !canRecord
           }
-          onPress={beginSection}
+          onPress={
+            beginSection
+          }
         >
           <Ionicons
             name={
@@ -1781,7 +2368,9 @@ export default function AssessmentScreen() {
 
         {isRecordingSection && (
           <Pressable
-            style={styles.manualStopButton}
+            style={
+              styles.manualStopButton
+            }
             onPress={
               handleManualStop
             }
@@ -1797,9 +2386,15 @@ export default function AssessmentScreen() {
         )}
 
         {error && (
-          <View style={styles.errorCard}>
+          <View
+            style={
+              styles.errorCard
+            }
+          >
             <Text
-              style={styles.errorText}
+              style={
+                styles.errorText
+              }
             >
               {error}
             </Text>
@@ -1807,9 +2402,13 @@ export default function AssessmentScreen() {
         )}
 
         <Text
-          style={styles.helperText}
+          style={
+            styles.helperText
+          }
         >
-          Recording will automatically stop when the timer reaches zero.
+          {isRangeRecording
+            ? 'For the most accurate range, keep the same note steady until the timer reaches zero.'
+            : 'Recording will automatically stop when the timer reaches zero.'}
         </Text>
       </ScrollView>
     );
@@ -1825,417 +2424,653 @@ export default function AssessmentScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor:
+      WHITE,
   },
 
   centerScreen: {
     flex: 1,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
+    backgroundColor:
+      WHITE,
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    paddingHorizontal:
+      30,
   },
 
   backButton: {
-    position: 'absolute',
+    position:
+      'absolute',
     top: 55,
     left: 24,
     zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingVertical:
+      8,
+    paddingHorizontal:
+      4,
   },
 
   backButtonResults: {
-    alignSelf: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 10,
+    alignSelf:
+      'center',
+    paddingVertical:
+      15,
+    paddingHorizontal:
+      10,
     marginTop: 5,
   },
 
   content: {
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 80,
+    paddingHorizontal:
+      24,
+    paddingTop:
+      40,
+    paddingBottom:
+      80,
   },
 
   resultsContent: {
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 80,
+    paddingHorizontal:
+      24,
+    paddingTop:
+      50,
+    paddingBottom:
+      80,
   },
 
   iconCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 24,
+    backgroundColor:
+      PINK,
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    alignSelf:
+      'center',
+    marginBottom:
+      24,
   },
 
   sectionIcon: {
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginTop: 35,
-    marginBottom: 20,
+    backgroundColor:
+      PINK,
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    alignSelf:
+      'center',
+    marginTop:
+      35,
+    marginBottom:
+      20,
   },
 
   title: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 30,
-    color: BROWN,
-    textAlign: 'center',
-    marginBottom: 12,
+    color:
+      BROWN,
+    textAlign:
+      'center',
+    marginBottom:
+      12,
   },
 
   description: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 14,
     lineHeight: 21,
-    color: MUTED,
-    textAlign: 'center',
-    marginBottom: 25,
+    color:
+      MUTED,
+    textAlign:
+      'center',
+    marginBottom:
+      25,
   },
 
   infoCard: {
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 20,
+    backgroundColor:
+      LIGHT_PINK,
+    borderRadius:
+      20,
+    padding:
+      22,
+    marginBottom:
+      20,
   },
 
   cardTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 19,
-    color: BROWN,
-    marginBottom: 12,
+    color:
+      BROWN,
+    marginBottom:
+      12,
   },
 
   infoItem: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 14,
-    color: BROWN,
-    marginBottom: 7,
+    color:
+      BROWN,
+    marginBottom:
+      7,
   },
 
   warning: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
-    textAlign: 'center',
+    color:
+      MUTED,
+    textAlign:
+      'center',
     lineHeight: 18,
-    marginBottom: 25,
+    marginBottom:
+      25,
   },
 
   primaryButton: {
     minHeight: 52,
-    borderRadius: 26,
-    backgroundColor: BROWN,
-    paddingHorizontal: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
+    borderRadius:
+      26,
+    backgroundColor:
+      BROWN,
+    paddingHorizontal:
+      22,
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    alignSelf:
+      'center',
     gap: 8,
-    marginTop: 10,
+    marginTop:
+      10,
   },
 
   primaryButtonText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 15,
-    color: WHITE,
+    color:
+      WHITE,
   },
 
   progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    flexDirection:
+      'row',
+    justifyContent:
+      'space-between',
+    marginBottom:
+      8,
   },
 
   progressText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color:
+      MUTED,
   },
 
   progressBackground: {
-    width: '100%',
+    width:
+      '100%',
     height: 9,
-    backgroundColor: LIGHT_GRAY,
-    borderRadius: 10,
-    overflow: 'hidden',
+    backgroundColor:
+      LIGHT_GRAY,
+    borderRadius:
+      10,
+    overflow:
+      'hidden',
   },
 
   progressFill: {
-    height: '100%',
-    backgroundColor: BROWN,
-    borderRadius: 10,
+    height:
+      '100%',
+    backgroundColor:
+      BROWN,
+    borderRadius:
+      10,
+  },
+
+  rangeInstructionCard: {
+    backgroundColor:
+      LIGHT_PINK,
+    borderRadius:
+      18,
+    padding:
+      18,
+    marginBottom:
+      10,
+    borderWidth:
+      1,
+    borderColor:
+      '#F2DDE5',
+  },
+
+  rangeInstructionTitle: {
+    fontFamily:
+      'FredokaBold',
+    fontSize: 16,
+    color:
+      BROWN,
+    textAlign:
+      'center',
+    marginBottom:
+      7,
+  },
+
+  rangeInstructionText: {
+    fontFamily:
+      'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color:
+      MUTED,
+    textAlign:
+      'center',
   },
 
   noteCard: {
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 18,
-    padding: 18,
-    alignItems: 'center',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
+    backgroundColor:
+      LIGHT_PINK,
+    borderRadius:
+      18,
+    padding:
+      18,
+    alignItems:
+      'center',
+    marginBottom:
+      10,
+    borderWidth:
+      1,
+    borderColor:
+      '#F2DDE5',
   },
 
   noteLabel: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 16,
-    color: BROWN,
-    marginBottom: 12,
+    color:
+      BROWN,
+    marginBottom:
+      12,
   },
 
   playButton: {
     minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: BROWN,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius:
+      23,
+    backgroundColor:
+      BROWN,
+    paddingHorizontal:
+      20,
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
     gap: 8,
   },
 
   playButtonDisabled: {
-    opacity: 0.65,
+    opacity:
+      0.65,
   },
 
   playButtonText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color:
+      WHITE,
   },
 
   noteHelperText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-    marginTop: 10,
+    color:
+      MUTED,
+    marginTop:
+      10,
   },
 
   timerCircle: {
     width: 170,
     height: 170,
     borderRadius: 85,
-    backgroundColor: LIGHT_PINK,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 30,
+    backgroundColor:
+      LIGHT_PINK,
+    alignSelf:
+      'center',
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    marginVertical:
+      30,
   },
 
   timerText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 54,
-    color: BROWN,
+    color:
+      BROWN,
   },
 
   timerLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color:
+      MUTED,
   },
 
   liveCard: {
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
+    backgroundColor:
+      LIGHT_PINK,
+    borderRadius:
+      18,
+    padding:
+      18,
+    marginBottom:
+      20,
+    borderWidth:
+      1,
+    borderColor:
+      '#F2DDE5',
   },
 
   liveTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 17,
-    color: BROWN,
-    textAlign: 'center',
-    marginBottom: 14,
+    color:
+      BROWN,
+    textAlign:
+      'center',
+    marginBottom:
+      14,
   },
 
   liveGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection:
+      'row',
+    flexWrap:
+      'wrap',
+    justifyContent:
+      'space-between',
   },
 
   liveItem: {
-    width: '31%',
-    alignItems: 'center',
-    marginBottom: 14,
+    width:
+      '31%',
+    alignItems:
+      'center',
+    marginBottom:
+      14,
   },
 
   liveLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-    marginBottom: 3,
+    color:
+      MUTED,
+    marginBottom:
+      3,
   },
 
   liveValue: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color:
+      BROWN,
   },
 
   recordButton: {
     height: 60,
-    borderRadius: 30,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius:
+      30,
+    backgroundColor:
+      BROWN,
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
     gap: 10,
   },
 
   recordingButton: {
-    opacity: 0.65,
+    opacity:
+      0.65,
   },
 
   recordButtonText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 17,
-    color: WHITE,
+    color:
+      WHITE,
   },
 
   manualStopButton: {
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    marginTop: 10,
+    alignSelf:
+      'center',
+    paddingHorizontal:
+      20,
+    paddingVertical:
+      12,
+    marginTop:
+      10,
   },
 
   manualStopText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 13,
-    color: MUTED,
+    color:
+      MUTED,
   },
 
   helperText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 18,
-    lineHeight: 17,
+    color:
+      MUTED,
+    textAlign:
+      'center',
+    marginTop:
+      18,
+    lineHeight:
+      17,
   },
 
   errorCard: {
-    backgroundColor: '#FFF0F0',
-    borderRadius: 14,
-    padding: 15,
-    marginTop: 20,
-    marginBottom: 10,
+    backgroundColor:
+      '#FFF0F0',
+    borderRadius:
+      14,
+    padding:
+      15,
+    marginTop:
+      20,
+    marginBottom:
+      10,
   },
 
   errorText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 12,
-    lineHeight: 17,
-    color: '#9A3B3B',
-    textAlign: 'center',
+    lineHeight:
+      17,
+    color:
+      '#9A3B3B',
+    textAlign:
+      'center',
   },
 
   processingTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 24,
-    color: BROWN,
-    marginTop: 25,
-    textAlign: 'center',
+    color:
+      BROWN,
+    marginTop:
+      25,
+    textAlign:
+      'center',
   },
 
   processingText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 13,
-    color: MUTED,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 10,
-    marginBottom: 20,
+    color:
+      MUTED,
+    textAlign:
+      'center',
+    lineHeight:
+      20,
+    marginTop:
+      10,
+    marginBottom:
+      20,
   },
 
   resultsTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
+    color:
+      BROWN,
+    textAlign:
+      'center',
   },
 
   resultsSubtitle: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 13,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 5,
-    marginBottom: 25,
+    color:
+      MUTED,
+    textAlign:
+      'center',
+    marginTop:
+      5,
+    marginBottom:
+      25,
   },
 
   rangeCard: {
-    backgroundColor: PINK,
-    borderRadius: 20,
-    padding: 22,
-    alignItems: 'center',
-    marginBottom: 18,
+    backgroundColor:
+      PINK,
+    borderRadius:
+      20,
+    padding:
+      22,
+    alignItems:
+      'center',
+    marginBottom:
+      18,
   },
 
   rangeText: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 28,
-    color: BROWN,
-    marginTop: 2,
+    color:
+      BROWN,
+    marginTop:
+      2,
   },
 
   rangeHzText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-    marginTop: 6,
+    color:
+      MUTED,
+    marginTop:
+      6,
   },
 
   scoreCard: {
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 12,
+    backgroundColor:
+      LIGHT_PINK,
+    borderRadius:
+      18,
+    padding:
+      18,
+    marginBottom:
+      12,
   },
 
   scoreHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
+    justifyContent:
+      'space-between',
+    marginBottom:
+      10,
   },
 
   scoreName: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color:
+      BROWN,
   },
 
   scoreValue: {
-    fontFamily: 'FredokaBold',
+    fontFamily:
+      'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color:
+      BROWN,
   },
 
   recommendation: {
-    fontFamily: 'FredokaRegular',
+    fontFamily:
+      'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-    marginTop: 8,
+    color:
+      MUTED,
+    marginTop:
+      8,
   },
 });

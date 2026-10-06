@@ -53,8 +53,6 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
-const GREEN = '#39734A';
-const RED = '#A04444';
 
 // ============================================================
 // CONFIG
@@ -812,9 +810,6 @@ useEffect(() => {
       setPhase('instructions');
     };
 
-  // ==========================================================
-  // INSTRUCTIONS
-  // ==========================================================
 
     const renderInstructions = () => (
     <ExerciseScreen
@@ -839,6 +834,82 @@ useEffect(() => {
       onBack={() => router.back()}
       onStart={beginExercise}
     />
+  );
+
+  // REFERENCE
+  // ==========================================================
+
+  const renderReference = () => (
+    <View style={styles.content}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="swap-horizontal-outline"
+          size={34}
+          color={BROWN}
+        />
+      </View>
+
+      <Text style={styles.phaseTitle}>
+        Listen to the Reference
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Listen carefully to the note sequence, then sing the same interval jumps.
+      </Text>
+
+      <View style={styles.referenceCard}>
+        <Text style={styles.referenceLabel}>
+          REFERENCE SEQUENCE
+        </Text>
+
+        <View style={styles.noteSequence}>
+          {adaptiveConfig.frequencies.map(
+            (frequency, index) => (
+              <View
+                key={`${frequency}-${index}`}
+                style={styles.notePill}
+              >
+                <Text style={styles.noteNumber}>
+                  {index + 1}
+                </Text>
+
+                <Text style={styles.noteText}>
+                  {frequencyToNoteName(frequency)}
+                </Text>
+              </View>
+            ),
+          )}
+        </View>
+
+        <Text style={styles.referenceHint}>
+          Listen to the complete pattern before starting.
+        </Text>
+      </View>
+
+      <Pressable
+        style={styles.startButton}
+        onPress={playReference}
+      >
+        <Ionicons
+          name="play"
+          size={18}
+          color={WHITE}
+        />
+
+        <Text style={styles.startButtonText}>
+          Play Reference
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.doneButton}
+        onPress={startCountdown}
+      >
+        <Text style={styles.doneButtonText}>
+          I'm Ready
+        </Text>
+      </Pressable>
+    </View>
   );
 
   // COUNTDOWN
@@ -1591,18 +1662,6 @@ const styles = StyleSheet.create({
   // BACK
   // ==========================================================
 
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: WHITE,
-  },
 
   // ==========================================================
   // GENERAL HEADER
@@ -1618,20 +1677,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
 
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 24,
-  },
 
   phaseTitle: {
     fontFamily: 'FredokaBold',
@@ -1655,52 +1701,11 @@ const styles = StyleSheet.create({
   // INSTRUCTIONS
   // ==========================================================
 
-  instructionCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
 
-  prepareCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
 
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
 
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginLeft: 9,
-  },
 
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
 
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
-  },
 
   cardTitle: {
     fontFamily: 'FredokaBold',
@@ -1710,27 +1715,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingVertical: 7,
-  },
 
-  detailLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
 
-  detailValue: {
-    flex: 1,
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-    textAlign: 'right',
-    marginLeft: 16,
-  },
 
   // ==========================================================
   // REFERENCE
@@ -1818,30 +1804,9 @@ const styles = StyleSheet.create({
     marginLeft: 9,
   },
 
-  // ==========================================================
-  // DIFFICULTY
-  // ==========================================================
 
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingHorizontal: 4,
-  },
 
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
 
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-  },
 
   // ==========================================================
   // BUTTONS
@@ -1859,9 +1824,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
 
-  startButtonDisabled: {
-    opacity: 0.65,
-  },
 
   startButtonText: {
     fontFamily: 'FredokaBold',
