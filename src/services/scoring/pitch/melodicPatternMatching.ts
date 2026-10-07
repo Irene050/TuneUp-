@@ -1,8 +1,8 @@
-import {
+import type {
   MelodicPatternMatchingParams,
 } from '@/constants/exercises/pitch';
 
-import {
+import type {
   MelodicPatternMeasurement,
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
@@ -25,11 +25,11 @@ export function scoreMelodicPatternMatching(
   measurement: MelodicPatternMeasurement,
   targetFreqs: number[],
   targetTimestamps: number[],
-  params: MelodicPatternMatchingParams
+  params: MelodicPatternMatchingParams,
 ): MelodicPatternScoreResult {
   const noteCount = Math.min(
     targetFreqs.length,
-    measurement.detectedFreqs.length
+    measurement.detectedFreqs.length,
   );
 
   if (noteCount === 0) {
@@ -68,22 +68,21 @@ export function scoreMelodicPatternMatching(
       0,
       calcPitchAccuracy(
         detected,
-        target
-      )
+        target,
+      ),
     );
 
     const deviationPct =
       (Math.abs(
-        detected - target
-      ) /
-        target) *
+        detected - target,
+      ) / target) *
       100;
 
     noteAccuracies.push(accuracy);
 
     notesHit.push(
       deviationPct <=
-        params.tolerancePct
+        params.tolerancePct,
     );
   }
 
@@ -91,32 +90,22 @@ export function scoreMelodicPatternMatching(
     noteAccuracies.reduce(
       (sum, accuracy) =>
         sum + accuracy,
-      0
+      0,
     ) / noteAccuracies.length;
 
   const hitCount =
     notesHit.filter(Boolean).length;
 
-  /*
-   * Timing is calculated from the detected
-   * note start relative to the target start.
-   *
-   * A 250 ms timing window is used here so
-   * small microphone / singing delays do not
-   * immediately destroy the score.
-   */
   const timingScores =
     targetTimestamps
       .slice(0, noteCount)
       .map((targetTime, index) => {
         const detectedTime =
-          measurement.noteTimestamps[
-            index
-          ];
+          measurement.noteTimestamps[index];
 
         if (
           !Number.isFinite(
-            detectedTime
+            detectedTime,
           )
         ) {
           return 0;
@@ -125,15 +114,14 @@ export function scoreMelodicPatternMatching(
         const differenceMs =
           Math.abs(
             detectedTime -
-              targetTime
+              targetTime,
           ) * 1000;
 
         return Math.max(
           0,
           100 -
-            (differenceMs /
-              250) *
-              100
+            (differenceMs / 250) *
+              100,
         );
       });
 
@@ -142,18 +130,17 @@ export function scoreMelodicPatternMatching(
       ? timingScores.reduce(
           (sum, value) =>
             sum + value,
-          0
+          0,
         ) / timingScores.length
       : 0;
 
   const score = Math.round(
     patternAccuracy * 0.7 +
-      rhythmAccuracy * 0.3
+      rhythmAccuracy * 0.3,
   );
 
   const passed =
-    hitCount / noteCount >=
-    0.7;
+    hitCount / noteCount >= 0.7;
 
   return {
     score,

@@ -670,6 +670,7 @@ export default function ArpeggioSpeedDrillScreen() {
           samples,
           SAMPLE_RATE,
           config.frequencies,
+          config.pitchTolerancePercent,
         );
 
       const scored =

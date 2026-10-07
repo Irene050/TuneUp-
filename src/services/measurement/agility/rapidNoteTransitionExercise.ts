@@ -21,16 +21,33 @@ const MAX_FREQUENCY = 1000;
 
 const MIN_RMS = 0.008;
 
-const PITCH_TOLERANCE_CENTS = 100;
+/**
+ * Maximum allowed frequency deviation when evaluating
+ * pitch accuracy.
+ *
+ * A detected pitch is considered accurate when its
+ * frequency differs from the target frequency by no
+ * more than 7%.
+ */
+const PITCH_TOLERANCE_PERCENT = 7;
 
 const MIN_TRANSITION_SEMITONES = 1;
 
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 
+/**
+ * A note must be detected for this many consecutive
+ * pitch frames before it is treated as a stable note.
+ *
+ * At 44.1 kHz with a 1024-sample hop size, two frames
+ * represent approximately 46 ms.
+ */
+const NOTE_CONFIRMATION_FRAMES = 2;
+
 /* ============================================================
-   DSP
-============================================================ */
+ * DSP
+ * ========================================================== */
 
 function calculateRms(
   samples: Float32Array,
@@ -41,14 +58,10 @@ function calculateRms(
 
   let sum = 0;
 
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    sum +=
-      samples[i] *
-      samples[i];
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i];
+
+    sum += sample * sample;
   }
 
   return Math.sqrt(
@@ -61,30 +74,27 @@ function detectPitch(
   sampleRate: number,
 ): number {
   if (
-    samples.length < FRAME_SIZE
+    samples.length < FRAME_SIZE ||
+    sampleRate <= 0
   ) {
     return 0;
   }
 
   if (
-    calculateRms(samples) <
-    MIN_RMS
+    calculateRms(samples) < MIN_RMS
   ) {
     return 0;
   }
 
   const minLag = Math.floor(
-    sampleRate /
-      MAX_FREQUENCY,
+    sampleRate / MAX_FREQUENCY,
   );
 
   const maxLag = Math.floor(
-    sampleRate /
-      MIN_FREQUENCY,
+    sampleRate / MIN_FREQUENCY,
   );
 
   let bestLag = -1;
-
   let bestCorrelation = 0;
 
   for (
@@ -104,20 +114,12 @@ function detectPitch(
       i < limit;
       i++
     ) {
-      const a =
-        samples[i];
+      const a = samples[i];
+      const b = samples[i + lag];
 
-      const b =
-        samples[i + lag];
-
-      correlation +=
-        a * b;
-
-      energyA +=
-        a * a;
-
-      energyB +=
-        b * b;
+      correlation += a * b;
+      energyA += a * a;
+      energyB += b * b;
     }
 
     if (
@@ -130,17 +132,14 @@ function detectPitch(
     const normalized =
       correlation /
       Math.sqrt(
-        energyA *
-          energyB,
+        energyA * energyB,
       );
 
     if (
       normalized >
       bestCorrelation
     ) {
-      bestCorrelation =
-        normalized;
-
+      bestCorrelation = normalized;
       bestLag = lag;
     }
   }
@@ -153,14 +152,11 @@ function detectPitch(
   }
 
   const frequency =
-    sampleRate /
-    bestLag;
+    sampleRate / bestLag;
 
   if (
-    frequency <
-      MIN_FREQUENCY ||
-    frequency >
-      MAX_FREQUENCY
+    frequency < MIN_FREQUENCY ||
+    frequency > MAX_FREQUENCY
   ) {
     return 0;
   }
@@ -176,8 +172,7 @@ function extractPitchFrames(
 
   for (
     let start = 0;
-    start + FRAME_SIZE <=
-    samples.length;
+    start + FRAME_SIZE <= samples.length;
     start += HOP_SIZE
   ) {
     const frame =
@@ -201,8 +196,8 @@ function extractPitchFrames(
 }
 
 /* ============================================================
-   NOTE CONVERSION
-============================================================ */
+ * NOTE CONVERSION
+ * ========================================================== */
 
 function frequencyToMidi(
   frequency: number,
@@ -216,22 +211,129 @@ function frequencyToMidi(
   );
 }
 
-function frequencyToCents(
-  frequency: number,
-  target: number,
-): number {
-  return (
-    1200 *
-    Math.log2(
-      frequency / target,
-    )
+/* ============================================================
+ * STABLE NOTE SEQUENCE
+ * ========================================================== */
+
+/**
+ * Converts continuous pitch frames into a stable sequence
+ * of MIDI notes.
+ *
+ * Repeated frames of the same note are collapsed into one
+ * note. A new note must persist for the configured number
+ * of frames before it is confirmed.
+ */
+function extractStableNoteSequence(
+  pitches: number[],
+): number[] {
+  if (!pitches.length) {
+    return [];
+  }
+
+  const sequence: number[] = [];
+
+  let currentMidi = Math.round(
+    frequencyToMidi(pitches[0]),
   );
+
+  let candidateMidi = currentMidi;
+  let candidateFrames = 0;
+
+  sequence.push(currentMidi);
+
+  for (
+    let i = 1;
+    i < pitches.length;
+    i++
+  ) {
+    const detectedMidi =
+      Math.round(
+        frequencyToMidi(
+          pitches[i],
+        ),
+      );
+
+    if (
+      detectedMidi ===
+      currentMidi
+    ) {
+      candidateMidi =
+        currentMidi;
+
+      candidateFrames = 0;
+
+      continue;
+    }
+
+    if (
+      detectedMidi ===
+      candidateMidi
+    ) {
+      candidateFrames++;
+    } else {
+      candidateMidi =
+        detectedMidi;
+
+      candidateFrames = 1;
+    }
+
+    if (
+      candidateFrames >=
+      NOTE_CONFIRMATION_FRAMES
+    ) {
+      currentMidi =
+        candidateMidi;
+
+      sequence.push(
+        currentMidi,
+      );
+
+      candidateMidi =
+        currentMidi;
+
+      candidateFrames = 0;
+    }
+  }
+
+  return sequence;
 }
 
 /* ============================================================
-   PITCH ACCURACY
-============================================================ */
+ * PITCH ACCURACY
+ * ========================================================== */
 
+/**
+ * Calculates the absolute frequency deviation as a percentage.
+ */
+function frequencyDeviationPercent(
+  frequency: number,
+  target: number,
+): number {
+  if (
+    !Number.isFinite(frequency) ||
+    !Number.isFinite(target) ||
+    target <= 0
+  ) {
+    return Infinity;
+  }
+
+  return (
+    Math.abs(
+      (frequency - target) /
+        target,
+    ) * 100
+  );
+}
+
+/**
+ * Calculates pitch accuracy by determining whether each
+ * detected pitch is within the defined percentage deviation
+ * of any target frequency in the exercise.
+ *
+ * This retains the current measurement architecture,
+ * where pitch frames do not contain their original
+ * timestamps or target-note alignment.
+ */
 function calculatePitchAccuracy(
   detected: number[],
   targets: number[],
@@ -248,50 +350,30 @@ function calculatePitchAccuracy(
   for (
     const pitch of detected
   ) {
-    let closest =
-      targets[0];
-
-    let closestError =
-      Math.abs(
-        frequencyToCents(
-          pitch,
-          closest,
-        ),
-      );
+    let closestDeviation =
+      Infinity;
 
     for (
-      let i = 1;
-      i < targets.length;
-      i++
+      const target of targets
     ) {
-      const error =
-        Math.abs(
-          frequencyToCents(
-            pitch,
-            targets[i],
-          ),
+      const deviation =
+        frequencyDeviationPercent(
+          pitch,
+          target,
         );
 
       if (
-        error <
-        closestError
+        deviation <
+        closestDeviation
       ) {
-        closestError =
-          error;
-
-        closest =
-          targets[i];
+        closestDeviation =
+          deviation;
       }
     }
 
     if (
-      Math.abs(
-        frequencyToCents(
-          pitch,
-          closest,
-        ),
-      ) <=
-      PITCH_TOLERANCE_CENTS
+      closestDeviation <=
+      PITCH_TOLERANCE_PERCENT
     ) {
       accurate++;
     }
@@ -305,9 +387,95 @@ function calculatePitchAccuracy(
 }
 
 /* ============================================================
-   TRANSITIONS
-============================================================ */
+ * SEQUENCE ACCURACY
+ * ========================================================== */
 
+/**
+ * Compares the stable detected note sequence against
+ * the target note sequence.
+ *
+ * A note is considered a match when it is within one
+ * semitone of the corresponding target note.
+ *
+ * Missing or extra notes reduce the score because the
+ * comparison uses the full target/detected sequence lengths.
+ */
+function calculateSequenceAccuracy(
+  detectedNotes: number[],
+  targetFrequencies: number[],
+): number {
+  if (
+    !detectedNotes.length ||
+    !targetFrequencies.length
+  ) {
+    return 0;
+  }
+
+  const targetMidi =
+    targetFrequencies.map(
+      (frequency) =>
+        Math.round(
+          frequencyToMidi(
+            frequency,
+          ),
+        ),
+    );
+
+  const compareLength =
+    Math.min(
+      detectedNotes.length,
+      targetMidi.length,
+    );
+
+  if (compareLength === 0) {
+    return 0;
+  }
+
+  let matches = 0;
+
+  for (
+    let i = 0;
+    i < compareLength;
+    i++
+  ) {
+    if (
+      Math.abs(
+        detectedNotes[i] -
+          targetMidi[i],
+      ) <= 1
+    ) {
+      matches++;
+    }
+  }
+
+  /*
+   * Score is based on the target/detected sequence length.
+   * Extra or missing detected notes therefore reduce the
+   * sequence score instead of being ignored.
+   */
+  return Math.round(
+    (matches /
+      Math.max(
+        detectedNotes.length,
+        targetMidi.length,
+      )) *
+      100,
+  );
+}
+
+/* ============================================================
+ * TRANSITIONS
+ * ========================================================== */
+
+/**
+ * Detects transitions between stable notes.
+ *
+ * A transition is counted only after the new note has
+ * remained stable for the required number of frames.
+ *
+ * This prevents short pitch-detection fluctuations from
+ * being counted as genuine note transitions.
+ */
 function calculateTransitions(
   pitches: number[],
   sampleRate: number,
@@ -316,7 +484,8 @@ function calculateTransitions(
   timesMs: number[];
 } {
   if (
-    pitches.length < 2
+    pitches.length < 2 ||
+    sampleRate <= 0
   ) {
     return {
       count: 0,
@@ -326,22 +495,26 @@ function calculateTransitions(
 
   const timesMs: number[] = [];
 
-  let previousMidi =
+  let currentMidi =
     Math.round(
       frequencyToMidi(
         pitches[0],
       ),
     );
 
-  let lastTransitionFrame =
-    0;
+  let candidateMidi =
+    currentMidi;
+
+  let candidateFrames = 0;
+
+  let lastTransitionFrame = 0;
 
   for (
     let i = 1;
     i < pitches.length;
     i++
   ) {
-    const currentMidi =
+    const detectedMidi =
       Math.round(
         frequencyToMidi(
           pitches[i],
@@ -350,13 +523,48 @@ function calculateTransitions(
 
     const difference =
       Math.abs(
-        currentMidi -
-          previousMidi,
+        detectedMidi -
+          currentMidi,
       );
 
+    /*
+     * Ignore changes smaller than the minimum
+     * transition interval.
+     */
     if (
-      difference >=
+      difference <
       MIN_TRANSITION_SEMITONES
+    ) {
+      candidateMidi =
+        currentMidi;
+
+      candidateFrames = 0;
+
+      continue;
+    }
+
+    /*
+     * Track a possible new note.
+     */
+    if (
+      detectedMidi ===
+      candidateMidi
+    ) {
+      candidateFrames++;
+    } else {
+      candidateMidi =
+        detectedMidi;
+
+      candidateFrames = 1;
+    }
+
+    /*
+     * Confirm the transition only after the new
+     * note has persisted for enough frames.
+     */
+    if (
+      candidateFrames >=
+      NOTE_CONFIRMATION_FRAMES
     ) {
       const frameDifference =
         i -
@@ -368,90 +576,29 @@ function calculateTransitions(
           sampleRate) *
         1000;
 
-      timesMs.push(
-        timeMs,
-      );
+      timesMs.push(timeMs);
 
-      lastTransitionFrame =
-        i;
+      lastTransitionFrame = i;
+
+      currentMidi =
+        candidateMidi;
+
+      candidateMidi =
+        currentMidi;
+
+      candidateFrames = 0;
     }
-
-    previousMidi =
-      currentMidi;
   }
 
   return {
-    count:
-      timesMs.length,
+    count: timesMs.length,
     timesMs,
   };
 }
 
 /* ============================================================
-   SEQUENCE ACCURACY
-============================================================ */
-
-function calculateSequenceAccuracy(
-  detected: number[],
-  targets: number[],
-): number {
-  if (
-    !detected.length ||
-    !targets.length
-  ) {
-    return 0;
-  }
-
-  const detectedMidi =
-    detected.map(
-      frequencyToMidi,
-    );
-
-  const targetMidi =
-    targets.map(
-      frequencyToMidi,
-    );
-
-  let matches = 0;
-
-  const compareLength =
-    Math.min(
-      detectedMidi.length,
-      targetMidi.length,
-    );
-
-  for (
-    let i = 0;
-    i < compareLength;
-    i++
-  ) {
-    if (
-      Math.abs(
-        Math.round(
-          detectedMidi[i],
-        ) -
-          Math.round(
-            targetMidi[i],
-          ),
-      ) <= 1
-    ) {
-      matches++;
-    }
-  }
-
-  return Math.round(
-    (matches /
-      Math.max(
-        detectedMidi.length,
-        targetMidi.length,
-      )) *
-      100,
-  );
-}
-
-/* ============================================================
-   PUBLIC FUNCTION
-============================================================ */
+ * PUBLIC FUNCTION
+ * ========================================================== */
 
 export function measureRapidNoteTransition(
   samples: Float32Array,
@@ -472,8 +619,8 @@ export function measureRapidNoteTransition(
     );
 
   const detectedNotes =
-    detectedPitches.map(
-      frequencyToMidi,
+    extractStableNoteSequence(
+      detectedPitches,
     );
 
   const pitchAccuracy =
@@ -484,7 +631,7 @@ export function measureRapidNoteTransition(
 
   const sequenceAccuracy =
     calculateSequenceAccuracy(
-      detectedPitches,
+      detectedNotes,
       targetFrequencies,
     );
 
@@ -495,15 +642,13 @@ export function measureRapidNoteTransition(
     );
 
   const averageTransitionTimeMs =
-    transitions.timesMs.length
+    transitions.timesMs.length > 0
       ? transitions.timesMs.reduce(
           (sum, value) =>
             sum + value,
           0,
         ) /
-        transitions
-          .timesMs
-          .length
+        transitions.timesMs.length
       : 0;
 
   const durationSeconds =

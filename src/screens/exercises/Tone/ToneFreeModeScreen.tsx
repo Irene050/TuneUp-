@@ -28,6 +28,7 @@ import {
 
 import {
   computeSpectralCentroid,
+  type FrequencyZone,
 } from '@/utils/dsp/spectral';
 
 import {
@@ -65,10 +66,8 @@ export default function ToneFreeModeScreen() {
   const [isStarting, setIsStarting] =
     useState(false);
 
-  const [resonanceZone, setResonanceZone] =
-    useState<'chest' | 'head' | 'mixed'>(
-      'mixed',
-    );
+  const [frequencyZone, setFrequencyZone] =
+    useState<FrequencyZone>('low');
 
   const [stabilityPct, setStabilityPct] =
     useState(0);
@@ -87,10 +86,6 @@ export default function ToneFreeModeScreen() {
 
   const handleAudioFrame = useCallback(
     (frame: LiveAudioFrame) => {
-      /*
-       * Convert the raw PCM samples from the
-       * recorder into FFT magnitude frames.
-       */
       const fftFrames = samplesToFFTFrames(
         frame.samples,
         FFT_SIZE,
@@ -101,10 +96,6 @@ export default function ToneFreeModeScreen() {
         return;
       }
 
-      /*
-       * Run the existing Tone Free Mode
-       * measurement service.
-       */
       const reading =
         measureToneFreeModeFrame(
           fftFrames,
@@ -112,24 +103,8 @@ export default function ToneFreeModeScreen() {
           FFT_SIZE,
         );
 
-      console.log(
-        '🎨 TONE FREE MODE:',
-        {
-          resonanceZone:
-            reading.resonanceZone,
-          stability:
-            reading.stabilityPct,
-          fftFrames:
-            fftFrames.length,
-          samples:
-            frame.samples.length,
-          sampleRate:
-            frame.sampleRate,
-        },
-      );
-
-      setResonanceZone(
-        reading.resonanceZone,
+      setFrequencyZone(
+        reading.frequencyZone,
       );
 
       setStabilityPct(
@@ -143,12 +118,6 @@ export default function ToneFreeModeScreen() {
       const latestFFT =
         fftFrames[fftFrames.length - 1];
 
-      /*
-       * Determine whether there is meaningful
-       * spectral information in the current frame.
-       *
-       * This is currently only used for UI display.
-       */
       let magnitudeSum = 0;
 
       for (
@@ -168,15 +137,6 @@ export default function ToneFreeModeScreen() {
       // SPECTRAL CENTROID
       // ========================================================
 
-      /*
-       * Use the existing shared spectral-centroid
-       * implementation.
-       *
-       * This is NOT a tone score.
-       * It is only used to visualize spectral movement
-       * and to inspect the values used by the resonance
-       * classifier.
-       */
       const latestCentroid =
         computeSpectralCentroid(
           latestFFT,
@@ -184,24 +144,11 @@ export default function ToneFreeModeScreen() {
           FFT_SIZE,
         );
 
-      /*
-       * Debug output.
-       *
-       * We are intentionally logging the real centroid
-       * values before changing resonance thresholds.
-       */
-      console.log(
-        '🎵 TONE CENTROID:',
-        Math.round(latestCentroid),
-        'Hz',
-      );
-
       if (latestCentroid > 0) {
         /*
-         * Spectral visualization range.
-         *
-         * This is only for the visual bars.
-         * It does NOT determine the resonance zone.
+         * This range is used only for the visual
+         * spectral-history bars. It does not determine
+         * the frequency zone or tone stability.
          */
         const minHz = 200;
         const maxHz = 4000;
@@ -289,8 +236,7 @@ export default function ToneFreeModeScreen() {
 
     try {
       setElapsedSeconds(0);
-
-      setResonanceZone('mixed');
+      setFrequencyZone('low');
       setStabilityPct(0);
       setHasTone(false);
 
@@ -326,7 +272,7 @@ export default function ToneFreeModeScreen() {
     }
 
     setElapsedSeconds(0);
-    setResonanceZone('mixed');
+    setFrequencyZone('low');
     setStabilityPct(0);
     setHasTone(false);
 
@@ -401,8 +347,9 @@ export default function ToneFreeModeScreen() {
           </Text>
 
           <Text style={styles.pageDescription}>
-            Explore your vocal color and resonance
-            without a set target or exercise pattern.
+            Explore your vocal color and frequency
+            zones without a set target or exercise
+            pattern.
           </Text>
 
           <View style={styles.infoCard}>
@@ -442,12 +389,12 @@ export default function ToneFreeModeScreen() {
 
               <View style={styles.infoText}>
                 <Text style={styles.infoName}>
-                  Resonance
+                  Frequency Zone
                 </Text>
 
                 <Text style={styles.infoDescription}>
-                  Hear how your tone shifts naturally
-                  across the phrase.
+                  Observe how your dominant
+                  frequency shifts naturally.
                 </Text>
               </View>
             </View>
@@ -589,19 +536,19 @@ export default function ToneFreeModeScreen() {
           </View>
         </View>
 
-        {/* RESONANCE */}
+        {/* FREQUENCY ZONE */}
 
         <View style={styles.liveCard}>
           <Text style={styles.cardLabel}>
-            CURRENT RESONANCE
+            CURRENT FREQUENCY ZONE
           </Text>
 
           <View style={styles.resonanceDisplay}>
             <View>
               <Text style={styles.resonanceValue}>
                 {hasTone
-                  ? formatResonance(
-                      resonanceZone,
+                  ? formatFrequencyZone(
+                      frequencyZone,
                     )
                   : '--'}
               </Text>
@@ -612,8 +559,8 @@ export default function ToneFreeModeScreen() {
                 }
               >
                 {hasTone
-                  ? 'Detected vocal resonance zone'
-                  : 'Sing to detect resonance'}
+                  ? 'Detected dominant-frequency zone'
+                  : 'Sing to detect frequency zone'}
               </Text>
             </View>
 
@@ -728,18 +675,18 @@ export default function ToneFreeModeScreen() {
 // HELPERS
 // ============================================================
 
-function formatResonance(
-  zone: 'chest' | 'head' | 'mixed',
+function formatFrequencyZone(
+  zone: FrequencyZone,
 ): string {
   switch (zone) {
-    case 'chest':
-      return 'Chest';
+    case 'low':
+      return 'Low';
 
-    case 'head':
-      return 'Head';
+    case 'mid':
+      return 'Mid';
 
-    default:
-      return 'Mixed';
+    case 'high':
+      return 'High';
   }
 }
 

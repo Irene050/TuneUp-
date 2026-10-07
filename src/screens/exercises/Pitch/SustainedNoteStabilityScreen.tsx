@@ -49,7 +49,6 @@ import {
 import {
   calcLiveStability,
   calcPitchAccuracy,
-  frequencyToNote,
 } from '@/utils/dsp/pitch';
 
 import {
@@ -128,12 +127,6 @@ export default function SustainedNoteStabilityScreen({
     useState<SustainedNoteStabilityScoreResult | null>(
       null
     );
-
-  const [detectedNote, setDetectedNote] =
-    useState('--');
-
-  const [detectedPitchHz, setDetectedPitchHz] =
-    useState(0);
 
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
@@ -436,18 +429,6 @@ export default function SustainedNoteStabilityScreen({
 
           setResult(score);
 
-          setDetectedPitchHz(
-            measurement.averagePitchHz
-          );
-
-          setDetectedNote(
-            measurement.averagePitchHz > 0
-              ? frequencyToNote(
-                  measurement.averagePitchHz
-                )
-              : '--'
-          );
-
           if (mountedRef.current) {
             setPhase('results');
           }
@@ -667,8 +648,6 @@ export default function SustainedNoteStabilityScreen({
       setTargetNote(generated);
 
       setResult(null);
-      setDetectedNote('--');
-      setDetectedPitchHz(0);
       setErrorMessage(null);
 
       setLiveFrame(null);
@@ -741,8 +720,6 @@ export default function SustainedNoteStabilityScreen({
       }
 
       setResult(null);
-      setDetectedNote('--');
-      setDetectedPitchHz(0);
 
       setLiveFrame(null);
       setLiveFrequencies([]);
@@ -1305,38 +1282,6 @@ export default function SustainedNoteStabilityScreen({
             >
               Your Performance
             </Text>
-
-            <View style={styles.resultRow}>
-              <Text
-                style={styles.resultRowLabel}
-              >
-                Detected note
-              </Text>
-
-              <Text
-                style={styles.resultRowValue}
-              >
-                {detectedNote}
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text
-                style={styles.resultRowLabel}
-              >
-                Average frequency
-              </Text>
-
-              <Text
-                style={styles.resultRowValue}
-              >
-                {detectedPitchHz > 0
-                  ? `${Math.round(
-                      detectedPitchHz
-                    )} Hz`
-                  : '--'}
-              </Text>
-            </View>
 
             <View style={styles.resultRow}>
               <Text

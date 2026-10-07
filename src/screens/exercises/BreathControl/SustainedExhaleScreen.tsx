@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -147,9 +148,7 @@ export default function SustainedExhaleScreen({
   const stopRecordingRef =
     useRef<(() => void) | null>(null);
 
-  // ----------------------------------------------------------
-  // ADS INITIALIZATION
-  // ----------------------------------------------------------
+  
 
   useEffect(() => {
     let cancelled = false;
@@ -167,13 +166,11 @@ export default function SustainedExhaleScreen({
           if (user) {
             const progress =
               await fetchComponentProgress(
-                user.uid,
-                'breathControl'
+                user.uid, 'breathControl'
               );
 
             currentTier =
-              progress?.currentTier ??
-              'beginner';
+              progress?.currentTier ?? 'beginner';
           }
         }
 
@@ -337,10 +334,6 @@ export default function SustainedExhaleScreen({
       },
       []
     );
-
-  // ----------------------------------------------------------
-  // RECORDING STOP / ANALYSIS
-  // ----------------------------------------------------------
 
   const handleRecordingStop =
     useCallback(
@@ -932,13 +925,45 @@ export default function SustainedExhaleScreen({
   // ADS PARAMETER LOADING
   // ----------------------------------------------------------
 
-  if (
+ if (
     loadingParams ||
     !params ||
     !tier
   ) {
-    return null;
+    return (
+      <View style={styles.centerScreen}>
+        <View
+          style={styles.largeIconCircle}
+        >
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={styles.processingTitle}
+        >
+          Preparing Your Exercise
+        </Text>
+
+        <Text
+          style={styles.processingSubtitle}
+        >
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
   }
+
 
   // ----------------------------------------------------------
   // DERIVED VALUES
@@ -1233,7 +1258,6 @@ export default function SustainedExhaleScreen({
             ? 'Calculating your overall breath control score'
             : `Processing repetition ${currentRep}`
         }
-        onBack={goBack}
       />
     );
   }
@@ -1247,12 +1271,7 @@ export default function SustainedExhaleScreen({
       title="Exercise Complete"
       subtitle="Sustained Exhale"
       score={averageScore}
-      scoreSuffix=" / 100"
-      resultIcon={
-        averageScore >= 60
-          ? 'checkmark'
-          : 'refresh-outline'
-      }
+      resultIcon="checkmark"
       scoreDetails={
         <View style={styles.scoreBar}>
           <View
@@ -1265,7 +1284,6 @@ export default function SustainedExhaleScreen({
           />
         </View>
       }
-      scoreMessage={getScoreMessage(averageScore)}
       onRetry={retryExercise}
       onExit={goBack}
     >
@@ -1371,14 +1389,18 @@ export default function SustainedExhaleScreen({
               Feedback
             </Text>
 
-            <Text style={styles.feedbackText}>
-              {getFeedback(
-                averageScore,
-                averageConsistency,
-                averageDuration,
-                params.durationRangeSec
-              )}
-            </Text>
+            <Text
+                        style={styles.feedbackText}
+                      >
+                        {averageScore >= 85
+                          ? 'Excellent control! Your exhale was sustained with strong consistency.'
+                          : averageScore >= 70
+                            ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
+                            : averageScore >= 50
+                              ? 'Keep practicing. Try to maintain a smoother and more consistent exhalation.'
+                              : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous exhale.'}
+                      
+                      </Text>
           </View>
         </View>
       </View>
@@ -1419,51 +1441,6 @@ function MetricCard({
 }
 
 // ----------------------------------------------------------
-// HELPERS
-// ----------------------------------------------------------
-
-function getScoreMessage(score: number) {
-  if (score >= 90) {
-    return 'Excellent breath control!';
-  }
-
-  if (score >= 75) {
-    return 'Great control and consistency!';
-  }
-
-  if (score >= 60) {
-    return 'Good work! Keep building consistency.';
-  }
-
-  if (score >= 40) {
-    return 'Keep practicing your airflow control.';
-  }
-
-  return 'Focus on maintaining a steady exhale.';
-}
-
-function getFeedback(
-  score: number,
-  consistency: number,
-  averageDuration: number,
-  range: [number, number]
-) {
-  if (score >= 90) {
-    return 'Your exhale was strong and consistent. Continue practicing controlled airflow to maintain this level of breath stability.';
-  }
-
-  if (consistency < 60) {
-    return 'Your airflow varied during the exercise. Try using a gentler, more even stream of air instead of pushing the breath out quickly.';
-  }
-
-  if (averageDuration < range[0]) {
-    return 'Your exhale duration was below the target range. Focus on taking a comfortable breath and releasing the air more gradually.';
-  }
-
-  return 'Good effort. Continue practicing steady airflow and gradually work toward longer, more consistent exhales.';
-}
-
-// ----------------------------------------------------------
 // STYLES
 // ----------------------------------------------------------
 
@@ -1472,11 +1449,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
+centerScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  largeIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
   recordingContent: {
     paddingHorizontal: 24,
     paddingTop: 76,
     paddingBottom: 40,
+  },
+  processingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  processingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  spinner: {
+    marginTop: 28,
   },
 
   resultsContent: {

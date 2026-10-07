@@ -1,5 +1,5 @@
 import type {
-    RapidNoteTransitionMeasurement,
+  RapidNoteTransitionMeasurement,
 } from '@/services/measurement/agility/rapidNoteTransitionExercise';
 
 export type RapidNoteTransitionScore = {
@@ -28,16 +28,19 @@ function clamp(
   );
 }
 
+/**
+ * Converts transition rate into a 0–100 speed score.
+ *
+ * 1 transition/second or below = 0
+ * 3 transitions/second or above = 100
+ *
+ * These values represent the current baseline agility
+ * scoring range and can later be replaced by adaptive
+ * difficulty parameters.
+ */
 function calculateSpeedScore(
   transitionsPerSecond: number,
 ): number {
-  /*
-   * Target agility speed.
-   *
-   * These values can later be replaced
-   * by the adaptive difficulty service.
-   */
-
   const minimum =
     1.0;
 
@@ -45,8 +48,11 @@ function calculateSpeedScore(
     3.0;
 
   if (
+    !Number.isFinite(
+      transitionsPerSecond,
+    ) ||
     transitionsPerSecond <=
-    minimum
+      minimum
   ) {
     return 0;
   }
@@ -59,10 +65,12 @@ function calculateSpeedScore(
   }
 
   return clamp(
-    ((transitionsPerSecond -
-      minimum) /
+    (
+      (transitionsPerSecond -
+        minimum) /
       (target -
-        minimum)) *
+        minimum)
+    ) *
       100,
   );
 }
@@ -86,13 +94,15 @@ export function scoreRapidNoteTransition(
     );
 
   /*
-   * Rapid Note Transition:
+   * Rapid Note Transition weighting:
    *
    * Pitch Accuracy      40%
    * Sequence Accuracy   30%
    * Transition Speed    30%
+   *
+   * Pitch receives the highest weight so that speed
+   * does not compensate excessively for inaccurate singing.
    */
-
   const overall =
     Math.round(
       pitchScore * 0.40 +
@@ -100,6 +110,11 @@ export function scoreRapidNoteTransition(
         speedScore * 0.30,
     );
 
+  /*
+   * A minimum pitch score prevents a user from passing
+   * primarily through high transition speed or sequence
+   * matching.
+   */
   const passed =
     overall >= 70 &&
     pitchScore >= 60;
@@ -118,15 +133,15 @@ export function scoreRapidNoteTransition(
     feedback =
       'Focus on matching each target note accurately before increasing your transition speed.';
   } else if (
-    speedScore < 50
-  ) {
-    feedback =
-      'Your pitch accuracy is developing well. Gradually increase the speed between notes.';
-  } else if (
     sequenceScore < 70
   ) {
     feedback =
       'Focus on following the complete note sequence without skipping or adding notes.';
+  } else if (
+    speedScore < 50
+  ) {
+    feedback =
+      'Your pitch accuracy is developing well. Gradually increase the speed between notes.';
   }
 
   return {

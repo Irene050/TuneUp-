@@ -12,10 +12,18 @@ export function measureSustainedSSSS(
   threshold: number,
   sampleRate: number
 ): SustainedSSSSMeasurement {
-  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(samples, threshold, sampleRate);
+  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(
+    samples,
+    threshold,
+    sampleRate
+  );
 
   if (durationSeconds === 0) {
-    return { actualDurationSec: 0, consistencyPct: 0, detected: false };
+    return {
+      actualDurationSec: 0,
+      consistencyPct: 0,
+      detected: false,
+    };
   }
 
   const ssssSegment = samples.subarray(onsetIndex, offsetIndex);

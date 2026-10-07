@@ -296,26 +296,17 @@ export default function SustainedSSSSScreen({
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
-      clearInterval(
-        countdownTimerRef.current
-      );
-
+      clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
 
     if (recordingTimerRef.current) {
-      clearInterval(
-        recordingTimerRef.current
-      );
-
+      clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
 
     if (processingTimerRef.current) {
-      clearTimeout(
-        processingTimerRef.current
-      );
-
+      clearTimeout(processingTimerRef.current);
       processingTimerRef.current = null;
     }
   }, []);
@@ -327,7 +318,9 @@ export default function SustainedSSSSScreen({
    */
 
   const handleLiveFrame = useCallback(
-    (frame: { volume: number }) => {
+    (frame: { 
+      volume: number 
+    }) => {
       if (!mountedRef.current) {
         return;
       }
@@ -375,12 +368,10 @@ export default function SustainedSSSSScreen({
           );
 
           setPhase('instructions');
-
           return;
         }
 
         try {
-
           const measurement =
             measureSustainedSSSS(
               samples,
@@ -432,23 +423,17 @@ export default function SustainedSSSSScreen({
           ) {
             processingTimerRef.current =
               setTimeout(() => {
-                if (
-                  !mountedRef.current
-                ) {
+                if (!mountedRef.current) {
                   return;
                 }
 
                 const nextRep =
-                  currentRepRef.current +
-                  1;
+                  currentRepRef.current + 1;
 
                 currentRepRef.current =
                   nextRep;
 
-                setCurrentRep(
-                  nextRep
-                );
-
+                setCurrentRep(nextRep);
                 setElapsed(0);
                 setVolume(null);
 
@@ -463,12 +448,6 @@ export default function SustainedSSSSScreen({
 
             return;
           }
-
-          /*
-           * ----------------------------------------
-           * ALL REPS COMPLETE
-           * ----------------------------------------
-           */
 
           processingTimerRef.current =
             setTimeout(async () => {
@@ -503,12 +482,6 @@ export default function SustainedSSSSScreen({
                 '🏆 Final SSSS score:',
                 finalScore
               );
-
-              /*
-               * ------------------------------------
-               * SAVE PROGRESS
-               * ------------------------------------
-               */
 
               try {
                 await saveCompletedExercise(
@@ -976,6 +949,51 @@ export default function SustainedSSSSScreen({
 
   /*
    * =================================================
+   * ADS LOADING
+   * =================================================
+   */
+
+  if (
+    loadingParams ||
+    !params ||
+    !tier
+  ) {
+    return (
+      <View style={styles.centerScreen}>
+        <View
+          style={styles.largeIconCircle}
+        >
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text
+          style={styles.processingTitle}
+        >
+          Preparing Your Exercise
+        </Text>
+
+        <Text
+          style={styles.processingSubtitle}
+        >
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
+   /*
+   * =================================================
    * RESULT CALCULATIONS
    * =================================================
    */
@@ -1019,50 +1037,6 @@ export default function SustainedSSSSScreen({
       item => item.score.passed
     ).length;
 
-  /*
-   * =================================================
-   * ADS LOADING
-   * =================================================
-   */
-
-  if (
-    loadingParams ||
-    !params ||
-    !tier
-  ) {
-    return (
-      <View style={styles.centerScreen}>
-        <View
-          style={styles.largeIconCircle}
-        >
-          <Ionicons
-            name="options-outline"
-            size={44}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.processingTitle}
-        >
-          Preparing Your Exercise
-        </Text>
-
-        <Text
-          style={styles.processingSubtitle}
-        >
-          Adjusting the exercise to your
-          current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-      </View>
-    );
-  }
 
   /*
    * =================================================
@@ -1318,14 +1292,22 @@ export default function SustainedSSSSScreen({
    */
 
   if (phase === 'processing') {
+
+    const isFinalRep =
+      currentRep >= params.repetitions;
+
     return (
       <ExerciseProcessingScreen
         icon="analytics-outline"
-        title="Analyzing Your SSSS"
+        title={
+          isFinalRep
+            ? 'Analyzing Your Results'
+            : 'Analyzing Your Exhale'
+        }
         message={
-          currentRep < params.repetitions
-            ? `Checking duration and consistency. Preparing repetition ${currentRep + 1} of ${params.repetitions}.`
-            : 'Checking duration and consistency...'
+          isFinalRep
+            ? 'Calculating your overall breath control score'
+            : `Processing repetition ${currentRep}`
         }
       />
     );
@@ -1486,6 +1468,7 @@ export default function SustainedSSSSScreen({
                 : averageScore >= 50
                   ? 'Keep practicing. Try to maintain a smoother and more consistent SSSS sound.'
                   : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous SSSS sound.'}
+          
           </Text>
         </View>
       </View>

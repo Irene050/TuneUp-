@@ -1,6 +1,6 @@
 import {
-    filterByClarity,
-    trackPitchOverTime,
+  filterByClarity,
+  trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
 export interface MelodicPatternMeasurement {
@@ -12,7 +12,7 @@ export function measureMelodicPatternMatching(
   noteSegments: Float32Array[],
   sampleRate: number,
   segmentStartTimes: number[],
-  minClarity = 0.7
+  minClarity = 0.7,
 ): MelodicPatternMeasurement {
   const detectedFreqs: number[] = [];
   const noteTimestamps: number[] = [];
@@ -22,40 +22,36 @@ export function measureMelodicPatternMatching(
       trackPitchOverTime(
         segment,
         30,
-        sampleRate
+        sampleRate,
       ),
-      minClarity
+      minClarity,
     ).filter(
-      (frame) =>
+      frame =>
         Number.isFinite(frame.frequency) &&
-        frame.frequency > 0
+        frame.frequency > 0,
     );
 
     if (frames.length === 0) {
       detectedFreqs.push(0);
       noteTimestamps.push(
-        segmentStartTimes[index] ?? 0
+        segmentStartTimes[index] ?? 0,
       );
       return;
     }
 
     const averageFrequency =
       frames.reduce(
-        (sum, frame) =>
-          sum + frame.frequency,
-        0
+        (sum, frame) => sum + frame.frequency,
+        0,
       ) / frames.length;
 
-    detectedFreqs.push(
-      averageFrequency
-    );
+    detectedFreqs.push(averageFrequency);
 
-    const firstVoicedFrame =
-      frames[0];
+    const firstVoicedFrame = frames[0];
 
     noteTimestamps.push(
       (segmentStartTimes[index] ?? 0) +
-        firstVoicedFrame.timestamp
+        firstVoicedFrame.timestamp,
     );
   });
 

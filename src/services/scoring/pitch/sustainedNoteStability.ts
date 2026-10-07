@@ -26,8 +26,7 @@ export function scoreSustainedNoteStability(
       0,
       Math.min(
         100,
-        100 -
-          stabilityRatio * 100,
+        100 - stabilityRatio * 100,
       ),
     );
 

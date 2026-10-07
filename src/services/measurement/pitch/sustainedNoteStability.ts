@@ -1,5 +1,3 @@
-// src/services/measurement/pitch/sustainedNoteStability.ts
-
 import {
   filterByClarity,
   trackPitchOverTime,
@@ -8,7 +6,6 @@ import {
 export interface SustainedNoteStabilityMeasurement {
   stabilityCents: number;
   durationSec: number;
-  averagePitchHz: number;
 }
 
 function median(values: number[]): number {
@@ -60,7 +57,6 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
-      averagePitchHz: 0,
     };
   }
 
@@ -68,10 +64,7 @@ export function measureSustainedNoteStability(
     frame => frame.frequency,
   );
 
-  // ----------------------------------------------------------
-  // 1. Find the central pitch.
-  // ----------------------------------------------------------
-
+  // Find the central pitch.
   const medianFrequency = median(frequencies);
 
   if (
@@ -81,19 +74,10 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
-      averagePitchHz: 0,
     };
   }
 
-  // ----------------------------------------------------------
-  // 2. Remove obvious pitch-detection outliers.
-  //
-  // A sustained note should remain reasonably close to its
-  // central pitch. This removes octave jumps and occasional
-  // erroneous pitch detections without affecting legitimate
-  // small variations in the singer's voice.
-  // ----------------------------------------------------------
-
+  // Remove obvious pitch-detection outliers.
   const stableFrequencies = frequencies.filter(
     frequency => {
       const relativeDeviation =
@@ -108,18 +92,11 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
-      averagePitchHz: medianFrequency,
     };
   }
 
-  // ----------------------------------------------------------
-  // 3. Ignore the outer portions of the performance.
-  //
-  // The beginning and ending of a sustained note commonly
-  // contain attack/release pitch movement. Stability should
-  // primarily evaluate the sustained portion.
-  // ----------------------------------------------------------
-
+  // Use the central portion of the remaining pitch values
+  // to reduce the influence of extreme pitch detections.
   const sortedStable = [...stableFrequencies].sort(
     (a, b) => a - b,
   );
@@ -136,19 +113,13 @@ export function measureSustainedNoteStability(
         )
       : sortedStable;
 
-  // ----------------------------------------------------------
-  // 4. Use the median of the remaining pitch values as the
-  // reference pitch.
-  // ----------------------------------------------------------
-
+  // Use the median of the remaining pitch values
+  // as the reference pitch.
   const referenceFrequency = median(
     trimmedFrequencies,
   );
 
-  // ----------------------------------------------------------
-  // 5. Calculate average absolute pitch deviation in cents.
-  // ----------------------------------------------------------
-
+  // Calculate mean absolute pitch deviation in cents.
   const centsDeviations = trimmedFrequencies.map(
     frequency =>
       Math.abs(
@@ -165,21 +136,10 @@ export function measureSustainedNoteStability(
       0,
     ) / centsDeviations.length;
 
-  const averagePitchHz =
-    trimmedFrequencies.reduce(
-      (sum, frequency) => sum + frequency,
-      0,
-    ) / trimmedFrequencies.length;
-
   return {
     stabilityCents: Number.isFinite(stabilityCents)
       ? stabilityCents
       : 1000,
-
     durationSec,
-
-    averagePitchHz: Number.isFinite(averagePitchHz)
-      ? averagePitchHz
-      : referenceFrequency,
   };
 }

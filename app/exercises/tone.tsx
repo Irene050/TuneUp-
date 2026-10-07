@@ -2,7 +2,7 @@
 
 import { useLocalSearchParams } from 'expo-router';
 
-import ResonanceStabilizationTaskScreen from '../../src/screens/exercises/Tone/ResonanceStabilizationTaskScreen';
+import FrequencyZoneStabilityScreen from '../../src/screens/exercises/Tone/FrequencyZoneStabilityScreen';
 import SteadyToneHoldingScreen from '../../src/screens/exercises/Tone/SteadyToneHoldingScreen';
 import ToneConsistencyExerciseScreen from '../../src/screens/exercises/Tone/ToneConsistencyExerciseScreen';
 import ToneExercisesScreen from '../../src/screens/exercises/Tone/ToneExercisesScreen';
@@ -31,8 +31,8 @@ case 'vowelConsistencyExercise':
 case 'waveformSmoothnessDrill':
   return <WaveformSmoothnessDrillScreen />;
 
-case 'resonanceStabilizationTask':
-  return <ResonanceStabilizationTaskScreen />;
+case 'frequencyZoneStability':
+  return <FrequencyZoneStabilityScreen />;
 
 case 'toneConsistencyExercise':
   return <ToneConsistencyExerciseScreen />;

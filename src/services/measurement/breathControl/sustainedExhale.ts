@@ -12,10 +12,18 @@ export function measureSustainedExhale(
   threshold: number,
   sampleRate: number
 ): SustainedExhaleMeasurement {
-  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(samples, threshold, sampleRate);
+  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(
+    samples,
+    threshold,
+    sampleRate
+  );
 
   if (durationSeconds === 0) {
-    return { actualDurationSec: 0, consistencyPct: 0, detected: false };
+    return {
+      actualDurationSec: 0,
+      consistencyPct: 0,
+      detected: false,
+    };
   }
 
   const exhaleSegment = samples.subarray(onsetIndex, offsetIndex);

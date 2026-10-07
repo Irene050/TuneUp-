@@ -1,4 +1,4 @@
-// src/screens/exercises/Tone/ResonanceStabilizationTaskScreen.tsx
+// src/screens/exercises/Tone/FrequencyZoneStabilityScreen.tsx
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
@@ -21,13 +21,8 @@ import {
 } from 'react-native';
 
 import {
-  classifyResonanceBand,
-  ResonanceBand,
-} from '@/utils/dsp/spectral';
-
-import {
-  RESONANCE_STABILIZATION_PARAMS,
-  type ResonanceStabilizationParams,
+  FREQUENCY_ZONE_STABILITY_PARAMS,
+  type FrequencyZoneStabilityParams,
   type Tier,
 } from '@/constants/exercises/tone';
 
@@ -37,14 +32,8 @@ import {
 } from '@/hooks/useAudioRecorder';
 
 import {
-  measureResonanceStabilization,
-  ResonanceStabilizationMeasurement,
-} from '@/services/measurement/tone/resonanceStabilizationTask';
-
-import {
-  ResonanceStabilizationScoreResult,
-  scoreResonanceStabilizationTask,
-} from '@/services/scoring/tone/resonanceStabilizationTask';
+  generateFrequencyZoneStabilityParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
 import {
   saveCompletedExercise,
@@ -60,12 +49,23 @@ import {
 } from '@/services/assessment/assessmentRepository';
 
 import {
-  generateResonanceStabilizationParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
-import {
   computeFFTMagnitudes,
 } from '@/utils/dsp/fft';
+
+import {
+  classifyFrequencyZone,
+  type FrequencyZone,
+} from '@/utils/dsp/spectral';
+
+import {
+  measureFrequencyZoneStability,
+  type FrequencyZoneStabilityMeasurement,
+} from '@/services/measurement/tone/frequencyZoneStability';
+
+import {
+  scoreFrequencyZoneStability,
+  type FrequencyZoneStabilityScoreResult,
+} from '@/services/scoring/tone/frequencyZoneStability';
 
 import { auth } from '@/services/firebase/config';
 
@@ -75,6 +75,7 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
+const BORDER = '#F2DDE5';
 
 const COUNTDOWN_SECONDS = 3;
 const REST_SECONDS = 2;
@@ -92,26 +93,25 @@ type Phase =
   | 'results';
 
 interface RepetitionResult {
-  measurement: ResonanceStabilizationMeasurement;
-  score: ResonanceStabilizationScoreResult;
-  targetBand: ResonanceBand;
-  detectedBand: ResonanceBand | null;
+  measurement: FrequencyZoneStabilityMeasurement;
+  score: FrequencyZoneStabilityScoreResult;
+  detectedZone: FrequencyZone | null;
 }
 
 function clamp(
   value: number,
   min: number,
-  max: number
+  max: number,
 ): number {
   return Math.max(
     min,
-    Math.min(max, value)
+    Math.min(max, value),
   );
 }
 
 function formatNumber(
   value: number,
-  decimals = 1
+  decimals = 1,
 ): string {
   if (!Number.isFinite(value)) {
     return '--';
@@ -120,102 +120,48 @@ function formatNumber(
   return value.toFixed(decimals);
 }
 
-function bandLabel(
-  band: ResonanceBand
+function zoneLabel(
+  zone: FrequencyZone,
 ): string {
-  switch (band) {
-    case 'chest':
-      return 'Chest';
-    case 'head':
-      return 'Head';
-    case 'mixed':
-      return 'Mixed';
-  }
+  return String(zone)
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase(),
+    );
 }
 
-function bandIcon(
-  band: ResonanceBand
-): keyof typeof Ionicons.glyphMap {
-  switch (band) {
-    case 'chest':
-      return 'body-outline';
-    case 'head':
-      return 'cloud-outline';
-    case 'mixed':
-      return 'swap-vertical-outline';
-  }
-}
-
-function bandDescription(
-  band: ResonanceBand
-): string {
-  switch (band) {
-    case 'chest':
-      return (
-        'Aim for a grounded, fuller vocal sensation. ' +
-        'Stay relaxed and avoid pressing the sound.'
-      );
-
-    case 'head':
-      return (
-        'Aim for a lighter, higher vocal sensation. ' +
-        'Keep the sound easy instead of forcing it upward.'
-      );
-
-    case 'mixed':
-      return (
-        'Aim for a balanced blend between heavier and lighter resonance. ' +
-        'Keep the transition smooth rather than pushing either side.'
-      );
-  }
-}
-
-function getTargetForRepetition(
-  allowed: ResonanceBand[],
-  repetitionIndex: number
-): ResonanceBand {
-  if (allowed.length === 0) {
-    return 'chest';
-  }
-
-  return allowed[
-    repetitionIndex % allowed.length
-  ];
-}
-
-export default function ResonanceStabilizationTaskScreen({
+export default function FrequencyZoneStabilityScreen({
   tier,
 }: Props) {
   const [currentTier, setCurrentTier] =
     useState<Tier>(
-      tier ?? 'beginner'
+      tier ?? 'beginner',
     );
 
   const [params, setParams] =
-    useState<ResonanceStabilizationParams>(
-      RESONANCE_STABILIZATION_PARAMS[
+    useState<FrequencyZoneStabilityParams>(
+      FREQUENCY_ZONE_STABILITY_PARAMS[
         tier ?? 'beginner'
-      ]
+      ],
     );
 
   const [loadingParams, setLoadingParams] =
     useState(true);
 
-  const allowedBands =
-    params.resonanceTypes;
-
   const [phase, setPhase] =
     useState<Phase>(
-      'instructions'
+      'instructions',
     );
 
   const [countdown, setCountdown] =
     useState(
-      COUNTDOWN_SECONDS
+      COUNTDOWN_SECONDS,
     );
 
   const [restCountdown, setRestCountdown] =
-    useState(REST_SECONDS);
+    useState(
+      REST_SECONDS,
+    );
 
   const [repetition, setRepetition] =
     useState(0);
@@ -225,22 +171,17 @@ export default function ResonanceStabilizationTaskScreen({
 
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(
-      null
+      null,
     );
 
-  const [liveBand, setLiveBand] =
-    useState<ResonanceBand | null>(
-      null
-    );
-
-  const [selectedBand, setSelectedBand] =
-    useState<ResonanceBand>(
-      allowedBands[0] ?? 'chest'
+  const [liveZone, setLiveZone] =
+    useState<FrequencyZone | null>(
+      null,
     );
 
   const [repetitionResults, setRepetitionResults] =
     useState<RepetitionResult[]>(
-      []
+      [],
     );
 
   const [result, setResult] =
@@ -285,14 +226,9 @@ export default function ResonanceStabilizationTaskScreen({
   const repetitionRef =
     useRef(0);
 
-  const selectedBandRef =
-    useRef<ResonanceBand>(
-      allowedBands[0] ?? 'chest'
-    );
-
   const resultsRef =
     useRef<RepetitionResult[]>(
-      []
+      [],
     );
 
   useEffect(() => {
@@ -301,31 +237,31 @@ export default function ResonanceStabilizationTaskScreen({
     return () => {
       mountedRef.current = false;
 
-      if (
-        countdownTimerRef.current
-      ) {
+      if (countdownTimerRef.current) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
-        countdownTimerRef.current = null;
+
+        countdownTimerRef.current =
+          null;
       }
 
-      if (
-        restTimerRef.current
-      ) {
+      if (restTimerRef.current) {
         clearInterval(
-          restTimerRef.current
+          restTimerRef.current,
         );
-        restTimerRef.current = null;
+
+        restTimerRef.current =
+          null;
       }
 
-      if (
-        recordingTimerRef.current
-      ) {
+      if (recordingTimerRef.current) {
         clearInterval(
-          recordingTimerRef.current
+          recordingTimerRef.current,
         );
-        recordingTimerRef.current = null;
+
+        recordingTimerRef.current =
+          null;
       }
 
       recordingRef.current = false;
@@ -346,13 +282,13 @@ export default function ResonanceStabilizationTaskScreen({
             tier ?? 'beginner';
 
           setCurrentTier(
-            fallbackTier
+            fallbackTier,
           );
 
           setParams(
-            RESONANCE_STABILIZATION_PARAMS[
+            FREQUENCY_ZONE_STABILITY_PARAMS[
               fallbackTier
-            ]
+            ],
           );
 
           setLoadingParams(false);
@@ -367,7 +303,7 @@ export default function ResonanceStabilizationTaskScreen({
         const componentProgress =
           await fetchComponentProgress(
             user.uid,
-            'tone'
+            'tone',
           );
 
         const resolvedTier =
@@ -378,43 +314,41 @@ export default function ResonanceStabilizationTaskScreen({
         const records =
           await fetchExerciseRecords(
             user.uid,
-            'tone'
+            'tone',
           );
 
         const currentTierRecords =
           records
             .filter(
-              record =>
+              (record) =>
                 record.tier ===
                   resolvedTier &&
                 record.templateId ===
-                  'resonanceStabilizationTask'
+                  'frequencyZoneStability',
             )
             .sort(
               (a, b) =>
                 a.timestamp -
-                b.timestamp
+                b.timestamp,
             );
 
         let recentScores =
           currentTierRecords
             .slice(-5)
             .map(
-              record =>
-                record.scorePct
+              (record) =>
+                record.scorePct,
             );
 
-        if (
-          recentScores.length === 0
-        ) {
+        if (recentScores.length === 0) {
           const assessment =
             await getLatestAssessment();
 
           const toneAssessment =
             assessment?.scores.find(
-              score =>
+              (score) =>
                 score.componentId ===
-                'tone'
+                'tone',
             );
 
           if (toneAssessment) {
@@ -425,24 +359,24 @@ export default function ResonanceStabilizationTaskScreen({
         }
 
         const generatedParams =
-          generateResonanceStabilizationParams({
+          generateFrequencyZoneStabilityParams({
             tier: resolvedTier,
             recentScores,
           });
 
         if (!cancelled) {
           setCurrentTier(
-            resolvedTier
+            resolvedTier,
           );
 
           setParams(
-            generatedParams
+            generatedParams,
           );
         }
       } catch (error) {
         console.error(
-          '❌ FAILED TO LOAD RESONANCE ADS PARAMS:',
-          error
+          '❌ FAILED TO LOAD FREQUENCY ZONE STABILITY ADS PARAMS:',
+          error,
         );
 
         if (!cancelled) {
@@ -450,13 +384,13 @@ export default function ResonanceStabilizationTaskScreen({
             tier ?? 'beginner';
 
           setCurrentTier(
-            fallbackTier
+            fallbackTier,
           );
 
           setParams(
-            RESONANCE_STABILIZATION_PARAMS[
+            FREQUENCY_ZONE_STABILITY_PARAMS[
               fallbackTier
-            ]
+            ],
           );
         }
       } finally {
@@ -473,56 +407,33 @@ export default function ResonanceStabilizationTaskScreen({
     };
   }, [tier]);
 
-  useEffect(() => {
-    selectedBandRef.current =
-      selectedBand;
-  }, [selectedBand]);
-
-  useEffect(() => {
-    const firstAllowedBand =
-      allowedBands[0] ?? 'chest';
-
-    if (
-      !allowedBands.includes(
-        selectedBandRef.current
-      )
-    ) {
-      selectedBandRef.current =
-        firstAllowedBand;
-
-      setSelectedBand(
-        firstAllowedBand
-      );
-    }
-  }, [allowedBands]);
-
   const clearTimers =
     useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
+      if (countdownTimerRef.current) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
-        countdownTimerRef.current = null;
+
+        countdownTimerRef.current =
+          null;
       }
 
-      if (
-        restTimerRef.current
-      ) {
+      if (restTimerRef.current) {
         clearInterval(
-          restTimerRef.current
+          restTimerRef.current,
         );
-        restTimerRef.current = null;
+
+        restTimerRef.current =
+          null;
       }
 
-      if (
-        recordingTimerRef.current
-      ) {
+      if (recordingTimerRef.current) {
         clearInterval(
-          recordingTimerRef.current
+          recordingTimerRef.current,
         );
-        recordingTimerRef.current = null;
+
+        recordingTimerRef.current =
+          null;
       }
     }, []);
 
@@ -541,19 +452,19 @@ export default function ResonanceStabilizationTaskScreen({
             ? frame.pitch
             : 0;
 
-        setLiveBand(
+        setLiveZone(
           pitch > 0
-            ? classifyResonanceBand(pitch)
-            : null
+            ? classifyFrequencyZone(pitch)
+            : null,
         );
       },
-      []
+      [],
     );
 
   const finishExercise =
     useCallback(
       async (
-        completedResults: RepetitionResult[]
+        completedResults: RepetitionResult[],
       ) => {
         if (
           completedResults.length === 0 ||
@@ -566,17 +477,18 @@ export default function ResonanceStabilizationTaskScreen({
           completedResults.reduce(
             (
               sum,
-              item
+              item,
             ) =>
-              sum + item.score.score,
-            0
+              sum +
+              item.score.score,
+            0,
           ) /
           completedResults.length;
 
         const allPassed =
           completedResults.every(
             (item) =>
-              item.score.passed
+              item.score.passed,
           );
 
         const roundedScore =
@@ -584,42 +496,36 @@ export default function ResonanceStabilizationTaskScreen({
             clamp(
               totalScore,
               0,
-              100
-            )
+              100,
+            ),
           );
 
         setResult({
-          score:
-            roundedScore,
-          passed:
-            allPassed,
+          score: roundedScore,
+          passed: allPassed,
         });
 
         await saveCompletedExercise(
           'tone',
-          'resonanceStabilizationTask',
+          'frequencyZoneStability',
           currentTier,
-          roundedScore
+          roundedScore,
         );
 
-        if (
-          !mountedRef.current
-        ) {
+        if (!mountedRef.current) {
           return;
         }
 
-        setPhase(
-          'results'
-        );
+        setPhase('results');
       },
-      [currentTier]
+      [currentTier],
     );
 
   const handleRecordingStop =
     useCallback(
       async (
         samples: Float32Array,
-        sampleRate: number
+        sampleRate: number,
       ) => {
         if (
           !mountedRef.current ||
@@ -631,90 +537,77 @@ export default function ResonanceStabilizationTaskScreen({
         processingRef.current = true;
         recordingRef.current = false;
 
-        if (
-          recordingTimerRef.current
-        ) {
+        if (recordingTimerRef.current) {
           clearInterval(
-            recordingTimerRef.current
+            recordingTimerRef.current,
           );
-          recordingTimerRef.current = null;
+
+          recordingTimerRef.current =
+            null;
         }
 
-        setPhase(
-          'processing'
-        );
+        setPhase('processing');
 
         try {
-          if (
-            samples.length === 0
-          ) {
+          if (samples.length === 0) {
             throw new Error(
-              'No audio samples were recorded.'
+              'No audio samples were recorded.',
             );
           }
 
           const measurement =
-            measureResonanceStabilization(
+            measureFrequencyZoneStability(
               samples,
               sampleRate,
-              computeFFTMagnitudes
+              computeFFTMagnitudes,
             );
 
           if (
-            measurement.bandSequence.length ===
+            measurement.zoneSequence.length ===
             0
           ) {
             throw new Error(
-              'No usable resonance frames were detected.'
+              'No usable frequency-zone frames were detected.',
             );
           }
 
           const scored =
-            scoreResonanceStabilizationTask(
+            scoreFrequencyZoneStability(
               measurement,
-              params
+              params,
             );
 
-          const detectedBands =
-            measurement.bandSequence;
+          const detectedZones =
+            measurement.zoneSequence;
 
-          const detectedBand =
-            detectedBands.length > 0
-              ? detectedBands[
+          const detectedZone =
+            detectedZones.length > 0
+              ? detectedZones[
                   Math.floor(
-                    detectedBands.length /
-                    2
+                    detectedZones.length / 2,
                   )
                 ]
               : null;
 
-          const currentTarget =
-            selectedBandRef.current;
-
-          const nextResults =
-            [
-              ...resultsRef.current,
-              {
-                measurement,
-                score: scored,
-                targetBand:
-                  currentTarget,
-                detectedBand,
-              },
-            ];
+          const nextResults = [
+            ...resultsRef.current,
+            {
+              measurement,
+              score: scored,
+              detectedZone,
+            },
+          ];
 
           resultsRef.current =
             nextResults;
 
           setRepetitionResults(
-            nextResults
+            nextResults,
           );
 
           processingRef.current = false;
 
-          if (
-            !mountedRef.current
-          ) {
+          if (!mountedRef.current) {
             return;
           }
 
@@ -724,20 +617,19 @@ export default function ResonanceStabilizationTaskScreen({
 
           if (isLast) {
             await finishExercise(
-              nextResults
+              nextResults,
             );
+
             return;
           }
 
-          setPhase(
-            'rest'
-          );
+          setPhase('rest');
 
           let restValue =
             REST_SECONDS;
 
           setRestCountdown(
-            restValue
+            restValue,
           );
 
           restTimerRef.current =
@@ -745,99 +637,72 @@ export default function ResonanceStabilizationTaskScreen({
               () => {
                 restValue -= 1;
 
-                if (
-                  restValue <= 0
-                ) {
-                  if (
-                    restTimerRef.current
-                  ) {
+                if (restValue <= 0) {
+                  if (restTimerRef.current) {
                     clearInterval(
-                      restTimerRef.current
+                      restTimerRef.current,
                     );
+
                     restTimerRef.current =
                       null;
                   }
 
                   const nextIndex =
-                    repetitionRef.current;
-
-                  const upcomingTarget =
-                    getTargetForRepetition(
-                      allowedBands,
-                      nextIndex
-                    );
-
-                  selectedBandRef.current =
-                    upcomingTarget;
-
-                  if (
-                    mountedRef.current
-                  ) {
-                    setSelectedBand(
-                      upcomingTarget
-                    );
-                  }
+                    repetitionRef.current +
+                    1;
 
                   setRepetition(
-                    nextIndex + 1
+                    nextIndex,
                   );
 
                   repetitionRef.current =
-                    nextIndex + 1;
+                    nextIndex;
 
                   setCountdown(
-                    COUNTDOWN_SECONDS
+                    COUNTDOWN_SECONDS,
                   );
 
-                  setPhase(
-                    'countdown'
-                  );
+                  setPhase('countdown');
 
                   return;
                 }
 
-                if (
-                  mountedRef.current
-                ) {
+                if (mountedRef.current) {
                   setRestCountdown(
-                    restValue
+                    restValue,
                   );
                 }
               },
-              1000
+              1000,
             );
         } catch (error) {
           console.error(
-            '❌ RESONANCE PROCESSING ERROR:',
-            error
+            '❌ FREQUENCY ZONE STABILITY PROCESSING ERROR:',
+            error,
           );
 
-          processingRef.current =
-            false;
+          processingRef.current = false;
 
-          if (
-            mountedRef.current
-          ) {
+          if (mountedRef.current) {
             setErrorMessage(
-              'We could not analyze your resonance recording. Please try again.'
+              'We could not analyze your frequency-zone recording. Please try again.',
             );
+
             setPhase(
-              'instructions'
+              'instructions',
             );
           }
         }
       },
       [
-        allowedBands,
         finishExercise,
         params,
-      ]
+      ],
     );
 
   const {
     startRecording,
     stopRecording,
-    isRecording,
   } =
     useAudioRecorder({
       onFrame:
@@ -858,20 +723,12 @@ export default function ResonanceStabilizationTaskScreen({
         }
 
         try {
-          setLiveFrame(
-            null
-          );
+          setLiveFrame(null);
+          setLiveZone(null);
 
-          setLiveBand(
-            null
-          );
+          elapsedRef.current = 0;
 
-          elapsedRef.current =
-            0;
-
-          setElapsedMs(
-            0
-          );
+          setElapsedMs(0);
 
           stopRequestedRef.current =
             false;
@@ -879,15 +736,11 @@ export default function ResonanceStabilizationTaskScreen({
           processingRef.current =
             false;
 
-          setPhase(
-            'recording'
-          );
+          setPhase('recording');
 
           await startRecording();
 
-          if (
-            !mountedRef.current
-          ) {
+          if (!mountedRef.current) {
             return;
           }
 
@@ -912,7 +765,7 @@ export default function ResonanceStabilizationTaskScreen({
                   100;
 
                 setElapsedMs(
-                  elapsedRef.current
+                  elapsedRef.current,
                 );
 
                 if (
@@ -923,8 +776,9 @@ export default function ResonanceStabilizationTaskScreen({
                     recordingTimerRef.current
                   ) {
                     clearInterval(
-                      recordingTimerRef.current
+                      recordingTimerRef.current,
                     );
+
                     recordingTimerRef.current =
                       null;
                   }
@@ -939,12 +793,10 @@ export default function ResonanceStabilizationTaskScreen({
                     true;
 
                   stopRecording().catch(
-                    (
-                      error
-                    ) => {
+                    (error) => {
                       console.error(
-                        '❌ FAILED TO STOP RESONANCE RECORDING:',
-                        error
+                        '❌ FAILED TO STOP FREQUENCY ZONE STABILITY RECORDING:',
+                        error,
                       );
 
                       recordingRef.current =
@@ -960,22 +812,23 @@ export default function ResonanceStabilizationTaskScreen({
                         mountedRef.current
                       ) {
                         setErrorMessage(
-                          'We could not finish the recording. Please try again.'
+                          'We could not finish the recording. Please try again.',
                         );
+
                         setPhase(
-                          'instructions'
+                          'instructions',
                         );
                       }
-                    }
+                    },
                   );
                 }
               },
-              100
+              100,
             );
         } catch (error) {
           console.error(
-            '❌ FAILED TO START RESONANCE RECORDING:',
-            error
+            '❌ FAILED TO START FREQUENCY ZONE STABILITY RECORDING:',
+            error,
           );
 
           recordingRef.current =
@@ -987,16 +840,14 @@ export default function ResonanceStabilizationTaskScreen({
           stopRequestedRef.current =
             false;
 
-          if (
-            mountedRef.current
-          ) {
+          if (mountedRef.current) {
             setPhase(
-              'instructions'
+              'instructions',
             );
 
             Alert.alert(
               'Microphone Error',
-              'Unable to start the microphone. Please check your microphone permission and try again.'
+              'Unable to start the microphone. Please check your microphone permission and try again.',
             );
           }
         }
@@ -1005,7 +856,7 @@ export default function ResonanceStabilizationTaskScreen({
         params.durationSec,
         startRecording,
         stopRecording,
-      ]
+      ],
     );
 
   const startCountdown =
@@ -1023,32 +874,20 @@ export default function ResonanceStabilizationTaskScreen({
         clearTimers();
 
         resultsRef.current = [];
-        setRepetitionResults(
-          []
-        );
 
-        setResult(
-          null
-        );
+        setRepetitionResults([]);
 
-        setErrorMessage(
-          null
-        );
+        setResult(null);
 
-        setLiveFrame(
-          null
-        );
+        setErrorMessage(null);
 
-        setLiveBand(
-          null
-        );
+        setLiveFrame(null);
 
-        elapsedRef.current =
-          0;
+        setLiveZone(null);
 
-        setElapsedMs(
-          0
-        );
+        elapsedRef.current = 0;
+
+        setElapsedMs(0);
 
         recordingRef.current =
           false;
@@ -1059,50 +898,28 @@ export default function ResonanceStabilizationTaskScreen({
         stopRequestedRef.current =
           false;
 
-        const firstTarget =
-          getTargetForRepetition(
-            allowedBands,
-            0
-          );
+        repetitionRef.current = 1;
 
-        selectedBandRef.current =
-          firstTarget;
-
-        setSelectedBand(
-          firstTarget
-        );
-
-        repetitionRef.current =
-          1;
-
-        setRepetition(
-          1
-        );
+        setRepetition(1);
 
         let value =
           COUNTDOWN_SECONDS;
 
-        setCountdown(
-          value
-        );
+        setCountdown(value);
 
-        setPhase(
-          'countdown'
-        );
+        setPhase('countdown');
 
         countdownTimerRef.current =
           setInterval(
             () => {
               value -= 1;
 
-              if (
-                value <= 0
-              ) {
+              if (value <= 0) {
                 if (
                   countdownTimerRef.current
                 ) {
                   clearInterval(
-                    countdownTimerRef.current
+                    countdownTimerRef.current,
                   );
 
                   countdownTimerRef.current =
@@ -1114,23 +931,18 @@ export default function ResonanceStabilizationTaskScreen({
                 return;
               }
 
-              if (
-                mountedRef.current
-              ) {
-                setCountdown(
-                  value
-                );
+              if (mountedRef.current) {
+                setCountdown(value);
               }
             },
-            1000
+            1000,
           );
       },
       [
-        allowedBands,
         beginRecording,
         clearTimers,
         loadingParams,
-      ]
+      ],
     );
 
   const retry =
@@ -1140,32 +952,19 @@ export default function ResonanceStabilizationTaskScreen({
 
         resultsRef.current = [];
 
-        setRepetitionResults(
-          []
-        );
+        setRepetitionResults([]);
 
-        setResult(
-          null
-        );
+        setResult(null);
 
-        setLiveFrame(
-          null
-        );
+        setLiveFrame(null);
 
-        setLiveBand(
-          null
-        );
+        setLiveZone(null);
 
-        setElapsedMs(
-          0
-        );
+        setElapsedMs(0);
 
-        setRepetition(
-          0
-        );
+        setRepetition(0);
 
-        repetitionRef.current =
-          0;
+        repetitionRef.current = 0;
 
         recordingRef.current =
           false;
@@ -1176,28 +975,11 @@ export default function ResonanceStabilizationTaskScreen({
         stopRequestedRef.current =
           false;
 
-        setErrorMessage(
-          null
-        );
+        setErrorMessage(null);
 
-        const firstTarget =
-          getTargetForRepetition(
-            allowedBands,
-            0
-          );
-
-        selectedBandRef.current =
-          firstTarget;
-
-        setSelectedBand(
-          firstTarget
-        );
-
-        setPhase(
-          'instructions'
-        );
+        setPhase('instructions');
       },
-      [allowedBands, clearTimers]
+      [clearTimers],
     );
 
   const goBack =
@@ -1215,10 +997,10 @@ export default function ResonanceStabilizationTaskScreen({
           true;
 
         router.replace(
-          '/dashboard?tab=exercises'
+          '/dashboard?tab=exercises',
         );
       },
-      [clearTimers]
+      [clearTimers],
     );
 
   const recordingProgress =
@@ -1228,7 +1010,7 @@ export default function ResonanceStabilizationTaskScreen({
             1000 /
             params.durationSec,
           0,
-          1
+          1,
         )
       : 0;
 
@@ -1237,7 +1019,7 @@ export default function ResonanceStabilizationTaskScreen({
     liveFrame.pitch > 0
       ? formatNumber(
           liveFrame.pitch,
-          0
+          0,
         )
       : '--';
 
@@ -1247,18 +1029,17 @@ export default function ResonanceStabilizationTaskScreen({
           repetitionResults.reduce(
             (
               sum,
-              item
+              item,
             ) =>
-              sum + item.score.score,
-            0
+              sum +
+              item.score.score,
+            0,
           ) /
-          repetitionResults.length
+            repetitionResults.length,
         )
       : 0;
 
-  if (
-    loadingParams
-  ) {
+  if (loadingParams) {
     return (
       <View
         style={
@@ -1305,10 +1086,7 @@ export default function ResonanceStabilizationTaskScreen({
     );
   }
 
-  if (
-    phase ===
-    'instructions'
-  ) {
+  if (phase === 'instructions') {
     return (
       <View
         style={styles.screen}
@@ -1345,7 +1123,7 @@ export default function ResonanceStabilizationTaskScreen({
           <Text
             style={styles.title}
           >
-            Resonance Stabilization
+            Frequency Zone Stability
           </Text>
 
           <Text
@@ -1461,12 +1239,11 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.instruction
               }
             >
-              Resonance refers to where your
-              voice feels like it is vibrating
-              or being amplified. For this
-              exercise, choose one comfortable
-              resonance placement and keep the
-              sound stable while holding it.
+              Frequency-zone stability measures
+              how consistently the detected
+              dominant frequency remains within
+              the classified frequency zone while
+              you sustain your voice.
             </Text>
 
             <Text
@@ -1474,11 +1251,10 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.instruction
               }
             >
-              Do not force the voice into a
-              placement that feels strained.
-              The goal is controlled, repeatable
-              resonance rather than a louder or
-              higher sound.
+              Sustain a comfortable note and keep
+              your vocal setup steady. Avoid
+              intentionally shifting between
+              frequency zones during the hold.
             </Text>
 
             <Text
@@ -1490,16 +1266,14 @@ export default function ResonanceStabilizationTaskScreen({
               physical location of your vocal
               resonance. It uses dominant-frequency
               analysis as a microphone-based
-              resonance indicator.
+              frequency-zone indicator.
             </Text>
 
             <View
               style={styles.targetBox}
             >
               <Ionicons
-                name={bandIcon(
-                  selectedBand
-                )}
+                name="analytics-outline"
                 size={28}
                 color={BROWN}
               />
@@ -1514,7 +1288,7 @@ export default function ResonanceStabilizationTaskScreen({
                     styles.targetLabel
                   }
                 >
-                  Choose Your Target
+                  Exercise Focus
                 </Text>
 
                 <Text
@@ -1522,9 +1296,7 @@ export default function ResonanceStabilizationTaskScreen({
                     styles.targetValue
                   }
                 >
-                  {bandLabel(
-                    selectedBand
-                  )}
+                  Frequency Stability
                 </Text>
 
                 <Text
@@ -1532,81 +1304,12 @@ export default function ResonanceStabilizationTaskScreen({
                     styles.targetHint
                   }
                 >
-                  {
-                    bandDescription(
-                      selectedBand
-                    )
-                  }
+                  Maintain a stable classified
+                  frequency zone throughout the
+                  required hold.
                 </Text>
               </View>
             </View>
-
-            <View
-              style={
-                styles.bandSelector
-              }
-            >
-              {allowedBands.map(
-                (band) => {
-                  const active =
-                    selectedBand ===
-                    band;
-
-                  return (
-                    <Pressable
-                      key={band}
-                      style={[
-                        styles.bandOption,
-                        active &&
-                          styles.bandOptionActive,
-                      ]}
-                      onPress={() => {
-                        setSelectedBand(
-                          band
-                        );
-                        selectedBandRef.current =
-                          band;
-                      }}
-                    >
-                      <Ionicons
-                        name={bandIcon(
-                          band
-                        )}
-                        size={18}
-                        color={BROWN}
-                      />
-
-                      <Text
-                        style={[
-                          styles.bandOptionText,
-                          active &&
-                            styles.bandOptionTextActive,
-                        ]}
-                      >
-                        {bandLabel(
-                          band
-                        )}
-                      </Text>
-                    </Pressable>
-                  );
-                }
-              )}
-            </View>
-
-            <Text
-              style={
-                styles.helperText
-              }
-            >
-              Available targets at this
-              difficulty:{' '}
-              {allowedBands
-                .map(
-                  bandLabel
-                )
-                .join(', ')}
-              .
-            </Text>
           </View>
 
           <View
@@ -1622,9 +1325,9 @@ export default function ResonanceStabilizationTaskScreen({
               style={styles.tipText}
             >
               Keep your jaw, tongue, and neck
-              relaxed. Think about maintaining
-              the same vocal setup instead of
-              pushing the voice toward the target.
+              relaxed. The goal is a controlled,
+              repeatable vocal sound rather than
+              forcing a specific frequency zone.
             </Text>
           </View>
 
@@ -1765,10 +1468,7 @@ export default function ResonanceStabilizationTaskScreen({
     );
   }
 
-  if (
-    phase ===
-    'countdown'
-  ) {
+  if (phase === 'countdown') {
     return (
       <View
         style={
@@ -1781,9 +1481,7 @@ export default function ResonanceStabilizationTaskScreen({
           }
         >
           <Ionicons
-            name={bandIcon(
-              selectedBand
-            )}
+            name="swap-horizontal-outline"
             size={34}
             color={BROWN}
           />
@@ -1810,11 +1508,8 @@ export default function ResonanceStabilizationTaskScreen({
             styles.phaseSubtitle
           }
         >
-          Prepare your{' '}
-          {bandLabel(
-            selectedBand
-          ).toLowerCase()}{' '}
-          resonance
+          Prepare a comfortable,
+          steady vocal sound.
         </Text>
 
         <Text
@@ -1822,9 +1517,7 @@ export default function ResonanceStabilizationTaskScreen({
             styles.largeBand
           }
         >
-          {bandLabel(
-            selectedBand
-          )}
+          Stay Stable
         </Text>
 
         <Text
@@ -1840,10 +1533,7 @@ export default function ResonanceStabilizationTaskScreen({
     );
   }
 
-  if (
-    phase ===
-    'rest'
-  ) {
+  if (phase === 'rest') {
     return (
       <View
         style={
@@ -1883,7 +1573,7 @@ export default function ResonanceStabilizationTaskScreen({
             styles.phaseSubtitle
           }
         >
-          Prepare for the next resonance target
+          Prepare for the next repetition
         </Text>
 
         <Text
@@ -1891,23 +1581,13 @@ export default function ResonanceStabilizationTaskScreen({
             styles.largeBand
           }
         >
-          Next:{' '}
-          {bandLabel(
-            selectedBand
-          )}
+          Stay Consistent
         </Text>
       </View>
     );
   }
 
-  if (
-    phase ===
-    'recording'
-  ) {
-    const liveMatchesTarget =
-      liveBand ===
-      selectedBand;
-
+  if (phase === 'recording') {
     return (
       <View
         style={styles.screen}
@@ -1945,7 +1625,7 @@ export default function ResonanceStabilizationTaskScreen({
               styles.recordingSubtitle
             }
           >
-            Keep the same resonance placement
+            Keep your vocal sound steady
             throughout the hold.
           </Text>
 
@@ -1957,7 +1637,7 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.targetBandLabel
               }
             >
-              TARGET RESONANCE
+              EXERCISE FOCUS
             </Text>
 
             <View
@@ -1971,9 +1651,7 @@ export default function ResonanceStabilizationTaskScreen({
                 }
               >
                 <Ionicons
-                  name={bandIcon(
-                    selectedBand
-                  )}
+                  name="analytics-outline"
                   size={27}
                   color={BROWN}
                 />
@@ -1985,9 +1663,7 @@ export default function ResonanceStabilizationTaskScreen({
                     styles.targetBandValue
                   }
                 >
-                  {bandLabel(
-                    selectedBand
-                  )}
+                  Frequency Stability
                 </Text>
 
                 <Text
@@ -1995,9 +1671,8 @@ export default function ResonanceStabilizationTaskScreen({
                     styles.targetBandHint
                   }
                 >
-                  {bandDescription(
-                    selectedBand
-                  )}
+                  Maintain a consistent
+                  dominant-frequency zone.
                 </Text>
               </View>
             </View>
@@ -2057,7 +1732,7 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.liveLabel
               }
             >
-              LIVE RESONANCE INDICATOR
+              LIVE FREQUENCY INDICATOR
             </Text>
 
             <Text
@@ -2065,24 +1740,20 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.liveBandValue
               }
             >
-              {liveBand
-                ? bandLabel(
-                    liveBand
-                  )
+              {liveZone
+                ? zoneLabel(liveZone)
                 : '--'}
             </Text>
 
             <View
-              style={[
-                styles.liveMatchPill,
-                liveMatchesTarget &&
-                  styles.liveMatchPillActive,
-              ]}
+              style={
+                styles.liveMatchPill
+              }
             >
               <Ionicons
                 name={
-                  liveMatchesTarget
-                    ? 'checkmark-circle-outline'
+                  liveZone
+                    ? 'analytics-outline'
                     : 'information-circle-outline'
                 }
                 size={17}
@@ -2094,13 +1765,11 @@ export default function ResonanceStabilizationTaskScreen({
                   styles.liveMatchText
                 }
               >
-                {liveMatchesTarget
-                  ? 'Current indicator matches your target'
-                  : liveBand
-                    ? `Current indicator: ${bandLabel(
-                        liveBand
-                      )}`
-                    : 'Waiting for a clear vocal signal'}
+                {liveZone
+                  ? `Current frequency indicator: ${zoneLabel(
+                      liveZone,
+                    )}`
+                  : 'Waiting for a clear vocal signal'}
               </Text>
             </View>
 
@@ -2195,8 +1864,8 @@ export default function ResonanceStabilizationTaskScreen({
               }
             >
               Keep the jaw, tongue, and neck
-              relaxed. Do not push the sound just
-              to make the indicator change.
+              relaxed. Do not push or deliberately
+              shift the voice during the hold.
             </Text>
           </View>
         </ScrollView>
@@ -2204,10 +1873,7 @@ export default function ResonanceStabilizationTaskScreen({
     );
   }
 
-  if (
-    phase ===
-    'processing'
-  ) {
+  if (phase === 'processing') {
     return (
       <View
         style={
@@ -2231,7 +1897,7 @@ export default function ResonanceStabilizationTaskScreen({
             styles.phaseTitle
           }
         >
-          Analyzing Your Resonance
+          Analyzing Your Frequency
         </Text>
 
         <Text
@@ -2240,7 +1906,7 @@ export default function ResonanceStabilizationTaskScreen({
           }
         >
           Tracking dominant frequency changes
-          and resonance-band stability.
+          and frequency-zone stability.
         </Text>
 
         <ActivityIndicator
@@ -2306,7 +1972,7 @@ export default function ResonanceStabilizationTaskScreen({
               styles.resultSubtitle
             }
           >
-            Resonance Stabilization Result
+            Frequency Zone Stability Result
           </Text>
 
           <View
@@ -2336,8 +2002,8 @@ export default function ResonanceStabilizationTaskScreen({
               }
             >
               {result.passed
-                ? 'Your resonance indicator stayed stable enough and the hold duration met the required target.'
-                : 'Focus on maintaining one comfortable resonance setup for the full hold.'}
+                ? 'Your frequency-zone stability met the required threshold and the hold duration met the target.'
+                : 'Focus on maintaining a stable frequency zone for the full required hold.'}
             </Text>
           </View>
 
@@ -2357,10 +2023,10 @@ export default function ResonanceStabilizationTaskScreen({
             {repetitionResults.map(
               (
                 item,
-                index
+                index,
               ) => (
                 <View
-                  key={`${index}-${item.targetBand}`}
+                  key={`${index}-${item.detectedZone ?? 'none'}`}
                   style={
                     styles.repResultRow
                   }
@@ -2389,10 +2055,12 @@ export default function ResonanceStabilizationTaskScreen({
                         styles.repResultTarget
                       }
                     >
-                      Target:{' '}
-                      {bandLabel(
-                        item.targetBand
-                      )}
+                      Detected:{' '}
+                      {item.detectedZone
+                        ? zoneLabel(
+                            item.detectedZone,
+                          )
+                        : '--'}
                     </Text>
 
                     <Text
@@ -2400,12 +2068,13 @@ export default function ResonanceStabilizationTaskScreen({
                         styles.repResultDetected
                       }
                     >
-                      Detected indicator:{' '}
-                      {item.detectedBand
-                        ? bandLabel(
-                            item.detectedBand
-                          )
-                        : '--'}
+                      Stability:{' '}
+                      {formatNumber(
+                        item.measurement
+                          .stabilityPct,
+                        0,
+                      )}
+                      %
                     </Text>
                   </View>
 
@@ -2417,7 +2086,7 @@ export default function ResonanceStabilizationTaskScreen({
                     {item.score.score}%
                   </Text>
                 </View>
-              )
+              ),
             )}
           </View>
 
@@ -2444,7 +2113,7 @@ export default function ResonanceStabilizationTaskScreen({
                   styles.resultRowLabel
                 }
               >
-                Resonance stability
+                Frequency-zone stability
               </Text>
 
               <Text
@@ -2457,14 +2126,14 @@ export default function ResonanceStabilizationTaskScreen({
                       repetitionResults.reduce(
                         (
                           sum,
-                          item
+                          item,
                         ) =>
                           sum +
                           item.measurement
                             .stabilityPct,
-                        0
+                        0,
                       ) /
-                      repetitionResults.length
+                        repetitionResults.length,
                     )}%`
                   : '--'}
               </Text>
@@ -2493,14 +2162,14 @@ export default function ResonanceStabilizationTaskScreen({
                       repetitionResults.reduce(
                         (
                           sum,
-                          item
+                          item,
                         ) =>
                           sum +
                           item.measurement
                             .durationSec,
-                        0
+                        0,
                       ) /
-                      repetitionResults.length
+                        repetitionResults.length,
                     )}s`
                   : '--'}
               </Text>
@@ -2567,12 +2236,14 @@ export default function ResonanceStabilizationTaskScreen({
                 styles.explanationText
               }
             >
-              Your target resonance is shown for
-              guidance. The current scoring function
-              evaluates resonance-band stability and
-              hold duration; target-band agreement is
-              displayed as feedback but is not used
-              as a separate scoring term.
+              The frequency-zone indicator is based
+              on dominant-frequency classification.
+              The current scoring function evaluates
+              frequency-zone stability and hold
+              duration using a 60% stability and
+              40% duration weighting. Target-zone
+              agreement is not a separate scoring
+              term.
             </Text>
           </View>
 
@@ -2701,7 +2372,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
   },
 
   prepareCard: {
@@ -2711,7 +2382,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
   },
 
   prepareHeader: {
@@ -2780,7 +2451,7 @@ const styles = StyleSheet.create({
 
   targetValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 24,
+    fontSize: 22,
     color: BROWN,
     marginTop: 2,
   },
@@ -2791,47 +2462,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     color: MUTED,
     marginTop: 2,
-  },
-
-  bandSelector: {
-    width: '100%',
-    marginTop: 10,
-    gap: 8,
-  },
-
-  bandOption: {
-    minHeight: 48,
-    borderRadius: 14,
-    backgroundColor: WHITE,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  bandOptionActive: {
-    backgroundColor: PINK,
-  },
-
-  bandOptionText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  bandOptionTextActive: {
-    fontFamily: 'FredokaBold',
-  },
-
-  helperText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 10,
   },
 
   tipCard: {
@@ -2974,7 +2604,7 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     padding: 18,
     marginTop: 25,
   },
@@ -3003,7 +2633,7 @@ const styles = StyleSheet.create({
 
   targetBandValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 22,
+    fontSize: 20,
     color: BROWN,
   },
 
@@ -3065,7 +2695,7 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     padding: 20,
     marginTop: 14,
     alignItems: 'center',
@@ -3095,10 +2725,6 @@ const styles = StyleSheet.create({
     marginTop: 9,
   },
 
-  liveMatchPillActive: {
-    backgroundColor: PINK,
-  },
-
   liveMatchText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -3125,7 +2751,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     marginTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F2DDE5',
+    borderTopColor: BORDER,
   },
 
   livePitchLabel: {
@@ -3145,7 +2771,7 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     padding: 18,
     marginTop: 14,
   },
@@ -3272,7 +2898,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
   },
 
   resultCardTitle: {
@@ -3287,7 +2913,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F2DDE5',
+    borderTopColor: BORDER,
   },
 
   repResultNumber: {
@@ -3337,7 +2963,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2DDE5',
+    borderBottomColor: BORDER,
   },
 
   resultRowLabel: {

@@ -1,116 +1,197 @@
 import type {
-    ArpeggioSpeedMeasurement,
+  ArpeggioSpeedMeasurement,
 } from '@/services/measurement/agility/arpeggioSpeedDrill';
 
 export type ArpeggioSpeedScore = {
   overall: number;
+
   pitchScore: number;
   sequenceScore: number;
   speedScore: number;
+
   passed: boolean;
+
   feedback: string;
 };
 
 function clamp(
   value: number,
-  min: number,
-  max: number,
+  min = 0,
+  max = 100,
 ): number {
-  return Math.max(min, Math.min(max, value));
+  if (
+    !Number.isFinite(value)
+  ) {
+    return min;
+  }
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value,
+    ),
+  );
 }
 
+/* ============================================================
+ * SPEED SCORE
+ * ========================================================== */
+
+/**
+ * Converts detected notes per second into a 0–100 score.
+ *
+ * 1 note/second or below = 0
+ * 4 notes/second or above = 100
+ *
+ * These are the current baseline scoring values.
+ * Tier-specific exercise parameters can later be supplied
+ * through the adaptive exercise configuration.
+ */
 function calculateSpeedScore(
   notesPerSecond: number,
 ): number {
-  /*
-   * Target speed:
-   * 1 note/sec = 0
-   * 4 notes/sec = 100
-   */
-  const minimum = 1;
-  const target = 4;
+  const minimum =
+    1;
 
-  if (notesPerSecond <= minimum) {
+  const target =
+    4;
+
+  if (
+    !Number.isFinite(
+      notesPerSecond,
+    ) ||
+    notesPerSecond <=
+      minimum
+  ) {
     return 0;
   }
 
-  if (notesPerSecond >= target) {
+  if (
+    notesPerSecond >=
+    target
+  ) {
     return 100;
   }
 
-  return (
-    ((notesPerSecond - minimum) /
-      (target - minimum)) *
-    100
+  return clamp(
+    (
+      (
+        notesPerSecond -
+        minimum
+      ) /
+      (
+        target -
+        minimum
+      )
+    ) * 100,
   );
 }
+
+/* ============================================================
+ * PUBLIC SCORING FUNCTION
+ * ========================================================== */
 
 export function scoreArpeggioSpeed(
   measurement: ArpeggioSpeedMeasurement,
 ): ArpeggioSpeedScore {
-  const pitchScore = clamp(
-    measurement.pitchAccuracy,
-    0,
-    100,
-  );
+  const pitchScore =
+    clamp(
+      measurement.pitchAccuracy,
+    );
 
-  const sequenceScore = clamp(
-    measurement.sequenceAccuracy,
-    0,
-    100,
-  );
+  const sequenceScore =
+    clamp(
+      measurement.sequenceAccuracy,
+    );
 
-  const speedScore = clamp(
-    calculateSpeedScore(
-      measurement.notesPerSecond,
-    ),
-    0,
-    100,
-  );
+  const speedScore =
+    clamp(
+      calculateSpeedScore(
+        measurement.notesPerSecond,
+      ),
+    );
 
   /*
-   * Arpeggio scoring:
+   * Arpeggio Speed Drill weighting:
+   *
    * Pitch Accuracy  = 40%
    * Sequence        = 35%
    * Speed           = 25%
+   *
+   * Accuracy is weighted more heavily than speed so that
+   * increasing vocal speed does not compensate for poor
+   * pitch or sequence accuracy.
    */
   const overall =
-    pitchScore * 0.4 +
-    sequenceScore * 0.35 +
-    speedScore * 0.25;
+    Math.round(
+      pitchScore * 0.40 +
+        sequenceScore * 0.35 +
+        speedScore * 0.25,
+    );
 
-  const roundedOverall = Math.round(overall);
-
+  /*
+   * Passing requirements:
+   *
+   * Overall score >= 70
+   * Pitch accuracy >= 60
+   * Sequence accuracy >= 60
+   */
   const passed =
-    roundedOverall >= 70 &&
+    overall >= 70 &&
     pitchScore >= 60 &&
     sequenceScore >= 60;
 
-  let feedback: string;
+  let feedback =
+    'Keep practicing the arpeggio pattern while maintaining accurate pitch and smooth note transitions.';
 
-  if (roundedOverall >= 85) {
+  if (
+    overall >= 85
+  ) {
     feedback =
       'Excellent arpeggio control! Your pitch accuracy, note sequence, and speed are strong.';
-  } else if (roundedOverall >= 70) {
+  } else if (
+    pitchScore < 60
+  ) {
     feedback =
-      'Good work! Keep practicing smooth note transitions and gradually increase your speed.';
-  } else if (pitchScore < 60) {
+      'Focus on matching each target note accurately before increasing your speed.';
+  } else if (
+    sequenceScore < 60
+  ) {
     feedback =
-      'Focus on matching each note accurately before increasing your speed.';
-  } else if (sequenceScore < 60) {
+      'Practice the arpeggio pattern slowly and focus on following the complete note sequence.';
+  } else if (
+    speedScore < 50
+  ) {
     feedback =
-      'Practice the arpeggio pattern slowly and focus on keeping the correct note sequence.';
-  } else {
+      'Your accuracy is developing well. Gradually increase the speed of the arpeggio while maintaining control.';
+  } else if (
+    overall >= 70
+  ) {
     feedback =
-      'Keep practicing the pattern and gradually increase your speed while maintaining accuracy.';
+      'Good work! Continue practicing smooth transitions and gradually increase your speed.';
   }
 
   return {
-    overall: roundedOverall,
-    pitchScore: Math.round(pitchScore),
-    sequenceScore: Math.round(sequenceScore),
-    speedScore: Math.round(speedScore),
+    overall,
+
+    pitchScore:
+      Math.round(
+        pitchScore,
+      ),
+
+    sequenceScore:
+      Math.round(
+        sequenceScore,
+      ),
+
+    speedScore:
+      Math.round(
+        speedScore,
+      ),
+
     passed,
+
     feedback,
   };
 }

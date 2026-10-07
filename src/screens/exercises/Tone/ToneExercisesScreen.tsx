@@ -33,12 +33,12 @@ const toneExercises = [
 		templateId: 'waveformSmoothnessDrill',
 	},
 	{
-		id: 'resonance-stabilization',
+		id: 'frequency-zone',
 		number: '3',
-		title: 'Resonance Stabilization Task',
+		title: 'Frequency Zone Stability',
 		description:
 			'Focus on steady resonance and consistent vocal placement.',
-		templateId: 'resonanceStabilizationTask',
+		templateId: 'frequencyZoneStability',
 	},
 	{
 		id: 'tone-consistency',

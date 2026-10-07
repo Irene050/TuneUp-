@@ -52,7 +52,6 @@ const MIN_NOTE_FRAMES = 5;
  * Small gaps caused by pitch-detector dropouts are
  * tolerated without ending the current note.
  */
-const MAX_DROPOUT_FRAMES = 5;
 
 const MIN_PITCH_HZ = 80;
 const MAX_PITCH_HZ = 1000;
@@ -181,7 +180,6 @@ function detectNotes(
   const notes: DetectedNote[] = [];
 
   let currentFrames: PitchPoint[] = [];
-  let dropoutFrames = 0;
 
   const flushCurrentNote = () => {
     if (
@@ -189,7 +187,6 @@ function detectNotes(
       MIN_NOTE_FRAMES
     ) {
       currentFrames = [];
-      dropoutFrames = 0;
       return;
     }
 
@@ -226,7 +223,6 @@ function detectNotes(
     });
 
     currentFrames = [];
-    dropoutFrames = 0;
   };
 
   for (const frame of frames) {
@@ -264,7 +260,6 @@ function detectNotes(
       NOTE_CHANGE_SEMITONES
     ) {
       currentFrames.push(frame);
-      dropoutFrames = 0;
       continue;
     }
 
@@ -286,7 +281,6 @@ function detectNotes(
      * Start building the new note instead.
      */
     currentFrames = [frame];
-    dropoutFrames = 0;
   }
 
   flushCurrentNote();

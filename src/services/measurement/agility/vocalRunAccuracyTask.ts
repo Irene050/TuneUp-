@@ -175,11 +175,9 @@ export function measureVocalRunAccuracy(
     }
   }
 
-  const targetNotes = targetFrequencies.map((frequency) =>
-    Math.round(midiToFrequency === undefined
-      ? 69
-      : frequencyToMidi(frequency)),
-  );
+const targetNotes = targetFrequencies.map((frequency) =>
+  Math.round(frequencyToMidi(frequency)),
+);
 
   const comparedCount = Math.min(
     detectedNotes.length,

@@ -25,12 +25,12 @@ import {
 } from '@/constants/exercises/pitch';
 
 import {
-  RESONANCE_STABILIZATION_PARAMS,
+  FREQUENCY_ZONE_STABILITY_PARAMS,
   STEADY_TONE_HOLDING_PARAMS,
   TONE_CONSISTENCY_PARAMS,
   VOWEL_CONSISTENCY_PARAMS,
   WAVEFORM_SMOOTHNESS_PARAMS,
-  type ResonanceStabilizationParams,
+  type FrequencyZoneStabilityParams,
   type SteadyToneHoldingParams,
   type ToneConsistencyParams,
   type VowelConsistencyParams,
@@ -1132,36 +1132,37 @@ export function generateWaveformSmoothnessParams({
 
 /*
  * =====================================================
- * RESONANCE STABILIZATION TASK
+ * FREQUENCY ZONE STABILITY
  * =====================================================
  *
  * Continuous ADS adjusts:
  * - duration
  * - stability threshold
  *
- * The available resonance types remain determined
- * by the current tier.
- *
  * Higher scores:
- * - decrease duration
+ * - increase duration
  * - increase stability requirement
  *
  * Lower scores:
- * - increase duration
+ * - decrease duration
  * - decrease stability requirement
+ *
+ * Frequency-band classification remains fixed because
+ * the exercise measures consistency within the detected
+ * low, mid, or high frequency band.
  */
 
-export interface GenerateResonanceStabilizationParamsInput {
+export interface GenerateFrequencyZoneStabilityParamsInput {
   tier: Tier;
   recentScores: number[];
 }
 
-export function generateResonanceStabilizationParams({
+export function generateFrequencyZoneStabilityParams({
   tier,
   recentScores,
-}: GenerateResonanceStabilizationParamsInput): ResonanceStabilizationParams {
+}: GenerateFrequencyZoneStabilityParamsInput): FrequencyZoneStabilityParams {
   const baseParams =
-    RESONANCE_STABILIZATION_PARAMS[tier];
+    FREQUENCY_ZONE_STABILITY_PARAMS[tier];
 
   const durationRange = {
     min: baseParams.durationSec * 0.8,
@@ -1169,15 +1170,17 @@ export function generateResonanceStabilizationParams({
   };
 
   const stabilityThresholdRange = {
-    min: baseParams.stabilityThreshold * 0.8,
-    max: baseParams.stabilityThreshold * 1.2,
+    min:
+      baseParams.stabilityThreshold * 0.8,
+    max:
+      baseParams.stabilityThreshold * 1.2,
   };
 
   const adjustedDuration =
     calculateAdjustedParameterBounds(
       recentScores,
       durationRange,
-      'lower',
+      'higher',
     );
 
   const adjustedStabilityThreshold =
@@ -1213,7 +1216,6 @@ export function generateResonanceStabilizationParams({
       ),
   };
 }
-
 /*
  * =====================================================
  * TONE CONSISTENCY EXERCISE
@@ -3198,29 +3200,12 @@ export function generateVocalRunAccuracyParams({
    */
 
   return {
-    ...baseParams,
-
-    noteDurationSec:
-      Number(
-        generatedNoteDurationSec.toFixed(2),
-      ),
-
-    // Retained at the tier-defined values because
-    // these define the musical material and displayed
-    // difficulty of the exercise.
-    label:
-      baseParams.label,
-
-    frequencies:
-      baseParams.frequencies,
-
-    speedLabel:
-      baseParams.speedLabel,
-
-    // Retained at the tier-defined value because
-    // the current Vocal Run measurement/scoring
-    // implementation does not consume this value.
-    accuracyThreshold:
-      baseParams.accuracyThreshold,
-  };
+  ...baseParams,
+  noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
+  label: baseParams.label,
+  frequencies: baseParams.frequencies,
+  speedLabel: baseParams.speedLabel,
+  accuracyThreshold: baseParams.accuracyThreshold,
+  repetitions: baseParams.repetitions,
+};
 }

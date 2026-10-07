@@ -1,7 +1,5 @@
-// src/services/measurement/tone/toneConsistencyExercise.ts
-
-import { computeSpectralCentroid } from '@/utils/dsp/spectral';
 import { calcRMS } from '@/utils/dsp/rms';
+import { computeSpectralCentroid } from '@/utils/dsp/spectral';
 
 export interface ToneConsistencyMeasurement {
   centroids: number[];
@@ -15,14 +13,32 @@ export function measureToneConsistency(
   fftSize = 1024,
 ): ToneConsistencyMeasurement {
   const centroids = repetitionFFTFrames.map((frames) => {
-    const perFrame = frames.map((f) =>
-      computeSpectralCentroid(f, sampleRate, fftSize),
+    if (frames.length === 0) {
+      return 0;
+    }
+
+    const perFrame = frames.map((frame) =>
+      computeSpectralCentroid(
+        frame,
+        sampleRate,
+        fftSize,
+      ),
     );
 
-    return perFrame.reduce((a, b) => a + b, 0) / perFrame.length;
+    return (
+      perFrame.reduce(
+        (sum, centroid) => sum + centroid,
+        0,
+      ) / perFrame.length
+    );
   });
 
-  const amplitudes = repetitionSamples.map((s) => calcRMS(s));
+  const amplitudes = repetitionSamples.map((samples) =>
+    calcRMS(samples),
+  );
 
-  return { centroids, amplitudes };
+  return {
+    centroids,
+    amplitudes,
+  };
 }

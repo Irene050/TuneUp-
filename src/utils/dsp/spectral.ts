@@ -67,33 +67,43 @@ export function trackDominantFrequency(
   return frequencies;
 }
 
-export type ResonanceBand = 'chest' | 'head' | 'mixed';
+export type FrequencyZone = 'low' | 'mid' | 'high';
 
-export function classifyResonanceBand(
-  centroid: number,
-): ResonanceBand {
-  if (!Number.isFinite(centroid) || centroid <= 0) {
-    return 'mixed';
+export function classifyFrequencyZone(
+  frequency: number,
+): FrequencyZone {
+  if (!Number.isFinite(frequency) || frequency <= 0) {
+    return 'low';
   }
 
-  if (centroid < 1200) {
-    return 'chest';
+  if (frequency < 1200) {
+    return 'low';
   }
 
-  if (centroid < 2500) {
-    return 'head';
+  if (frequency < 2500) {
+    return 'mid';
   }
 
-  return 'mixed';
+  return 'high';
 }
 
-export function calcBandStability(bandSequence: ResonanceBand[]): number {
-  if (bandSequence.length === 0) return 0;
+export function calcFrequencyZoneStability(
+  zoneSequence: FrequencyZone[],
+): number {
+  if (zoneSequence.length === 0) return 0;
+
   let switches = 0;
-  for (let i = 1; i < bandSequence.length; i++) {
-    if (bandSequence[i] !== bandSequence[i - 1]) switches++;
+
+  for (let i = 1; i < zoneSequence.length; i++) {
+    if (zoneSequence[i] !== zoneSequence[i - 1]) {
+      switches++;
+    }
   }
-  return Math.max(0, 100 - (switches / bandSequence.length) * 100);
+
+  return Math.max(
+    0,
+    100 - (switches / zoneSequence.length) * 100,
+  );
 }
 
 export function calcCrossRepConsistency(centroids: number[], amplitudes: number[]): number {

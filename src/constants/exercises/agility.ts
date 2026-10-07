@@ -6,8 +6,8 @@ export type Tier =
 /**
  * Arpeggio Speed Drill
  *
- * Controls the target arpeggio notes and
- * playback timing for each difficulty tier.
+ * Controls the target arpeggio notes, playback timing,
+ * and pitch tolerance for each difficulty tier.
  */
 export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
   Tier,
@@ -18,6 +18,7 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
     speedLabel: string;
     noteDurationSec: number;
     gapSec: number;
+    pitchTolerancePercent: number;
   }
 > = {
   beginner: {
@@ -32,6 +33,7 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
     speedLabel: 'Slow',
     noteDurationSec: 0.65,
     gapSec: 0.08,
+    pitchTolerancePercent: 7,
   },
 
   intermediate: {
@@ -46,6 +48,7 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
     speedLabel: 'Moderate',
     noteDurationSec: 0.45,
     gapSec: 0.06,
+    pitchTolerancePercent: 5,
   },
 
   advanced: {
@@ -60,6 +63,7 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
     speedLabel: 'Fast',
     noteDurationSec: 0.3,
     gapSec: 0.04,
+    pitchTolerancePercent: 3,
   },
 };
 
@@ -268,6 +272,7 @@ export const RAPID_VOCAL_RUN_PARAMS: Record<
     speedLabel: string;
     accuracyThreshold: number;
     noteDurationSec: number;
+    repetitions: number;
   }
 > = {
   beginner: {
@@ -280,8 +285,9 @@ export const RAPID_VOCAL_RUN_PARAMS: Record<
       392.0,
     ],
     speedLabel: 'Slow',
-    accuracyThreshold: 60,
+    accuracyThreshold: 70,
     noteDurationSec: 0.35,
+    repetitions: 3,
   },
 
   intermediate: {
@@ -295,8 +301,9 @@ export const RAPID_VOCAL_RUN_PARAMS: Record<
       523.25,
     ],
     speedLabel: 'Moderate',
-    accuracyThreshold: 70,
+    accuracyThreshold: 85,
     noteDurationSec: 0.35,
+    repetitions: 4,
   },
 
   advanced: {
@@ -311,7 +318,8 @@ export const RAPID_VOCAL_RUN_PARAMS: Record<
       783.99,
     ],
     speedLabel: 'Fast',
-    accuracyThreshold: 80,
+    accuracyThreshold: 95,
     noteDurationSec: 0.35,
+    repetitions: 5,
   },
 };

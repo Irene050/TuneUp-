@@ -1,47 +1,48 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    RAPID_VOCAL_RUN_PARAMS,
-    type Tier,
+  RAPID_VOCAL_RUN_PARAMS,
+  type Tier,
 } from '@/constants/exercises/agility';
 
 import {
-    AudioContext,
-    AudioManager,
-    AudioRecorder,
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
 } from 'react-native-audio-api';
 
 import { auth } from '@/services/firebase/config';
 
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 
 import {
-    generateVocalRunAccuracyParams,
+  generateVocalRunAccuracyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 import {
-    measureVocalRunAccuracy,
+  measureVocalRunAccuracy,
 } from '@/services/measurement/agility/vocalRunAccuracyTask';
 
 import {
-    scoreVocalRunAccuracy,
+  scoreVocalRunAccuracy,
 } from '@/services/scoring/agility/vocalRunAccuracyTask';
 
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -99,6 +100,8 @@ type ExerciseResult = {
 
   notesPerSecond: number;
   durationMs: number;
+
+  repetitionsCompleted: number;
 };
 
 // ============================================================
@@ -277,25 +280,25 @@ export default function VocalRunAccuracyTaskScreen() {
             return;
           }
 
-         const recentScores =
-  records
-    .filter(
-      (exercise) =>
-        exercise.templateId ===
-          'vocalRunAccuracy' &&
-        exercise.tier === tier,
-    )
-    .slice(-5)
-    .map(
-      (exercise) =>
-        exercise.scorePct,
-    );
+          const recentScores =
+            records
+              .filter(
+                (exercise) =>
+                  exercise.templateId ===
+                    'vocalRunAccuracy' &&
+                  exercise.tier === tier,
+              )
+              .slice(-5)
+              .map(
+                (exercise) =>
+                  exercise.scorePct,
+              );
 
           const generatedParams =
-  generateVocalRunAccuracyParams({
-    tier,
-    recentScores,
-  });
+            generateVocalRunAccuracyParams({
+              tier,
+              recentScores,
+            });
 
           if (!cancelled) {
             setAdaptiveConfig(
@@ -348,6 +351,9 @@ export default function VocalRunAccuracyTaskScreen() {
   const [recordingTime, setRecordingTime] =
     useState(0);
 
+  const [currentRepetition, setCurrentRepetition] =
+    useState(1);
+
   const [result, setResult] =
     useState<ExerciseResult | null>(null);
 
@@ -369,6 +375,13 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const samplesRef =
     useRef<number[]>([]);
+
+  const measurementsRef =
+    useRef<
+      ReturnType<
+        typeof measureVocalRunAccuracy
+      >[]
+    >([]);
 
   const recordingStartRef =
     useRef<number | null>(null);
@@ -589,6 +602,9 @@ export default function VocalRunAccuracyTaskScreen() {
   const beginExercise =
     useCallback(async () => {
       setErrorMessage('');
+
+      measurementsRef.current = [];
+      setCurrentRepetition(1);
 
       const permission =
         await requestMicrophonePermission();
@@ -821,7 +837,10 @@ export default function VocalRunAccuracyTaskScreen() {
           );
         }
       }
-    }, [setExercisePhase, stopRecording]);
+    }, [
+      setExercisePhase,
+      stopRecording,
+    ]);
 
   // ==========================================================
   // PROCESS RECORDING
@@ -867,6 +886,10 @@ export default function VocalRunAccuracyTaskScreen() {
           );
         }
 
+        // ======================================================
+        // MEASURE CURRENT REPETITION
+        // ======================================================
+
         const measurement =
           measureVocalRunAccuracy(
             samples,
@@ -874,13 +897,204 @@ export default function VocalRunAccuracyTaskScreen() {
             config.frequencies,
           );
 
-        const score =
-          scoreVocalRunAccuracy(
-            measurement,
-          );
+        measurementsRef.current.push(
+          measurement,
+        );
+
+        const completedRepetitions =
+          measurementsRef.current.length;
 
         // ======================================================
-        // SAVE EXERCISE PROGRESS
+        // CONTINUE TO NEXT REPETITION
+        // ======================================================
+
+        if (
+          completedRepetitions <
+          config.repetitions
+        ) {
+          if (mountedRef.current) {
+            setCurrentRepetition(
+              completedRepetitions + 1,
+            );
+
+            setCountdown(
+              COUNTDOWN_SECONDS,
+            );
+
+            setExercisePhase(
+              'reference',
+            );
+          }
+
+          return;
+        }
+
+        // ======================================================
+        // AGGREGATE ALL REPETITIONS
+        // ======================================================
+
+        const measurements =
+          measurementsRef.current;
+
+        const average = (
+          values: number[],
+        ) =>
+          values.length > 0
+            ? values.reduce(
+                (sum, value) =>
+                  sum + value,
+                0,
+              ) / values.length
+            : 0;
+
+        const totalNoteCount =
+          measurements.reduce(
+            (sum, item) =>
+              sum + item.noteCount,
+            0,
+          );
+
+        const totalCorrectNoteCount =
+          measurements.reduce(
+            (sum, item) =>
+              sum +
+              item.correctNoteCount,
+            0,
+          );
+
+        const totalTransitionCount =
+          measurements.reduce(
+            (sum, item) =>
+              sum +
+              item.transitionCount,
+            0,
+          );
+
+        const totalCorrectTransitionCount =
+          measurements.reduce(
+            (sum, item) =>
+              sum +
+              item.correctTransitionCount,
+            0,
+          );
+
+        const totalDurationMs =
+          measurements.reduce(
+            (sum, item) =>
+              sum + item.durationMs,
+            0,
+          );
+
+        const pitchScore =
+          average(
+            measurements.map(
+              (item) =>
+                item.pitchAccuracy,
+            ),
+          );
+
+        const sequenceScore =
+          average(
+            measurements.map(
+              (item) =>
+                item.sequenceAccuracy,
+            ),
+          );
+
+        const transitionScores =
+          measurements.map(
+            (item) =>
+              item.transitionCount > 0
+                ? (item.correctTransitionCount /
+                    item.transitionCount) *
+                  100
+                : item.sequenceAccuracy,
+          );
+
+        const transitionScore =
+          average(
+            transitionScores,
+          );
+
+        const notesPerSecond =
+          totalDurationMs > 0
+            ? totalNoteCount /
+              (totalDurationMs /
+                1000)
+            : 0;
+
+        // ======================================================
+        // CREATE AGGREGATED MEASUREMENT
+        // ======================================================
+
+        const aggregatedMeasurement = {
+          detectedPitches:
+            measurements.flatMap(
+              (item) =>
+                item.detectedPitches,
+            ),
+
+          detectedNotes:
+            measurements.flatMap(
+              (item) =>
+                item.detectedNotes,
+            ),
+
+          targetNotes:
+            measurements.flatMap(
+              (item) =>
+                item.targetNotes,
+            ),
+
+          pitchAccuracy:
+            pitchScore,
+
+          sequenceAccuracy:
+            sequenceScore,
+
+          noteCount:
+            totalNoteCount,
+
+          correctNoteCount:
+            totalCorrectNoteCount,
+
+          transitionCount:
+            totalTransitionCount,
+
+          correctTransitionCount:
+            totalCorrectTransitionCount,
+
+          durationMs:
+            totalDurationMs,
+
+          notesPerSecond,
+        };
+
+        // ======================================================
+        // SCORE AGGREGATED PERFORMANCE
+        // ======================================================
+
+        const score =
+          scoreVocalRunAccuracy(
+            aggregatedMeasurement,
+          );
+
+        const sequenceRequirementMet =
+          sequenceScore >=
+          config.accuracyThreshold;
+
+        const passed =
+          score.overall >= 70 &&
+          pitchScore >= 60 &&
+          sequenceRequirementMet;
+
+        const feedback =
+          !sequenceRequirementMet
+            ? `Sequence accuracy must reach at least ${config.accuracyThreshold}% for the ${config.label.toLowerCase()} level.`
+            : score.feedback;
+
+        // ======================================================
+        // SAVE FINAL EXERCISE PROGRESS
         // ======================================================
 
         try {
@@ -910,38 +1124,35 @@ export default function VocalRunAccuracyTaskScreen() {
           overall:
             score.overall,
 
-          pitchScore:
-            score.pitchScore,
+          pitchScore,
 
-          sequenceScore:
-            score.sequenceScore,
+          sequenceScore,
 
-          transitionScore:
-            score.transitionScore,
+          transitionScore,
 
-          passed:
-            score.passed,
+          passed,
 
-          feedback:
-            score.feedback,
+          feedback,
 
           noteCount:
-            measurement.noteCount,
+            totalNoteCount,
 
           correctNoteCount:
-            measurement.correctNoteCount,
+            totalCorrectNoteCount,
 
           transitionCount:
-            measurement.transitionCount,
+            totalTransitionCount,
 
           correctTransitionCount:
-            measurement.correctTransitionCount,
+            totalCorrectTransitionCount,
 
-          notesPerSecond:
-            measurement.notesPerSecond,
+          notesPerSecond,
 
           durationMs:
-            measurement.durationMs,
+            totalDurationMs,
+
+          repetitionsCompleted:
+            measurements.length,
         });
 
         setExercisePhase(
@@ -967,7 +1178,7 @@ export default function VocalRunAccuracyTaskScreen() {
           false;
       }
     }, [
-      config.frequencies,
+      config,
       setExercisePhase,
       stopRecording,
       tier,
@@ -1002,7 +1213,11 @@ export default function VocalRunAccuracyTaskScreen() {
 
       samplesRef.current = [];
 
+      measurementsRef.current = [];
+
       setResult(null);
+
+      setCurrentRepetition(1);
 
       setRecordingTime(0);
 
@@ -1212,6 +1427,42 @@ export default function VocalRunAccuracyTaskScreen() {
                 styles.detailLabel
               }
             >
+              Repetitions
+            </Text>
+
+            <Text
+              style={
+                styles.detailValue
+              }
+            >
+              {config.repetitions}
+            </Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text
+              style={
+                styles.detailLabel
+              }
+            >
+              Sequence Target
+            </Text>
+
+            <Text
+              style={
+                styles.detailValue
+              }
+            >
+              {config.accuracyThreshold}%
+            </Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text
+              style={
+                styles.detailLabel
+              }
+            >
               Note Duration
             </Text>
 
@@ -1317,6 +1568,26 @@ export default function VocalRunAccuracyTaskScreen() {
               Move smoothly between each note.
             </Text>
           </View>
+
+          <View
+            style={
+              styles.prepareItem
+            }
+          >
+            <Ionicons
+              name="repeat-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text
+              style={
+                styles.prepareText
+              }
+            >
+              Complete all {config.repetitions} repetitions of the vocal run.
+            </Text>
+          </View>
         </View>
 
         <View
@@ -1381,7 +1652,7 @@ export default function VocalRunAccuracyTaskScreen() {
               styles.referenceHint
             }
           >
-            The reference run will play before recording begins.
+            The reference run will play before each repetition.
           </Text>
         </View>
 
@@ -1498,14 +1769,62 @@ export default function VocalRunAccuracyTaskScreen() {
         <Text
           style={styles.title}
         >
-          Listen First
+          Repetition {currentRepetition}
         </Text>
 
         <Text
           style={styles.subtitle}
         >
-          REFERENCE SEQUENCE
+          OF {config.repetitions} REPETITIONS
         </Text>
+
+        <View
+          style={
+            styles.referenceProgressCard
+          }
+        >
+          <Text
+            style={
+              styles.referenceProgressLabel
+            }
+          >
+            EXERCISE PROGRESS
+          </Text>
+
+          <View
+            style={
+              styles.repetitionDots
+            }
+          >
+            {Array.from({
+              length:
+                config.repetitions,
+            }).map(
+              (_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.repetitionDot,
+                    index <
+                      currentRepetition
+                      ? styles.repetitionDotCompleted
+                      : styles.repetitionDotPending,
+                  ]}
+                />
+              ),
+            )}
+          </View>
+
+          <Text
+            style={
+              styles.referenceProgressText
+            }
+          >
+            Repetition{' '}
+            {currentRepetition} of{' '}
+            {config.repetitions}
+          </Text>
+        </View>
 
         <View
           style={
@@ -1648,6 +1967,16 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <Text
           style={
+            styles.repetitionLabel
+          }
+        >
+          REPETITION{' '}
+          {currentRepetition} OF{' '}
+          {config.repetitions}
+        </Text>
+
+        <Text
+          style={
             styles.countdownText
           }
         >
@@ -1699,6 +2028,16 @@ export default function VocalRunAccuracyTaskScreen() {
             }
           >
             Sing the Vocal Run
+          </Text>
+
+          <Text
+            style={
+              styles.repetitionLabel
+            }
+          >
+            REPETITION{' '}
+            {currentRepetition} OF{' '}
+            {config.repetitions}
           </Text>
 
           <Text
@@ -1834,6 +2173,29 @@ export default function VocalRunAccuracyTaskScreen() {
                   {config.speedLabel}
                 </Text>
               </View>
+
+              <View
+                style={
+                  styles.liveStat
+                }
+              >
+                <Text
+                  style={
+                    styles.liveStatLabel
+                  }
+                >
+                  Progress
+                </Text>
+
+                <Text
+                  style={
+                    styles.liveStatValue
+                  }
+                >
+                  {currentRepetition}/
+                  {config.repetitions}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -1918,6 +2280,19 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <Text
           style={
+            styles.repetitionLabel
+          }
+        >
+          REPETITION{' '}
+          {Math.min(
+            currentRepetition,
+            config.repetitions,
+          )}{' '}
+          OF {config.repetitions}
+        </Text>
+
+        <Text
+          style={
             styles.phaseSubtitle
           }
         >
@@ -1978,6 +2353,41 @@ export default function VocalRunAccuracyTaskScreen() {
           >
             Vocal Run Accuracy Result
           </Text>
+
+          <View
+            style={
+              styles.repetitionResultCard
+            }
+          >
+            <Ionicons
+              name="repeat-outline"
+              size={20}
+              color={BROWN}
+            />
+
+            <View
+              style={
+                styles.repetitionResultTextContainer
+              }
+            >
+              <Text
+                style={
+                  styles.repetitionResultTitle
+                }
+              >
+                Repetitions Completed
+              </Text>
+
+              <Text
+                style={
+                  styles.repetitionResultValue
+                }
+              >
+                {result.repetitionsCompleted}{' '}
+                of {config.repetitions}
+              </Text>
+            </View>
+          </View>
 
           <View
             style={
@@ -2145,6 +2555,15 @@ export default function VocalRunAccuracyTaskScreen() {
                   ]}
                 />
               </View>
+
+              <Text
+                style={
+                  styles.thresholdText
+                }
+              >
+                Required:{' '}
+                {config.accuracyThreshold}%
+              </Text>
             </View>
 
             <View
@@ -2299,7 +2718,7 @@ export default function VocalRunAccuracyTaskScreen() {
                   styles.metricLabel
                 }
               >
-                Duration
+                Total Duration
               </Text>
 
               <Text
@@ -2671,6 +3090,63 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
 
+  referenceProgressCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 20,
+    padding: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  referenceProgressLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
+  },
+
+  repetitionDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 13,
+  },
+
+  repetitionDot: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+  },
+
+  repetitionDotCompleted: {
+    backgroundColor: BROWN,
+  },
+
+  repetitionDotPending: {
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  referenceProgressText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    color: BROWN,
+    marginTop: 10,
+  },
+
+  repetitionLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+
   referenceLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -2939,6 +3415,36 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
 
+  repetitionResultCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 18,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 14,
+  },
+
+  repetitionResultTextContainer: {
+    flex: 1,
+    marginLeft: 10,
+  },
+
+  repetitionResultTitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+  },
+
+  repetitionResultValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+    marginTop: 2,
+  },
+
   scoreCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -3031,6 +3537,13 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: BROWN,
+  },
+
+  thresholdText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+    marginTop: 5,
   },
 
   progressBackground: {

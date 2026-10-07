@@ -1,6 +1,5 @@
 import {
-  ResonanceBand,
-  VowelBand,
+  VowelBand
 } from '@/utils/dsp/spectral';
 
 export type Tier =
@@ -83,36 +82,32 @@ export const WAVEFORM_SMOOTHNESS_PARAMS: Record<
 };
 
 // ============================================================
-// RESONANCE STABILIZATION
+// FREQUENCY ZONE STABILITY
 // ============================================================
 
-export interface ResonanceStabilizationParams {
-  resonanceTypes: ResonanceBand[];
+export interface FrequencyZoneStabilityParams {
   durationSec: number;
   repetitions: number;
   stabilityThreshold: number;
 }
 
-export const RESONANCE_STABILIZATION_PARAMS: Record<
+export const FREQUENCY_ZONE_STABILITY_PARAMS: Record<
   Tier,
-  ResonanceStabilizationParams
+  FrequencyZoneStabilityParams
 > = {
   beginner: {
-    resonanceTypes: ['chest'],
     durationSec: 5,
     repetitions: 2,
     stabilityThreshold: 70,
   },
 
   intermediate: {
-    resonanceTypes: ['chest', 'head'],
     durationSec: 4,
     repetitions: 2,
     stabilityThreshold: 85,
   },
 
   advanced: {
-    resonanceTypes: ['chest', 'head', 'mixed'],
     durationSec: 3,
     repetitions: 2,
     stabilityThreshold: 95,

@@ -105,11 +105,11 @@ const exercises: Exercise[] = [
     category: 'Tone',
     templateId: 'waveformSmoothnessDrill',
   },
-  {
-    name: 'Resonance Stabilization Task',
-    category: 'Tone',
-    templateId: 'resonanceStabilizationTask',
-  },
+{
+  name: 'Frequency Zone Stability',
+  category: 'Tone',
+  templateId: 'frequencyZoneStability',
+},
   {
     name: 'Tone Consistency Exercise',
     category: 'Tone',
