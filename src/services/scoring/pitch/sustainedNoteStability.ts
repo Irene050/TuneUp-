@@ -21,25 +21,28 @@ export function scoreSustainedNoteStability(
     measurement.stabilityCents /
     params.stabilityThresholdCents;
 
-  const stabilityScore = Math.max(
-    0,
-    Math.min(
-      100,
-      100 - stabilityRatio * 100,
-    ),
-  );
+  const stabilityScore =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        100 -
+          stabilityRatio * 100,
+      ),
+    );
 
   const durationRatio =
     measurement.durationSec /
     params.durationSec;
 
-  const durationScore = Math.max(
-    0,
-    Math.min(
-      100,
-      durationRatio * 100,
-    ),
-  );
+  const durationScore =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        durationRatio * 100,
+      ),
+    );
 
   const score = Math.round(
     stabilityScore * 0.6 +

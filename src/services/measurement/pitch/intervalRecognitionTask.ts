@@ -30,14 +30,29 @@ export interface IntervalRecognitionMeasurement {
   attempts: IntervalRecognitionAttemptMeasurement[];
 }
 
-const RMS_WINDOW_MS = 30;
-const RMS_HOP_MS = 15;
+const FRAME_MS = 30;
 
-const SILENCE_RMS = 0.003;
-const MIN_SILENCE_MS = 120;
-const MIN_NOTE_MS = 250;
+/*
+ * A pitch change must be at least approximately this
+ * many semitones before it is considered a new note.
+ *
+ * This prevents normal pitch wobble from becoming
+ * additional repetitions.
+ */
+const NOTE_CHANGE_SEMITONES = 1.5;
 
-const NOTE_EDGE_MS = 150;
+/*
+ * A note must contain this many consecutive pitch
+ * frames before it is considered stable enough to
+ * become a detected note.
+ */
+const MIN_NOTE_FRAMES = 5;
+
+/*
+ * Small gaps caused by pitch-detector dropouts are
+ * tolerated without ending the current note.
+ */
+const MAX_DROPOUT_FRAMES = 5;
 
 const MIN_PITCH_HZ = 80;
 const MAX_PITCH_HZ = 1000;
@@ -58,199 +73,355 @@ function emptyResult(): IntervalRecognitionMeasurement {
   };
 }
 
-function rms(
-  samples: Float32Array,
-  start: number,
-  end: number,
-): number {
-  const safeStart = Math.max(0, Math.floor(start));
-  const safeEnd = Math.min(samples.length, Math.floor(end));
-
-  let sum = 0;
-  let count = 0;
-
-  for (let i = safeStart; i < safeEnd; i++) {
-    const value = samples[i];
-
-    if (!Number.isFinite(value)) {
-      continue;
-    }
-
-    sum += value * value;
-    count++;
-  }
-
-  return count > 0 ? Math.sqrt(sum / count) : 0;
-}
-
-function findVoicedSegments(
-  samples: Float32Array,
-  sampleRate: number,
-): Array<{ start: number; end: number }> {
-  const window = Math.max(
-    1,
-    Math.floor((RMS_WINDOW_MS / 1000) * sampleRate),
-  );
-
-  const hop = Math.max(
-    1,
-    Math.floor((RMS_HOP_MS / 1000) * sampleRate),
-  );
-
-  const minimumNoteSamples = Math.floor(
-    (MIN_NOTE_MS / 1000) * sampleRate,
-  );
-
-  const requiredQuietFrames = Math.ceil(
-    MIN_SILENCE_MS / RMS_HOP_MS,
-  );
-
-  const segments: Array<{
-    start: number;
-    end: number;
-  }> = [];
-
-  let currentStart = -1;
-  let quietFrames = 0;
-
-  for (
-    let start = 0;
-    start + window <= samples.length;
-    start += hop
-  ) {
-    const voiced =
-      rms(samples, start, start + window) >= SILENCE_RMS;
-
-    if (voiced) {
-      if (currentStart < 0) {
-        currentStart = start;
-      }
-
-      quietFrames = 0;
-      continue;
-    }
-
-    if (currentStart < 0) {
-      continue;
-    }
-
-    quietFrames++;
-
-    if (quietFrames >= requiredQuietFrames) {
-      const end =
-        start - (quietFrames - 1) * hop;
-
-      if (end - currentStart >= minimumNoteSamples) {
-        segments.push({
-          start: currentStart,
-          end: Math.min(samples.length, end),
-        });
-      }
-
-      currentStart = -1;
-      quietFrames = 0;
-    }
-  }
-
-  // Handle a note that continues until the end
-  // of the recording.
-  if (currentStart >= 0) {
-    const end = samples.length;
-
-    if (end - currentStart >= minimumNoteSamples) {
-      segments.push({
-        start: currentStart,
-        end,
-      });
-    }
-  }
-
-  return segments;
-}
-
 function median(values: number[]): number {
   if (values.length === 0) {
     return 0;
   }
 
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
+  const sorted = [...values].sort(
+    (a, b) => a - b,
+  );
+
+  const middle = Math.floor(
+    sorted.length / 2,
+  );
 
   return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
+    ? (
+        sorted[middle - 1] +
+        sorted[middle]
+      ) / 2
     : sorted[middle];
 }
 
-function analyzeNote(
+function frequencyToMidi(
+  frequency: number,
+): number {
+  if (
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
+    return 0;
+  }
+
+  return (
+    69 +
+    12 *
+      Math.log2(
+        frequency / 440,
+      )
+  );
+}
+
+interface PitchPoint {
+  frequency: number;
+  clarity: number;
+  timestamp: number;
+}
+
+interface DetectedNote {
+  frequency: number;
+  clarity: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * Converts the raw recording into usable pitch frames.
+ *
+ * Low-clarity frames are discarded before attempting
+ * to detect note transitions.
+ */
+function getPitchFrames(
   samples: Float32Array,
   sampleRate: number,
   minClarity: number,
-): {
-  frequency: number;
-  clarity: number;
-} {
-  if (samples.length < 2048) {
-    return {
-      frequency: 0,
-      clarity: 0,
-    };
-  }
-
-  const edge = Math.floor(
-    (NOTE_EDGE_MS / 1000) * sampleRate,
-  );
-
-  const hasEnoughEdgeSpace =
-    samples.length > edge + 2048;
-
-  const start = hasEnoughEdgeSpace ? edge : 0;
-  const end = hasEnoughEdgeSpace
-    ? samples.length - edge
-    : samples.length;
-
-  if (end <= start) {
-    return {
-      frequency: 0,
-      clarity: 0,
-    };
-  }
-
-  const segment = samples.subarray(start, end);
-
-  const frames = filterByClarity(
+): PitchPoint[] {
+  const frames =
     trackPitchOverTime(
-      segment,
-      30,
+      samples,
+      FRAME_MS,
       sampleRate,
-    ),
+    );
+
+  return filterByClarity(
+    frames,
     minClarity,
-  );
+  )
+    .filter(
+      frame =>
+        Number.isFinite(
+          frame.frequency,
+        ) &&
+        frame.frequency >=
+          MIN_PITCH_HZ &&
+        frame.frequency <=
+          MAX_PITCH_HZ,
+    )
+    .map(frame => ({
+      frequency: frame.frequency,
+      clarity: frame.clarity,
+      timestamp: frame.timestamp,
+    }));
+}
 
-  const validFrames = frames.filter(
-    frame =>
-      Number.isFinite(frame.frequency) &&
-      frame.frequency >= MIN_PITCH_HZ &&
-      frame.frequency <= MAX_PITCH_HZ,
-  );
-
-  if (validFrames.length === 0) {
-    return {
-      frequency: 0,
-      clarity: 0,
-    };
+/**
+ * Groups pitch frames into stable notes.
+ *
+ * Unlike the old implementation, this does NOT require
+ * silence between two notes.
+ */
+function detectNotes(
+  frames: PitchPoint[],
+): DetectedNote[] {
+  if (frames.length === 0) {
+    return [];
   }
 
-  return {
-    frequency: median(
-      validFrames.map(frame => frame.frequency),
-    ),
+  const notes: DetectedNote[] = [];
 
-    clarity:
-      validFrames.reduce(
-        (sum, frame) => sum + frame.clarity,
-        0,
-      ) / validFrames.length,
+  let currentFrames: PitchPoint[] = [];
+  let dropoutFrames = 0;
+
+  const flushCurrentNote = () => {
+    if (
+      currentFrames.length <
+      MIN_NOTE_FRAMES
+    ) {
+      currentFrames = [];
+      dropoutFrames = 0;
+      return;
+    }
+
+    const frequencies =
+      currentFrames.map(
+        frame => frame.frequency,
+      );
+
+    const clarities =
+      currentFrames.map(
+        frame => frame.clarity,
+      );
+
+    notes.push({
+      frequency:
+        median(frequencies),
+
+      clarity:
+        clarities.reduce(
+          (sum, value) =>
+            sum + value,
+          0,
+        ) /
+        clarities.length,
+
+      start:
+        currentFrames[0]
+          ?.timestamp ?? 0,
+
+      end:
+        currentFrames[
+          currentFrames.length - 1
+        ]?.timestamp ?? 0,
+    });
+
+    currentFrames = [];
+    dropoutFrames = 0;
   };
+
+  for (const frame of frames) {
+    if (currentFrames.length === 0) {
+      currentFrames.push(frame);
+      continue;
+    }
+
+    const lastFrame =
+      currentFrames[
+        currentFrames.length - 1
+      ];
+
+    const lastMidi =
+      frequencyToMidi(
+        lastFrame.frequency,
+      );
+
+    const currentMidi =
+      frequencyToMidi(
+        frame.frequency,
+      );
+
+    const semitoneDifference =
+      Math.abs(
+        currentMidi - lastMidi,
+      );
+
+    /*
+     * Small pitch movement is considered normal
+     * vibrato / natural singing variation.
+     */
+    if (
+      semitoneDifference <
+      NOTE_CHANGE_SEMITONES
+    ) {
+      currentFrames.push(frame);
+      dropoutFrames = 0;
+      continue;
+    }
+
+    /*
+     * A sufficiently large pitch movement means
+     * the singer probably moved to another note.
+     */
+    if (
+      currentFrames.length >=
+      MIN_NOTE_FRAMES
+    ) {
+      flushCurrentNote();
+      currentFrames.push(frame);
+      continue;
+    }
+
+    /*
+     * Current note was too short to be reliable.
+     * Start building the new note instead.
+     */
+    currentFrames = [frame];
+    dropoutFrames = 0;
+  }
+
+  flushCurrentNote();
+
+  /*
+   * Remove accidental duplicate notes that can occur
+   * when the pitch detector briefly jumps and then
+   * returns to the original pitch.
+   */
+  const cleaned: DetectedNote[] = [];
+
+  for (const note of notes) {
+    const previous =
+      cleaned[cleaned.length - 1];
+
+    if (!previous) {
+      cleaned.push(note);
+      continue;
+    }
+
+    const difference =
+      Math.abs(
+        frequencyToMidi(
+          note.frequency,
+        ) -
+          frequencyToMidi(
+            previous.frequency,
+          ),
+      );
+
+    if (
+      difference <
+      NOTE_CHANGE_SEMITONES
+    ) {
+      previous.frequency =
+        median([
+          previous.frequency,
+          note.frequency,
+        ]);
+
+      previous.clarity =
+        (
+          previous.clarity +
+          note.clarity
+        ) / 2;
+
+      previous.end =
+        note.end;
+    } else {
+      cleaned.push(note);
+    }
+  }
+
+  return cleaned;
+}
+
+/**
+ * Builds root -> target interval attempts.
+ *
+ * Example:
+ *
+ * C4 G4 C4 G4
+ *
+ * becomes:
+ *
+ * Attempt 1: C4 -> G4
+ * Attempt 2: C4 -> G4
+ */
+function buildAttempts(
+  notes: DetectedNote[],
+  expectedRepetitions: number,
+): IntervalRecognitionAttemptMeasurement[] {
+  const requested =
+    Math.max(
+      1,
+      Math.round(
+        expectedRepetitions,
+      ),
+    );
+
+  const attempts: IntervalRecognitionAttemptMeasurement[] =
+    [];
+
+  for (
+    let i = 0;
+    i + 1 < notes.length &&
+    attempts.length < requested;
+    i += 2
+  ) {
+    const first = notes[i];
+    const second = notes[i + 1];
+
+    if (!first || !second) {
+      continue;
+    }
+
+    const hasFirstNote =
+      Number.isFinite(
+        first.frequency,
+      ) &&
+      first.frequency > 0;
+
+    const hasSecondNote =
+      Number.isFinite(
+        second.frequency,
+      ) &&
+      second.frequency > 0;
+
+    const detectedRatio =
+      hasFirstNote &&
+      hasSecondNote
+        ? calcIntervalRatio(
+            first.frequency,
+            second.frequency,
+          )
+        : 0;
+
+    attempts.push({
+      freq1: first.frequency,
+      freq2: second.frequency,
+
+      detectedRatio,
+
+      hasFirstNote,
+      hasSecondNote,
+
+      firstNoteClarity:
+        first.clarity,
+
+      secondNoteClarity:
+        second.clarity,
+    });
+  }
+
+  return attempts;
 }
 
 export function measureIntervalRecognition(
@@ -269,145 +440,188 @@ export function measureIntervalRecognition(
   }
 
   try {
-    const segments = findVoicedSegments(
-      samples,
-      sampleRate,
-    );
+    const pitchFrames =
+      getPitchFrames(
+        samples,
+        sampleRate,
+        minClarity,
+      );
 
-    if (segments.length < 2) {
+    if (pitchFrames.length === 0) {
       return emptyResult();
     }
 
-    const requestedRepetitions = Math.max(
-      1,
-      Math.round(expectedRepetitions),
-    );
-
-    const maximumPairs = Math.floor(
-      segments.length / 2,
-    );
-
-    const pairCount = Math.min(
-      maximumPairs,
-      requestedRepetitions,
-    );
-
-    const attempts: IntervalRecognitionAttemptMeasurement[] = [];
-
-    for (
-      let pairIndex = 0;
-      pairIndex < pairCount;
-      pairIndex++
-    ) {
-      const firstSegment =
-        segments[pairIndex * 2];
-
-      const secondSegment =
-        segments[pairIndex * 2 + 1];
-
-      if (!firstSegment || !secondSegment) {
-        continue;
-      }
-
-      const first = analyzeNote(
-        samples.subarray(
-          firstSegment.start,
-          firstSegment.end,
-        ),
-        sampleRate,
-        minClarity,
+    const notes =
+      detectNotes(
+        pitchFrames,
       );
 
-      const second = analyzeNote(
-        samples.subarray(
-          secondSegment.start,
-          secondSegment.end,
-        ),
-        sampleRate,
-        minClarity,
-      );
+    console.log(
+      '🎵 INTERVAL PITCH FRAMES:',
+      pitchFrames.length,
+    );
 
-      const hasFirstNote = first.frequency > 0;
-      const hasSecondNote = second.frequency > 0;
+    console.log(
+      '🎵 INTERVAL DETECTED NOTES:',
+      notes.map(note => ({
+        frequency:
+          Math.round(
+            note.frequency * 100,
+          ) / 100,
 
-      const detectedRatio =
-        hasFirstNote && hasSecondNote
-          ? calcIntervalRatio(
-              first.frequency,
-              second.frequency,
-            )
-          : 0;
+        midi:
+          Math.round(
+            frequencyToMidi(
+              note.frequency,
+            ) * 100,
+          ) / 100,
 
-      attempts.push({
-        freq1: first.frequency,
-        freq2: second.frequency,
-        detectedRatio,
+        clarity:
+          Math.round(
+            note.clarity * 100,
+          ) / 100,
 
-        hasFirstNote,
-        hasSecondNote,
+        start:
+          Math.round(
+            note.start * 1000,
+          ) / 1000,
 
-        firstNoteClarity: first.clarity,
-        secondNoteClarity: second.clarity,
-      });
+        end:
+          Math.round(
+            note.end * 1000,
+          ) / 1000,
+      })),
+    );
+
+    if (notes.length < 2) {
+      return emptyResult();
     }
+
+    const attempts =
+      buildAttempts(
+        notes,
+        expectedRepetitions,
+      );
+
+    console.log(
+      '🎵 INTERVAL ATTEMPTS:',
+      attempts.map(
+        attempt => ({
+          freq1:
+            Math.round(
+              attempt.freq1 * 100,
+            ) / 100,
+
+          freq2:
+            Math.round(
+              attempt.freq2 * 100,
+            ) / 100,
+
+          ratio:
+            Math.round(
+              attempt.detectedRatio *
+                1000,
+            ) / 1000,
+
+          clarity1:
+            Math.round(
+              attempt.firstNoteClarity *
+                100,
+            ) / 100,
+
+          clarity2:
+            Math.round(
+              attempt.secondNoteClarity *
+                100,
+            ) / 100,
+        }),
+      ),
+    );
 
     if (attempts.length === 0) {
       return emptyResult();
     }
 
-    const validAttempts = attempts.filter(
-      attempt =>
-        attempt.hasFirstNote &&
-        attempt.hasSecondNote &&
-        Number.isFinite(attempt.detectedRatio) &&
-        attempt.detectedRatio > 0,
-    );
+    const validAttempts =
+      attempts.filter(
+        attempt =>
+          attempt.hasFirstNote &&
+          attempt.hasSecondNote &&
+          Number.isFinite(
+            attempt.detectedRatio,
+          ) &&
+          attempt.detectedRatio > 0,
+      );
 
-    if (validAttempts.length === 0) {
+    if (
+      validAttempts.length === 0
+    ) {
       return {
         ...emptyResult(),
         attempts,
       };
     }
 
-    const aggregateFreq1 = median(
-      validAttempts.map(attempt => attempt.freq1),
-    );
+    const aggregateFreq1 =
+      median(
+        validAttempts.map(
+          attempt =>
+            attempt.freq1,
+        ),
+      );
 
-    const aggregateFreq2 = median(
-      validAttempts.map(attempt => attempt.freq2),
-    );
+    const aggregateFreq2 =
+      median(
+        validAttempts.map(
+          attempt =>
+            attempt.freq2,
+        ),
+      );
 
-    const aggregateRatio = median(
-      validAttempts.map(
-        attempt => attempt.detectedRatio,
-      ),
-    );
+    const aggregateRatio =
+      median(
+        validAttempts.map(
+          attempt =>
+            attempt.detectedRatio,
+        ),
+      );
 
     const aggregateFirstClarity =
       validAttempts.reduce(
         (sum, attempt) =>
-          sum + attempt.firstNoteClarity,
+          sum +
+          attempt.firstNoteClarity,
         0,
-      ) / validAttempts.length;
+      ) /
+      validAttempts.length;
 
     const aggregateSecondClarity =
       validAttempts.reduce(
         (sum, attempt) =>
-          sum + attempt.secondNoteClarity,
+          sum +
+          attempt.secondNoteClarity,
         0,
-      ) / validAttempts.length;
+      ) /
+      validAttempts.length;
 
     return {
-      freq1: aggregateFreq1,
-      freq2: aggregateFreq2,
-      detectedRatio: aggregateRatio,
+      freq1:
+        aggregateFreq1,
+
+      freq2:
+        aggregateFreq2,
+
+      detectedRatio:
+        aggregateRatio,
 
       hasFirstNote: true,
       hasSecondNote: true,
 
-      firstNoteClarity: aggregateFirstClarity,
-      secondNoteClarity: aggregateSecondClarity,
+      firstNoteClarity:
+        aggregateFirstClarity,
+
+      secondNoteClarity:
+        aggregateSecondClarity,
 
       attempts,
     };

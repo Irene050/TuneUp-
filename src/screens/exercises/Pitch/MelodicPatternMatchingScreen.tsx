@@ -149,11 +149,6 @@ export default function MelodicPatternMatchingScreen({
     );
 
   const [
-    liveFrequencies,
-    setLiveFrequencies,
-  ] = useState<number[]>([]);
-
-  const [
     recordingElapsedMs,
     setRecordingElapsedMs,
   ] = useState(0);
@@ -201,9 +196,6 @@ export default function MelodicPatternMatchingScreen({
 
   const recordingElapsedRef =
     useRef(0);
-
-  const pitchHistoryRef =
-    useRef<number[]>([]);
 
   const stopRecordingRef =
     useRef<
@@ -442,23 +434,6 @@ export default function MelodicPatternMatchingScreen({
         }
 
         setLiveFrame(frame);
-
-        if (
-          Number.isFinite(
-            frame.pitch,
-          ) &&
-          frame.pitch > 0
-        ) {
-          pitchHistoryRef.current =
-            [
-              ...pitchHistoryRef.current,
-              frame.pitch,
-            ].slice(-30);
-
-          setLiveFrequencies(
-            pitchHistoryRef.current,
-          );
-        }
       },
       [],
     );
@@ -664,11 +639,6 @@ export default function MelodicPatternMatchingScreen({
         try {
           discardRecordingRef.current =
             false;
-
-          pitchHistoryRef.current =
-            [];
-
-          setLiveFrequencies([]);
 
           setLiveFrame(null);
 
@@ -989,10 +959,6 @@ export default function MelodicPatternMatchingScreen({
       setErrorMessage(null);
 
       setLiveFrame(null);
-      setLiveFrequencies([]);
-
-      pitchHistoryRef.current =
-        [];
 
       recordingElapsedRef.current =
         0;
@@ -1115,10 +1081,6 @@ export default function MelodicPatternMatchingScreen({
       setCurrentPattern(null);
       setResult(null);
       setLiveFrame(null);
-      setLiveFrequencies([]);
-
-      pitchHistoryRef.current =
-        [];
 
       recordingElapsedRef.current =
         0;
@@ -2038,31 +2000,6 @@ export default function MelodicPatternMatchingScreen({
                 }
               >
                 {patternNoteCount} notes
-              </Text>
-            </View>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Notes matched
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {
-                  result.notesHit.filter(
-                    Boolean,
-                  ).length
-                }
-                /{patternNoteCount}
               </Text>
             </View>
 

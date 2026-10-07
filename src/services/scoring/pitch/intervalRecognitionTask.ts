@@ -36,21 +36,13 @@ export function scoreIntervalRecognitionTask(
   intervalName: string,
   params: IntervalRecognitionParams,
 ): IntervalRecognitionScoreResult {
-  /*
-   * The number of repetitions is fixed by the
-   * current difficulty tier.
-   */
   const requestedRepetitions = Math.max(
     1,
     Math.round(params.repetitions),
   );
 
   /*
-   * Invalid target ratio means the exercise cannot
-   * be scored meaningfully.
-   *
-   * Return one zero score for every requested
-   * repetition so the result shape remains consistent.
+   * Invalid target ratio cannot be scored.
    */
   if (
     !Number.isFinite(targetRatio) ||
@@ -66,11 +58,8 @@ export function scoreIntervalRecognitionTask(
 
       intervalName,
 
-      freq1:
-        measurement.freq1,
-
-      freq2:
-        measurement.freq2,
+      freq1: measurement.freq1,
+      freq2: measurement.freq2,
 
       firstNoteDetected:
         measurement.hasFirstNote,
@@ -86,17 +75,14 @@ export function scoreIntervalRecognitionTask(
 
       repetitionsCompleted: 0,
 
-      repetitionScores:
-        Array(
-          requestedRepetitions,
-        ).fill(0),
+      repetitionScores: Array(
+        requestedRepetitions,
+      ).fill(0),
     };
   }
 
   /*
-   * Only attempts where both notes were successfully
-   * detected and a valid interval ratio was produced
-   * can receive a non-zero score.
+   * Keep only complete, valid interval attempts.
    */
   const validAttempts =
     measurement.attempts.filter(
@@ -110,12 +96,7 @@ export function scoreIntervalRecognitionTask(
     );
 
   /*
-   * Score only the number of repetitions requested
-   * by the current tier.
-   *
-   * The measurement layer normally already limits
-   * attempts to the requested number, but this also
-   * protects the scorer from unexpected extra attempts.
+   * Score at most the number requested by the tier.
    */
   const scoredAttempts =
     validAttempts.slice(
@@ -124,126 +105,102 @@ export function scoreIntervalRecognitionTask(
     );
 
   /*
-   * Calculate the score of each successfully
-   * detected repetition.
-   *
-   * Score decreases linearly according to the
-   * percentage deviation from the target interval.
+   * Calculate the score for every detected repetition.
    */
   const detectedScores =
-    scoredAttempts.map(
-      attempt => {
-        const deviation =
-          Math.abs(
-            attempt.detectedRatio -
-              targetRatio,
-          ) /
-          targetRatio;
+    scoredAttempts.map(attempt => {
+      const deviation =
+        Math.abs(
+          attempt.detectedRatio -
+            targetRatio,
+        ) / targetRatio;
 
-        const deviationPct =
-          deviation * 100;
+      const deviationPct =
+        deviation * 100;
 
-        return Math.round(
-          Math.max(
-            0,
-            Math.min(
-              100,
-              100 -
-                deviationPct,
-            ),
+      return Math.round(
+        Math.max(
+          0,
+          Math.min(
+            100,
+            100 - deviationPct,
           ),
-        );
-      },
-    );
+        ),
+      );
+    });
 
   /*
-   * Any requested repetition that was not detected
-   * receives a score of 0.
+   * IMPORTANT:
    *
-   * Example:
+   * Do not automatically turn undetected repetitions
+   * into zero-score repetitions.
    *
-   * Requested = 2
-   * Detected  = 1
-   * Scores    = [95, 0]
+   * The measurement layer is detecting actual repetitions
+   * from the user's recording. If the user performs fewer
+   * repetitions than the configured maximum, score the
+   * repetitions that were actually completed.
    */
-  const missingRepetitions =
-    Math.max(
-      0,
-      requestedRepetitions -
-        detectedScores.length,
-    );
-
-  const repetitionScores = [
-    ...detectedScores,
-    ...Array(
-      missingRepetitions,
-    ).fill(0),
-  ];
+  const repetitionScores =
+    detectedScores.length > 0
+      ? detectedScores
+      : [0];
 
   /*
-   * Final exercise score is the average across
-   * ALL requested repetitions, including missing
-   * repetitions.
+   * Score is based on the repetitions that were
+   * successfully detected.
    */
-  const score = Math.round(
-    repetitionScores.reduce(
-      (sum, value) =>
-        sum + value,
-      0,
-    ) /
-      requestedRepetitions,
-  );
+  const score =
+    detectedScores.length > 0
+      ? Math.round(
+          detectedScores.reduce(
+            (sum, value) =>
+              sum + value,
+            0,
+          ) / detectedScores.length,
+        )
+      : 0;
 
   /*
-   * Calculate the deviation of successfully
-   * detected repetitions.
+   * Calculate average deviation only from
+   * successfully detected repetitions.
    */
   const detectedDeviationPct =
-    scoredAttempts.reduce(
-      (sum, attempt) => {
-        const deviation =
-          Math.abs(
-            attempt.detectedRatio -
-              targetRatio,
-          ) /
-          targetRatio;
+    scoredAttempts.length > 0
+      ? scoredAttempts.reduce(
+          (sum, attempt) => {
+            const deviation =
+              Math.abs(
+                attempt.detectedRatio -
+                  targetRatio,
+              ) / targetRatio;
 
-        return (
-          sum +
-          deviation * 100
-        );
-      },
-      0,
-    );
-
-  /*
-   * Missing repetitions count as 100% deviation.
-   *
-   * This makes the deviation calculation consistent
-   * with the zero score assigned to missing attempts.
-   */
-  const averageDeviationPct =
-    (
-      detectedDeviationPct +
-      missingRepetitions * 100
-    ) /
-    requestedRepetitions;
+            return (
+              sum +
+              deviation * 100
+            );
+          },
+          0,
+        ) / scoredAttempts.length
+      : 100;
 
   /*
-   * Passing requires BOTH:
+   * Passing requires at least one valid repetition
+   * and acceptable interval accuracy.
    *
-   * 1. Every requested repetition was detected.
-   * 2. The average interval deviation is within
-   *    the current tier's tolerance.
+   * Completing fewer repetitions than the tier's
+   * configured maximum does not erase the score.
    */
-  const allRepetitionsDetected =
-    scoredAttempts.length ===
-    requestedRepetitions;
-
   const passed =
-    allRepetitionsDetected &&
-    averageDeviationPct <=
+    scoredAttempts.length > 0 &&
+    detectedDeviationPct <=
       params.tolerancePct;
+
+  /*
+   * Use the first detected attempt for the
+   * single-interval result fields.
+   */
+  const firstAttempt =
+    scoredAttempts[0];
 
   return {
     score,
@@ -255,26 +212,32 @@ export function scoreIntervalRecognitionTask(
       measurement.detectedRatio,
 
     deviationPct:
-      averageDeviationPct,
+      detectedDeviationPct,
 
     intervalName,
 
     freq1:
+      firstAttempt?.freq1 ??
       measurement.freq1,
 
     freq2:
+      firstAttempt?.freq2 ??
       measurement.freq2,
 
     firstNoteDetected:
+      firstAttempt?.hasFirstNote ??
       measurement.hasFirstNote,
 
     secondNoteDetected:
+      firstAttempt?.hasSecondNote ??
       measurement.hasSecondNote,
 
     firstNoteClarity:
+      firstAttempt?.firstNoteClarity ??
       measurement.firstNoteClarity,
 
     secondNoteClarity:
+      firstAttempt?.secondNoteClarity ??
       measurement.secondNoteClarity,
 
     repetitionsCompleted:

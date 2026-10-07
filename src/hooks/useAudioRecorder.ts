@@ -25,19 +25,30 @@ const CHANNEL_COUNT = 1;
 // How frequently the live UI is updated.
 const LIVE_ANALYSIS_INTERVAL_MS = 120;
 
-// Treat extremely quiet input as silence.
-const MIN_VOICED_DB = -60;
+// Minimum signal level considered strong enough for live
+// pitch detection.
+//
+// IMPORTANT:
+// This only affects LIVE pitch feedback.
+// The raw PCM recording is never modified or filtered.
+const MIN_VOICED_DB = -45;
 
 // Singing pitch range.
 const MIN_PITCH_HZ = 60;
 const MAX_PITCH_HZ = 1500;
 
 // Minimum Pitchy clarity required for a live pitch.
-const MIN_PITCH_CLARITY = 0.45;
+//
+// A higher threshold helps reject unreliable pitch estimates
+// caused by background noise, weak input, and harmonics.
+const MIN_PITCH_CLARITY = 0.70;
 
 // Keep the previous valid pitch temporarily if the native
 // microphone stream has a short dropout.
-const LIVE_DROPOUT_TOLERANCE_MS = 700;
+//
+// This is intentionally short so an old note does not remain
+// on screen while the detector is actually receiving silence.
+const LIVE_DROPOUT_TOLERANCE_MS = 250;
 
 
 // ============================================================
@@ -263,14 +274,6 @@ export function useAudioRecorder(
   // ==========================================================
   // CALLBACK REFS
   // ==========================================================
-  //
-  // Do NOT place the options object itself inside the native
-  // recorder callback dependency chain.
-  //
-  // React components can create a new object on every render.
-  // These refs let the recorder continue using the latest
-  // callbacks without rebuilding the recorder callbacks.
-  // ==========================================================
 
   const onFrameRef =
     useRef<
@@ -319,11 +322,10 @@ export function useAudioRecorder(
   // LIVE DETECTION MEMORY
   // ==========================================================
   //
-  // IMPORTANT:
+  // These values are ONLY used to temporarily smooth the
+  // live UI during very short microphone dropouts.
   //
-  // These values are ONLY for smoothing the live UI.
-  //
-  // They NEVER alter the PCM recording.
+  // They NEVER modify the recorded PCM.
   // ==========================================================
 
   const lastValidPitchRef =
@@ -413,9 +415,11 @@ export function useAudioRecorder(
           "🎤 REQUESTING MICROPHONE..."
         );
 
-        /*
-         * Request microphone permission.
-         */
+
+        // ======================================================
+        // REQUEST MICROPHONE PERMISSION
+        // ======================================================
+
         const permission =
           await AudioManager.requestRecordingPermissions();
 
@@ -534,10 +538,6 @@ export function useAudioRecorder(
               // ==================================================
               // COPY NATIVE BUFFER IMMEDIATELY
               // ==================================================
-              //
-              // Native audio buffers may be reused by the
-              // recorder. Therefore we immediately copy them.
-              // ==================================================
 
               const samples =
                 new Float32Array(
@@ -548,14 +548,22 @@ export function useAudioRecorder(
                 channelData
               );
 
+
               // ==================================================
               // ALWAYS STORE RAW AUDIO
               // ==================================================
               //
-              // This happens BEFORE live analysis.
+              // The raw samples are stored before any live
+              // detection decision.
               //
-              // Live detection can fail, timeout, or throw
-              // without affecting the assessment recording.
+              // Therefore:
+              //
+              // - clarity filtering does not affect recording
+              // - volume filtering does not affect recording
+              // - dropout handling does not affect recording
+              // - live pitch errors do not affect recording
+              //
+              // The assessment receives the complete PCM stream.
               // ==================================================
 
               chunksRef.current.push(
@@ -620,7 +628,7 @@ export function useAudioRecorder(
 
               // ==================================================
               // HANDLE QUIET / DROPOUT
-              // ======================================================
+              // ==================================================
 
               if (
                 signalIsQuiet
@@ -634,14 +642,11 @@ export function useAudioRecorder(
 
 
                 /*
-                 * Temporary dropout:
+                 * Short microphone dropout:
                  *
-                 * Keep the previous note visible.
-                 *
-                 * The raw zeros remain untouched in the
-                 * recording.
+                 * Temporarily retain the previous reliable
+                 * pitch so the UI does not flicker immediately.
                  */
-
                 if (
                   lastValidPitchRef.current >
                     0 &&
@@ -650,27 +655,27 @@ export function useAudioRecorder(
                 ) {
                   emitLiveFrame(
                     {
-                    pitch:
-                      lastValidPitchRef.current,
+                      pitch:
+                        lastValidPitchRef.current,
 
-                    note:
-                      lastValidNoteRef.current,
+                      note:
+                        lastValidNoteRef.current,
 
-                    clarity:
-                      lastValidClarityRef.current,
+                      clarity:
+                        lastValidClarityRef.current,
 
-                    volume:
-                      signal.db,
+                      volume:
+                        signal.db,
 
-                    stability:
-                      0,
+                      stability:
+                        0,
 
-                    samples,
+                      samples,
 
-                    sampleRate:
-                      DEFAULT_SAMPLE_RATE,
-                  }
-                );
+                      sampleRate:
+                        DEFAULT_SAMPLE_RATE,
+                    }
+                  );
 
                   return;
                 }
@@ -679,9 +684,8 @@ export function useAudioRecorder(
                 /*
                  * Longer dropout:
                  *
-                 * No reliable pitch.
+                 * Do not display an old pitch.
                  */
-
                 emitLiveFrame(
                   {
                     pitch: 0,
@@ -743,6 +747,31 @@ export function useAudioRecorder(
 
 
               // ==================================================
+              // VALIDATE SIGNAL LEVEL
+              // ==================================================
+              //
+              // This is important.
+              //
+              // Previously, volume was only used to decide whether
+              // the entire buffer was "quiet".
+              //
+              // A weak signal could still reach Pitchy and produce
+              // a plausible-looking frequency.
+              //
+              // We now explicitly require sufficient signal level
+              // before accepting the pitch result.
+              // ==================================================
+
+              const validVolume =
+                Number.isFinite(
+                  signal.db
+                ) &&
+                signal.db >=
+                  MIN_VOICED_DB &&
+                signal.peak > 0;
+
+
+              // ==================================================
               // VALIDATE PITCH
               // ==================================================
 
@@ -756,6 +785,10 @@ export function useAudioRecorder(
                   MAX_PITCH_HZ;
 
 
+              // ==================================================
+              // VALIDATE PITCH CLARITY
+              // ==================================================
+
               const validClarity =
                 Number.isFinite(
                   detectedClarity
@@ -763,6 +796,10 @@ export function useAudioRecorder(
                 detectedClarity >=
                   MIN_PITCH_CLARITY;
 
+
+              // ==================================================
+              // VALIDATE NOTE
+              // ==================================================
 
               const validNote =
                 typeof detectedNote ===
@@ -776,8 +813,21 @@ export function useAudioRecorder(
               // ==================================================
               // INVALID PITCH RESULT
               // ==================================================
+              //
+              // A pitch is considered unreliable when ANY of the
+              // following is true:
+              //
+              // 1. Signal is too weak
+              // 2. Pitch is outside the expected range
+              // 3. Pitchy clarity is too low
+              // 4. Pitchy did not produce a valid note
+              //
+              // This prevents weak/noisy microphone input from
+              // immediately becoming a random-looking note.
+              // ==================================================
 
               if (
+                !validVolume ||
                 !validPitch ||
                 !validClarity ||
                 !validNote
@@ -791,11 +841,11 @@ export function useAudioRecorder(
 
 
                 /*
-                 * Short Pitchy failure:
+                 * Short detection failure:
                  *
-                 * Keep previous good note.
+                 * Keep the previous reliable note for a very
+                 * short period.
                  */
-
                 if (
                   lastValidPitchRef.current >
                     0 &&
@@ -831,30 +881,55 @@ export function useAudioRecorder(
 
 
                 /*
-                 * Long failure:
+                 * Longer failure:
                  *
-                 * No reliable pitch.
+                 * Explicitly report that no reliable pitch
+                 * is currently available.
                  */
-
                 emitLiveFrame(
-  {
-    pitch: 0,
+                  {
+                    pitch: 0,
 
-    note: "--",
+                    note: "--",
 
-    clarity: 0,
+                    clarity: 0,
 
-    volume:
-      signal.db,
+                    volume:
+                      signal.db,
 
-    stability: 0,
+                    stability: 0,
 
-    samples,
+                    samples,
 
-    sampleRate:
-      DEFAULT_SAMPLE_RATE,
-  }
-);
+                    sampleRate:
+                      DEFAULT_SAMPLE_RATE,
+                  }
+                );
+
+                console.log(
+                  "⚠️ LIVE PITCH REJECTED:",
+                  {
+                    pitch:
+                      detectedPitch,
+
+                    note:
+                      detectedNote,
+
+                    clarity:
+                      detectedClarity,
+
+                    volumeDb:
+                      signal.db,
+
+                    validVolume,
+
+                    validPitch,
+
+                    validClarity,
+
+                    validNote,
+                  }
+                );
 
                 return;
               }
@@ -881,28 +956,28 @@ export function useAudioRecorder(
 
 
               const liveFrame:
-              LiveAudioFrame =
-              {
-                pitch:
-                  detectedPitch,
+                LiveAudioFrame =
+                {
+                  pitch:
+                    detectedPitch,
 
-                note:
-                  detectedNote,
+                  note:
+                    detectedNote,
 
-                clarity:
-                  detectedClarity,
+                  clarity:
+                    detectedClarity,
 
-                volume:
-                  signal.db,
+                  volume:
+                    signal.db,
 
-                stability:
-                  0,
+                  stability:
+                    0,
 
-                samples,
+                  samples,
 
-                sampleRate:
-                  DEFAULT_SAMPLE_RATE,
-              };
+                  sampleRate:
+                    DEFAULT_SAMPLE_RATE,
+                };
 
 
               emitLiveFrame(
@@ -1092,11 +1167,11 @@ export function useAudioRecorder(
     useCallback(
       async () => {
         const recorder =
-  recorderRef.current;
+          recorderRef.current;
 
-if (!recorder) {
-  return;
-}
+        if (!recorder) {
+          return;
+        }
 
         console.log(
           "🛑 STOPPING RECORDER..."
@@ -1215,7 +1290,6 @@ if (!recorder) {
           "🎧 FINAL AUDIO SIGNAL:",
           {
             ...finalSignal,
-
             durationSeconds,
           }
         );
