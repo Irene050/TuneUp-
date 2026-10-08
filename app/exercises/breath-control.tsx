@@ -9,8 +9,7 @@ import SustainedExhaleScreen from '../../src/screens/exercises/BreathControl/Sus
 import SustainedSSSSScreen from '../../src/screens/exercises/BreathControl/SustainedSSSSScreen';
 
 export default function BreathControlRoute() {
-  const { mode, templateId } =
-    useLocalSearchParams<{
+  const { mode, templateId } = useLocalSearchParams<{
       templateId?: string;
       mode?: string;
     }>();
@@ -19,27 +18,18 @@ export default function BreathControlRoute() {
     return <BreathControlFreeModeScreen />;
   }
 
-  if (!templateId) {
-    return <BreathControlExercisesScreen />;
-  }
-
   switch (templateId) {
     case 'sustainedExhale':
       return <SustainedExhaleScreen />;
-
     case 'sustainedSSSS':
       return <SustainedSSSSScreen />;
-
     case 'diaphragmaticBreathing':
       return <DiaphragmaticBreathingScreen />;
-
     case 'steadyAirflowMaintenance':
       return <SteadyAirflowMaintenanceScreen />;
-
     case 'controlledBreathRelease':
       return <ControlledBreathReleaseScreen />;
-
     default:
-      return null;
+      return <BreathControlExercisesScreen />;
   }
 }

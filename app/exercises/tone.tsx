@@ -1,5 +1,3 @@
-// app/exercises/tone.tsx
-
 import { useLocalSearchParams } from 'expo-router';
 
 import FrequencyZoneStabilityScreen from '../../src/screens/exercises/Tone/FrequencyZoneStabilityScreen';
@@ -20,27 +18,18 @@ export default function ToneRoute() {
     return <ToneFreeModeScreen />;
   }
 
-  if (!templateId) {
-    return <ToneExercisesScreen />;
-  }
-
   switch (templateId) {
-case 'vowelConsistencyExercise':
-  return <VowelConsistencyExerciseScreen />;
-
-case 'waveformSmoothnessDrill':
-  return <WaveformSmoothnessDrillScreen />;
-
-case 'frequencyZoneStability':
-  return <FrequencyZoneStabilityScreen />;
-
-case 'toneConsistencyExercise':
-  return <ToneConsistencyExerciseScreen />;
-
-case 'steadyToneHolding':
-  return <SteadyToneHoldingScreen />;
-
+    case 'vowelConsistencyExercise':
+      return <VowelConsistencyExerciseScreen />;
+    case 'waveformSmoothnessDrill':
+      return <WaveformSmoothnessDrillScreen />;
+    case 'frequencyZoneStability':
+      return <FrequencyZoneStabilityScreen />;
+    case 'toneConsistencyExercise':
+      return <ToneConsistencyExerciseScreen />;
+    case 'steadyToneHolding':
+      return <SteadyToneHoldingScreen />;
     default:
-      return null;
+      return <ToneExercisesScreen />;;
   }
 }

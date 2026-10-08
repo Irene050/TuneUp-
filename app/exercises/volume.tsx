@@ -9,16 +9,16 @@ import VolumeExercisesScreen from '@/screens/exercises/Volume/VolumeExercisesScr
 import VolumeFreeModeScreen from '@/screens/exercises/Volume/VolumeFreeModeScreen';
 
 export default function VolumeRoute() {
-  const { mode, exercise } = useLocalSearchParams<{
+  const { mode, templateId } = useLocalSearchParams<{
     mode?: string;
-    exercise?: string;
+    templateId?: string;
   }>();
 
   if (mode === 'free') {
     return <VolumeFreeModeScreen />;
   }
 
-  switch (exercise) {
+  switch (templateId) {
     case 'dynamic-range':
       return <DynamicRangeExercise />;
     case 'controlled-crescendo':

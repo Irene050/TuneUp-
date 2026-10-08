@@ -1,5 +1,3 @@
-// app/exercises/pitch.tsx
-
 import { useLocalSearchParams } from 'expo-router';
 
 import IntervalRecognitionTaskScreen from '../../src/screens/exercises/Pitch/IntervalRecognitionTaskScreen';
@@ -11,8 +9,7 @@ import ScaleAccuracyDrillScreen from '../../src/screens/exercises/Pitch/ScaleAcc
 import SustainedNoteStabilityScreen from '../../src/screens/exercises/Pitch/SustainedNoteStabilityScreen';
 
 export default function PitchRoute() {
-  const { mode, templateId } =
-    useLocalSearchParams<{
+  const { mode, templateId } = useLocalSearchParams<{
       templateId?: string;
       mode?: string;
     }>();
@@ -21,27 +18,18 @@ export default function PitchRoute() {
     return <PitchFreeModeScreen />;
   }
 
-  if (!templateId) {
-    return <PitchExercisesScreen />;
-  }
-
   switch (templateId) {
     case 'noteMatchingExercise':
       return <NoteMatchingScreen />;
-
     case 'scaleAccuracyDrill':
       return <ScaleAccuracyDrillScreen />;
-
     case 'intervalRecognitionTask':
       return <IntervalRecognitionTaskScreen />;
-
     case 'sustainedNoteStability':
       return <SustainedNoteStabilityScreen />;
-
     case 'melodicPatternMatching':
       return <MelodicPatternMatchingScreen />;
-
     default:
-      return null;
+      return <PitchExercisesScreen />;
   }
 }

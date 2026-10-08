@@ -1,5 +1,3 @@
-// app/exercises/agility.tsx
-
 import { useLocalSearchParams } from 'expo-router';
 
 import AgilityExercisesScreen from '../../src/screens/exercises/Agility/AgilityExercisesScreen';
@@ -11,8 +9,7 @@ import RapidScaleTrillScreen from '../../src/screens/exercises/Agility/RapidScal
 import VocalRunAccuracyTaskScreen from '../../src/screens/exercises/Agility/VocalRunAccuracyTaskScreen';
 
 export default function AgilityRoute() {
-  const { mode, templateId } =
-    useLocalSearchParams<{
+  const { mode, templateId } = useLocalSearchParams<{
       templateId?: string;
       mode?: string;
     }>();
@@ -21,63 +18,18 @@ export default function AgilityRoute() {
     return <AgilityFreeModeScreen />;
   }
 
-  if (!templateId) {
-    return <AgilityExercisesScreen />;
-  }
-
   switch (templateId) {
-    /*
-     * Arpeggio Speed Drill
-     *
-     * Determines the user's current Agility tier
-     * internally.
-     */
     case 'arpeggioSpeed':
       return <ArpeggioSpeedDrillScreen />;
-
-    /*
-     * Quick Interval Jump
-     *
-     * Determines the user's current Agility tier
-     * internally and applies ADS.
-     */
     case 'quickIntervalJump':
       return <QuickIntervalJumpScreen />;
-
-    /*
-     * Rapid Note Transition
-     *
-     * Still uses the tier prop for now.
-     */
     case 'rapidNoteTransition':
-      return (
-        <RapidNoteTransitionExerciseScreen
-        />
-      );
-
-    /*
-     * Rapid Scale Trill
-     *
-     * Still uses the tier prop for now.
-     */
+      return <RapidNoteTransitionExerciseScreen/>
     case 'rapidScaleTrill':
-      return (
-        <RapidScaleTrillScreen
-        />
-      );
-
-    /*
-     * Vocal Run Accuracy Task
-     *
-     * Still uses the tier prop for now.
-     */
+      return <RapidScaleTrillScreen/>
     case 'vocalRunAccuracy':
-      return (
-        <VocalRunAccuracyTaskScreen
-        />
-      );
-
+      return <VocalRunAccuracyTaskScreen/>
     default:
-      return null;
+      return <AgilityExercisesScreen />;;
   }
 }
