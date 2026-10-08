@@ -1,16 +1,9 @@
-// ============================================================
-// BREATH CONTROL EXERCISE CONSTANTS
-// ============================================================
-
 export type Tier =
   | 'beginner'
   | 'intermediate'
   | 'advanced';
 
-
-// ============================================================
-// 1. SUSTAINED EXHALE
-// ============================================================
+// sustained exhale params
 
 export interface SustainedExhaleParams {
   durationRangeSec: [number, number];
@@ -43,36 +36,25 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
   advanced: {
     durationRangeSec: [24, 32],
     pacingGuideMs: 625,
-    repetitions: 6,
+    repetitions: 5,
     consistencyThreshold: 90,
     detectionThreshold: 0.02,
   },
 };
 
 
-// ============================================================
-// 2. SUSTAINED "SSSS" SOUND
-// ============================================================
-
-/*
- * Sustained "SSSS" uses the same tier parameters
- * as Sustained Exhale.
- */
+// sustained ssss params (uses the same params as sustained exhale)
 
 export const SUSTAINED_SSSS_PARAMS =
   SUSTAINED_EXHALE_PARAMS;
 
-
-// ============================================================
-// 3. DIAPHRAGMATIC BREATHING
-// ============================================================
+// diaphragmatic breathing params
 
 export interface DiaphragmaticBreathingParams {
   inhaleSec: number;
   exhaleSec: number;
   repetitions: number;
   consistencyThreshold: number;
-  targetDbRange: [number, number];
   detectionThreshold: number;
 }
 
@@ -83,40 +65,34 @@ export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
   beginner: {
     inhaleSec: 5,
     exhaleSec: 10,
-    repetitions: 2,
+    repetitions: 3,
     consistencyThreshold: 60,
-    targetDbRange: [40, 50],
     detectionThreshold: 0.02,
   },
 
   intermediate: {
     inhaleSec: 3,
     exhaleSec: 15,
-    repetitions: 3,
+    repetitions: 4,
     consistencyThreshold: 75,
-    targetDbRange: [45, 55],
     detectionThreshold: 0.02,
   },
 
   advanced: {
     inhaleSec: 2,
-    exhaleSec: 25,
-    repetitions: 4,
+    exhaleSec: 20,
+    repetitions: 5,
     consistencyThreshold: 90,
-    targetDbRange: [50, 60],
     detectionThreshold: 0.02,
   },
 };
 
-// ============================================================
-// 4. STEADY AIRFLOW MAINTENANCE
-// ============================================================
+// steady airflow maintenance params
 
 export interface SteadyAirflowParams {
   durationSec: number;
   repetitions: number;
   stabilityThreshold: number;
-  amplitudeTolerancePct: number;
   detectionThreshold: number;
 }
 
@@ -126,39 +102,33 @@ export const STEADY_AIRFLOW_PARAMS: Record<
 > = {
   beginner: {
     durationSec: 12,
-    repetitions: 2,
+    repetitions: 3,
     stabilityThreshold: 65,
-    amplitudeTolerancePct: 15,
     detectionThreshold: 0.02,
   },
 
   intermediate: {
     durationSec: 18,
-    repetitions: 3,
+    repetitions: 4,
     stabilityThreshold: 80,
-    amplitudeTolerancePct: 12,
     detectionThreshold: 0.02,
   },
 
   advanced: {
     durationSec: 25,
-    repetitions: 4,
+    repetitions: 5,
     stabilityThreshold: 95,
-    amplitudeTolerancePct: 10,
     detectionThreshold: 0.02,
   },
 };
 
-// ============================================================
-// 5. CONTROLLED BREATH RELEASE
-// ============================================================
+// controlled breath release params
 
 export interface ControlledBreathReleaseParams {
   pulseCount: number;
   intervalSec: number;
   repetitions: number;
   pulseConsistencyThreshold: number;
-  amplitudeVariancePct: number;
 }
 
 export const CONTROLLED_BREATH_RELEASE_PARAMS: Record<
@@ -168,24 +138,21 @@ export const CONTROLLED_BREATH_RELEASE_PARAMS: Record<
   beginner: {
     pulseCount: 6,
     intervalSec: 2,
-    repetitions: 2,
+    repetitions: 3,
     pulseConsistencyThreshold: 60,
-    amplitudeVariancePct: 20,
   },
 
   intermediate: {
     pulseCount: 8,
     intervalSec: 1.5,
-    repetitions: 3,
+    repetitions: 4,
     pulseConsistencyThreshold: 75,
-    amplitudeVariancePct: 15,
   },
 
   advanced: {
     pulseCount: 10,
     intervalSec: 1,
-    repetitions: 4,
+    repetitions: 5,
     pulseConsistencyThreshold: 90,
-    amplitudeVariancePct: 10,
   },
 };

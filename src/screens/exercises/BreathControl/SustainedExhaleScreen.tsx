@@ -318,22 +318,18 @@ export default function SustainedExhaleScreen({
   // ----------------------------------------------------------
 
   const handleLiveFrame =
-    useCallback(
-      (frame: {
-        pitch: number | null;
-        note: string | null;
-        clarity: number;
-        volume: number;
-        stability: number;
-      }) => {
-        if (!mountedRef.current) {
-          return;
-        }
+  useCallback(
+    (frame: {
+      volume: number;
+    }) => {
+      if (!mountedRef.current) {
+        return;
+      }
 
-        setVolume(frame.volume);
-      },
-      []
-    );
+      setVolume(frame.volume);
+    },
+    []
+  );
 
   const handleRecordingStop =
     useCallback(

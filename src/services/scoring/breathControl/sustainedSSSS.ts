@@ -20,32 +20,45 @@ export function scoreSustainedSSSS(
     };
   }
 
-  const targetDurationSec =
-    (params.durationRangeSec[0] +
-      params.durationRangeSec[1]) /
-    2;
+  const minDurationSec =
+    params.durationRangeSec[0];
 
-  const durationRatio =
-    targetDurationSec > 0
+  const durationScore =
+    minDurationSec > 0
       ? Math.min(
           measurement.actualDurationSec /
-            targetDurationSec,
+            minDurationSec,
           1,
+        ) * 100
+      : 0;
+
+  const consistencyScore =
+    Number.isFinite(
+      measurement.consistencyPct,
+    )
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            measurement.consistencyPct,
+          ),
         )
       : 0;
 
-  const consistencyFactor =
-    measurement.consistencyPct / 100;
-
   const score = Math.round(
-    durationRatio * 100 * consistencyFactor,
+    durationScore * 0.6 +
+      consistencyScore * 0.4,
   );
+
+  const passed =
+    measurement.actualDurationSec >=
+      minDurationSec &&
+    consistencyScore >=
+      params.consistencyThreshold;
 
   return {
     score,
-    passed:
-      measurement.consistencyPct >=
-      params.consistencyThreshold,
+    passed,
     detected: true,
   };
 }

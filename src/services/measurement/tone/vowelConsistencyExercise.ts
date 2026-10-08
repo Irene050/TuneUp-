@@ -1,10 +1,11 @@
 import {
-  calcSmoothness,
+  calcCentroidStdSmoothness,
   computeSpectralCentroid,
 } from '@/utils/dsp/spectral';
 
 export interface VowelConsistencyMeasurement {
   centroidOverTime: number[];
+  averageCentroidHz: number;
   smoothnessPct: number;
 }
 
@@ -14,18 +15,34 @@ export function measureVowelConsistency(
   fftSize = 1024,
 ): VowelConsistencyMeasurement {
   const centroidOverTime =
-    fftFrames.map((frame) =>
-      computeSpectralCentroid(
-        frame,
-        sampleRate,
-        fftSize,
-      ),
-    );
+    fftFrames
+      .map((frame) =>
+        computeSpectralCentroid(
+          frame,
+          sampleRate,
+          fftSize,
+        ),
+      )
+      .filter(
+        (centroid) =>
+          Number.isFinite(centroid) &&
+          centroid > 0,
+      );
+
+  const averageCentroidHz =
+    centroidOverTime.length > 0
+      ? centroidOverTime.reduce(
+          (sum, centroid) =>
+            sum + centroid,
+          0,
+        ) / centroidOverTime.length
+      : 0;
 
   return {
     centroidOverTime,
+    averageCentroidHz,
     smoothnessPct:
-      calcSmoothness(
+      calcCentroidStdSmoothness(
         centroidOverTime,
       ),
   };

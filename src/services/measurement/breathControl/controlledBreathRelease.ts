@@ -19,11 +19,11 @@ export function measureControlledBreathRelease(
   targetIntervalSec: number,
   sampleRate: number,
 ): ControlledBreathReleaseMeasurement {
-  const meanAmp = calcRMS(samples);
+  const rmsLevel = calcRMS(samples);
 
   const peaks = detectPulses(
     samples,
-    meanAmp,
+    rmsLevel,
     sampleRate,
   );
 

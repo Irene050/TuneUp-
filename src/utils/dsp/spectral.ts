@@ -76,11 +76,11 @@ export function classifyFrequencyZone(
     return 'low';
   }
 
-  if (frequency < 1200) {
+  if (frequency < 250) {
     return 'low';
   }
 
-  if (frequency < 2500) {
+  if (frequency < 500) {
     return 'mid';
   }
 
@@ -90,19 +90,36 @@ export function classifyFrequencyZone(
 export function calcFrequencyZoneStability(
   zoneSequence: FrequencyZone[],
 ): number {
-  if (zoneSequence.length === 0) return 0;
+  if (zoneSequence.length === 0) {
+    return 0;
+  }
+
+  if (zoneSequence.length === 1) {
+    return 100;
+  }
 
   let switches = 0;
 
-  for (let i = 1; i < zoneSequence.length; i++) {
-    if (zoneSequence[i] !== zoneSequence[i - 1]) {
+  for (
+    let i = 1;
+    i < zoneSequence.length;
+    i++
+  ) {
+    if (
+      zoneSequence[i] !==
+      zoneSequence[i - 1]
+    ) {
       switches++;
     }
   }
 
+  const transitions =
+    zoneSequence.length - 1;
+
   return Math.max(
     0,
-    100 - (switches / zoneSequence.length) * 100,
+    100 -
+      (switches / transitions) * 100,
   );
 }
 

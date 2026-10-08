@@ -1,5 +1,5 @@
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
-import { calcRMSVariance } from '@/utils/dsp/rms';
+import { calcRMSConsistency } from '@/utils/dsp/rms';
 
 export interface SustainedExhaleMeasurement {
   actualDurationSec: number;
@@ -30,7 +30,7 @@ export function measureSustainedExhale(
 
   return {
     actualDurationSec: durationSeconds,
-    consistencyPct: calcRMSVariance(exhaleSegment, 50, sampleRate),
+    consistencyPct: calcRMSConsistency(exhaleSegment, 50, sampleRate),
     detected: true,
   };
 }

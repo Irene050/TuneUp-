@@ -24,17 +24,24 @@ import {
 } from '@/constants/exercises/pitch';
 
 import {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+} from '@/screens/exercises/ExerciseScreen';
+
+import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 
 import {
   measureSustainedNoteStability,
+  type SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 
 import {
-  SustainedNoteStabilityScoreResult,
-  scoreSustainedNoteStability,
+  scoreSustainedNoteStabilityRepetitions,
+  type SustainedNoteStabilityScoreResult,
 } from '@/services/scoring/pitch/sustainedNoteStability';
 
 import {
@@ -91,13 +98,15 @@ export default function SustainedNoteStabilityScreen({
   tier,
 }: Props) {
   const [currentTier, setCurrentTier] =
-    useState<Tier>(tier ?? 'beginner');
+    useState<Tier>(
+      tier ?? 'beginner',
+    );
 
   const [params, setParams] =
     useState<SustainedNoteStabilityParams>(
       SUSTAINED_NOTE_STABILITY_PARAMS[
         tier ?? 'beginner'
-      ]
+      ],
     );
 
   const [
@@ -106,16 +115,25 @@ export default function SustainedNoteStabilityScreen({
   ] = useState(true);
 
   const [phase, setPhase] =
-    useState<Phase>('instructions');
+    useState<Phase>(
+      'instructions',
+    );
 
   const [countdown, setCountdown] =
     useState(3);
 
+  const [currentRep, setCurrentRep] =
+    useState(1);
+
   const [targetNote, setTargetNote] =
-    useState(() => createMusicalNote(60));
+    useState(() =>
+      createMusicalNote(60),
+    );
 
   const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(null);
+    useState<LiveAudioFrame | null>(
+      null,
+    );
 
   const [liveFrequencies, setLiveFrequencies] =
     useState<number[]>([]);
@@ -125,7 +143,7 @@ export default function SustainedNoteStabilityScreen({
 
   const [result, setResult] =
     useState<SustainedNoteStabilityScoreResult | null>(
-      null
+      null,
     );
 
   const [errorMessage, setErrorMessage] =
@@ -135,14 +153,14 @@ export default function SustainedNoteStabilityScreen({
     useRef(true);
 
   const countdownTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(
-      null
-    );
+    useRef<
+      ReturnType<typeof setInterval> | null
+    >(null);
 
   const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(
-      null
-    );
+    useRef<
+      ReturnType<typeof setInterval> | null
+    >(null);
 
   const recordingRef =
     useRef(false);
@@ -156,6 +174,14 @@ export default function SustainedNoteStabilityScreen({
   const elapsedRef =
     useRef(0);
 
+  const currentRepRef =
+    useRef(1);
+
+  const measurementsRef =
+    useRef<SustainedNoteStabilityMeasurement[]>(
+      [],
+    );
+
   const pitchHistoryRef =
     useRef<number[]>([]);
 
@@ -168,15 +194,6 @@ export default function SustainedNoteStabilityScreen({
    * =====================================================
    * LOAD ADAPTIVE PARAMETERS
    * =====================================================
-   *
-   * If a tier is explicitly provided, that tier is used.
-   *
-   * Otherwise:
-   * 1. Resolve the user's current tier from component progress.
-   * 2. Get the latest five completed exercises for that tier.
-   * 3. If no exercise history exists, use the latest
-   *    assessment pitch score as the ADS reference.
-   * 4. Generate the adaptive parameters.
    */
 
   useEffect(() => {
@@ -185,6 +202,9 @@ export default function SustainedNoteStabilityScreen({
     const loadAdaptiveParams =
       async () => {
         setIsLoadingAdaptiveParams(true);
+
+        let resolvedTier: Tier =
+          tier ?? 'beginner';
 
         try {
           const resolvedUser =
@@ -195,18 +215,16 @@ export default function SustainedNoteStabilityScreen({
           const user =
             resolvedUser.auth.currentUser;
 
-          let resolvedTier: Tier =
-            tier ?? 'beginner';
-
           /*
-           * Only resolve the tier from progress when
-           * the screen was not explicitly given one.
+           * Resolve the user's current tier
+           * only when no tier was explicitly
+           * supplied.
            */
           if (!tier && user) {
             const progress =
               await fetchComponentProgress(
                 user.uid,
-                'pitch'
+                'pitch',
               );
 
             resolvedTier =
@@ -219,34 +237,37 @@ export default function SustainedNoteStabilityScreen({
           }
 
           setCurrentTier(
-            resolvedTier
+            resolvedTier,
           );
 
-          let recentScores: number[] = [];
+          let recentScores: number[] =
+            [];
 
           /*
-           * Get the latest five completed exercises
-           * for the current pitch tier.
+           * Get the latest five completed
+           * exercises for this component,
+           * template, and tier.
            */
           if (user) {
             const records =
               await fetchExerciseRecords(
                 user.uid,
-                'pitch'
+                'pitch',
               );
 
             const currentTierRecords =
               records
                 .filter(
                   record =>
-                    record.tier === resolvedTier &&
+                    record.tier ===
+                      resolvedTier &&
                     record.templateId ===
-                      'sustainedNoteStability'
+                      'sustainedNoteStability',
                 )
                 .sort(
                   (a, b) =>
                     a.timestamp -
-                    b.timestamp
+                    b.timestamp,
                 );
 
             recentScores =
@@ -254,14 +275,14 @@ export default function SustainedNoteStabilityScreen({
                 .slice(-5)
                 .map(
                   record =>
-                    record.scorePct
+                    record.scorePct,
                 );
           }
 
           /*
-           * If no exercise history exists for the
-           * current tier, use the latest assessment's
-           * pitch score as the initial ADS reference.
+           * Assessment is used only when there
+           * is no completed exercise history for
+           * the current tier.
            */
           if (
             recentScores.length === 0
@@ -273,7 +294,7 @@ export default function SustainedNoteStabilityScreen({
               assessment?.scores.find(
                 score =>
                   score.componentId ===
-                  'pitch'
+                  'pitch',
               );
 
             if (pitchScore) {
@@ -288,7 +309,7 @@ export default function SustainedNoteStabilityScreen({
               {
                 tier: resolvedTier,
                 recentScores,
-              }
+              },
             );
 
           if (cancelled) {
@@ -296,25 +317,29 @@ export default function SustainedNoteStabilityScreen({
           }
 
           setParams(
-            generatedParams
+            generatedParams,
           );
         } catch (error) {
           console.error(
             '❌ FAILED TO LOAD SUSTAINED NOTE ADAPTIVE PARAMETERS:',
-            error
+            error,
           );
 
           if (!cancelled) {
+            setCurrentTier(
+              resolvedTier,
+            );
+
             setParams(
               SUSTAINED_NOTE_STABILITY_PARAMS[
-                tier ?? 'beginner'
-              ]
+                resolvedTier
+              ],
             );
           }
         } finally {
           if (!cancelled) {
             setIsLoadingAdaptiveParams(
-              false
+              false,
             );
           }
         }
@@ -335,16 +360,20 @@ export default function SustainedNoteStabilityScreen({
 
       if (countdownTimerRef.current) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
-        countdownTimerRef.current = null;
+
+        countdownTimerRef.current =
+          null;
       }
 
       if (recordingTimerRef.current) {
         clearInterval(
-          recordingTimerRef.current
+          recordingTimerRef.current,
         );
-        recordingTimerRef.current = null;
+
+        recordingTimerRef.current =
+          null;
       }
 
       if (recordingRef.current) {
@@ -354,33 +383,38 @@ export default function SustainedNoteStabilityScreen({
   }, []);
 
   const handleLiveFrame =
-    useCallback((frame: LiveAudioFrame) => {
-      if (!mountedRef.current) {
-        return;
-      }
+    useCallback(
+      (frame: LiveAudioFrame) => {
+        if (!mountedRef.current) {
+          return;
+        }
 
-      setLiveFrame(frame);
+        setLiveFrame(frame);
 
-      if (
-        Number.isFinite(frame.pitch) &&
-        frame.pitch > 0
-      ) {
-        pitchHistoryRef.current = [
-          ...pitchHistoryRef.current,
-          frame.pitch,
-        ].slice(-30);
+        if (
+          Number.isFinite(
+            frame.pitch,
+          ) &&
+          frame.pitch > 0
+        ) {
+          pitchHistoryRef.current = [
+            ...pitchHistoryRef.current,
+            frame.pitch,
+          ].slice(-30);
 
-        setLiveFrequencies(
-          pitchHistoryRef.current
-        );
-      }
-    }, []);
+          setLiveFrequencies(
+            pitchHistoryRef.current,
+          );
+        }
+      },
+      [],
+    );
 
   const handleRecordingStop =
     useCallback(
       async (
         samples: Float32Array,
-        sampleRate: number
+        sampleRate: number,
       ) => {
         if (!mountedRef.current) {
           return;
@@ -390,69 +424,142 @@ export default function SustainedNoteStabilityScreen({
           return;
         }
 
-        processingRef.current = true;
-        recordingRef.current = false;
+        processingRef.current =
+          true;
+
+        recordingRef.current =
+          false;
 
         if (recordingTimerRef.current) {
           clearInterval(
-            recordingTimerRef.current
+            recordingTimerRef.current,
           );
-          recordingTimerRef.current = null;
-        }
 
-        setPhase('processing');
+          recordingTimerRef.current =
+            null;
+        }
 
         try {
           const measurement =
             measureSustainedNoteStability(
               samples,
               sampleRate,
-              params.minClarity
+              params.minClarity,
+            );
+
+          measurementsRef.current = [
+            ...measurementsRef.current,
+            measurement,
+          ];
+
+          const completedReps =
+            measurementsRef.current
+              .length;
+
+          /*
+           * Continue to the next repetition
+           * until all configured repetitions
+           * have been recorded.
+           */
+          if (
+            completedReps <
+            params.repetitions
+          ) {
+            const nextRep =
+              completedReps + 1;
+
+            currentRepRef.current =
+              nextRep;
+
+            setCurrentRep(
+              nextRep,
+            );
+
+            pitchHistoryRef.current =
+              [];
+
+            setLiveFrequencies(
+              [],
+            );
+
+            setLiveFrame(null);
+
+            elapsedRef.current = 0;
+            setElapsedMs(0);
+
+            stopRequestedRef.current =
+              false;
+
+            processingRef.current =
+              false;
+
+            await playTargetAndRecord(
+              targetNote,
+            );
+
+            return;
+          }
+
+          /*
+           * All repetitions are complete.
+           * Show the shared processing phase
+           * while the complete exercise is
+           * scored.
+           */
+          setPhase('processing');
+
+          const score =
+            scoreSustainedNoteStabilityRepetitions(
+              measurementsRef.current,
+              params,
             );
 
           /*
-           * Pass the generated adaptive parameters
-           * directly to the scorer.
+           * Save one exercise record for the
+           * complete exercise, not one record
+           * per repetition.
            */
-          const score =
-            scoreSustainedNoteStability(
-              measurement,
-              params
-            );
-
           await saveCompletedExercise(
             'pitch',
             'sustainedNoteStability',
             currentTier,
-            score.score
+            score.score,
           );
 
-          setResult(score);
-
-          if (mountedRef.current) {
-            setPhase('results');
+          if (!mountedRef.current) {
+            return;
           }
+
+          setResult(score);
+          setPhase('results');
         } catch (error) {
           console.error(
             '❌ SUSTAINED NOTE PROCESSING ERROR:',
-            error
+            error,
           );
 
           if (mountedRef.current) {
             setErrorMessage(
-              'We could not analyze your recording. Please try again.'
+              'We could not analyze your recording. Please try again.',
             );
-            setPhase('instructions');
+
+            setPhase(
+              'instructions',
+            );
           }
         } finally {
-          processingRef.current = false;
-          stopRequestedRef.current = false;
+          processingRef.current =
+            false;
+
+          stopRequestedRef.current =
+            false;
         }
       },
       [
-        params,
         currentTier,
-      ]
+        params,
+        targetNote,
+      ],
     );
 
   const {
@@ -460,8 +567,10 @@ export default function SustainedNoteStabilityScreen({
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame: handleLiveFrame,
-    onStop: handleRecordingStop,
+    onFrame:
+      handleLiveFrame,
+    onStop:
+      handleRecordingStop,
   });
 
   useEffect(() => {
@@ -469,7 +578,8 @@ export default function SustainedNoteStabilityScreen({
       stopRecording;
 
     return () => {
-      stopRecordingRef.current = null;
+      stopRecordingRef.current =
+        null;
     };
   }, [stopRecording]);
 
@@ -484,15 +594,20 @@ export default function SustainedNoteStabilityScreen({
       }
 
       try {
-        pitchHistoryRef.current = [];
-        setLiveFrequencies([]);
+        pitchHistoryRef.current =
+          [];
+
+        setLiveFrequencies(
+          [],
+        );
+
         setLiveFrame(null);
 
         elapsedRef.current = 0;
         setElapsedMs(0);
 
-        stopRequestedRef.current = false;
-        processingRef.current = false;
+        stopRequestedRef.current =
+          false;
 
         setPhase('recording');
 
@@ -502,10 +617,12 @@ export default function SustainedNoteStabilityScreen({
           return;
         }
 
-        recordingRef.current = true;
+        recordingRef.current =
+          true;
 
         const durationMs =
-          params.durationSec * 1000;
+          params.durationSec *
+          1000;
 
         recordingTimerRef.current =
           setInterval(() => {
@@ -517,10 +634,11 @@ export default function SustainedNoteStabilityScreen({
               return;
             }
 
-            elapsedRef.current += 100;
+            elapsedRef.current +=
+              100;
 
             setElapsedMs(
-              elapsedRef.current
+              elapsedRef.current,
             );
 
             if (
@@ -531,7 +649,7 @@ export default function SustainedNoteStabilityScreen({
                 recordingTimerRef.current
               ) {
                 clearInterval(
-                  recordingTimerRef.current
+                  recordingTimerRef.current,
                 );
 
                 recordingTimerRef.current =
@@ -544,48 +662,57 @@ export default function SustainedNoteStabilityScreen({
                 return;
               }
 
-              stopRequestedRef.current = true;
+              stopRequestedRef.current =
+                true;
 
               stopRecording().catch(
-                (error) => {
+                error => {
                   console.error(
                     '❌ FAILED TO STOP SUSTAINED NOTE:',
-                    error
+                    error,
                   );
 
-                  recordingRef.current = false;
-                  stopRequestedRef.current = false;
+                  recordingRef.current =
+                    false;
+
+                  stopRequestedRef.current =
+                    false;
 
                   if (
                     mountedRef.current
                   ) {
                     setErrorMessage(
-                      'We could not finish the recording. Please try again.'
+                      'We could not finish the recording. Please try again.',
                     );
 
                     setPhase(
-                      'instructions'
+                      'instructions',
                     );
                   }
-                }
+                },
               );
             }
           }, 100);
       } catch (error) {
         console.error(
           '❌ FAILED TO START SUSTAINED NOTE:',
-          error
+          error,
         );
 
-        recordingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingRef.current =
+          false;
+
+        stopRequestedRef.current =
+          false;
 
         if (mountedRef.current) {
-          setPhase('instructions');
+          setPhase(
+            'instructions',
+          );
 
           Alert.alert(
             'Microphone Error',
-            'Unable to start the microphone. Please check your microphone permission and try again.'
+            'Unable to start the microphone. Please check your microphone permission and try again.',
           );
         }
       }
@@ -600,9 +727,11 @@ export default function SustainedNoteStabilityScreen({
       async (
         note: ReturnType<
           typeof createMusicalNote
-        >
+        >,
       ) => {
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return;
         }
 
@@ -611,10 +740,12 @@ export default function SustainedNoteStabilityScreen({
 
           await playSingleNote(
             note.frequency,
-            1.5
+            1.5,
           );
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
@@ -622,49 +753,69 @@ export default function SustainedNoteStabilityScreen({
         } catch (error) {
           console.error(
             '❌ FAILED TO PLAY TARGET NOTE:',
-            error
+            error,
           );
 
-          if (mountedRef.current) {
-            setPhase('instructions');
+          if (
+            mountedRef.current
+          ) {
+            setPhase(
+              'instructions',
+            );
 
             Alert.alert(
               'Audio Error',
-              'Unable to play the target note. Please try again.'
+              'Unable to play the target note. Please try again.',
             );
           }
         }
       },
-      [beginRecording]
+      [beginRecording],
     );
 
   const startCountdown =
     useCallback(() => {
       const generated =
         getRandomPitchNote(
-          currentTier
+          currentTier,
         );
 
-      setTargetNote(generated);
+      setTargetNote(
+        generated,
+      );
 
       setResult(null);
       setErrorMessage(null);
 
+      setCurrentRep(1);
+      currentRepRef.current = 1;
+
+      measurementsRef.current =
+        [];
+
       setLiveFrame(null);
       setLiveFrequencies([]);
 
-      pitchHistoryRef.current = [];
+      pitchHistoryRef.current =
+        [];
 
       elapsedRef.current = 0;
       setElapsedMs(0);
 
-      processingRef.current = false;
-      stopRequestedRef.current = false;
-      recordingRef.current = false;
+      processingRef.current =
+        false;
 
-      if (countdownTimerRef.current) {
+      stopRequestedRef.current =
+        false;
+
+      recordingRef.current =
+        false;
+
+      if (
+        countdownTimerRef.current
+      ) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
       }
 
@@ -682,7 +833,7 @@ export default function SustainedNoteStabilityScreen({
               countdownTimerRef.current
             ) {
               clearInterval(
-                countdownTimerRef.current
+                countdownTimerRef.current,
               );
 
               countdownTimerRef.current =
@@ -690,50 +841,74 @@ export default function SustainedNoteStabilityScreen({
             }
 
             playTargetAndRecord(
-              generated
+              generated,
             );
 
             return;
           }
 
-          setCountdown(value);
+          setCountdown(
+            value,
+          );
         }, 1000);
     }, [
-      playTargetAndRecord,
       currentTier,
+      playTargetAndRecord,
     ]);
 
   const retry =
     useCallback(() => {
-      if (countdownTimerRef.current) {
+      if (
+        countdownTimerRef.current
+      ) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
-        countdownTimerRef.current = null;
+
+        countdownTimerRef.current =
+          null;
       }
 
-      if (recordingTimerRef.current) {
+      if (
+        recordingTimerRef.current
+      ) {
         clearInterval(
-          recordingTimerRef.current
+          recordingTimerRef.current,
         );
-        recordingTimerRef.current = null;
+
+        recordingTimerRef.current =
+          null;
       }
 
       setResult(null);
 
+      setCurrentRep(1);
+      currentRepRef.current = 1;
+
+      measurementsRef.current =
+        [];
+
       setLiveFrame(null);
       setLiveFrequencies([]);
 
-      pitchHistoryRef.current = [];
+      pitchHistoryRef.current =
+        [];
 
       elapsedRef.current = 0;
       setElapsedMs(0);
 
-      processingRef.current = false;
-      stopRequestedRef.current = false;
-      recordingRef.current = false;
+      processingRef.current =
+        false;
 
-      setPhase('instructions');
+      stopRequestedRef.current =
+        false;
+
+      recordingRef.current =
+        false;
+
+      setPhase(
+        'instructions',
+      );
     }, []);
 
   const durationMs =
@@ -743,7 +918,7 @@ export default function SustainedNoteStabilityScreen({
     durationMs > 0
       ? Math.min(
           1,
-          elapsedMs / durationMs
+          elapsedMs / durationMs,
         )
       : 0;
 
@@ -754,24 +929,27 @@ export default function SustainedNoteStabilityScreen({
           0,
           calcPitchAccuracy(
             liveFrame.pitch,
-            targetNote.frequency
-          )
+            targetNote.frequency,
+          ),
         )
       : 0;
 
   const liveStability =
     calcLiveStability(
-      liveFrequencies
+      liveFrequencies,
     );
 
-  if (phase === 'instructions') {
+  if (
+    phase ===
+    'instructions'
+  ) {
     return (
       <View style={styles.screen}>
         <Pressable
           style={styles.backButton}
           onPress={() =>
             router.replace(
-              '/dashboard?tab=exercises'
+              '/dashboard?tab=exercises',
             )
           }
         >
@@ -783,12 +961,16 @@ export default function SustainedNoteStabilityScreen({
         </Pressable>
 
         <ScrollView
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={
+            false
+          }
           contentContainerStyle={
             styles.content
           }
         >
-          <View style={styles.iconCircle}>
+          <View
+            style={styles.iconCircle}
+          >
             <Ionicons
               name="radio-outline"
               size={34}
@@ -800,36 +982,57 @@ export default function SustainedNoteStabilityScreen({
             Sustained Note Stability
           </Text>
 
-          <Text style={styles.subtitle}>
+          <Text
+            style={styles.subtitle}
+          >
             Pitch
           </Text>
 
           <View
-            style={styles.instructionCard}
+            style={
+              styles.instructionCard
+            }
           >
-            <Text style={styles.cardTitle}>
+            <Text
+              style={styles.cardTitle}
+            >
               Exercise Instructions
             </Text>
 
-            <Text style={styles.instruction}>
+            <Text
+              style={styles.instruction}
+            >
               Listen to the reference note
-              before recording.
+              before each recording.
             </Text>
 
-            <Text style={styles.instruction}>
-              Sing the same comfortable note
-              and hold it steadily for{' '}
-              {params.durationSec} seconds.
+            <Text
+              style={styles.instruction}
+            >
+              Sing the same comfortable
+              note and hold it steadily
+              for{' '}
+              {params.durationSec}{' '}
+              seconds.
             </Text>
 
-            <Text style={styles.instruction}>
-              Try to keep the pitch steady
-              without drifting sharp or flat.
+            <Text
+              style={styles.instruction}
+            >
+              Complete{' '}
+              {params.repetitions}{' '}
+              repetitions while keeping
+              your pitch steady without
+              drifting sharp or flat.
             </Text>
 
-            <View style={styles.prepareCard}>
+            <View
+              style={styles.prepareCard}
+            >
               <View
-                style={styles.prepareHeader}
+                style={
+                  styles.prepareHeader
+                }
               >
                 <Ionicons
                   name="mic-outline"
@@ -838,13 +1041,17 @@ export default function SustainedNoteStabilityScreen({
                 />
 
                 <Text
-                  style={styles.prepareTitle}
+                  style={
+                    styles.prepareTitle
+                  }
                 >
                   Before You Begin
                 </Text>
               </View>
 
-              <View style={styles.prepareItem}>
+              <View
+                style={styles.prepareItem}
+              >
                 <Ionicons
                   name="volume-mute-outline"
                   size={17}
@@ -852,7 +1059,9 @@ export default function SustainedNoteStabilityScreen({
                 />
 
                 <Text
-                  style={styles.prepareText}
+                  style={
+                    styles.prepareText
+                  }
                 >
                   Find a quiet room or area
                   with minimal background
@@ -860,7 +1069,9 @@ export default function SustainedNoteStabilityScreen({
                 </Text>
               </View>
 
-              <View style={styles.prepareItem}>
+              <View
+                style={styles.prepareItem}
+              >
                 <Ionicons
                   name="body-outline"
                   size={17}
@@ -868,7 +1079,9 @@ export default function SustainedNoteStabilityScreen({
                 />
 
                 <Text
-                  style={styles.prepareText}
+                  style={
+                    styles.prepareText
+                  }
                 >
                   Sit upright or stand with
                   your back straight and
@@ -876,7 +1089,9 @@ export default function SustainedNoteStabilityScreen({
                 </Text>
               </View>
 
-              <View style={styles.prepareItem}>
+              <View
+                style={styles.prepareItem}
+              >
                 <Ionicons
                   name="mic-outline"
                   size={17}
@@ -884,7 +1099,9 @@ export default function SustainedNoteStabilityScreen({
                 />
 
                 <Text
-                  style={styles.prepareText}
+                  style={
+                    styles.prepareText
+                  }
                 >
                   Speak or sing toward the
                   microphone for clearer
@@ -893,55 +1110,76 @@ export default function SustainedNoteStabilityScreen({
               </View>
             </View>
 
-            <View style={styles.targetBox}>
+            <View
+              style={styles.targetBox}
+            >
               <Ionicons
                 name="remove"
                 size={25}
                 color={BROWN}
               />
 
-              <Text style={styles.targetText}>
+              <Text
+                style={styles.targetText}
+              >
                 Keep the note steady
               </Text>
             </View>
 
-            <Text style={styles.helperText}>
-              TuneUp! measures pitch stability
-              across the recording.
+            <Text
+              style={styles.helperText}
+            >
+              TuneUp! measures pitch
+              stability across all
+              repetitions.
             </Text>
           </View>
 
-          <View style={styles.tipCard}>
+          <View
+            style={styles.tipCard}
+          >
             <Ionicons
               name="bulb-outline"
               size={21}
               color={BROWN}
             />
 
-            <Text style={styles.tipText}>
+            <Text
+              style={styles.tipText}
+            >
               Avoid intentionally changing
-              pitch. Focus on maintaining one
-              relaxed, consistent note.
+              pitch. Focus on maintaining
+              one relaxed, consistent note.
             </Text>
           </View>
 
-          <View style={styles.difficultyRow}>
+          <View
+            style={styles.difficultyRow}
+          >
             <Text
-              style={styles.difficultyLabel}
+              style={
+                styles.difficultyLabel
+              }
             >
               Difficulty
             </Text>
 
             <Text
-              style={styles.difficultyValue}
+              style={
+                styles.difficultyValue
+              }
             >
               {currentTier}
             </Text>
           </View>
 
           <Pressable
-            style={styles.startButton}
-            onPress={startCountdown}
+            style={
+              styles.startButton
+            }
+            onPress={
+              startCountdown
+            }
             disabled={
               isLoadingAdaptiveParams
             }
@@ -954,7 +1192,9 @@ export default function SustainedNoteStabilityScreen({
             ) : (
               <>
                 <Text
-                  style={styles.startButtonText}
+                  style={
+                    styles.startButtonText
+                  }
                 >
                   Start Exercise
                 </Text>
@@ -969,7 +1209,9 @@ export default function SustainedNoteStabilityScreen({
           </Pressable>
 
           {errorMessage && (
-            <Text style={styles.errorText}>
+            <Text
+              style={styles.errorText}
+            >
               {errorMessage}
             </Text>
           )}
@@ -978,82 +1220,89 @@ export default function SustainedNoteStabilityScreen({
     );
   }
 
-  if (phase === 'countdown') {
+  if (
+    phase === 'countdown'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Get Ready
-        </Text>
-
-        <Text style={styles.countdownText}>
-          {countdown}
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          A reference note will play next.
-        </Text>
-      </View>
+      <ExerciseCountdownScreen
+        icon="musical-notes-outline"
+        title="Get Ready"
+        currentRep={currentRep}
+        repetitions={
+          params.repetitions
+        }
+        countdown={countdown}
+        promptTitle="Get ready"
+        prompt="A reference note will play next."
+        onBack={() =>
+          router.replace(
+            '/dashboard?tab=exercises',
+          )
+        }
+      />
     );
   }
 
-  if (phase === 'playing') {
+  if (
+    phase === 'playing'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="volume-high-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
+      <ExerciseListeningScreen
+        icon="volume-high-outline"
+        title="Listen Carefully"
+        currentRep={currentRep}
+        repetitions={
+          params.repetitions
+        }
+        promptTitle="Listen to the reference note"
+        prompt="Listen to the reference note, then sing it steadily."
+        liveContent={
+          <View
+            style={styles.targetCard}
+          >
+            <Text
+              style={styles.targetLabel}
+            >
+              TARGET NOTE
+            </Text>
 
-        <Text style={styles.phaseTitle}>
-          Listen Carefully
-        </Text>
+            <Text
+              style={styles.targetNote}
+            >
+              {targetNote.name}
+            </Text>
 
-        <Text style={styles.phaseSubtitle}>
-          Listen to the reference note,
-          then sing it steadily.
-        </Text>
-
-        <View style={styles.targetCard}>
-          <Text style={styles.targetLabel}>
-            TARGET NOTE
-          </Text>
-
-          <Text style={styles.targetNote}>
-            {targetNote.name}
-          </Text>
-
-          <Text style={styles.targetFrequency}>
-            {Math.round(
-              targetNote.frequency
-            )}{' '}
-            Hz
-          </Text>
-        </View>
-
-        <ActivityIndicator
-          size="small"
-          color={BROWN}
-          style={styles.playingIndicator}
-        />
-      </View>
+            <Text
+              style={
+                styles.targetFrequency
+              }
+            >
+              {Math.round(
+                targetNote.frequency,
+              )}{' '}
+              Hz
+            </Text>
+          </View>
+        }
+        onBack={() =>
+          router.replace(
+            '/dashboard?tab=exercises',
+          )
+        }
+      />
     );
   }
 
-  if (phase === 'recording') {
+  if (
+    phase === 'recording'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.recordingIcon}>
+      <View
+        style={styles.centerScreen}
+      >
+        <View
+          style={styles.recordingIcon}
+        >
           <Ionicons
             name="mic"
             size={34}
@@ -1061,73 +1310,114 @@ export default function SustainedNoteStabilityScreen({
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Hold {targetNote.name}
         </Text>
 
-        <Text style={styles.phaseSubtitle}>
+        <Text
+          style={styles.phaseSubtitle}
+        >
+          Repetition {currentRep} of{' '}
+          {params.repetitions}
+        </Text>
+
+        <Text
+          style={styles.phaseSubtitle}
+        >
           Keep your pitch as steady as
           possible.
         </Text>
 
-        <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>
+        <View
+          style={styles.liveCard}
+        >
+          <Text
+            style={styles.liveLabel}
+          >
             Target
           </Text>
 
-          <Text style={styles.liveTarget}>
+          <Text
+            style={styles.liveTarget}
+          >
             {targetNote.name}
           </Text>
 
-          <View style={styles.liveDivider} />
+          <View
+            style={styles.liveDivider}
+          />
 
-          <Text style={styles.liveLabel}>
+          <Text
+            style={styles.liveLabel}
+          >
             Your Note
           </Text>
 
-          <Text style={styles.liveNote}>
+          <Text
+            style={styles.liveNote}
+          >
             {liveFrame?.note ?? '--'}
           </Text>
 
-          <Text style={styles.liveFrequency}>
+          <Text
+            style={
+              styles.liveFrequency
+            }
+          >
             {liveFrame &&
             liveFrame.pitch > 0
               ? `${Math.round(
-                  liveFrame.pitch
+                  liveFrame.pitch,
                 )} Hz`
               : '--'}
           </Text>
 
-          <View style={styles.liveStats}>
-            <View style={styles.liveStat}>
+          <View
+            style={styles.liveStats}
+          >
+            <View
+              style={styles.liveStat}
+            >
               <Text
-                style={styles.liveStatLabel}
+                style={
+                  styles.liveStatLabel
+                }
               >
                 Accuracy
               </Text>
 
               <Text
-                style={styles.liveStatValue}
+                style={
+                  styles.liveStatValue
+                }
               >
                 {Math.round(
-                  liveAccuracy
+                  liveAccuracy,
                 )}
                 %
               </Text>
             </View>
 
-            <View style={styles.liveStat}>
+            <View
+              style={styles.liveStat}
+            >
               <Text
-                style={styles.liveStatLabel}
+                style={
+                  styles.liveStatLabel
+                }
               >
                 Stability
               </Text>
 
               <Text
-                style={styles.liveStatValue}
+                style={
+                  styles.liveStatValue
+                }
               >
                 {Math.round(
-                  liveStability
+                  liveStability,
                 )}
                 %
               </Text>
@@ -1135,8 +1425,16 @@ export default function SustainedNoteStabilityScreen({
           </View>
         </View>
 
-        <View style={styles.progressContainer}>
-          <View style={styles.progressTrack}>
+        <View
+          style={
+            styles.progressContainer
+          }
+        >
+          <View
+            style={
+              styles.progressTrack
+            }
+          >
             <View
               style={[
                 styles.progressFill,
@@ -1147,16 +1445,32 @@ export default function SustainedNoteStabilityScreen({
             />
           </View>
 
-          <Text style={styles.progressText}>
-            {(elapsedMs / 1000).toFixed(1)}s /{' '}
-            {params.durationSec}s
+          <Text
+            style={styles.progressText}
+          >
+            {(elapsedMs / 1000).toFixed(
+              1,
+            )}
+            s / {params.durationSec}s
           </Text>
         </View>
 
-        <View style={styles.recordingIndicator}>
-          <View style={styles.recordingDot} />
+        <View
+          style={
+            styles.recordingIndicator
+          }
+        >
+          <View
+            style={
+              styles.recordingDot
+            }
+          />
 
-          <Text style={styles.recordingText}>
+          <Text
+            style={
+              styles.recordingText
+            }
+          >
             {isRecording
               ? 'Recording...'
               : 'Preparing microphone...'}
@@ -1166,31 +1480,20 @@ export default function SustainedNoteStabilityScreen({
     );
   }
 
-  if (phase === 'processing') {
+  if (
+    phase === 'processing'
+  ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Analyzing Your Singing
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Measuring your pitch stability.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.processingIndicator}
-        />
-      </View>
+      <ExerciseProcessingScreen
+        icon="analytics-outline"
+        title="Analyzing Your Singing"
+        message="Measuring your pitch stability across all repetitions."
+        onBack={() =>
+          router.replace(
+            '/dashboard?tab=exercises',
+          )
+        }
+      />
     );
   }
 
@@ -1199,9 +1502,13 @@ export default function SustainedNoteStabilityScreen({
     result
   ) {
     return (
-      <View style={styles.screen}>
+      <View
+        style={styles.screen}
+      >
         <ScrollView
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={
+            false
+          }
           contentContainerStyle={
             styles.resultsContent
           }
@@ -1225,135 +1532,270 @@ export default function SustainedNoteStabilityScreen({
             />
           </View>
 
-          <Text style={styles.resultTitle}>
+          <Text
+            style={styles.resultTitle}
+          >
             {result.passed
               ? 'Great Job!'
               : 'Keep Practicing!'}
           </Text>
 
-          <Text style={styles.resultSubtitle}>
-            Sustained Note Stability Result
+          <Text
+            style={styles.resultSubtitle}
+          >
+            Sustained Note Stability
+            Result
           </Text>
 
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>
+          <View
+            style={styles.scoreCard}
+          >
+            <Text
+              style={styles.scoreLabel}
+            >
               Overall Score
             </Text>
 
-            <Text style={styles.scoreValue}>
+            <Text
+              style={styles.scoreValue}
+            >
               {result.score}%
             </Text>
 
             <Text
-              style={styles.scoreDescription}
+              style={
+                styles.scoreDescription
+              }
             >
               {result.passed
-                ? 'Your pitch stability reached the target level.'
-                : 'Focus on keeping your pitch steadier while sustaining the note.'}
+                ? 'Your pitch stability reached the target level across all repetitions.'
+                : 'Focus on keeping your pitch steadier and maintaining the required duration across repetitions.'}
             </Text>
           </View>
 
-          <View style={styles.resultCard}>
+          <View
+            style={styles.resultCard}
+          >
             <Text
-              style={styles.resultCardTitle}
+              style={
+                styles.resultCardTitle
+              }
             >
               Target Note
             </Text>
 
-            <View style={styles.noteDisplay}>
-              <Text style={styles.resultNote}>
+            <View
+              style={styles.noteDisplay}
+            >
+              <Text
+                style={styles.resultNote}
+              >
                 {targetNote.name}
               </Text>
 
               <Text
-                style={styles.resultFrequency}
+                style={
+                  styles.resultFrequency
+                }
               >
                 {Math.round(
-                  targetNote.frequency
+                  targetNote.frequency,
                 )}{' '}
                 Hz
               </Text>
             </View>
           </View>
 
-          <View style={styles.resultCard}>
+          <View
+            style={styles.resultCard}
+          >
             <Text
-              style={styles.resultCardTitle}
+              style={
+                styles.resultCardTitle
+              }
             >
-              Your Performance
+              Repetition Results
             </Text>
 
-            <View style={styles.resultRow}>
+            <View
+              style={styles.resultRow}
+            >
               <Text
-                style={styles.resultRowLabel}
+                style={
+                  styles.resultRowLabel
+                }
               >
-                Pitch variation
+                Repetitions completed
               </Text>
 
               <Text
-                style={styles.resultRowValue}
+                style={
+                  styles.resultRowValue
+                }
+              >
+                {
+                  result.repetitionsCompleted
+                }{' '}
+                / {params.repetitions}
+              </Text>
+            </View>
+
+            <View
+              style={styles.resultRow}
+            >
+              <Text
+                style={
+                  styles.resultRowLabel
+                }
+              >
+                Average score
+              </Text>
+
+              <Text
+                style={
+                  styles.resultRowValue
+                }
+              >
+                {result.score}%
+              </Text>
+            </View>
+
+            <View
+              style={styles.resultRow}
+            >
+              <Text
+                style={
+                  styles.resultRowLabel
+                }
+              >
+                Average pitch variation
+              </Text>
+
+              <Text
+                style={
+                  styles.resultRowValue
+                }
               >
                 {result.stabilityCents.toFixed(
-                  1
+                  1,
                 )}{' '}
                 cents
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
+            <View
+              style={styles.resultRow}
+            >
               <Text
-                style={styles.resultRowLabel}
+                style={
+                  styles.resultRowLabel
+                }
               >
                 Required stability
               </Text>
 
               <Text
-                style={styles.resultRowValue}
+                style={
+                  styles.resultRowValue
+                }
               >
                 ≤{' '}
-                {params.stabilityThresholdCents}{' '}
+                {
+                  params.stabilityThresholdCents
+                }{' '}
                 cents
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
+            <View
+              style={styles.resultRow}
+            >
               <Text
-                style={styles.resultRowLabel}
+                style={
+                  styles.resultRowLabel
+                }
               >
-                Duration
+                Average duration
               </Text>
 
               <Text
-                style={styles.resultRowValue}
+                style={
+                  styles.resultRowValue
+                }
               >
                 {result.durationSec.toFixed(
-                  1
+                  1,
                 )}{' '}
                 s
               </Text>
             </View>
           </View>
 
-          <View style={styles.tipCard}>
+          <View
+            style={styles.resultCard}
+          >
+            <Text
+              style={
+                styles.resultCardTitle
+              }
+            >
+              Scores by Repetition
+            </Text>
+
+            {result.repetitionScores.map(
+              (repetitionScore, index) => (
+                <View
+                  key={`repetition-${index}`}
+                  style={styles.resultRow}
+                >
+                  <Text
+                    style={
+                      styles.resultRowLabel
+                    }
+                  >
+                    Repetition {index + 1}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.resultRowValue
+                    }
+                  >
+                    {repetitionScore}%
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
+
+          <View
+            style={styles.tipCard}
+          >
             <Ionicons
               name="bulb-outline"
               size={21}
               color={BROWN}
             />
 
-            <Text style={styles.tipText}>
+            <Text
+              style={styles.tipText}
+            >
               {result.passed
-                ? 'Nice work! Continue practicing sustained notes to build consistent pitch control.'
+                ? 'Nice work! Continue practicing sustained notes to build consistent pitch control across repetitions.'
                 : 'Try relaxing your throat and supporting the note with steady breath while avoiding unnecessary pitch movement.'}
             </Text>
           </View>
 
           <Pressable
-            style={styles.startButton}
+            style={
+              styles.startButton
+            }
             onPress={retry}
           >
             <Text
-              style={styles.startButtonText}
+              style={
+                styles.startButtonText
+              }
             >
               Try Again
             </Text>
@@ -1369,12 +1811,14 @@ export default function SustainedNoteStabilityScreen({
             style={styles.doneButton}
             onPress={() =>
               router.replace(
-                '/dashboard?tab=exercises'
+                '/dashboard?tab=exercises',
               )
             }
           >
             <Text
-              style={styles.doneButtonText}
+              style={
+                styles.doneButtonText
+              }
             >
               Done
             </Text>
@@ -1621,13 +2065,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: BROWN,
-    marginTop: 20,
-  },
-
   targetCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1658,10 +2095,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
-  },
-
-  playingIndicator: {
-    marginTop: 24,
   },
 
   recordingIcon: {
@@ -1788,10 +2221,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-  },
-
-  processingIndicator: {
-    marginTop: 28,
   },
 
   resultIcon: {

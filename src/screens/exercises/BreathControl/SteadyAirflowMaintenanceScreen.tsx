@@ -39,13 +39,11 @@ import {
   generateSteadyAirflowParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
-import {
+import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-
-import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -838,10 +836,6 @@ export default function SteadyAirflowMaintenanceScreen({
         )
       : 0;
 
-  const formatTime = (
-    seconds: number,
-  ) => seconds.toFixed(1);
-
   /*
    * ------------------------------------------
    * INSTRUCTIONS
@@ -947,7 +941,7 @@ export default function SteadyAirflowMaintenanceScreen({
             />
 
             <Text style={styles.timerText}>
-              {formatTime(elapsed)}
+              {elapsed.toFixed(1)}
             </Text>
 
             <Text style={styles.timerTarget}>

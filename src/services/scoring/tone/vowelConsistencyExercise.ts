@@ -15,42 +15,62 @@ export interface VowelConsistencyScoreResult {
   passed: boolean;
 }
 
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+) {
+  return Math.max(
+    min,
+    Math.min(max, value),
+  );
+}
+
 export function scoreVowelConsistencyExercise(
   measurement: VowelConsistencyMeasurement,
   params: VowelConsistencyParams,
 ): VowelConsistencyScoreResult {
-  const validCentroids =
-    measurement.centroidOverTime.filter(
-      (value) =>
-        Number.isFinite(value) &&
-        value > 0,
-    );
-
-  const avgCentroid =
-    validCentroids.length > 0
-      ? validCentroids.reduce(
-          (sum, value) =>
-            sum + value,
-          0,
-        ) /
-        validCentroids.length
+  const averageCentroid =
+    Number.isFinite(
+      measurement.averageCentroidHz,
+    ) &&
+    measurement.averageCentroidHz > 0
+      ? measurement.averageCentroidHz
       : 0;
 
   const inBand =
+    averageCentroid > 0 &&
     identifyVowelBand(
-      avgCentroid,
+      averageCentroid,
       params.vowel,
     );
 
+  const smoothnessScore =
+    Number.isFinite(
+      measurement.smoothnessPct,
+    )
+      ? clamp(
+          measurement.smoothnessPct,
+          0,
+          100,
+        )
+      : 0;
+
   const score = Math.round(
-    measurement.smoothnessPct,
+    inBand
+      ? smoothnessScore
+      : smoothnessScore * 0.5,
   );
 
   return {
-    score,
+    score: clamp(
+      score,
+      0,
+      100,
+    ),
     passed:
       inBand &&
-      measurement.smoothnessPct >=
+      smoothnessScore >=
         params.smoothnessThreshold,
   };
 }

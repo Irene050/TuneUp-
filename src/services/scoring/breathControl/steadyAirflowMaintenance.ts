@@ -61,11 +61,15 @@ export function scoreSteadyAirflow(
       stabilityScore * 0.6,
   );
 
+  const passed =
+    measurement.durationSec >=
+      params.durationSec &&
+    stabilityScore >=
+      params.stabilityThreshold;
+
   return {
     score,
-    passed:
-      measurement.stabilityPct >=
-      params.stabilityThreshold,
+    passed,
     detected: true,
   };
 }

@@ -19,16 +19,6 @@ export function calcRangeAccuracy(dbArray: number[], targetRange: [number, numbe
   return min >= targetRange[0] && max <= targetRange[1];
 }
 
-export function calcRampConsistency(dbArray: number[]): number {
-  if (dbArray.length < 2) return 0;
-  const diffs: number[] = [];
-  for (let i = 1; i < dbArray.length; i++) diffs.push(dbArray[i] - dbArray[i - 1]);
-  const mean = diffs.reduce((a, b) => a + b, 0) / diffs.length;
-  const variance = diffs.reduce((sum, d) => sum + Math.abs(d - mean), 0) / diffs.length;
-  const relVar = mean === 0 ? 1 : Math.abs(variance / mean);
-  return Math.max(0, 100 - relVar * 100);
-}
-
 export function calcDerivativeSmoothness(dbArray: number[]): number {
   if (dbArray.length < 2) return 0;
   const derivative: number[] = [];
@@ -50,8 +40,4 @@ export function calcVolumeConsistency(dbArray: number[]): number {
 
 export function checkBandCompliance(avgDb: number, targetBand: [number, number]): boolean {
   return avgDb >= targetBand[0] && avgDb <= targetBand[1];
-}
-
-export function calcVolumeStability(dbArray: number[]): number {
-  return calcVolumeConsistency(dbArray);
 }

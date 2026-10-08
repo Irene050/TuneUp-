@@ -1,4 +1,4 @@
-import { calcJitterStability, filterByClarity, trackPitchOverTime } from '@/utils/dsp/pitch';
+import { calcLiveStability, filterByClarity, trackPitchOverTime } from '@/utils/dsp/pitch';
 
 export interface PitchLiveReading {
   detectedFrequency: number;
@@ -13,6 +13,6 @@ export function measurePitchFreeModeFrame(
   if (frames.length === 0) return { detectedFrequency: 0, stabilityPct: 0 };
 
   const latest = frames[frames.length - 1].frequency;
-  const stabilityPct = calcJitterStability(frames.map((f) => f.frequency));
+  const stabilityPct = calcLiveStability(frames.map((f) => f.frequency));
   return { detectedFrequency: latest, stabilityPct };
 }

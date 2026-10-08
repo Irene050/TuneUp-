@@ -1,16 +1,14 @@
-// src/services/measurement/tone/steadyToneHolding.ts
-
 import {
-  computeSpectralCentroid,
   calcCentroidStdSmoothness,
+  computeSpectralCentroid,
 } from '@/utils/dsp/spectral';
 
-import { calcRMSVariance } from '@/utils/dsp/rms';
+import { calcRMSConsistency } from '@/utils/dsp/rms';
 
 import {
-  trackPitchOverTime,
+  calcLiveStability,
   filterByClarity,
-  calcJitterStability,
+  trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
 export interface SteadyToneHoldingMeasurement {
@@ -26,30 +24,70 @@ export function measureSteadyToneHolding(
   sampleRate: number,
   fftSize = 1024,
 ): SteadyToneHoldingMeasurement {
-  const centroidArray = fftFrames.map((f) =>
-    computeSpectralCentroid(f, sampleRate, fftSize),
-  );
+  if (
+    samples.length === 0 ||
+    fftFrames.length === 0 ||
+    sampleRate <= 0
+  ) {
+    return {
+      smoothnessPct: 0,
+      amplitudeStabilityPct: 0,
+      pitchStabilityPct: 0,
+      durationSec: 0,
+    };
+  }
+
+  const centroidArray = fftFrames
+    .map((frame) =>
+      computeSpectralCentroid(
+        frame,
+        sampleRate,
+        fftSize,
+      ),
+    )
+    .filter(
+      (centroid) =>
+        Number.isFinite(centroid) &&
+        centroid > 0,
+    );
 
   const smoothnessPct =
-    calcCentroidStdSmoothness(centroidArray);
+    calcCentroidStdSmoothness(
+      centroidArray,
+    );
 
   const amplitudeStabilityPct =
-    calcRMSVariance(samples, 50, sampleRate);
+    calcRMSConsistency(
+      samples,
+      50,
+      sampleRate,
+    );
 
-  const pitchFrames = filterByClarity(
-    trackPitchOverTime(samples, 30, sampleRate),
-    0.8,
-  );
+  const pitchFrames =
+    filterByClarity(
+      trackPitchOverTime(
+        samples,
+        30,
+        sampleRate,
+      ),
+      0.8,
+    );
 
   const pitchStabilityPct =
-    calcJitterStability(
-      pitchFrames.map((f) => f.frequency),
+    calcLiveStability(
+      pitchFrames.map(
+        (frame) =>
+          frame.frequency,
+      ),
     );
+
+  const durationSec =
+    samples.length / sampleRate;
 
   return {
     smoothnessPct,
     amplitudeStabilityPct,
     pitchStabilityPct,
-    durationSec: samples.length / sampleRate,
+    durationSec,
   };
 }

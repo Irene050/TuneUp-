@@ -13,18 +13,35 @@ export function scoreControlledBreathRelease(
   measurement: ControlledBreathReleaseMeasurement,
   params: ControlledBreathReleaseParams,
 ): ControlledBreathReleaseScoreResult {
+  const pulseConsistencyScore = Math.max(
+    0,
+    Math.min(
+      100,
+      measurement.pulseConsistencyPct,
+    ),
+  );
+
+  const intervalAccuracyScore = Math.max(
+    0,
+    Math.min(
+      100,
+      measurement.intervalAccuracyPct,
+    ),
+  );
+
   const score = Math.round(
-    measurement.pulseConsistencyPct * 0.6 +
-      measurement.intervalAccuracyPct * 0.4,
+    pulseConsistencyScore * 0.6 +
+      intervalAccuracyScore * 0.4,
   );
 
   const detectedEnoughPulses =
-    measurement.peaks.length >= params.pulseCount;
+    measurement.peaks.length >=
+    params.pulseCount;
 
   return {
     score: Math.max(0, Math.min(100, score)),
     passed:
-      measurement.pulseConsistencyPct >=
+      pulseConsistencyScore >=
         params.pulseConsistencyThreshold &&
       detectedEnoughPulses,
   };

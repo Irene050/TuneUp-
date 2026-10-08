@@ -1,3 +1,5 @@
+import { calcRMS } from "@/utils/dsp/rms";
+
 export interface OnsetOffsetResult {
   onsetIndex: number;
   offsetIndex: number;
@@ -76,22 +78,9 @@ export function detectOnsetOffset(
       continue;
     }
 
-    let sumSquares = 0;
-
-    for (
-      let i = start;
-      i < end;
-      i++
-    ) {
-      const value = samples[i];
-
-      sumSquares +=
-        value * value;
-    }
-
-    const rms = Math.sqrt(
-      sumSquares / length
-    );
+    const rms = calcRMS(
+  samples.subarray(start, end)
+);
 
     rmsValues.push(rms);
     windowStartIndices.push(start);

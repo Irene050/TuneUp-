@@ -2,7 +2,6 @@ import {
   calcFrequencyZoneStability,
   classifyFrequencyZone,
   type FrequencyZone,
-  trackDominantFrequency,
 } from '@/utils/dsp/spectral';
 
 export interface FrequencyZoneStabilityMeasurement {
@@ -10,22 +9,27 @@ export interface FrequencyZoneStabilityMeasurement {
   stabilityPct: number;
   durationSec: number;
 }
-
 export function measureFrequencyZoneStability(
-  samples: Float32Array,
-  sampleRate: number,
-  fftFn: (frame: Float32Array) => Float32Array,
+  pitches: ArrayLike<number>,
+  durationSec: number,
 ): FrequencyZoneStabilityMeasurement {
-  const frequencies = trackDominantFrequency(
-    samples,
-    30,
-    sampleRate,
-    fftFn,
-  );
+  const validPitches: number[] = [];
 
-  const zoneSequence = frequencies.map(
-    classifyFrequencyZone,
-  );
+  for (let i = 0; i < pitches.length; i++) {
+    const pitch = pitches[i];
+
+    if (
+      Number.isFinite(pitch) &&
+      pitch > 0
+    ) {
+      validPitches.push(pitch);
+    }
+  }
+
+  const zoneSequence =
+    validPitches.map(
+      classifyFrequencyZone,
+    );
 
   return {
     zoneSequence,
@@ -33,7 +37,6 @@ export function measureFrequencyZoneStability(
       calcFrequencyZoneStability(
         zoneSequence,
       ),
-    durationSec:
-      samples.length / sampleRate,
+    durationSec,
   };
 }

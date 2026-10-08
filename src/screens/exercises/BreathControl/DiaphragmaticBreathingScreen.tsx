@@ -129,9 +129,6 @@ export default function DiaphragmaticBreathingScreen({
   const repResultsRef =
     useRef<RepResult[]>([]);
 
-  const inhaleSamplesRef =
-    useRef<Float32Array | null>(null);
-
   /*
    * =====================================================
    * LIFECYCLE / RECORDER REFS
@@ -163,9 +160,14 @@ export default function DiaphragmaticBreathingScreen({
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startPhaseTimerRef =
-    useRef<((durationSec: number) => void) | null>(null);
+    useRef<((durationSec: number, stopRecorder?: boolean) => void) | null>(
+      null,
+    );
 
   const startInhalePhaseRef =
+    useRef<(() => void) | null>(null);
+
+  const startExhalePhaseRef =
     useRef<(() => void) | null>(null);
 
   const startCountdownRef =
@@ -231,13 +233,6 @@ export default function DiaphragmaticBreathingScreen({
        * -----------------------------------------------
        * STEP 2: LOAD EXERCISE HISTORY
        * -----------------------------------------------
-       *
-       * Continuous ADS uses only the latest five
-       * completed exercises for this specific
-       * exercise and current tier.
-       *
-       * Other Breath Control exercises and other
-       * tiers are excluded.
        */
 
       try {
@@ -278,10 +273,6 @@ export default function DiaphragmaticBreathingScreen({
          * ---------------------------------------------
          * STEP 3: ASSESSMENT COLD-START FALLBACK
          * ---------------------------------------------
-         *
-         * If this exercise has never been completed
-         * at the current tier, use the latest
-         * Breath Control assessment score.
          */
 
         if (recentScores.length === 0) {
@@ -487,7 +478,6 @@ export default function DiaphragmaticBreathingScreen({
   const processRep =
     useCallback(
       (
-        inhaleSamples: Float32Array,
         exhaleSamples: Float32Array,
         sampleRate: number,
       ) => {
@@ -513,7 +503,6 @@ export default function DiaphragmaticBreathingScreen({
 
         const measurement =
           measureDiaphragmaticBreathing(
-            inhaleSamples,
             exhaleSamples,
             adaptiveParams.detectionThreshold,
             sampleRate,
@@ -582,58 +571,8 @@ export default function DiaphragmaticBreathingScreen({
           return;
         }
 
-        const adaptiveParams =
-          paramsRef.current;
-
-        if (!adaptiveParams) {
-          console.error(
-            '❌ Diaphragmatic Breathing parameters are not ready.',
-          );
-
-          phaseRef.current =
-            'instructions';
-
-          setPhase('instructions');
-
-          return;
-        }
-
         const stoppedPhase =
           phaseRef.current;
-
-        /*
-         * -----------------------------------------------
-         * INHALE FINISHED
-         * -----------------------------------------------
-         */
-
-        if (stoppedPhase === 'inhale') {
-          inhaleSamplesRef.current =
-            samples;
-
-          setElapsed(0);
-          setVolume(0);
-
-          phaseRef.current =
-            'exhale';
-
-          setPhase('exhale');
-
-          stopTimerRef.current =
-            setTimeout(() => {
-              if (!mountedRef.current) {
-                return;
-              }
-
-              startRecordingRef.current?.();
-
-              startPhaseTimerRef.current?.(
-                adaptiveParams.exhaleSec,
-              );
-            }, 250);
-
-          return;
-        }
 
         /*
          * -----------------------------------------------
@@ -642,25 +581,6 @@ export default function DiaphragmaticBreathingScreen({
          */
 
         if (stoppedPhase === 'exhale') {
-          const inhaleSamples =
-            inhaleSamplesRef.current;
-
-          if (!inhaleSamples) {
-            phaseRef.current =
-              'processing';
-
-            setPhase('processing');
-
-            stopTimerRef.current =
-              setTimeout(() => {
-                if (mountedRef.current) {
-                  finishExercise();
-                }
-              }, 500);
-
-            return;
-          }
-
           phaseRef.current =
             'processing';
 
@@ -676,20 +596,13 @@ export default function DiaphragmaticBreathingScreen({
               }
 
               processRep(
-                inhaleSamples,
                 samples,
                 sampleRate,
               );
-
-              inhaleSamplesRef.current =
-                null;
             }, 300);
         }
       },
-      [
-        finishExercise,
-        processRep,
-      ],
+      [processRep],
     );
 
   /*
@@ -741,19 +654,10 @@ export default function DiaphragmaticBreathingScreen({
 
   const returnToInstructions =
     useCallback(() => {
-      /*
-       * Set the phase ref first so an asynchronous
-       * recorder callback does not treat the stop
-       * as an inhale/exhale completion.
-       */
-
       phaseRef.current =
         'instructions';
 
       clearTimers();
-
-      inhaleSamplesRef.current =
-        null;
 
       stopRecordingRef.current?.();
 
@@ -770,7 +674,10 @@ export default function DiaphragmaticBreathingScreen({
 
   const startPhaseTimer =
     useCallback(
-      (durationSec: number) => {
+      (
+        durationSec: number,
+        stopRecorder = true,
+      ) => {
         clearTimers();
 
         const startedAt =
@@ -809,7 +716,9 @@ export default function DiaphragmaticBreathingScreen({
                   null;
               }
 
-              stopRecordingRef.current?.();
+              if (stopRecorder) {
+                stopRecordingRef.current?.();
+              }
             }
           }, 50);
       },
@@ -820,6 +729,48 @@ export default function DiaphragmaticBreathingScreen({
     startPhaseTimerRef.current =
       startPhaseTimer;
   }, [startPhaseTimer]);
+
+  /*
+   * =====================================================
+   * EXHALE PHASE
+   * =====================================================
+   */
+
+  const startExhalePhase =
+    useCallback(() => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const adaptiveParams =
+        paramsRef.current;
+
+      if (!adaptiveParams) {
+        return;
+      }
+
+      clearTimers();
+
+      phaseRef.current =
+        'exhale';
+
+      setPhase('exhale');
+
+      setElapsed(0);
+      setVolume(0);
+
+      startRecordingRef.current?.();
+
+      startPhaseTimerRef.current?.(
+        adaptiveParams.exhaleSec,
+        true,
+      );
+    }, [clearTimers]);
+
+  useEffect(() => {
+    startExhalePhaseRef.current =
+      startExhalePhase;
+  }, [startExhalePhase]);
 
   /*
    * =====================================================
@@ -850,14 +801,19 @@ export default function DiaphragmaticBreathingScreen({
       setElapsed(0);
       setVolume(0);
 
-      inhaleSamplesRef.current =
-        null;
-
-      startRecordingRef.current?.();
-
       startPhaseTimerRef.current?.(
         adaptiveParams.inhaleSec,
+        false,
       );
+
+      stopTimerRef.current =
+        setTimeout(() => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          startExhalePhaseRef.current?.();
+        }, adaptiveParams.inhaleSec * 1000);
     }, [clearTimers]);
 
   useEffect(() => {
@@ -956,9 +912,6 @@ export default function DiaphragmaticBreathingScreen({
       repResultsRef.current =
         [];
 
-      inhaleSamplesRef.current =
-        null;
-
       setCurrentRep(1);
       setRepResults([]);
       setElapsed(0);
@@ -991,9 +944,6 @@ export default function DiaphragmaticBreathingScreen({
 
       repResultsRef.current =
         [];
-
-      inhaleSamplesRef.current =
-        null;
 
       setCurrentRep(1);
       setRepResults([]);
@@ -1086,18 +1036,6 @@ export default function DiaphragmaticBreathingScreen({
           ) /
             repResults.length,
         )
-      : 0;
-
-  const averageInhale =
-    repResults.length > 0
-      ? repResults.reduce(
-          (sum, result) =>
-            sum +
-            result.measurement
-              .inhaleDurationSec,
-          0,
-        ) /
-        repResults.length
       : 0;
 
   const averageExhale =
@@ -1301,12 +1239,6 @@ export default function DiaphragmaticBreathingScreen({
    */
 
   if (phase === 'exhale') {
-    const [
-      dbMin,
-      dbMax,
-    ] =
-      params.targetDbRange;
-
     return (
       <View
         style={styles.exerciseContainer}
@@ -1375,12 +1307,6 @@ export default function DiaphragmaticBreathingScreen({
               style={styles.volumeValue}
             >
               {volume.toFixed(2)}
-            </Text>
-
-            <Text
-              style={styles.volumeTarget}
-            >
-              Target: {dbMin}–{dbMax} dB
             </Text>
           </View>
 
@@ -1458,11 +1384,6 @@ export default function DiaphragmaticBreathingScreen({
           style={styles.statsGrid}
         >
           <ResultStat
-            label="Avg. Inhale"
-            value={`${averageInhale.toFixed(1)}s`}
-          />
-
-          <ResultStat
             label="Avg. Exhale"
             value={`${averageExhale.toFixed(1)}s`}
           />
@@ -1538,13 +1459,6 @@ export default function DiaphragmaticBreathingScreen({
                   styles.repMetrics
                 }
               >
-                <Metric
-                  label="Inhale"
-                  value={`${result.measurement.inhaleDurationSec.toFixed(
-                    1,
-                  )}s`}
-                />
-
                 <Metric
                   label="Exhale"
                   value={`${result.measurement.exhaleDurationSec.toFixed(
@@ -1665,12 +1579,6 @@ function Metric({
  */
 
 const styles = StyleSheet.create({
-  /*
-   * -----------------------------------------------------
-   * ADS LOADING
-   * -----------------------------------------------------
-   */
-
   loadingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1707,12 +1615,6 @@ const styles = StyleSheet.create({
   loadingSpinner: {
     marginTop: 28,
   },
-
-  /*
-   * -----------------------------------------------------
-   * BREATHING PHASES
-   * -----------------------------------------------------
-   */
 
   exerciseContainer: {
     flex: 1,
@@ -1805,12 +1707,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /*
-   * -----------------------------------------------------
-   * LIVE AIRFLOW
-   * -----------------------------------------------------
-   */
-
   volumeCard: {
     width: '100%',
     marginTop: 22,
@@ -1833,19 +1729,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: BROWN,
   },
-
-  volumeTarget: {
-    marginTop: 2,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: MUTED,
-  },
-
-  /*
-   * -----------------------------------------------------
-   * RESULTS
-   * -----------------------------------------------------
-   */
 
   statsGrid: {
     flexDirection: 'row',

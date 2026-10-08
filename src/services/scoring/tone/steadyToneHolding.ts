@@ -2,7 +2,7 @@ import type {
   SteadyToneHoldingParams,
 } from '@/constants/exercises/tone';
 
-import {
+import type {
   SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
 
@@ -15,23 +15,38 @@ export interface SteadyToneHoldingScoreResult {
   passed: boolean;
 }
 
+function clampScore(
+  value: number,
+): number {
+  return Number.isFinite(value)
+    ? Math.max(
+        0,
+        Math.min(100, value),
+      )
+    : 0;
+}
+
 export function scoreSteadyToneHolding(
   measurement: SteadyToneHoldingMeasurement,
   params: SteadyToneHoldingParams,
 ): SteadyToneHoldingScoreResult {
   const quality =
-    calcOverallToneQuality(
-      measurement.smoothnessPct,
-      measurement.amplitudeStabilityPct,
-      measurement.pitchStabilityPct,
+    clampScore(
+      calcOverallToneQuality(
+        measurement.smoothnessPct,
+        measurement.amplitudeStabilityPct,
+        measurement.pitchStabilityPct,
+      ),
     );
 
   const durationScore =
-    Math.min(
-      measurement.durationSec /
-        params.durationSec,
-      1,
-    ) * 100;
+    params.durationSec > 0
+      ? clampScore(
+          (measurement.durationSec /
+            params.durationSec) *
+            100,
+        )
+      : 0;
 
   const score = Math.round(
     quality * 0.7 +
@@ -42,6 +57,8 @@ export function scoreSteadyToneHolding(
     score,
     passed:
       quality >=
-      params.qualityThreshold,
+        params.qualityThreshold &&
+      measurement.durationSec >=
+        params.durationSec,
   };
 }

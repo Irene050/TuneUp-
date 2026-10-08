@@ -25,7 +25,6 @@ const detector =
     PITCH_FRAME_SIZE
   );
 
-
 // ============================================================
 // LIVE NOTE NAME
 // ============================================================
@@ -79,7 +78,6 @@ export function frequencyToNote(
 
   return `${noteNames[noteIndex]}${octave}`;
 }
-
 
 // ============================================================
 // LIVE PITCH FRAME
@@ -157,7 +155,6 @@ export function analyzePitchFrame(
   }
 }
 
-
 // ============================================================
 // CLARITY FILTER
 // ============================================================
@@ -173,7 +170,6 @@ export function filterByClarity(
       frame.clarity >= clarityThreshold
   );
 }
-
 
 // ============================================================
 // PITCH TRACKING
@@ -258,7 +254,6 @@ export function trackPitchOverTime(
   return frames;
 }
 
-
 // ============================================================
 // PITCH ACCURACY
 // ============================================================
@@ -294,16 +289,15 @@ export function calcPitchAccuracy(
   );
 }
 
-
 // ============================================================
-// PITCH STABILITY
+// LIVE PITCH STABILITY
 // ============================================================
 
-export function calcJitterStability(
-  pitchArray: number[]
+export function calcLiveStability(
+  frequencies: number[]
 ): number {
   const validPitches =
-    pitchArray.filter(
+    frequencies.filter(
       frequency =>
         Number.isFinite(
           frequency
@@ -364,27 +358,6 @@ export function calcJitterStability(
   );
 }
 
-
-// ============================================================
-// LIVE STABILITY
-// ============================================================
-
-/**
- * Calculates live pitch stability from a short
- * history of detected frequencies.
- *
- * Uses the existing calcJitterStability()
- * rather than creating a second stability algorithm.
- */
-export function calcLiveStability(
-  frequencies: number[]
-): number {
-  return calcJitterStability(
-    frequencies
-  );
-}
-
-
 // ============================================================
 // INTERVAL RATIO
 // ============================================================
@@ -404,7 +377,6 @@ export function calcIntervalRatio(
 
   return freq2 / freq1;
 }
-
 
 // ============================================================
 // AUDIO SEGMENTATION
@@ -483,7 +455,6 @@ export function segmentAudioByPause(
   ];
 }
 
-
 // ============================================================
 // NOTE SEGMENTATION
 // ============================================================
@@ -541,7 +512,6 @@ export function segmentIntoNotes(
   return segments;
 }
 
-
 // ============================================================
 // TRANSITION SMOOTHNESS
 // ============================================================
@@ -564,8 +534,7 @@ export function calcTransitionSmoothness(
     return 100;
   }
 
-  const diffs: number[] =
-    [];
+  const diffs: number[] = [];
 
   for (
     let i = 1;
@@ -615,7 +584,6 @@ export function calcTransitionSmoothness(
     )
   );
 }
-
 
 // ============================================================
 // BATCH NOTE ACCURACY
@@ -671,22 +639,6 @@ export function calcNoteAccuracyBatch(
   ) *
   100;
 }
-
-
-// ============================================================
-// PATTERN ACCURACY
-// ============================================================
-
-export function calcPatternAccuracy(
-  detectedFreqs: number[],
-  targetFreqs: number[]
-): number {
-  return calcNoteAccuracyBatch(
-    detectedFreqs,
-    targetFreqs
-  );
-}
-
 
 // ============================================================
 // RHYTHM ACCURACY

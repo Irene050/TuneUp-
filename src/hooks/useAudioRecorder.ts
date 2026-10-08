@@ -1,5 +1,3 @@
-// src/hooks/useAudioRecorder.ts
-
 import {
   useCallback,
   useEffect,
@@ -13,6 +11,10 @@ import {
 } from "react-native-audio-api";
 
 import { analyzePitchFrame } from "@/utils/dsp/pitch";
+import {
+  calcRMS,
+  rmsToDb,
+} from "@/utils/dsp/rms";
 
 // ============================================================
 // CONFIGURATION
@@ -21,35 +23,15 @@ import { analyzePitchFrame } from "@/utils/dsp/pitch";
 const DEFAULT_SAMPLE_RATE = 44100;
 const BUFFER_LENGTH = 2048;
 const CHANNEL_COUNT = 1;
-
-// How frequently the live UI is updated.
 const LIVE_ANALYSIS_INTERVAL_MS = 120;
-
-// Minimum signal level considered strong enough for live
-// pitch detection.
-//
-// IMPORTANT:
-// This only affects LIVE pitch feedback.
-// The raw PCM recording is never modified or filtered.
 const MIN_VOICED_DB = -45;
 
-// Singing pitch range.
 const MIN_PITCH_HZ = 60;
 const MAX_PITCH_HZ = 1500;
 
-// Minimum Pitchy clarity required for a live pitch.
-//
-// A higher threshold helps reject unreliable pitch estimates
-// caused by background noise, weak input, and harmonics.
 const MIN_PITCH_CLARITY = 0.70;
 
-// Keep the previous valid pitch temporarily if the native
-// microphone stream has a short dropout.
-//
-// This is intentionally short so an old note does not remain
-// on screen while the detector is actually receiving silence.
 const LIVE_DROPOUT_TOLERANCE_MS = 250;
-
 
 // ============================================================
 // TYPES
@@ -60,7 +42,6 @@ export interface LiveAudioFrame {
   note: string;
   clarity: number;
   volume: number;
-  stability: number;
   samples: Float32Array;
   sampleRate: number;
 }
@@ -76,65 +57,9 @@ interface UseAudioRecorderOptions {
   ) => void;
 }
 
-
 // ============================================================
 // AUDIO SIGNAL HELPERS
 // ============================================================
-
-/**
- * Calculate RMS amplitude.
- */
-function calculateRMS(
-  samples: Float32Array
-): number {
-  if (samples.length === 0) {
-    return 0;
-  }
-
-  let sumSquares = 0;
-  let count = 0;
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    const value = samples[i];
-
-    if (!Number.isFinite(value)) {
-      continue;
-    }
-
-    sumSquares += value * value;
-    count++;
-  }
-
-  if (count === 0) {
-    return 0;
-  }
-
-  return Math.sqrt(
-    sumSquares / count
-  );
-}
-
-
-/**
- * Convert RMS amplitude to dBFS.
- */
-function rmsToDb(
-  rms: number
-): number {
-  if (
-    !Number.isFinite(rms) ||
-    rms <= 0
-  ) {
-    return -100;
-  }
-
-  return 20 * Math.log10(rms);
-}
-
 
 /**
  * Calculate largest absolute sample.
@@ -165,7 +90,6 @@ function calculatePeak(
 
   return peak;
 }
-
 
 /**
  * Calculate DC offset.
@@ -202,7 +126,6 @@ function calculateDCOffset(
   return sum / count;
 }
 
-
 /**
  * Analyze one raw PCM buffer.
  *
@@ -234,7 +157,7 @@ function analyzeAudioSignal(
   }
 
   const rms =
-    calculateRMS(samples);
+    calcRMS(samples);
 
   const db =
     rmsToDb(rms);
@@ -257,7 +180,6 @@ function analyzeAudioSignal(
   };
 }
 
-
 // ============================================================
 // HOOK
 // ============================================================
@@ -269,7 +191,6 @@ export function useAudioRecorder(
     isRecording,
     setIsRecording,
   ] = useState(false);
-
 
   // ==========================================================
   // CALLBACK REFS
@@ -285,18 +206,15 @@ export function useAudioRecorder(
       UseAudioRecorderOptions["onStop"]
     >(options.onStop);
 
-
   useEffect(() => {
     onFrameRef.current =
       options.onFrame;
   }, [options.onFrame]);
 
-
   useEffect(() => {
     onStopRef.current =
       options.onStop;
   }, [options.onStop]);
-
 
   // ==========================================================
   // RECORDER STATE
@@ -317,7 +235,6 @@ export function useAudioRecorder(
   const sessionActiveRef =
     useRef(false);
 
-
   // ==========================================================
   // LIVE DETECTION MEMORY
   // ==========================================================
@@ -337,12 +254,8 @@ export function useAudioRecorder(
   const lastValidClarityRef =
     useRef(0);
 
-  const lastValidVolumeRef =
-    useRef(-100);
-
   const lastValidPitchTimeRef =
     useRef(0);
-
 
   // ==========================================================
   // RESET LIVE DETECTION
@@ -358,13 +271,9 @@ export function useAudioRecorder(
       lastValidClarityRef.current =
         0;
 
-      lastValidVolumeRef.current =
-        -100;
-
       lastValidPitchTimeRef.current =
         0;
     }, []);
-
 
   // ==========================================================
   // EMIT LIVE FRAME
@@ -388,7 +297,6 @@ export function useAudioRecorder(
       },
       []
     );
-
 
   // ==========================================================
   // START RECORDING
@@ -415,7 +323,6 @@ export function useAudioRecorder(
           "🎤 REQUESTING MICROPHONE..."
         );
 
-
         // ======================================================
         // REQUEST MICROPHONE PERMISSION
         // ======================================================
@@ -436,7 +343,6 @@ export function useAudioRecorder(
             "Microphone permission was not granted."
           );
         }
-
 
         // ======================================================
         // AUDIO SESSION
@@ -461,7 +367,6 @@ export function useAudioRecorder(
           );
         }
 
-
         // ======================================================
         // RESET RECORDING STATE
         // ======================================================
@@ -474,14 +379,12 @@ export function useAudioRecorder(
 
         resetLiveDetection();
 
-
         // ======================================================
         // CREATE RECORDER
         // ======================================================
 
         const recorder =
           new AudioRecorder();
-
 
         // ======================================================
         // NATIVE RECORDER ERRORS
@@ -495,7 +398,6 @@ export function useAudioRecorder(
             );
           }
         );
-
 
         // ======================================================
         // AUDIO CALLBACK
@@ -534,7 +436,6 @@ export function useAudioRecorder(
                 return;
               }
 
-
               // ==================================================
               // COPY NATIVE BUFFER IMMEDIATELY
               // ==================================================
@@ -548,22 +449,8 @@ export function useAudioRecorder(
                 channelData
               );
 
-
               // ==================================================
               // ALWAYS STORE RAW AUDIO
-              // ==================================================
-              //
-              // The raw samples are stored before any live
-              // detection decision.
-              //
-              // Therefore:
-              //
-              // - clarity filtering does not affect recording
-              // - volume filtering does not affect recording
-              // - dropout handling does not affect recording
-              // - live pitch errors do not affect recording
-              //
-              // The assessment receives the complete PCM stream.
               // ==================================================
 
               chunksRef.current.push(
@@ -572,7 +459,6 @@ export function useAudioRecorder(
 
               sampleCountRef.current +=
                 samples.length;
-
 
               // ==================================================
               // RAW SIGNAL DIAGNOSTICS
@@ -593,7 +479,6 @@ export function useAudioRecorder(
                 }
               );
 
-
               // ==================================================
               // LIVE ANALYSIS THROTTLE
               // ==================================================
@@ -612,7 +497,6 @@ export function useAudioRecorder(
               lastLiveAnalysisRef.current =
                 now;
 
-
               // ==================================================
               // DETERMINE WHETHER SIGNAL IS QUIET
               // ==================================================
@@ -624,7 +508,6 @@ export function useAudioRecorder(
                 signal.db <
                   MIN_VOICED_DB ||
                 signal.peak <= 0;
-
 
               // ==================================================
               // HANDLE QUIET / DROPOUT
@@ -640,13 +523,6 @@ export function useAudioRecorder(
                       lastValidPitchTimeRef.current
                     : Infinity;
 
-
-                /*
-                 * Short microphone dropout:
-                 *
-                 * Temporarily retain the previous reliable
-                 * pitch so the UI does not flicker immediately.
-                 */
                 if (
                   lastValidPitchRef.current >
                     0 &&
@@ -667,9 +543,6 @@ export function useAudioRecorder(
                       volume:
                         signal.db,
 
-                      stability:
-                        0,
-
                       samples,
 
                       sampleRate:
@@ -680,12 +553,6 @@ export function useAudioRecorder(
                   return;
                 }
 
-
-                /*
-                 * Longer dropout:
-                 *
-                 * Do not display an old pitch.
-                 */
                 emitLiveFrame(
                   {
                     pitch: 0,
@@ -697,8 +564,6 @@ export function useAudioRecorder(
                     volume:
                       signal.db,
 
-                    stability: 0,
-
                     samples,
 
                     sampleRate:
@@ -708,7 +573,6 @@ export function useAudioRecorder(
 
                 return;
               }
-
 
               // ==================================================
               // PITCH DETECTION
@@ -735,7 +599,6 @@ export function useAudioRecorder(
                 };
               }
 
-
               const detectedPitch =
                 pitchResult.frequency;
 
@@ -745,21 +608,8 @@ export function useAudioRecorder(
               const detectedClarity =
                 pitchResult.clarity;
 
-
               // ==================================================
               // VALIDATE SIGNAL LEVEL
-              // ==================================================
-              //
-              // This is important.
-              //
-              // Previously, volume was only used to decide whether
-              // the entire buffer was "quiet".
-              //
-              // A weak signal could still reach Pitchy and produce
-              // a plausible-looking frequency.
-              //
-              // We now explicitly require sufficient signal level
-              // before accepting the pitch result.
               // ==================================================
 
               const validVolume =
@@ -769,7 +619,6 @@ export function useAudioRecorder(
                 signal.db >=
                   MIN_VOICED_DB &&
                 signal.peak > 0;
-
 
               // ==================================================
               // VALIDATE PITCH
@@ -784,7 +633,6 @@ export function useAudioRecorder(
                 detectedPitch <=
                   MAX_PITCH_HZ;
 
-
               // ==================================================
               // VALIDATE PITCH CLARITY
               // ==================================================
@@ -795,7 +643,6 @@ export function useAudioRecorder(
                 ) &&
                 detectedClarity >=
                   MIN_PITCH_CLARITY;
-
 
               // ==================================================
               // VALIDATE NOTE
@@ -809,21 +656,8 @@ export function useAudioRecorder(
                 detectedNote.length >
                   0;
 
-
               // ==================================================
               // INVALID PITCH RESULT
-              // ==================================================
-              //
-              // A pitch is considered unreliable when ANY of the
-              // following is true:
-              //
-              // 1. Signal is too weak
-              // 2. Pitch is outside the expected range
-              // 3. Pitchy clarity is too low
-              // 4. Pitchy did not produce a valid note
-              //
-              // This prevents weak/noisy microphone input from
-              // immediately becoming a random-looking note.
               // ==================================================
 
               if (
@@ -839,13 +673,6 @@ export function useAudioRecorder(
                       lastValidPitchTimeRef.current
                     : Infinity;
 
-
-                /*
-                 * Short detection failure:
-                 *
-                 * Keep the previous reliable note for a very
-                 * short period.
-                 */
                 if (
                   lastValidPitchRef.current >
                     0 &&
@@ -866,9 +693,6 @@ export function useAudioRecorder(
                       volume:
                         signal.db,
 
-                      stability:
-                        0,
-
                       samples,
 
                       sampleRate:
@@ -879,13 +703,6 @@ export function useAudioRecorder(
                   return;
                 }
 
-
-                /*
-                 * Longer failure:
-                 *
-                 * Explicitly report that no reliable pitch
-                 * is currently available.
-                 */
                 emitLiveFrame(
                   {
                     pitch: 0,
@@ -896,8 +713,6 @@ export function useAudioRecorder(
 
                     volume:
                       signal.db,
-
-                    stability: 0,
 
                     samples,
 
@@ -934,7 +749,6 @@ export function useAudioRecorder(
                 return;
               }
 
-
               // ==================================================
               // VALID PITCH
               // ==================================================
@@ -948,12 +762,8 @@ export function useAudioRecorder(
               lastValidClarityRef.current =
                 detectedClarity;
 
-              lastValidVolumeRef.current =
-                signal.db;
-
               lastValidPitchTimeRef.current =
                 now;
-
 
               const liveFrame:
                 LiveAudioFrame =
@@ -970,20 +780,15 @@ export function useAudioRecorder(
                   volume:
                     signal.db,
 
-                  stability:
-                    0,
-
                   samples,
 
                   sampleRate:
                     DEFAULT_SAMPLE_RATE,
                 };
 
-
               emitLiveFrame(
                 liveFrame
               );
-
 
               console.log(
                 "🎵 LIVE AUDIO:",
@@ -999,9 +804,6 @@ export function useAudioRecorder(
 
                   volumeDb:
                     signal.db,
-
-                  stability:
-                    0,
                 }
               );
 
@@ -1017,7 +819,6 @@ export function useAudioRecorder(
             }
           }
         );
-
 
         // ======================================================
         // ACTIVATE AUDIO SESSION
@@ -1049,7 +850,6 @@ export function useAudioRecorder(
           throw error;
         }
 
-
         // ======================================================
         // START NATIVE RECORDER
         // ======================================================
@@ -1066,7 +866,6 @@ export function useAudioRecorder(
 
           const result =
             await recorder.start();
-
 
           if (
             result &&
@@ -1086,7 +885,6 @@ export function useAudioRecorder(
             } catch {
               // Ignore cleanup failure.
             }
-
 
             if (
               sessionActiveRef.current
@@ -1108,7 +906,6 @@ export function useAudioRecorder(
             );
           }
 
-
           setIsRecording(true);
 
           console.log(
@@ -1129,7 +926,6 @@ export function useAudioRecorder(
           } catch {
             // Ignore cleanup failure.
           }
-
 
           if (
             sessionActiveRef.current
@@ -1158,7 +954,6 @@ export function useAudioRecorder(
       ]
     );
 
-
   // ==========================================================
   // STOP RECORDING
   // ==========================================================
@@ -1176,7 +971,6 @@ export function useAudioRecorder(
         console.log(
           "🛑 STOPPING RECORDER..."
         );
-
 
         // ======================================================
         // STOP NATIVE RECORDER
@@ -1197,7 +991,6 @@ export function useAudioRecorder(
           );
         }
 
-
         // ======================================================
         // STOP AUDIO CALLBACK
         // ======================================================
@@ -1210,7 +1003,6 @@ export function useAudioRecorder(
             error
           );
         }
-
 
         // ======================================================
         // DEACTIVATE AUDIO SESSION
@@ -1237,7 +1029,6 @@ export function useAudioRecorder(
           sessionActiveRef.current =
             false;
         }
-
 
         // ======================================================
         // COMBINE RAW CHUNKS
@@ -1266,7 +1057,6 @@ export function useAudioRecorder(
             chunk.length;
         }
 
-
         // ======================================================
         // FINAL AUDIO DIAGNOSTICS
         // ======================================================
@@ -1281,7 +1071,6 @@ export function useAudioRecorder(
           fullBuffer.length /
           DEFAULT_SAMPLE_RATE;
 
-
         console.log(
           "🛑 RECORDING STOPPED"
         );
@@ -1294,12 +1083,9 @@ export function useAudioRecorder(
           }
         );
 
-
         // ======================================================
         // SEND COMPLETE RAW RECORDING
         // ======================================================
-        //
-        // IMPORTANT:
         //
         // No filtering.
         // No silence removal.
@@ -1320,7 +1106,6 @@ export function useAudioRecorder(
             error
           );
         }
-
 
         // ======================================================
         // CLEANUP
@@ -1343,11 +1128,6 @@ export function useAudioRecorder(
       },
       [resetLiveDetection]
     );
-
-
-  // ==========================================================
-  // RETURN API
-  // ==========================================================
 
   return {
     startRecording,

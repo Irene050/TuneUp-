@@ -733,7 +733,7 @@ export default function SustainedSSSSScreen({
       setCountdown(PREPARATION_COUNTDOWN);
       setPhase('countdown');
 
-      let value = 3;
+      let value = PREPARATION_COUNTDOWN;
 
       console.log(
         `⏳ Countdown started for rep ${currentRepRef.current}`
@@ -1302,7 +1302,7 @@ export default function SustainedSSSSScreen({
         title={
           isFinalRep
             ? 'Analyzing Your Results'
-            : 'Analyzing Your Exhale'
+            : 'Analyzing Your Hissing Sound'
         }
         message={
           isFinalRep

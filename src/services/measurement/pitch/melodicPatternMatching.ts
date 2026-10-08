@@ -6,6 +6,14 @@ import {
 export interface MelodicPatternMeasurement {
   detectedFreqs: number[];
   noteTimestamps: number[];
+
+  /**
+   * All reliable pitch frames detected inside
+   * each expected note segment.
+   *
+   * Each inner array corresponds to one segment.
+   */
+  segmentFrequencies: number[][];
 }
 
 export function measureMelodicPatternMatching(
@@ -16,6 +24,7 @@ export function measureMelodicPatternMatching(
 ): MelodicPatternMeasurement {
   const detectedFreqs: number[] = [];
   const noteTimestamps: number[] = [];
+  const segmentFrequencies: number[][] = [];
 
   noteSegments.forEach((segment, index) => {
     const frames = filterByClarity(
@@ -33,21 +42,44 @@ export function measureMelodicPatternMatching(
 
     if (frames.length === 0) {
       detectedFreqs.push(0);
+
       noteTimestamps.push(
         segmentStartTimes[index] ?? 0,
       );
+
+      segmentFrequencies.push([]);
+
       return;
     }
 
+    const frequencies = frames.map(
+      frame => frame.frequency,
+    );
+
+    segmentFrequencies.push(
+      frequencies,
+    );
+
+    /*
+     * Keep the average frequency for the
+     * existing result/display fields.
+     *
+     * The scorer uses segmentFrequencies
+     * for actual pitch scoring.
+     */
     const averageFrequency =
-      frames.reduce(
-        (sum, frame) => sum + frame.frequency,
+      frequencies.reduce(
+        (sum, frequency) =>
+          sum + frequency,
         0,
-      ) / frames.length;
+      ) / frequencies.length;
 
-    detectedFreqs.push(averageFrequency);
+    detectedFreqs.push(
+      averageFrequency,
+    );
 
-    const firstVoicedFrame = frames[0];
+    const firstVoicedFrame =
+      frames[0];
 
     noteTimestamps.push(
       (segmentStartTimes[index] ?? 0) +
@@ -58,5 +90,6 @@ export function measureMelodicPatternMatching(
   return {
     detectedFreqs,
     noteTimestamps,
+    segmentFrequencies,
   };
 }

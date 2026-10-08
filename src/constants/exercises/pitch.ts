@@ -1,19 +1,16 @@
-// src/constants/exercises/pitch.ts
-
 export type Tier =
   | 'beginner'
   | 'intermediate'
   | 'advanced';
 
 
-// ============================================================
-// 1. NOTE MATCHING EXERCISE
-// ============================================================
+// note matching params
 
 export interface NoteMatchingParams {
   tolerancePct: number;
   minClarity: number;
   minVoicedFrames: number;
+  repetitions: number;
 }
 
 export const NOTE_MATCHING_PARAMS: Record<
@@ -24,36 +21,32 @@ export const NOTE_MATCHING_PARAMS: Record<
     tolerancePct: 5,
     minClarity: 0.70,
     minVoicedFrames: 3,
+    repetitions: 3,
   },
 
   intermediate: {
     tolerancePct: 3,
     minClarity: 0.75,
     minVoicedFrames: 4,
+    repetitions: 4,
   },
 
   advanced: {
     tolerancePct: 2,
     minClarity: 0.80,
     minVoicedFrames: 5,
+    repetitions: 5,
   },
 };
 
-
-// ============================================================
-// 2. SCALE ACCURACY DRILL
-// ============================================================
+// scale accuracy params
 
 export interface ScaleAccuracyParams {
   tolerancePct: number;
   minClarity: number;
   noteCount: number;
-
-  /**
-   * Minimum percentage of notes that must be
-   * accurately matched for the exercise to pass.
-   */
   scaleAccuracyThreshold: number;
+  repetitions: number;
 }
 
 export const SCALE_ACCURACY_PARAMS: Record<
@@ -65,6 +58,7 @@ export const SCALE_ACCURACY_PARAMS: Record<
     minClarity: 0.70,
     noteCount: 5,
     scaleAccuracyThreshold: 60,
+    repetitions: 3,
   },
 
   intermediate: {
@@ -72,6 +66,7 @@ export const SCALE_ACCURACY_PARAMS: Record<
     minClarity: 0.75,
     noteCount: 7,
     scaleAccuracyThreshold: 70,
+    repetitions: 4,
   },
 
   advanced: {
@@ -79,32 +74,16 @@ export const SCALE_ACCURACY_PARAMS: Record<
     minClarity: 0.80,
     noteCount: 8,
     scaleAccuracyThreshold: 80,
+    repetitions: 5,
   },
 };
 
-
-// ============================================================
-// 3. INTERVAL RECOGNITION TASK
-// ============================================================
+// interval recognition params
 
 export interface IntervalRecognitionParams {
   tolerancePct: number;
   minClarity: number;
-
-  /**
-   * Number of times the same interval is
-   * presented and performed.
-   *
-   * Kept fixed at 2 so the playback,
-   * recording, measurement, and scoring
-   * flow remain consistent.
-   */
   repetitions: number;
-
-  /**
-   * Total recording duration for the complete
-   * repeated interval task.
-   */
   totalDurationSec: number;
 }
 
@@ -115,34 +94,31 @@ export const INTERVAL_RECOGNITION_PARAMS: Record<
   beginner: {
     tolerancePct: 7,
     minClarity: 0.70,
-    repetitions: 2,
+    repetitions: 3,
     totalDurationSec: 8,
   },
 
   intermediate: {
     tolerancePct: 5,
     minClarity: 0.75,
-    repetitions: 2,
+    repetitions: 3,
     totalDurationSec: 7,
   },
 
   advanced: {
     tolerancePct: 3,
     minClarity: 0.80,
-    repetitions: 2,
+    repetitions: 3,
     totalDurationSec: 6,
   },
 };
 
-
-// ============================================================
-// 4. SUSTAINED NOTE STABILITY
-// ============================================================
-
+// susatined note stability params
 export interface SustainedNoteStabilityParams {
   durationSec: number;
   stabilityThresholdCents: number;
   minClarity: number;
+  repetitions: number;
 }
 
 export const SUSTAINED_NOTE_STABILITY_PARAMS: Record<
@@ -153,30 +129,31 @@ export const SUSTAINED_NOTE_STABILITY_PARAMS: Record<
     durationSec: 3,
     stabilityThresholdCents: 50,
     minClarity: 0.70,
+    repetitions: 3,
   },
 
   intermediate: {
     durationSec: 4,
     stabilityThresholdCents: 35,
     minClarity: 0.75,
+    repetitions: 4,
   },
 
   advanced: {
     durationSec: 5,
     stabilityThresholdCents: 25,
     minClarity: 0.80,
+    repetitions: 5,
   },
 };
 
-
-// ============================================================
-// 5. MELODIC PATTERN MATCHING
-// ============================================================
+// melodic pattern matching params
 
 export interface MelodicPatternMatchingParams {
   noteCount: number;
   tolerancePct: number;
   minClarity: number;
+  repetitions: number;
 }
 
 export const MELODIC_PATTERN_MATCHING_PARAMS: Record<
@@ -184,20 +161,23 @@ export const MELODIC_PATTERN_MATCHING_PARAMS: Record<
   MelodicPatternMatchingParams
 > = {
   beginner: {
-    noteCount: 3,
+    noteCount: 4,
     tolerancePct: 5,
     minClarity: 0.70,
+    repetitions: 3,
   },
 
   intermediate: {
-    noteCount: 5,
+    noteCount: 6,
     tolerancePct: 3,
     minClarity: 0.75,
+    repetitions: 4,
   },
 
   advanced: {
-    noteCount: 7,
+    noteCount: 8,
     tolerancePct: 2,
     minClarity: 0.80,
+    repetitions: 5,
   },
 };

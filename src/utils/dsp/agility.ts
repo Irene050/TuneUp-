@@ -1,4 +1,4 @@
-import { PitchFrame } from './pitch';
+import type { PitchFrame } from './pitch';
 
 export interface PitchTransition {
   fromFreq: number;

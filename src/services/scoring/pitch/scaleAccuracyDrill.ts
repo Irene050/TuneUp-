@@ -34,7 +34,6 @@ export function scoreScaleAccuracyDrill(
   measurement: ScaleAccuracyMeasurement,
   params: ScaleAccuracyParams,
 ): ScaleAccuracyScoreResult {
-
   const targetFreqs =
     measurement.targetFreqs;
 
@@ -67,7 +66,6 @@ export function scoreScaleAccuracyDrill(
   let correctNotes = 0;
 
   for (let i = 0; i < totalNotes; i++) {
-
     const detected =
       detectedFreqs[i] ?? 0;
 
@@ -88,60 +86,71 @@ export function scoreScaleAccuracyDrill(
     const deviationPct =
       (
         Math.abs(
-          detected - target
+          detected - target,
         ) / target
       ) * 100;
+
+    noteDeviations.push(
+      deviationPct,
+    );
+
+    const isMatch =
+      deviationPct <=
+      params.tolerancePct;
+
+    if (!isMatch) {
+      noteScores.push(0);
+      continue;
+    }
 
     const accuracy =
       calcPitchAccuracy(
         detected,
-        target
+        target,
       );
 
     const safeAccuracy =
       Number.isFinite(accuracy)
         ? Math.max(
             0,
-            Math.min(100, accuracy)
+            Math.min(
+              100,
+              accuracy,
+            ),
           )
         : 0;
 
     noteScores.push(
-      Math.round(safeAccuracy)
+      Math.round(
+        safeAccuracy,
+      ),
     );
 
-    noteDeviations.push(
-      deviationPct
-    );
-
-    if (
-      deviationPct <=
-      params.tolerancePct
-    ) {
-      correctNotes++;
-    }
+    correctNotes++;
   }
 
-  const noteAccuracy =
-    (correctNotes / totalNotes) * 100;
+const noteAccuracy =
+  totalNotes > 0
+    ? noteScores.reduce(
+        (sum, value) =>
+          sum + value,
+        0,
+      ) / totalNotes
+    : 0;
 
   const transitionSmoothness =
     Number.isFinite(
-      measurement.transitionSmoothness
+      measurement.transitionSmoothness,
     )
       ? Math.max(
           0,
           Math.min(
             100,
-            measurement.transitionSmoothness
-          )
+            measurement.transitionSmoothness,
+          ),
         )
       : 0;
 
-  /*
-   * 70% = note accuracy
-   * 30% = transition smoothness
-   */
   const rawScore =
     noteAccuracy * 0.70 +
     transitionSmoothness * 0.30;
@@ -149,8 +158,11 @@ export function scoreScaleAccuracyDrill(
   const score = Math.round(
     Math.max(
       0,
-      Math.min(100, rawScore)
-    )
+      Math.min(
+        100,
+        rawScore,
+      ),
+    ),
   );
 
   const passed =
@@ -161,22 +173,16 @@ export function scoreScaleAccuracyDrill(
   return {
     score,
     passed,
-
     noteAccuracy,
     transitionSmoothness,
-
     correctNotes,
     totalNotes,
-
     detectedFreqs,
     targetFreqs,
-
     noteScores,
     noteDeviations,
-
     averageClarity:
       measurement.averageClarity,
-
     voicedNotes:
       measurement.voicedNotes,
   };

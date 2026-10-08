@@ -1,5 +1,4 @@
 import type { DiaphragmaticBreathingParams } from '@/constants/exercises/breathControl';
-
 import type { DiaphragmaticBreathingMeasurement } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 
 export interface DiaphragmaticBreathingScoreResult {
@@ -48,45 +47,24 @@ export function scoreDiaphragmaticBreathing(
 
   /*
    * ---------------------------------------------------
-   * VOLUME ACCURACY
-   * ---------------------------------------------------
-   */
-
-  const [dbMin, dbMax] =
-    params.targetDbRange;
-
-  const dbMidpoint =
-    (dbMin + dbMax) / 2;
-
-  const dbDeviation =
-    Math.abs(
-      measurement.volumeDb - dbMidpoint,
-    ) /
-    (dbMax - dbMin || 1);
-
-  const volumeAccuracy =
-    Math.max(
-      0,
-      100 - dbDeviation * 100,
-    );
-
-  /*
-   * ---------------------------------------------------
    * FINAL SCORE
    * ---------------------------------------------------
    */
 
   const score = Math.round(
     durationScore * 0.4 +
-      consistencyScore * 0.4 +
-      volumeAccuracy * 0.2,
+      consistencyScore * 0.6,
   );
+
+  const passed =
+    measurement.exhaleDurationSec >=
+      params.exhaleSec &&
+    consistencyScore >=
+      params.consistencyThreshold;
 
   return {
     score,
-    passed:
-      measurement.consistencyPct >=
-      params.consistencyThreshold,
+    passed,
     detected: true,
   };
 }

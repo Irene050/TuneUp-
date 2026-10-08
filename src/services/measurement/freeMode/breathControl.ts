@@ -1,4 +1,4 @@
-import { calcRMS, calcRMSVariance, rmsToDb } from '@/utils/dsp/rms';
+import { calcRMS, calcRMSConsistency, rmsToDb } from '@/utils/dsp/rms';
 
 export interface BreathControlLiveReading {
   volumeDb: number;
@@ -11,6 +11,6 @@ export function measureBreathControlFreeModeFrame(
 ): BreathControlLiveReading {
   return {
     volumeDb: rmsToDb(calcRMS(runningBuffer), 1),
-    consistencyPct: calcRMSVariance(runningBuffer, 50, sampleRate),
+    consistencyPct: calcRMSConsistency(runningBuffer, 50, sampleRate),
   };
 }

@@ -105,60 +105,63 @@ export function scoreIntervalRecognitionTask(
     );
 
   /*
-   * Calculate the score for every detected repetition.
-   */
-  const detectedScores =
-    scoredAttempts.map(attempt => {
-      const deviation =
-        Math.abs(
-          attempt.detectedRatio -
-            targetRatio,
-        ) / targetRatio;
-
-      const deviationPct =
-        deviation * 100;
-
-      return Math.round(
-        Math.max(
-          0,
-          Math.min(
-            100,
-            100 - deviationPct,
-          ),
-        ),
-      );
-    });
-
-  /*
-   * IMPORTANT:
+   * Score each detected interval.
    *
-   * Do not automatically turn undetected repetitions
-   * into zero-score repetitions.
-   *
-   * The measurement layer is detecting actual repetitions
-   * from the user's recording. If the user performs fewer
-   * repetitions than the configured maximum, score the
-   * repetitions that were actually completed.
+   * An interval must first be within the configured
+   * tolerance before it can receive pitch accuracy.
    */
   const repetitionScores =
-    detectedScores.length > 0
-      ? detectedScores
+    scoredAttempts.length > 0
+      ? scoredAttempts.map(attempt => {
+          const deviationPct =
+            (
+              Math.abs(
+                attempt.detectedRatio -
+                  targetRatio,
+              ) /
+              targetRatio
+            ) * 100;
+
+          if (
+            deviationPct >
+            params.tolerancePct
+          ) {
+            return 0;
+          }
+
+          return Math.round(
+            Math.max(
+              0,
+              Math.min(
+                100,
+                100 - deviationPct,
+              ),
+            ),
+          );
+        })
       : [0];
 
-  /*
-   * Score is based on the repetitions that were
-   * successfully detected.
-   */
-  const score =
-    detectedScores.length > 0
-      ? Math.round(
-          detectedScores.reduce(
-            (sum, value) =>
-              sum + value,
-            0,
-          ) / detectedScores.length,
-        )
-      : 0;
+const completedScores = [
+  ...repetitionScores,
+  ...Array(
+    Math.max(
+      0,
+      requestedRepetitions -
+        repetitionScores.length,
+    ),
+  ).fill(0),
+];
+
+const score =
+  completedScores.length > 0
+    ? Math.round(
+        completedScores.reduce(
+          (sum, value) =>
+            sum + value,
+          0,
+        ) / completedScores.length,
+      )
+    : 0;
 
   /*
    * Calculate average deviation only from
@@ -168,15 +171,18 @@ export function scoreIntervalRecognitionTask(
     scoredAttempts.length > 0
       ? scoredAttempts.reduce(
           (sum, attempt) => {
-            const deviation =
-              Math.abs(
-                attempt.detectedRatio -
-                  targetRatio,
-              ) / targetRatio;
+            const deviationPct =
+              (
+                Math.abs(
+                  attempt.detectedRatio -
+                    targetRatio,
+                ) /
+                targetRatio
+              ) * 100;
 
             return (
               sum +
-              deviation * 100
+              deviationPct
             );
           },
           0,
@@ -184,16 +190,31 @@ export function scoreIntervalRecognitionTask(
       : 100;
 
   /*
-   * Passing requires at least one valid repetition
-   * and acceptable interval accuracy.
+   * Every detected repetition must match the
+   * target interval within the configured tolerance.
    *
    * Completing fewer repetitions than the tier's
    * configured maximum does not erase the score.
    */
   const passed =
     scoredAttempts.length > 0 &&
-    detectedDeviationPct <=
-      params.tolerancePct;
+    scoredAttempts.every(
+      attempt => {
+        const deviationPct =
+          (
+            Math.abs(
+              attempt.detectedRatio -
+                targetRatio,
+            ) /
+            targetRatio
+          ) * 100;
+
+        return (
+          deviationPct <=
+          params.tolerancePct
+        );
+      },
+    );
 
   /*
    * Use the first detected attempt for the

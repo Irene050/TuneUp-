@@ -21,7 +21,7 @@ import {
   type Tier,
 } from '@/constants/exercises/agility';
 
-import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { LiveAudioFrame, useAudioRecorder } from '@/hooks/useAudioRecorder';
 
 import {
   measureRapidNoteTransition,
@@ -101,8 +101,6 @@ type LiveState = {
   pitch: number;
   note: string;
   clarity: number;
-  volume: number;
-  stability: number;
 };
 
 type ExerciseSequence = {
@@ -442,8 +440,6 @@ export default function RapidNoteTransitionExerciseScreen({
       pitch: 0,
       note: '--',
       clarity: 0,
-      volume: -100,
-      stability: 0,
     });
 
   const [result, setResult] =
@@ -536,8 +532,6 @@ export default function RapidNoteTransitionExerciseScreen({
         pitch: 0,
         note: '--',
         clarity: 0,
-        volume: -100,
-        stability: 0,
       });
     }, []);
 
@@ -545,32 +539,24 @@ export default function RapidNoteTransitionExerciseScreen({
   // LIVE AUDIO FRAME
   // ----------------------------------------------------------
 
-  const handleLiveFrame =
-    useCallback(
-      (frame: {
-        pitch: number;
-        note: string;
-        clarity: number;
-        volume: number;
-        stability: number;
-      }) => {
-        if (!mountedRef.current) {
-          return;
-        }
+const handleLiveFrame =
+  useCallback(
+    (frame: LiveAudioFrame) => {
+      if (!mountedRef.current) {
+        return;
+      }
 
-        if (
-          screenRef.current !== 'recording'
-        ) {
-          return;
-        }
+      if (
+        screenRef.current !== 'recording'
+      ) {
+        return;
+      }
 
-        setLivePitch({
-          pitch: frame.pitch,
-          note: frame.note || '--',
-          clarity: frame.clarity,
-          volume: frame.volume,
-          stability: frame.stability,
-        });
+      setLivePitch({
+        pitch: frame.pitch,
+        note: frame.note || '--',
+        clarity: frame.clarity,
+      });
 
         if (
           !Number.isFinite(frame.pitch) ||
@@ -1579,19 +1565,6 @@ export default function RapidNoteTransitionExerciseScreen({
               <Text style={styles.liveStatValue}>
                 {Math.round(
                   livePitch.clarity * 100,
-                )}
-                %
-              </Text>
-            </View>
-
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Stability
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {Math.round(
-                  livePitch.stability,
                 )}
                 %
               </Text>

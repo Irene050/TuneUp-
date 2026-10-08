@@ -2316,11 +2316,7 @@ export default function AssessmentScreen() {
                     styles.liveValue
                   }
                 >
-                  {liveAudio
-                    ? `${liveAudio.stability.toFixed(
-                        0
-                      )}%`
-                    : '--'}
+                  --
                 </Text>
               </View>
             </View>

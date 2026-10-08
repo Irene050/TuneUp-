@@ -18,31 +18,50 @@ import {
   VOWEL_CONSISTENCY_PARAMS,
   type VowelConsistencyParams,
 } from '@/constants/exercises/tone';
+
 import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
 import {
   generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
+
 import { auth } from '@/services/firebase/config';
+
 import {
   measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
+
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
+
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-import {
+
+import type {
   VowelConsistencyScoreResult,
+} from '@/services/scoring/tone/vowelConsistencyExercise';
+
+import {
   scoreVowelConsistencyExercise,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
+
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  type ExercisePreparationStep,
+  type ExerciseSummaryItem,
+} from '@/screens/exercises/ExerciseScreen';
+
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNote } from '@/utils/dsp/pitch';
 
@@ -52,7 +71,6 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#E8DCD7';
 
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
@@ -74,20 +92,37 @@ type Phase =
 interface RepetitionResult {
   score: number;
   passed: boolean;
-  averageCentroid: number;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+) {
+  return Math.max(
+    min,
+    Math.min(max, value),
+  );
 }
 
-function randomInRange(range: [number, number]) {
+function randomInRange(
+  range: [number, number],
+) {
   const [min, max] = range;
-  return min + Math.random() * (max - min);
+
+  return (
+    min +
+    Math.random() * (max - min)
+  );
 }
 
-function formatNumber(value: number, decimals = 1) {
-  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
+function formatNumber(
+  value: number,
+  decimals = 1,
+) {
+  return Number.isFinite(value)
+    ? value.toFixed(decimals)
+    : '--';
 }
 
 function vowelDisplay(vowel: string) {
@@ -97,41 +132,55 @@ function vowelDisplay(vowel: string) {
 export default function VowelConsistencyExerciseScreen({
   tier,
 }: Props) {
-  const initialTier = tier ?? 'beginner';
+  const initialTier =
+    tier ?? 'beginner';
 
   const [currentTier, setCurrentTier] =
     useState<Tier>(initialTier);
 
   const [params, setParams] =
     useState<VowelConsistencyParams>(
-      VOWEL_CONSISTENCY_PARAMS[initialTier],
+      VOWEL_CONSISTENCY_PARAMS[
+        initialTier
+      ],
     );
 
   const [loadingParams, setLoadingParams] =
     useState(true);
 
   const repetitions =
-    Math.max(1, params.repetitions);
+    Math.max(
+      1,
+      params.repetitions,
+    );
 
   const [phase, setPhase] =
     useState<Phase>('instructions');
 
   const [countdown, setCountdown] =
-    useState(COUNTDOWN_SECONDS);
+    useState(
+      COUNTDOWN_SECONDS,
+    );
 
   const [targetDuration, setTargetDuration] =
     useState(() =>
-      randomInRange(params.durationRangeSec),
+      randomInRange(
+        params.durationRangeSec,
+      ),
     );
 
-  const [currentRepetition, setCurrentRepetition] =
-    useState(1);
+  const [
+    currentRepetition,
+    setCurrentRepetition,
+  ] = useState(1);
 
   const [elapsedMs, setElapsedMs] =
     useState(0);
 
   const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(null);
+    useState<LiveAudioFrame | null>(
+      null,
+    );
 
   const [results, setResults] =
     useState<RepetitionResult[]>([]);
@@ -141,8 +190,10 @@ export default function VowelConsistencyExerciseScreen({
       null,
     );
 
-  const [finalAverageCentroid, setFinalAverageCentroid] =
-    useState(0);
+  const [
+    finalAverageCentroid,
+    setFinalAverageCentroid,
+  ] = useState(0);
 
   const [frameCount, setFrameCount] =
     useState(0);
@@ -188,21 +239,15 @@ export default function VowelConsistencyExerciseScreen({
   const repetitionMeasurementsRef =
     useRef<
       Array<
-        ReturnType<typeof measureVowelConsistency>
+        ReturnType<
+          typeof measureVowelConsistency
+        >
       >
     >([]);
 
   const resultsRef =
     useRef<RepetitionResult[]>([]);
 
-  /**
-   * Resolve the current tier and generate
-   * adaptive Vowel Consistency parameters.
-   *
-   * Explicit tier prop takes priority.
-   * Otherwise, the user's saved Tone progress
-   * determines the current tier.
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -210,10 +255,12 @@ export default function VowelConsistencyExerciseScreen({
       setLoadingParams(true);
 
       try {
-        let resolvedTier: Tier = initialTier;
+        let resolvedTier: Tier =
+          initialTier;
 
         if (!tier) {
-          const user = auth.currentUser;
+          const user =
+            auth.currentUser;
 
           if (user) {
             const progress =
@@ -228,13 +275,19 @@ export default function VowelConsistencyExerciseScreen({
           }
         }
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
-        setCurrentTier(resolvedTier);
+        setCurrentTier(
+          resolvedTier,
+        );
 
-        let recentScores: number[] = [];
+        let recentScores: number[] =
+          [];
 
-        const user = auth.currentUser;
+        const user =
+          auth.currentUser;
 
         if (user) {
           const records =
@@ -243,7 +296,9 @@ export default function VowelConsistencyExerciseScreen({
               'tone',
             );
 
-          if (cancelled) return;
+          if (cancelled) {
+            return;
+          }
 
           const currentTierRecords =
             records
@@ -268,19 +323,16 @@ export default function VowelConsistencyExerciseScreen({
                   record.scorePct,
               );
 
-          /**
-           * If there is no exercise history for
-           * this component/tier/template yet,
-           * use the latest Tone assessment as
-           * the ADS reference.
-           */
           if (
-            recentScores.length === 0
+            recentScores.length ===
+            0
           ) {
             const assessment =
               await getLatestAssessment();
 
-            if (cancelled) return;
+            if (cancelled) {
+              return;
+            }
 
             const toneScore =
               assessment?.scores.find(
@@ -308,14 +360,24 @@ export default function VowelConsistencyExerciseScreen({
             recentScores,
           });
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
-        setParams(generatedParams);
+        setParams(
+          generatedParams,
+        );
 
-        setTargetDuration(
+        const newTargetDuration =
           randomInRange(
             generatedParams.durationRangeSec,
-          ),
+          );
+
+        targetDurationRef.current =
+          newTargetDuration;
+
+        setTargetDuration(
+          newTargetDuration,
         );
       } catch (error) {
         console.error(
@@ -324,7 +386,10 @@ export default function VowelConsistencyExerciseScreen({
         );
 
         if (!cancelled) {
-          setCurrentTier(initialTier);
+          setCurrentTier(
+            initialTier,
+          );
+
           setParams(
             VOWEL_CONSISTENCY_PARAMS[
               initialTier
@@ -351,26 +416,33 @@ export default function VowelConsistencyExerciseScreen({
     return () => {
       mountedRef.current = false;
 
-      if (countdownTimerRef.current) {
+      if (
+        countdownTimerRef.current
+      ) {
         clearInterval(
           countdownTimerRef.current,
         );
       }
 
-      if (recordingTimerRef.current) {
+      if (
+        recordingTimerRef.current
+      ) {
         clearInterval(
           recordingTimerRef.current,
         );
       }
 
-      if (restTimerRef.current) {
+      if (
+        restTimerRef.current
+      ) {
         clearTimeout(
           restTimerRef.current,
         );
       }
 
       recordingRef.current = false;
-      stopRequestedRef.current = false;
+      stopRequestedRef.current =
+        false;
     };
   }, []);
 
@@ -380,63 +452,84 @@ export default function VowelConsistencyExerciseScreen({
   }, [targetDuration]);
 
   useEffect(() => {
-    resultsRef.current = results;
+    resultsRef.current =
+      results;
   }, [results]);
 
-  const handleLiveFrame = useCallback(
-    (frame: LiveAudioFrame) => {
-      if (mountedRef.current) {
-        setLiveFrame(frame);
-      }
-    },
-    [],
-  );
-
-  const resetExercise = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(
-        countdownTimerRef.current,
-      );
-    }
-
-    if (recordingTimerRef.current) {
-      clearInterval(
-        recordingTimerRef.current,
-      );
-    }
-
-    if (restTimerRef.current) {
-      clearTimeout(
-        restTimerRef.current,
-      );
-    }
-
-    repetitionRef.current = 1;
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
-    processingRef.current = false;
-    elapsedRef.current = 0;
-
-    repetitionMeasurementsRef.current =
-      [];
-
-    resultsRef.current = [];
-
-    setCurrentRepetition(1);
-    setElapsedMs(0);
-    setLiveFrame(null);
-    setResults([]);
-    setFinalResult(null);
-    setFinalAverageCentroid(0);
-    setFrameCount(0);
-    setErrorMessage(null);
-
-    setTargetDuration(
-      randomInRange(
-        params.durationRangeSec,
-      ),
+  const handleLiveFrame =
+    useCallback(
+      (frame: LiveAudioFrame) => {
+        if (
+          mountedRef.current
+        ) {
+          setLiveFrame(frame);
+        }
+      },
+      [],
     );
-  }, [params.durationRangeSec]);
+
+  const resetExercise =
+    useCallback(() => {
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
+      }
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+      }
+
+      if (
+        restTimerRef.current
+      ) {
+        clearTimeout(
+          restTimerRef.current,
+        );
+      }
+
+      repetitionRef.current = 1;
+      recordingRef.current = false;
+      stopRequestedRef.current =
+        false;
+      processingRef.current =
+        false;
+      elapsedRef.current = 0;
+
+      repetitionMeasurementsRef.current =
+        [];
+
+      resultsRef.current = [];
+
+      setCurrentRepetition(1);
+      setElapsedMs(0);
+      setLiveFrame(null);
+      setResults([]);
+      setFinalResult(null);
+      setFinalAverageCentroid(0);
+      setFrameCount(0);
+      setErrorMessage(null);
+
+      const newTargetDuration =
+        randomInRange(
+          params.durationRangeSec,
+        );
+
+      targetDurationRef.current =
+        newTargetDuration;
+
+      setTargetDuration(
+        newTargetDuration,
+      );
+    }, [
+      params.durationRangeSec,
+    ]);
 
   const startRepCountdown =
     useCallback(() => {
@@ -448,7 +541,9 @@ export default function VowelConsistencyExerciseScreen({
         return;
       }
 
-      if (countdownTimerRef.current) {
+      if (
+        countdownTimerRef.current
+      ) {
         clearInterval(
           countdownTimerRef.current,
         );
@@ -480,275 +575,276 @@ export default function VowelConsistencyExerciseScreen({
               null;
 
             void beginRecording();
+
             return;
           }
 
-          if (mountedRef.current) {
+          if (
+            mountedRef.current
+          ) {
             setCountdown(value);
           }
         }, 1000);
     }, []);
 
-  const { startRecording, stopRecording, isRecording } =
-    useAudioRecorder({
-      onFrame: handleLiveFrame,
+  const {
+    startRecording,
+    stopRecording,
+    isRecording,
+  } = useAudioRecorder({
+    onFrame:
+      handleLiveFrame,
 
-      onStop: async (
-        samples,
-        sampleRate,
-      ) => {
+    onStop: async (
+      samples,
+      sampleRate,
+    ) => {
+      if (
+        !mountedRef.current ||
+        processingRef.current
+      ) {
+        return;
+      }
+
+      recordingRef.current =
+        false;
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current,
+        );
+
+        recordingTimerRef.current =
+          null;
+      }
+
+      setPhase('processing');
+
+      try {
         if (
-          !mountedRef.current ||
-          processingRef.current
+          !samples.length ||
+          sampleRate <= 0
+        ) {
+          throw new Error(
+            'No usable audio was recorded.',
+          );
+        }
+
+        const fftFrames =
+          samplesToFFTFrames(
+            samples,
+            FFT_SIZE,
+            FFT_HOP_SIZE,
+          );
+
+        if (!fftFrames.length) {
+          throw new Error(
+            'No FFT frames could be generated.',
+          );
+        }
+
+        const measurement =
+          measureVowelConsistency(
+            fftFrames,
+            sampleRate,
+            FFT_SIZE,
+          );
+
+        const scored =
+          scoreVowelConsistencyExercise(
+            measurement,
+            params,
+          );
+
+        repetitionMeasurementsRef.current.push(
+          measurement,
+        );
+
+        const repResult: RepetitionResult =
+          {
+            score: scored.score,
+            passed: scored.passed,
+          };
+
+        const nextResults = [
+          ...resultsRef.current,
+          repResult,
+        ];
+
+        resultsRef.current =
+          nextResults;
+
+        if (
+          !mountedRef.current
         ) {
           return;
         }
 
-        recordingRef.current = false;
+        setResults(
+          nextResults,
+        );
 
-        if (recordingTimerRef.current) {
-          clearInterval(
-            recordingTimerRef.current,
-          );
+        setFrameCount(
+          previous =>
+            previous +
+            fftFrames.length,
+        );
 
-          recordingTimerRef.current =
-            null;
-        }
+        const measurementCount =
+          repetitionMeasurementsRef.current
+            .length;
 
-        setPhase('processing');
-
-        try {
-          if (
-            !samples.length ||
-            sampleRate <= 0
-          ) {
-            throw new Error(
-              'No usable audio was recorded.',
-            );
-          }
-
-          const fftFrames =
-            samplesToFFTFrames(
-              samples,
-              FFT_SIZE,
-              FFT_HOP_SIZE,
-            );
-
-          if (!fftFrames.length) {
-            throw new Error(
-              'No FFT frames could be generated.',
-            );
-          }
-
-          const measurement =
-            measureVowelConsistency(
-              fftFrames,
-              sampleRate,
-              FFT_SIZE,
-            );
-
-          const scored =
-            scoreVowelConsistencyExercise(
-              measurement,
-              params,
-            );
-
-          const validCentroids =
-            measurement.centroidOverTime.filter(
-              value =>
-                Number.isFinite(value) &&
-                value > 0,
-            );
-
-          const averageCentroid =
-            validCentroids.length
-              ? validCentroids.reduce(
-                  (sum, value) =>
-                    sum + value,
-                  0,
-                ) /
-                validCentroids.length
-              : 0;
-
-          repetitionMeasurementsRef.current.push(
-            measurement,
-          );
-
-          const repResult: RepetitionResult =
-            {
-              score: scored.score,
-              passed: scored.passed,
-              averageCentroid,
-            };
-
-          const nextResults = [
-            ...resultsRef.current,
-            repResult,
-          ];
-
-          resultsRef.current =
-            nextResults;
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setResults(nextResults);
-
-          setFrameCount(
-            previous =>
-              previous +
-              fftFrames.length,
-          );
-
-          const measurementCount =
-            repetitionMeasurementsRef.current
-              .length;
-
-          setFinalAverageCentroid(
-            measurementCount > 0
-              ? repetitionMeasurementsRef.current.reduce(
-                  (
-                    sum,
-                    current,
-                  ) => {
-                    const valid =
-                      current.centroidOverTime.filter(
-                        value =>
-                          Number.isFinite(
-                            value,
-                          ) &&
-                          value > 0,
-                      );
-
-                    if (!valid.length) {
-                      return sum;
-                    }
-
-                    return (
-                      sum +
-                      valid.reduce(
-                        (a, b) =>
-                          a + b,
-                        0,
-                      ) /
-                        valid.length
+        setFinalAverageCentroid(
+          measurementCount > 0
+            ? repetitionMeasurementsRef.current.reduce(
+                (
+                  sum,
+                  current,
+                ) => {
+                  const valid =
+                    current.centroidOverTime.filter(
+                      value =>
+                        Number.isFinite(
+                          value,
+                        ) &&
+                        value > 0,
                     );
-                  },
-                  0,
-                ) /
-                  measurementCount
-              : 0,
-          );
 
-          if (
-            nextResults.length <
-            repetitions
-          ) {
-            const nextRep =
-              nextResults.length + 1;
+                  if (!valid.length) {
+                    return sum;
+                  }
 
-            repetitionRef.current =
-              nextRep;
-
-            setCurrentRepetition(
-              nextRep,
-            );
-
-            setLiveFrame(null);
-            setElapsedMs(0);
-
-            elapsedRef.current = 0;
-
-            setPhase('rest');
-
-            restTimerRef.current =
-              setTimeout(() => {
-                if (
-                  !mountedRef.current
-                ) {
-                  return;
-                }
-
-                startRepCountdown();
-              }, REST_MS);
-
-            return;
-          }
-
-          processingRef.current =
-            true;
-
-          const overallScore =
-            Math.round(
-              nextResults.reduce(
-                (sum, item) =>
-                  sum + item.score,
+                  return (
+                    sum +
+                    valid.reduce(
+                      (a, b) =>
+                        a + b,
+                      0,
+                    ) /
+                      valid.length
+                  );
+                },
                 0,
               ) /
-                nextResults.length,
-            );
+                measurementCount
+            : 0,
+        );
 
-          const overallPassed =
-            nextResults.every(
-              item => item.passed,
-            );
+        if (
+          nextResults.length <
+          repetitions
+        ) {
+          const nextRep =
+            nextResults.length +
+            1;
 
-          const finalScored:
-            VowelConsistencyScoreResult =
-            {
-              score: clamp(
-                overallScore,
-                0,
-                100,
-              ),
-              passed:
-                overallPassed,
-            };
+          repetitionRef.current =
+            nextRep;
 
-          setFinalResult(
-            finalScored,
+          setCurrentRepetition(
+            nextRep,
           );
 
-          await saveCompletedExercise(
-            'tone',
-            'vowelConsistency',
-            currentTier,
-            finalScored.score,
+          setLiveFrame(null);
+          setElapsedMs(0);
+
+          elapsedRef.current = 0;
+
+          setPhase('rest');
+
+          restTimerRef.current =
+            setTimeout(() => {
+              if (
+                !mountedRef.current
+              ) {
+                return;
+              }
+
+              startRepCountdown();
+            }, REST_MS);
+
+          return;
+        }
+
+        processingRef.current =
+          true;
+
+        const overallScore =
+          Math.round(
+            nextResults.reduce(
+              (sum, item) =>
+                sum + item.score,
+              0,
+            ) /
+              nextResults.length,
           );
 
-          if (mountedRef.current) {
-            setPhase('results');
-          }
-        } catch (error) {
-          console.error(
-            '❌ VOWEL CONSISTENCY PROCESSING ERROR:',
-            error,
+        const overallPassed =
+          nextResults.every(
+            item => item.passed,
           );
 
-          if (mountedRef.current) {
-            setErrorMessage(
-              'We could not analyze this repetition. Please try again.',
-            );
+        const finalScored:
+          VowelConsistencyScoreResult =
+          {
+            score: clamp(
+              overallScore,
+              0,
+              100,
+            ),
+            passed:
+              overallPassed,
+          };
 
-            setPhase(
-              'instructions',
-            );
-          }
-        } finally {
-          if (
-            resultsRef.current.length >=
-            repetitions
-          ) {
-            processingRef.current =
-              false;
-          }
+        setFinalResult(
+          finalScored,
+        );
 
-          stopRequestedRef.current =
+        await saveCompletedExercise(
+          'tone',
+          'vowelConsistency',
+          currentTier,
+          finalScored.score,
+        );
+
+        if (
+          mountedRef.current
+        ) {
+          setPhase('results');
+        }
+      } catch (error) {
+        console.error(
+          '❌ VOWEL CONSISTENCY PROCESSING ERROR:',
+          error,
+        );
+
+        if (
+          mountedRef.current
+        ) {
+          setErrorMessage(
+            'We could not analyze this repetition. Please try again.',
+          );
+
+          setPhase(
+            'instructions',
+          );
+        }
+      } finally {
+        if (
+          resultsRef.current.length >=
+          repetitions
+        ) {
+          processingRef.current =
             false;
         }
-      },
-    });
+
+        stopRequestedRef.current =
+          false;
+      }
+    },
+  });
 
   const beginRecording =
     useCallback(async () => {
@@ -774,11 +870,14 @@ export default function VowelConsistencyExerciseScreen({
 
         await startRecording();
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return;
         }
 
-        recordingRef.current = true;
+        recordingRef.current =
+          true;
 
         const durationMs =
           targetDurationRef.current *
@@ -859,7 +958,9 @@ export default function VowelConsistencyExerciseScreen({
         stopRequestedRef.current =
           false;
 
-        if (mountedRef.current) {
+        if (
+          mountedRef.current
+        ) {
           setPhase(
             'instructions',
           );
@@ -882,8 +983,6 @@ export default function VowelConsistencyExerciseScreen({
       }
 
       resetExercise();
-
-      setPhase('countdown');
 
       startRepCountdown();
     }, [
@@ -930,28 +1029,59 @@ export default function VowelConsistencyExerciseScreen({
 
   const goBack =
     useCallback(() => {
-      if (countdownTimerRef.current) {
+      if (
+        countdownTimerRef.current
+      ) {
         clearInterval(
           countdownTimerRef.current,
         );
+
+        countdownTimerRef.current =
+          null;
       }
 
-      if (recordingTimerRef.current) {
+      if (
+        recordingTimerRef.current
+      ) {
         clearInterval(
           recordingTimerRef.current,
         );
+
+        recordingTimerRef.current =
+          null;
       }
 
-      if (restTimerRef.current) {
+      if (
+        restTimerRef.current
+      ) {
         clearTimeout(
           restTimerRef.current,
         );
+
+        restTimerRef.current =
+          null;
       }
+
+      if (recordingRef.current) {
+        stopRequestedRef.current =
+          true;
+
+        void stopRecording().catch(
+          error => {
+            console.error(
+              '❌ FAILED TO STOP VOWEL RECORDING BEFORE NAVIGATION:',
+              error,
+            );
+          },
+        );
+      }
+
+      recordingRef.current = false;
 
       router.replace(
         '/dashboard?tab=exercises',
       );
-    }, []);
+    }, [stopRecording]);
 
   const retry =
     useCallback(() => {
@@ -981,7 +1111,9 @@ export default function VowelConsistencyExerciseScreen({
   if (loadingParams) {
     return (
       <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
+        <View
+          style={styles.iconCircle}
+        >
           <Ionicons
             name="options-outline"
             size={34}
@@ -989,13 +1121,17 @@ export default function VowelConsistencyExerciseScreen({
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Preparing Exercise
         </Text>
 
-        <Text style={styles.phaseSubtitle}>
-          Adjusting the exercise to your
-          recent performance.
+        <Text
+          style={styles.phaseSubtitle}
+        >
+          Adjusting the exercise to
+          your recent performance.
         </Text>
 
         <ActivityIndicator
@@ -1010,410 +1146,88 @@ export default function VowelConsistencyExerciseScreen({
   }
 
   if (phase === 'instructions') {
+    const preparationSteps: ExercisePreparationStep[] = [
+      {
+        icon: 'volume-mute-outline',
+        text: 'Find a quiet place with minimal background noise.',
+      },
+      {
+        icon: 'body-outline',
+        text: 'Keep your posture relaxed and keep the microphone a comfortable distance away.',
+      },
+      {
+        icon: 'repeat-outline',
+        text: 'You will repeat the same vowel several times so TuneUp! can compare your consistency.',
+      },
+    ];
+
+    const summary: ExerciseSummaryItem[] = [
+      {
+        label: 'TARGET',
+        value: vowelDisplay(params.vowel),
+        hint: 'vowel',
+      },
+      {
+        label: 'REPETITIONS',
+        value: String(repetitions),
+        hint: 'attempts',
+      },
+      {
+        label: 'HOLD',
+        value: `${formatNumber(params.durationRangeSec[0])}–${formatNumber(params.durationRangeSec[1])}s`,
+        hint: 'per repetition',
+      },
+      {
+        label: 'CONSISTENCY',
+        value: `${params.smoothnessThreshold}%`,
+        hint: 'minimum',
+      },
+    ];
+
     return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={goBack}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          <View style={styles.iconCircle}>
-            <Ionicons
-              name="text-outline"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.title}>
-            Vowel Consistency
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Tone
-          </Text>
-
-          <View
-            style={
-              styles.instructionCard
-            }
-          >
-            <View
-              style={
-                styles.prepareCard
-              }
-            >
-              <View
-                style={
-                  styles.prepareHeader
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareTitle
-                  }
-                >
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Find a quiet place
-                  with minimal
-                  background noise.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Keep your posture
-                  relaxed and keep
-                  the microphone a
-                  comfortable distance
-                  away.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="repeat-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  You will repeat the
-                  same vowel several
-                  times so TuneUp! can
-                  compare your
-                  consistency.
-                </Text>
-              </View>
-            </View>
-
-            <Text style={styles.cardTitle}>
-              How It Works
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Sing the target vowel
-              clearly at a comfortable
-              pitch.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Hold the vowel without
-              changing its mouth shape
-              or sound quality.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Rest briefly, then repeat
-              the same vowel for every
-              repetition.
-            </Text>
-
-            <View
-              style={styles.targetBox}
-            >
-              <Ionicons
-                name="text-outline"
-                size={28}
-                color={BROWN}
-              />
-
-              <View
-                style={styles.targetInfo}
-              >
-                <Text
-                  style={styles.targetLabel}
-                >
-                  TARGET VOWEL
-                </Text>
-
-                <Text
-                  style={styles.targetVowel}
-                >
-                  {vowelDisplay(
-                    params.vowel,
-                  )}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View
-            style={styles.keyMetricCard}
-          >
-            <Text
-              style={
-                styles.keyMetricTitle
-              }
-            >
-              What TuneUp! checks
-            </Text>
-
-            <View
-              style={styles.metricRow}
-            >
-              <Ionicons
-                name="radio-outline"
-                size={19}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.metricText}
-              >
-                Spectral consistency of
-                the vowel
-              </Text>
-            </View>
-
-            <View
-              style={styles.metricRow}
-            >
-              <Ionicons
-                name="repeat-outline"
-                size={19}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.metricText}
-              >
-                Consistency across
-                repetitions
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={styles.difficultyRow}
-          >
-            <Text
-              style={styles.difficultyLabel}
-            >
-              Difficulty
-            </Text>
-
-            <Text
-              style={styles.difficultyValue}
-            >
-              {currentTier}
-            </Text>
-          </View>
-
-          <View
-            style={styles.difficultyRow}
-          >
-            <Text
-              style={styles.difficultyLabel}
-            >
-              Repetitions
-            </Text>
-
-            <Text
-              style={styles.difficultyValue}
-            >
-              {repetitions}
-            </Text>
-          </View>
-
-          <View
-            style={styles.difficultyRow}
-          >
-            <Text
-              style={styles.difficultyLabel}
-            >
-              Hold duration
-            </Text>
-
-            <Text
-              style={styles.difficultyValue}
-            >
-              {
-                params.durationRangeSec[0]
-              }
-              –
-              {
-                params.durationRangeSec[1]
-              }
-              s
-            </Text>
-          </View>
-
-          <View
-            style={styles.difficultyRow}
-          >
-            <Text
-              style={styles.difficultyLabel}
-            >
-              Required smoothness
-            </Text>
-
-            <Text
-              style={styles.difficultyValue}
-            >
-              {
-                params.smoothnessThreshold
-              }
-              %
-            </Text>
-          </View>
-
-          {errorMessage && (
-            <View
-              style={styles.errorCard}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={21}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.errorText}
-              >
-                {errorMessage}
-              </Text>
-            </View>
-          )}
-
-          <Pressable
-            style={styles.startButton}
-            onPress={startExercise}
-          >
-            <Text
-              style={styles.startButtonText}
-            >
-              Start Exercise
-            </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-        </ScrollView>
-      </View>
+      <ExerciseScreen
+        title="Vowel Consistency"
+        category="Tone"
+        icon="text-outline"
+        instructions="Sing the target vowel clearly at a comfortable pitch. Hold the vowel without changing its mouth shape or sound quality. Rest briefly, then repeat the same vowel for every repetition."
+        preparationSteps={preparationSteps}
+        summary={summary}
+        targetValue={vowelDisplay(params.vowel)}
+        targetHint="target vowel"
+        repetitions={repetitions}
+        tip="Keep the vowel sounding the same from start to finish."
+        tier={currentTier}
+        onBack={goBack}
+        onStart={startExercise}
+        error={errorMessage ?? undefined}
+        startDisabled={loadingParams}
+      />
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="repeat-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Get Ready
-        </Text>
-
-        <Text style={styles.countdownText}>
-          {countdown}
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Next: repetition{' '}
-          {currentRepetition} of{' '}
-          {repetitions}
-        </Text>
-
-        <Text
-          style={styles.largeVowel}
-        >
-          {vowelDisplay(params.vowel)}
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Hold for about{' '}
-          {formatNumber(
-            targetDuration,
-          )}{' '}
-          seconds
-        </Text>
-      </View>
+      <ExerciseCountdownScreen
+        title="Vowel Consistency"
+        icon="text-outline"
+        currentRep={currentRepetition}
+        repetitions={repetitions}
+        countdown={countdown}
+        promptTitle="Target Vowel"
+        prompt={vowelDisplay(params.vowel)}
+        onBack={goBack}
+      />
     );
   }
 
   if (phase === 'rest') {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
+      <View
+        style={styles.centerScreen}
+      >
+        <View
+          style={styles.iconCircle}
+        >
           <Ionicons
             name="pause-outline"
             size={34}
@@ -1421,7 +1235,9 @@ export default function VowelConsistencyExerciseScreen({
           />
         </View>
 
-        <Text style={styles.phaseTitle}>
+        <Text
+          style={styles.phaseTitle}
+        >
           Relax
         </Text>
 
@@ -1442,7 +1258,9 @@ export default function VowelConsistencyExerciseScreen({
         <ActivityIndicator
           size="small"
           color={BROWN}
-          style={{ marginTop: 18 }}
+          style={
+            styles.restIndicator
+          }
         />
       </View>
     );
@@ -1464,8 +1282,9 @@ export default function VowelConsistencyExerciseScreen({
               styles.recordingEyebrow
             }
           >
-            REPETITION {currentRepetition}{' '}
-            / {repetitions}
+            REPETITION{' '}
+            {currentRepetition} /{' '}
+            {repetitions}
           </Text>
 
           <Text
@@ -1513,7 +1332,9 @@ export default function VowelConsistencyExerciseScreen({
             style={styles.microphoneArea}
           >
             <View
-              style={styles.outerMicCircle}
+              style={
+                styles.outerMicCircle
+              }
             >
               <View
                 style={
@@ -1681,7 +1502,9 @@ export default function VowelConsistencyExerciseScreen({
             />
 
             <Text
-              style={styles.stopButtonText}
+              style={
+                styles.stopButtonText
+              }
             >
               Finish This Repetition
             </Text>
@@ -1693,34 +1516,12 @@ export default function VowelConsistencyExerciseScreen({
 
   if (phase === 'processing') {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Analyzing Repetition
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Checking vowel consistency
-          across the recording.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={
-            styles.processingIndicator
-          }
-        />
-      </View>
+      <ExerciseProcessingScreen
+        title="Vowel Consistency"
+        icon="analytics-outline"
+        message="Checking vowel consistency across the recording."
+        onBack={goBack}
+      />
     );
   }
 
@@ -1766,7 +1567,9 @@ export default function VowelConsistencyExerciseScreen({
           </Text>
 
           <Text
-            style={styles.resultSubtitle}
+            style={
+              styles.resultSubtitle
+            }
           >
             Vowel Consistency Result
           </Text>
@@ -1801,7 +1604,9 @@ export default function VowelConsistencyExerciseScreen({
             style={styles.resultCard}
           >
             <Text
-              style={styles.resultCardTitle}
+              style={
+                styles.resultCardTitle
+              }
             >
               Target
             </Text>
@@ -1849,7 +1654,9 @@ export default function VowelConsistencyExerciseScreen({
             style={styles.resultCard}
           >
             <Text
-              style={styles.resultCardTitle}
+              style={
+                styles.resultCardTitle
+              }
             >
               Repetition Scores
             </Text>
@@ -1860,7 +1667,11 @@ export default function VowelConsistencyExerciseScreen({
                   style={styles.resultRow}
                   key={`rep-${index}`}
                 >
-                  <View>
+                  <View
+                    style={
+                      styles.resultRowContent
+                    }
+                  >
                     <Text
                       style={
                         styles.resultRowLabel
@@ -1897,7 +1708,9 @@ export default function VowelConsistencyExerciseScreen({
             style={styles.resultCard}
           >
             <Text
-              style={styles.resultCardTitle}
+              style={
+                styles.resultCardTitle
+              }
             >
               Analysis
             </Text>
@@ -1965,7 +1778,8 @@ export default function VowelConsistencyExerciseScreen({
                 }
               >
                 {
-                  params.smoothnessThreshold
+                  params
+                    .smoothnessThreshold
                 }
                 %
               </Text>
@@ -1977,7 +1791,9 @@ export default function VowelConsistencyExerciseScreen({
             onPress={retry}
           >
             <Text
-              style={styles.startButtonText}
+              style={
+                styles.startButtonText
+              }
             >
               Try Again
             </Text>
@@ -1990,7 +1806,9 @@ export default function VowelConsistencyExerciseScreen({
           </Pressable>
 
           <Pressable
-            style={styles.secondaryButton}
+            style={
+              styles.secondaryButton
+            }
             onPress={goBack}
           >
             <Text
@@ -2023,14 +1841,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 60,
-    alignItems: 'center',
-  },
-
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -2047,15 +1857,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-
   iconCircle: {
     width: 76,
     height: 76,
@@ -2064,182 +1865,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
-  },
-
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 24,
-  },
-
-  instructionCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
-
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: BROWN,
-    marginBottom: 14,
-  },
-
-  instruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: BROWN,
-    marginBottom: 10,
-  },
-
-  targetBox: {
-    backgroundColor: PINK,
-    borderRadius: 14,
-    paddingVertical: 15,
-    paddingHorizontal: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-
-  targetInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-
-  targetLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-  },
-
-  targetVowel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 32,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  keyMetricCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: '#F2DDE5',
-  },
-
-  keyMetricTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: BROWN,
-    marginBottom: 10,
-  },
-
-  metricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-
-  metricText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 20,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-    textTransform: 'capitalize',
-  },
-
-  errorCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: PINK,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-
-  errorText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-    marginLeft: 10,
   },
 
   startButton: {
@@ -2292,18 +1917,15 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
 
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: BROWN,
-    marginTop: 20,
-  },
-
   largeVowel: {
     fontFamily: 'FredokaBold',
     fontSize: 58,
     color: BROWN,
     marginTop: 14,
+  },
+
+  restIndicator: {
+    marginTop: 18,
   },
 
   recordingEyebrow: {
@@ -2634,11 +2256,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F2DDE5',
   },
 
+  resultRowContent: {
+    flex: 1,
+  },
+
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-    flex: 1,
   },
 
   resultRowHint: {

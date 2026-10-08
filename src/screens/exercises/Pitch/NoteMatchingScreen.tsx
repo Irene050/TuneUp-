@@ -20,7 +20,7 @@ import {
 
 import {
   NOTE_MATCHING_PARAMS,
-  Tier,
+  type Tier,
 } from '@/constants/exercises/pitch';
 
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
@@ -65,6 +65,7 @@ import {
 
 import {
   getRandomPitchNote,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
@@ -133,17 +134,17 @@ type ResultState = {
 function clamp(
   value: number,
   min: number,
-  max: number
+  max: number,
 ): number {
   return Math.max(
     min,
-    Math.min(max, value)
+    Math.min(max, value),
   );
 }
 
 function calculateCentsDifference(
   detectedFrequency: number,
-  targetFrequency: number
+  targetFrequency: number,
 ): number {
   if (
     !Number.isFinite(detectedFrequency) ||
@@ -158,13 +159,13 @@ function calculateCentsDifference(
     1200 *
     Math.log2(
       detectedFrequency /
-        targetFrequency
+        targetFrequency,
     )
   );
 }
 
 function getPitchMessage(
-  cents: number
+  cents: number,
 ): string {
   const absoluteCents =
     Math.abs(cents);
@@ -185,7 +186,7 @@ function getPitchMessage(
 }
 
 function formatFrequency(
-  frequency: number
+  frequency: number,
 ): string {
   if (
     !Number.isFinite(frequency) ||
@@ -198,7 +199,7 @@ function formatFrequency(
 }
 
 function formatCents(
-  cents: number
+  cents: number,
 ): string {
   if (!Number.isFinite(cents)) {
     return '--';
@@ -214,7 +215,7 @@ function formatCents(
 }
 
 function formatVolume(
-  volume: number
+  volume: number,
 ): string {
   if (!Number.isFinite(volume)) {
     return '--';
@@ -232,31 +233,36 @@ export default function NoteMatchingScreen({
 }: Props) {
   const [screen, setScreen] =
     useState<Screen>(
-      'instructions'
+      'instructions',
     );
 
   const [currentTier, setCurrentTier] =
     useState<Tier>(
-      tier ?? 'beginner'
+      tier ?? 'beginner',
     );
 
   const [adaptiveParams, setAdaptiveParams] =
     useState(
       NOTE_MATCHING_PARAMS[
         tier ?? 'beginner'
-      ]
+      ],
     );
 
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
-    useState(true);
+  const [
+    isLoadingAdaptiveParams,
+    setIsLoadingAdaptiveParams,
+  ] = useState(true);
 
   const [countdown, setCountdown] =
     useState(
-      COUNTDOWN_SECONDS
+      COUNTDOWN_SECONDS,
     );
 
   const [elapsedSeconds, setElapsedSeconds] =
     useState(0);
+
+  const [currentRep, setCurrentRep] =
+    useState(1);
 
   const [livePitch, setLivePitch] =
     useState<LivePitchState>({
@@ -269,11 +275,51 @@ export default function NoteMatchingScreen({
 
   const [result, setResult] =
     useState<ResultState | null>(
-      null
+      null,
     );
 
   const [errorMessage, setErrorMessage] =
     useState('');
+
+  const [vocalRange, setVocalRange] =
+    useState<VocalRange | null>(null);
+
+  // ==========================================================
+  // REFS
+  // ==========================================================
+
+  const mountedRef =
+    useRef(true);
+
+  const pitchHistoryRef =
+    useRef<number[]>([]);
+
+  const repResultsRef =
+    useRef<ResultState[]>([]);
+
+  const currentRepRef =
+    useRef(1);
+
+  const countdownTimerRef =
+    useRef<ReturnType<
+      typeof setInterval
+    > | null>(null);
+
+  const recordingTimerRef =
+    useRef<ReturnType<
+      typeof setInterval
+    > | null>(null);
+
+  const startingRef =
+    useRef(false);
+
+  const finishingRef =
+    useRef(false);
+
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(
+      null,
+    );
 
   // ==========================================================
   // ADAPTIVE DIFFICULTY
@@ -295,7 +341,7 @@ export default function NoteMatchingScreen({
           const progress =
             await fetchComponentProgress(
               user.uid,
-              'pitch'
+              'pitch',
             );
 
           resolvedTier =
@@ -308,7 +354,7 @@ export default function NoteMatchingScreen({
         }
 
         setCurrentTier(
-          resolvedTier
+          resolvedTier,
         );
 
         let recentScores: number[] = [];
@@ -317,7 +363,7 @@ export default function NoteMatchingScreen({
           const records =
             await fetchExerciseRecords(
               user.uid,
-              'pitch'
+              'pitch',
             );
 
           if (cancelled) {
@@ -331,12 +377,12 @@ export default function NoteMatchingScreen({
                   record.tier ===
                     resolvedTier &&
                   record.templateId ===
-                    'noteMatchingExercise'
+                    'noteMatchingExercise',
               )
               .sort(
                 (a, b) =>
                   a.timestamp -
-                  b.timestamp
+                  b.timestamp,
               );
 
           recentScores =
@@ -344,7 +390,7 @@ export default function NoteMatchingScreen({
               .slice(-5)
               .map(
                 record =>
-                  record.scorePct
+                  record.scorePct,
               );
 
           if (
@@ -352,6 +398,10 @@ export default function NoteMatchingScreen({
           ) {
             const assessment =
               await getLatestAssessment();
+
+            setVocalRange(
+              assessment?.vocalRange ?? null,
+            );
 
             if (cancelled) {
               return;
@@ -361,7 +411,7 @@ export default function NoteMatchingScreen({
               assessment?.scores.find(
                 score =>
                   score.componentId ===
-                  'pitch'
+                  'pitch',
               );
 
             if (
@@ -385,12 +435,12 @@ export default function NoteMatchingScreen({
         }
 
         setAdaptiveParams(
-          generatedParams
+          generatedParams,
         );
       } catch (error) {
         console.error(
           '❌ NOTE MATCHING ADS ERROR:',
-          error
+          error,
         );
 
         const fallbackTier =
@@ -398,19 +448,19 @@ export default function NoteMatchingScreen({
 
         if (!cancelled) {
           setCurrentTier(
-            fallbackTier
+            fallbackTier,
           );
 
           setAdaptiveParams(
             NOTE_MATCHING_PARAMS[
               fallbackTier
-            ]
+            ],
           );
         }
       } finally {
         if (!cancelled) {
           setIsLoadingAdaptiveParams(
-            false
+            false,
           );
         }
       }
@@ -427,45 +477,23 @@ export default function NoteMatchingScreen({
   // TARGET NOTE
   // ============================================================
 
-  const target = useMemo(
-    () =>
-      getRandomPitchNote(
-        currentTier
-      ),
-    [currentTier]
-  );
+const target = useMemo(
+  () =>
+    getRandomPitchNote(
+      currentTier,
+      vocalRange,
+    ),
+  [
+    currentTier,
+    vocalRange,
+  ],
+);
 
   const targetFrequency =
     target.frequency;
 
   const targetNote =
     target.name;
-
-  // ============================================================
-  // REFS
-  // ============================================================
-
-  const mountedRef =
-    useRef(true);
-
-  const pitchHistoryRef =
-    useRef<number[]>([]);
-
-  const countdownTimerRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null);
-
-  const recordingTimerRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null);
-
-  const startingRef =
-    useRef(false);
-
-  const finishingRef =
-    useRef(false);
 
   // ============================================================
   // TIMER CLEANUP
@@ -477,7 +505,7 @@ export default function NoteMatchingScreen({
         countdownTimerRef.current
       ) {
         clearInterval(
-          countdownTimerRef.current
+          countdownTimerRef.current,
         );
 
         countdownTimerRef.current =
@@ -488,7 +516,7 @@ export default function NoteMatchingScreen({
         recordingTimerRef.current
       ) {
         clearInterval(
-          recordingTimerRef.current
+          recordingTimerRef.current,
         );
 
         recordingTimerRef.current =
@@ -500,15 +528,14 @@ export default function NoteMatchingScreen({
   // LIVE AUDIO FRAME
   // ============================================================
 
-  const handleLiveFrame =
-    useCallback(
-      (frame: {
-        pitch: number;
-        note: string;
-        clarity: number;
-        volume: number;
-        stability: number;
-      }) => {
+      const handleLiveFrame =
+      useCallback(
+        (frame: {
+          pitch: number;
+          note: string;
+          clarity: number;
+          volume: number;
+        }) => {
         if (
           !mountedRef.current
         ) {
@@ -529,7 +556,7 @@ export default function NoteMatchingScreen({
 
           const stability =
             calcLiveStability(
-              history
+              history,
             );
 
           setLivePitch({
@@ -554,52 +581,50 @@ export default function NoteMatchingScreen({
           volume: frame.volume,
         }));
       },
-      []
+      [],
     );
 
   // ============================================================
-  // PROCESS COMPLETED RECORDING
+  // START A RECORDING REPETITION
   // ============================================================
 
-  const handleRecordingStop =
-    useCallback(
-      async (
-        samples: Float32Array,
-        sampleRate: number
-      ) => {
-        clearTimers();
+  const startRecordingAttempt =
+    useCallback(async () => {
+      if (
+        !mountedRef.current ||
+        !startRecordingRef.current
+      ) {
+        return;
+      }
 
-        if (
-          !mountedRef.current
-        ) {
-          return;
-        }
+      pitchHistoryRef.current =
+        [];
 
-        setScreen(
-          'processing'
-        );
+      setLivePitch({
+        pitch: 0,
+        note: '--',
+        clarity: 0,
+        volume: -100,
+        stability: 0,
+      });
 
-        try {
-          const measurement =
-            measureNoteMatching(
-              samples,
-              sampleRate,
-              adaptiveParams.minClarity
-            );
+      setElapsedSeconds(0);
 
-          const scored =
-            scoreNoteMatching(
-              measurement,
-              targetFrequency,
-              adaptiveParams
-            );
+      setScreen('recording');
 
-          await saveCompletedExercise(
-            'pitch',
-            'noteMatchingExercise',
-            currentTier,
-            scored.score,
-          );
+      await startRecordingRef.current();
+
+      if (
+        !mountedRef.current
+      ) {
+        return;
+      }
+
+      let elapsed = 0;
+
+      recordingTimerRef.current =
+        setInterval(() => {
+          elapsed += 0.1;
 
           if (
             !mountedRef.current
@@ -607,57 +632,33 @@ export default function NoteMatchingScreen({
             return;
           }
 
-          setResult({
-            score: scored.score,
-            passed: scored.passed,
-            deviationPct:
-              scored.deviationPct,
-            detectedFrequency:
-              scored.detectedFrequency,
-            averageClarity:
-              scored.averageClarity,
-            voicedFrames:
-              measurement.voicedFrames,
-          });
-
-          setScreen(
-            'results'
-          );
-        } catch (error) {
-          console.error(
-            '❌ NOTE MATCHING ANALYSIS ERROR:',
-            error
+          setElapsedSeconds(
+            Math.min(
+              elapsed,
+              RECORDING_DURATION_SECONDS,
+            ),
           );
 
           if (
-            mountedRef.current
+            elapsed >=
+            RECORDING_DURATION_SECONDS
           ) {
-            setErrorMessage(
-              'We could not analyze your recording. Please try again.'
-            );
+            clearTimers();
 
-            setScreen(
-              'instructions'
-            );
+            if (
+              !finishingRef.current
+            ) {
+              finishingRef.current =
+                true;
+
+              stopRecordingRef.current?.();
+            }
           }
-        } finally {
-          finishingRef.current =
-            false;
-
-          startingRef.current =
-            false;
-        }
-      },
-      [
-        adaptiveParams,
-        clearTimers,
-        currentTier,
-        targetFrequency,
-      ]
-    );
+        }, 100);
+    }, [clearTimers]);
 
   // ============================================================
-  // AUDIO RECORDER
+  // RECORDER
   // ============================================================
 
   const {
@@ -670,8 +671,246 @@ export default function NoteMatchingScreen({
         handleLiveFrame,
 
       onStop:
-        handleRecordingStop,
+        async (
+          samples: Float32Array,
+          sampleRate: number,
+        ) => {
+          clearTimers();
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          setScreen(
+            'processing',
+          );
+
+          try {
+            const measurement =
+              measureNoteMatching(
+                samples,
+                sampleRate,
+                adaptiveParams.minClarity,
+              );
+
+            const scored =
+              scoreNoteMatching(
+                measurement,
+                targetFrequency,
+                adaptiveParams,
+              );
+
+            const repetitionResult: ResultState = {
+              score: scored.score,
+              passed: scored.passed,
+              deviationPct:
+                scored.deviationPct,
+              detectedFrequency:
+                scored.detectedFrequency,
+              averageClarity:
+                scored.averageClarity,
+              voicedFrames:
+                measurement.voicedFrames,
+            };
+
+            const updatedResults = [
+              ...repResultsRef.current,
+              repetitionResult,
+            ];
+
+            repResultsRef.current =
+              updatedResults;
+
+            const isLastRepetition =
+              currentRepRef.current >=
+              adaptiveParams.repetitions;
+
+            if (
+              !isLastRepetition
+            ) {
+              const nextRep =
+                currentRepRef.current +
+                1;
+
+              currentRepRef.current =
+                nextRep;
+
+              setCurrentRep(
+                nextRep,
+              );
+
+              finishingRef.current =
+                false;
+
+              setElapsedSeconds(0);
+
+              pitchHistoryRef.current =
+                [];
+
+              setLivePitch({
+                pitch: 0,
+                note: '--',
+                clarity: 0,
+                volume: -100,
+                stability: 0,
+              });
+
+              setScreen(
+                'listening',
+              );
+
+              await playSingleNote(
+                targetFrequency,
+                TARGET_NOTE_DURATION_SECONDS,
+              );
+
+              if (
+                !mountedRef.current
+              ) {
+                return;
+              }
+
+              await startRecordingAttempt();
+
+              return;
+            }
+
+            const finalScore =
+              Math.round(
+                updatedResults.reduce(
+                  (sum, item) =>
+                    sum + item.score,
+                  0,
+                ) /
+                  updatedResults.length,
+              );
+
+            const averageDeviation =
+              updatedResults.reduce(
+                (sum, item) =>
+                  sum +
+                  item.deviationPct,
+                0,
+              ) /
+              updatedResults.length;
+
+            const averageFrequency =
+              updatedResults
+                .filter(
+                  item =>
+                    item.detectedFrequency >
+                    0,
+                )
+                .reduce(
+                  (sum, item) =>
+                    sum +
+                    item.detectedFrequency,
+                  0,
+                );
+
+            const detectedFrequencyCount =
+              updatedResults.filter(
+                item =>
+                  item.detectedFrequency >
+                  0,
+              ).length;
+
+            const averageDetectedFrequency =
+              detectedFrequencyCount >
+              0
+                ? averageFrequency /
+                  detectedFrequencyCount
+                : 0;
+
+            const averageClarity =
+              updatedResults.reduce(
+                (sum, item) =>
+                  sum +
+                  item.averageClarity,
+                0,
+              ) /
+              updatedResults.length;
+
+            const totalVoicedFrames =
+              updatedResults.reduce(
+                (sum, item) =>
+                  sum +
+                  item.voicedFrames,
+                0,
+              );
+
+            const passed =
+              updatedResults.every(
+                item => item.passed,
+              );
+
+            await saveCompletedExercise(
+              'pitch',
+              'noteMatchingExercise',
+              currentTier,
+              finalScore,
+            );
+
+            if (
+              !mountedRef.current
+            ) {
+              return;
+            }
+
+            setResult({
+              score: finalScore,
+              passed,
+              deviationPct:
+                averageDeviation,
+              detectedFrequency:
+                averageDetectedFrequency,
+              averageClarity,
+              voicedFrames:
+                totalVoicedFrames,
+            });
+
+            setScreen(
+              'results',
+            );
+          } catch (error) {
+            console.error(
+              '❌ NOTE MATCHING ANALYSIS ERROR:',
+              error,
+            );
+
+            if (
+              mountedRef.current
+            ) {
+              setErrorMessage(
+                'We could not analyze your recording. Please try again.',
+              );
+
+              setScreen(
+                'instructions',
+              );
+            }
+          } finally {
+            finishingRef.current =
+              false;
+
+            startingRef.current =
+              false;
+          }
+        },
     });
+
+  const stopRecordingRef =
+    useRef<
+      (() => void) | null
+    >(null);
+
+  stopRecordingRef.current =
+    stopRecording;
+
+  startRecordingRef.current =
+    startRecording;
 
   // ============================================================
   // UNMOUNT CLEANUP
@@ -690,9 +929,9 @@ export default function NoteMatchingScreen({
         error => {
           console.warn(
             '⚠️ Failed to dispose note player:',
-            error
+            error,
           );
-        }
+        },
       );
     };
   }, [clearTimers]);
@@ -721,8 +960,14 @@ export default function NoteMatchingScreen({
       pitchHistoryRef.current =
         [];
 
-      setErrorMessage('');
+      repResultsRef.current =
+        [];
 
+      currentRepRef.current =
+        1;
+
+      setCurrentRep(1);
+      setErrorMessage('');
       setResult(null);
 
       setLivePitch({
@@ -736,11 +981,11 @@ export default function NoteMatchingScreen({
       setElapsedSeconds(0);
 
       setCountdown(
-        COUNTDOWN_SECONDS
+        COUNTDOWN_SECONDS,
       );
 
       setScreen(
-        'countdown'
+        'countdown',
       );
 
       let remaining =
@@ -758,7 +1003,7 @@ export default function NoteMatchingScreen({
 
           if (remaining > 0) {
             setCountdown(
-              remaining
+              remaining,
             );
 
             return;
@@ -769,16 +1014,12 @@ export default function NoteMatchingScreen({
           setCountdown(0);
 
           setScreen(
-            'listening'
+            'listening',
           );
 
-          /*
-           * The reference note is played before
-           * microphone recording begins.
-           */
           playSingleNote(
             targetFrequency,
-            TARGET_NOTE_DURATION_SECONDS
+            TARGET_NOTE_DURATION_SECONDS,
           )
             .then(
               async () => {
@@ -788,63 +1029,13 @@ export default function NoteMatchingScreen({
                   return;
                 }
 
-                await startRecording();
-
-                if (
-                  !mountedRef.current
-                ) {
-                  return;
-                }
-
-                setScreen(
-                  'recording'
-                );
-
-                setElapsedSeconds(
-                  0
-                );
-
-                let elapsed = 0;
-
-                recordingTimerRef.current =
-                  setInterval(() => {
-                    elapsed += 0.1;
-
-                    if (
-                      !mountedRef.current
-                    ) {
-                      return;
-                    }
-
-                    setElapsedSeconds(
-                      Math.min(
-                        elapsed,
-                        RECORDING_DURATION_SECONDS
-                      )
-                    );
-
-                    if (
-                      elapsed >=
-                      RECORDING_DURATION_SECONDS
-                    ) {
-                      clearTimers();
-
-                      if (
-                        !finishingRef.current
-                      ) {
-                        finishingRef.current =
-                          true;
-
-                        stopRecording();
-                      }
-                    }
-                  }, 100);
-              }
+                await startRecordingAttempt();
+              },
             )
             .catch(error => {
               console.error(
                 '❌ FAILED TO START NOTE MATCHING:',
-                error
+                error,
               );
 
               startingRef.current =
@@ -854,11 +1045,11 @@ export default function NoteMatchingScreen({
                 mountedRef.current
               ) {
                 setErrorMessage(
-                  'We could not start the exercise. Please check your microphone permission and try again.'
+                  'We could not start the exercise. Please check your microphone permission and try again.',
                 );
 
                 setScreen(
-                  'instructions'
+                  'instructions',
                 );
               }
             });
@@ -866,8 +1057,7 @@ export default function NoteMatchingScreen({
     }, [
       clearTimers,
       isLoadingAdaptiveParams,
-      startRecording,
-      stopRecording,
+      startRecordingAttempt,
       targetFrequency,
     ]);
 
@@ -913,6 +1103,14 @@ export default function NoteMatchingScreen({
       pitchHistoryRef.current =
         [];
 
+      repResultsRef.current =
+        [];
+
+      currentRepRef.current =
+        1;
+
+      setCurrentRep(1);
+
       setResult(null);
 
       setErrorMessage('');
@@ -920,7 +1118,7 @@ export default function NoteMatchingScreen({
       setElapsedSeconds(0);
 
       setCountdown(
-        COUNTDOWN_SECONDS
+        COUNTDOWN_SECONDS,
       );
 
       setLivePitch({
@@ -932,7 +1130,7 @@ export default function NoteMatchingScreen({
       });
 
       setScreen(
-        'instructions'
+        'instructions',
       );
     }, [clearTimers]);
 
@@ -945,7 +1143,7 @@ export default function NoteMatchingScreen({
       clearTimers();
 
       router.replace(
-        '/dashboard?tab=exercises'
+        '/dashboard?tab=exercises',
       );
     }, [clearTimers]);
 
@@ -1038,8 +1236,14 @@ export default function NoteMatchingScreen({
             label: 'Frequency',
             value:
               formatFrequency(
-                targetFrequency
+                targetFrequency,
               ),
+          },
+          {
+            label: 'Repetitions',
+            value: String(
+              adaptiveParams.repetitions,
+            ),
           },
         ]}
         tip={
@@ -1060,64 +1264,68 @@ export default function NoteMatchingScreen({
   // COUNTDOWN — SHARED
   // ============================================================
 
-  if (
-    screen === 'countdown'
-  ) {
-    return (
-      <ExerciseCountdownScreen
-        icon="musical-notes-outline"
-        title="Get Ready"
-        countdown={countdown}
-        promptTitle="Your target note is"
-        prompt={`${targetNote} • ${formatFrequency(
-          targetFrequency
-        )}`}
-      />
-    );
-  }
+if (
+  screen === 'countdown'
+) {
+  return (
+    <ExerciseCountdownScreen
+      icon="musical-notes-outline"
+      title="Get Ready"
+      currentRep={currentRep}
+      repetitions={adaptiveParams.repetitions}
+      countdown={countdown}
+      promptTitle="Your target note is"
+      prompt={`${targetNote} • ${formatFrequency(
+        targetFrequency,
+      )}`}
+    />
+  );
+}
 
   // ============================================================
   // LISTENING — SHARED
   // ============================================================
 
-  if (
-    screen === 'listening'
-  ) {
-    return (
-      <ExerciseListeningScreen
-        icon="volume-high-outline"
-        title="Listen to the Note"
-        promptTitle="Listen carefully"
-        prompt="Listen to the reference note, then sing the same note."
-        liveContent={
-          <View
-            style={styles.sharedListenNoteBox}
+if (
+  screen === 'listening'
+) {
+  return (
+    <ExerciseListeningScreen
+      icon="volume-high-outline"
+      title="Listen to the Note"
+      currentRep={currentRep}
+      repetitions={adaptiveParams.repetitions}
+      promptTitle="Listen to the reference note"
+      prompt="Listen to the reference note, then sing the same note."
+      liveContent={
+        <View
+          style={styles.sharedListenNoteBox}
+        >
+          <Text
+            style={styles.listenLabel}
           >
-            <Text
-              style={styles.listenLabel}
-            >
-              TARGET NOTE
-            </Text>
+            TARGET NOTE
+          </Text>
 
-            <Text
-              style={styles.largeNote}
-            >
-              {targetNote}
-            </Text>
+          <Text
+            style={styles.largeNote}
+          >
+            {targetNote}
+          </Text>
 
-            <Text
-              style={styles.stateFrequency}
-            >
-              {formatFrequency(
-                targetFrequency
-              )}
-            </Text>
-          </View>
-        }
-        progress={100}
-      />
-    );
-  }
+          <Text
+            style={styles.stateFrequency}
+          >
+            {formatFrequency(
+              targetFrequency,
+            )}
+          </Text>
+        </View>
+      }
+      progress={100}
+    />
+  );
+}
 
   // ============================================================
   // RECORDING — EXERCISE SPECIFIC
@@ -1129,14 +1337,14 @@ export default function NoteMatchingScreen({
     const cents =
       calculateCentsDifference(
         livePitch.pitch,
-        targetFrequency
+        targetFrequency,
       );
 
     const accuracy =
       livePitch.pitch > 0
         ? calcPitchAccuracy(
             livePitch.pitch,
-            targetFrequency
+            targetFrequency,
           )
         : 0;
 
@@ -1145,7 +1353,7 @@ export default function NoteMatchingScreen({
         elapsedSeconds /
           RECORDING_DURATION_SECONDS,
         0,
-        1
+        1,
       );
 
     return (
@@ -1183,8 +1391,8 @@ export default function NoteMatchingScreen({
               styles.recordingSubtitle
             }
           >
-            Match the target as closely
-            as you can.
+            Repetition {currentRep} of{' '}
+            {adaptiveParams.repetitions}
           </Text>
 
           <View
@@ -1208,7 +1416,7 @@ export default function NoteMatchingScreen({
               style={styles.smallHz}
             >
               {formatFrequency(
-                targetFrequency
+                targetFrequency,
               )}
             </Text>
           </View>
@@ -1282,7 +1490,7 @@ export default function NoteMatchingScreen({
               }
             >
               {formatFrequency(
-                livePitch.pitch
+                livePitch.pitch,
               )}
             </Text>
 
@@ -1309,7 +1517,7 @@ export default function NoteMatchingScreen({
                   width: `${clamp(
                     accuracy,
                     0,
-                    100
+                    100,
                   )}%`,
                 },
               ]}
@@ -1332,7 +1540,7 @@ export default function NoteMatchingScreen({
               value={
                 livePitch.pitch > 0
                   ? `${Math.round(
-                      accuracy
+                      accuracy,
                     )}%`
                   : '--'
               }
@@ -1344,7 +1552,7 @@ export default function NoteMatchingScreen({
                 livePitch.clarity > 0
                   ? `${Math.round(
                       livePitch.clarity *
-                        100
+                        100,
                     )}%`
                   : '--'
               }
@@ -1355,7 +1563,7 @@ export default function NoteMatchingScreen({
               value={
                 livePitch.stability > 0
                   ? `${Math.round(
-                      livePitch.stability
+                      livePitch.stability,
                     )}%`
                   : '--'
               }
@@ -1364,7 +1572,7 @@ export default function NoteMatchingScreen({
             <MetricCard
               label="VOLUME"
               value={formatVolume(
-                livePitch.volume
+                livePitch.volume,
               )}
             />
           </View>
@@ -1373,11 +1581,11 @@ export default function NoteMatchingScreen({
             style={styles.timerText}
           >
             {elapsedSeconds.toFixed(
-              1
+              1,
             )}{' '}
             /{' '}
             {RECORDING_DURATION_SECONDS.toFixed(
-              1
+              1,
             )}
             s
           </Text>
@@ -1431,7 +1639,12 @@ export default function NoteMatchingScreen({
       <ExerciseProcessingScreen
         icon="analytics-outline"
         title="Analyzing Your Singing"
-        message="Checking your pitch accuracy."
+        message={
+          currentRep <
+          adaptiveParams.repetitions
+            ? `Checking repetition ${currentRep} of ${adaptiveParams.repetitions}.`
+            : 'Calculating your final Note Matching result.'
+        }
       />
     );
   }
@@ -1447,14 +1660,14 @@ export default function NoteMatchingScreen({
     const detectedNote =
       result.detectedFrequency > 0
         ? frequencyToNote(
-            result.detectedFrequency
+            result.detectedFrequency,
           )
         : '--';
 
     const cents =
       calculateCentsDifference(
         result.detectedFrequency,
-        targetFrequency
+        targetFrequency,
       );
 
     return (
@@ -1464,7 +1677,7 @@ export default function NoteMatchingScreen({
             ? 'Great Job!'
             : 'Keep Practicing!'
         }
-        subtitle="Note Matching Result"
+        subtitle={`Note Matching Result • ${adaptiveParams.repetitions} repetitions`}
         score={result.score}
         resultIcon={
           result.passed
@@ -1473,8 +1686,8 @@ export default function NoteMatchingScreen({
         }
         scoreMessage={
           result.passed
-            ? 'You matched the target note accurately.'
-            : 'Keep practicing your pitch placement.'
+            ? 'You matched the target note accurately across all repetitions.'
+            : 'Keep practicing your pitch placement across each repetition.'
         }
         onRetry={
           retryExercise
@@ -1522,7 +1735,7 @@ export default function NoteMatchingScreen({
                 }
               >
                 {formatFrequency(
-                  targetFrequency
+                  targetFrequency,
                 )}
               </Text>
             </View>
@@ -1544,7 +1757,7 @@ export default function NoteMatchingScreen({
                   styles.comparisonLabel
                 }
               >
-                DETECTED
+                AVERAGE DETECTED
               </Text>
 
               <Text
@@ -1561,7 +1774,7 @@ export default function NoteMatchingScreen({
                 }
               >
                 {formatFrequency(
-                  result.detectedFrequency
+                  result.detectedFrequency,
                 )}
               </Text>
             </View>
@@ -1585,14 +1798,14 @@ export default function NoteMatchingScreen({
             label="AVG. CLARITY"
             value={`${Math.round(
               result.averageClarity *
-                100
+                100,
             )}%`}
           />
 
           <MetricCard
             label="VOICED FRAMES"
             value={String(
-              result.voicedFrames
+              result.voicedFrames,
             )}
           />
         </View>
@@ -1627,7 +1840,7 @@ export default function NoteMatchingScreen({
               {getFeedback(
                 result,
                 cents,
-                targetNote
+                targetNote,
               )}
             </Text>
           </View>
@@ -1674,7 +1887,7 @@ function MetricCard({
 function getFeedback(
   result: ResultState,
   cents: number,
-  targetNote: string
+  targetNote: string,
 ): string {
   if (
     result.detectedFrequency <= 0
@@ -1683,7 +1896,7 @@ function getFeedback(
   }
 
   if (result.passed) {
-    return `Excellent pitch matching! Your voice stayed close to ${targetNote}. Keep practicing controlled and steady pitch placement.`;
+    return `Excellent pitch matching! Your voice stayed close to ${targetNote} across the repetitions. Keep practicing controlled and steady pitch placement.`;
   }
 
   if (
@@ -2026,9 +2239,9 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // ==========================================================
+  // ============================================================
   // RESULTS
-  // ==========================================================
+  // ============================================================
 
   resultCard: {
     width: '100%',

@@ -1,12 +1,13 @@
 import {
-  calcJitterStability,
+  calcLiveStability,
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
 import {
-  calcAirflowStability,
-} from '@/utils/dsp/airflow';
+  calcRMS,
+  calcRMSConsistency,
+} from '@/utils/dsp/rms';
 
 import {
   computeFFTMagnitudes,
@@ -18,7 +19,7 @@ import {
 } from '@/utils/dsp/spectral';
 
 import {
-  calcRampConsistency,
+  calcDerivativeSmoothness,
   calcRMSWindows,
   calcVolumeConsistency,
   toDbArray,
@@ -195,11 +196,6 @@ const MIN_AUTOCORRELATION_RESULTS = 3;
  * Pitch agreement tolerance between independent detectors.
  */
 const MAX_AUTOCORRELATION_AGREEMENT_CENTS = 100;
-
-/*
- * Octave agreement tolerance.
- */
-const OCTAVE_AGREEMENT_CENTS = 100;
 
 /*
  * Minimum percentage of autocorrelation windows that should
@@ -490,7 +486,7 @@ function measureBreathControl(
     ) * 100;
 
   const stability =
-    calcAirflowStability(
+    calcRMSConsistency(
       samples,
       50,
       sampleRate
@@ -606,7 +602,7 @@ function measurePitch(
     );
 
   const stability =
-    calcJitterStability(
+    calcLiveStability(
       frequencies
     );
 
@@ -847,8 +843,8 @@ function measureVolume(
     return 0;
   }
 
-  const rampConsistency =
-    calcRampConsistency(
+  const derivativeSmoothness =
+    calcDerivativeSmoothness(
       finiteDbValues
     );
 
@@ -858,7 +854,7 @@ function measureVolume(
     );
 
   return clampScore(
-    rampConsistency * 0.5 +
+    derivativeSmoothness * 0.5 +
       volumeConsistency * 0.5
   );
 }
@@ -1089,7 +1085,7 @@ function measureAgility(
     );
 
     const stability =
-      calcJitterStability(
+      calcLiveStability(
         frequencies
       );
 
@@ -1175,50 +1171,6 @@ function measureAgility(
 // ============================================================
 // AUDIO SIGNAL HELPERS
 // ============================================================
-
-function calculateRMS(
-  samples: Float32Array
-): number {
-  if (
-    samples.length === 0
-  ) {
-    return 0;
-  }
-
-  let sumSquares = 0;
-  let finiteCount = 0;
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    const value =
-      samples[i];
-
-    if (
-      !Number.isFinite(value)
-    ) {
-      continue;
-    }
-
-    sumSquares +=
-      value * value;
-
-    finiteCount++;
-  }
-
-  if (
-    finiteCount === 0
-  ) {
-    return 0;
-  }
-
-  return Math.sqrt(
-    sumSquares /
-      finiteCount
-  );
-}
 
 function calculatePeak(
   samples: Float32Array
@@ -1377,7 +1329,7 @@ function detectFundamentalByAutocorrelation(
     );
 
   const rms =
-    calculateRMS(
+    calcRMS(
       centered
     );
 
@@ -1834,7 +1786,7 @@ function detectComfortableNote(
     );
 
   const overallRms =
-    calculateRMS(
+    calcRMS(
       samples
     );
 

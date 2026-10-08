@@ -1,24 +1,30 @@
-import { AudioContext } from "react-native-audio-api";
+import { AudioContext } from 'react-native-audio-api';
 
 export interface NoteToPlay {
   frequencyHz: number;
   durationSec: number;
 }
 
-const PEAK_GAIN = 0.08;
-const ATTACK_SEC = 0.05;
+const PEAK_GAIN = 0.25;
+const ATTACK_SEC = 0.03;
 const RELEASE_SEC = 0.08;
 const GAP_SEC = 0.12;
 
 let audioContext: AudioContext | null = null;
 
 async function getAudioContext(): Promise<AudioContext> {
-  if (!audioContext) {
+  if (!audioContext || audioContext.state === 'closed') {
     audioContext = new AudioContext();
   }
 
-  if (audioContext.state !== "running") {
+  if (audioContext.state !== 'running') {
     await audioContext.resume();
+  }
+
+  if (audioContext.state !== 'running') {
+    throw new Error(
+      `AudioContext could not be started. Current state: ${audioContext.state}`,
+    );
   }
 
   return audioContext;
@@ -26,7 +32,7 @@ async function getAudioContext(): Promise<AudioContext> {
 
 export async function playSingleNote(
   frequencyHz: number,
-  durationSec = 1.5
+  durationSec = 1.5,
 ): Promise<void> {
   if (!Number.isFinite(frequencyHz) || frequencyHz <= 0) {
     throw new Error(`Invalid frequency: ${frequencyHz}`);
@@ -38,72 +44,74 @@ export async function playSingleNote(
 
   const context = await getAudioContext();
 
-  console.log("🔊 NOTE PLAYER");
-  console.log("   frequency:", frequencyHz);
-  console.log("   duration:", durationSec);
-  console.log("   context:", context.state);
+  console.log('🔊 NOTE PLAYER');
+  console.log('   frequency:', frequencyHz);
+  console.log('   duration:', durationSec);
+  console.log('   context:', context.state);
+  console.log('   sampleRate:', context.sampleRate);
 
   const oscillator = context.createOscillator();
   const gain = context.createGain();
 
-  oscillator.type = "sine";
+  oscillator.type = 'sine';
   oscillator.frequency.value = frequencyHz;
 
   oscillator.connect(gain);
   gain.connect(context.destination);
 
   const now = context.currentTime;
-  const end = now + durationSec;
+  const startTime = now + 0.01;
+  const endTime = startTime + durationSec;
 
   const attackEnd = Math.min(
-    now + ATTACK_SEC,
-    end
+    startTime + ATTACK_SEC,
+    endTime,
   );
 
   const releaseStart = Math.max(
     attackEnd,
-    end - RELEASE_SEC
+    endTime - RELEASE_SEC,
   );
 
-  gain.gain.setValueAtTime(0, now);
+  gain.gain.setValueAtTime(0, startTime);
 
   gain.gain.linearRampToValueAtTime(
     PEAK_GAIN,
-    attackEnd
+    attackEnd,
   );
 
   gain.gain.setValueAtTime(
     PEAK_GAIN,
-    releaseStart
+    releaseStart,
   );
 
   gain.gain.linearRampToValueAtTime(
     0,
-    end
+    endTime,
   );
 
-  oscillator.start(now);
-  oscillator.stop(end);
+  oscillator.start(startTime);
+  oscillator.stop(endTime);
 
   await new Promise<void>((resolve) => {
     setTimeout(
       resolve,
-      durationSec * 1000 + 100
+      durationSec * 1000 + 100,
     );
   });
 
-  console.log("   🎵 note finished");
+  console.log('   🎵 note finished');
 }
 
 export async function playNoteSequence(
-  notes: NoteToPlay[]
+  notes: NoteToPlay[],
 ): Promise<void> {
   if (!notes.length) return;
 
   for (const note of notes) {
     await playSingleNote(
       note.frequencyHz,
-      note.durationSec
+      note.durationSec,
     );
 
     await new Promise<void>((resolve) => {
@@ -122,8 +130,8 @@ export async function disposeNotePlayer(): Promise<void> {
     await audioContext.close();
   } catch (error) {
     console.warn(
-      "⚠️ Failed to close note audio context:",
-      error
+      '⚠️ Failed to close note audio context:',
+      error,
     );
   } finally {
     audioContext = null;

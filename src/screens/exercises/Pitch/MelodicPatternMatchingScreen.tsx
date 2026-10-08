@@ -9,10 +9,6 @@ import {
 
 import {
   ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -33,23 +29,9 @@ import {
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
 import {
-  scoreMelodicPatternMatching,
+  scoreMelodicPatternMatchingRepetitions,
   type MelodicPatternScoreResult,
 } from '@/services/scoring/pitch/melodicPatternMatching';
-
-import {
-  playSingleNote,
-} from '@/utils/music/notePlayer';
-
-import {
-  createMusicalNote,
-  getRandomPitchNote,
-} from '@/utils/music/notes';
-
-import {
-  frequencyToNote,
-  segmentIntoNotes,
-} from '@/utils/dsp/pitch';
 
 import {
   saveCompletedExercise,
@@ -64,21 +46,27 @@ import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
-// ============================================================
-// COLORS
-// ============================================================
+import {
+  createMusicalNote,
+  getRandomPitchNote,
+  type VocalRange,
+} from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
+import {
+  playSingleNote,
+} from '@/utils/music/notePlayer';
 
-// ============================================================
-// TYPES
-// ============================================================
+import {
+  segmentIntoNotes,
+} from '@/utils/dsp/pitch';
+
+import {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  default as ExerciseScreen,
+} from '@/screens/exercises/ExerciseScreen';
 
 interface Props {
   tier?: Tier;
@@ -96,25 +84,16 @@ interface GeneratedPattern {
   notes: ReturnType<typeof createMusicalNote>[];
 }
 
-// ============================================================
-// TIMING
-// ============================================================
-
 const NOTE_DURATION_SEC = 0.7;
 const NOTE_GAP_SEC = 0.12;
 const RECORDING_BUFFER_SEC = 0.8;
 
-// ============================================================
-// SCREEN
-// ============================================================
-
 export default function MelodicPatternMatchingScreen({
   tier,
 }: Props) {
-  const [currentTier, setCurrentTier] =
-    useState<Tier>(
-      tier ?? 'beginner',
-    );
+  const [currentTier, setCurrentTier] = useState<Tier>(
+    tier ?? 'beginner',
+  );
 
   const [params, setParams] =
     useState<MelodicPatternMatchingParams>(
@@ -128,108 +107,232 @@ export default function MelodicPatternMatchingScreen({
     setIsLoadingAdaptiveParams,
   ] = useState(true);
 
+  const [vocalRange, setVocalRange] =
+  useState<VocalRange | null>(null);
+
   const [phase, setPhase] =
-    useState<Phase>(
-      'instructions',
-    );
+    useState<Phase>('instructions');
 
   const [countdown, setCountdown] =
     useState(3);
 
-  const [
-    currentPattern,
-    setCurrentPattern,
-  ] = useState<GeneratedPattern | null>(
-    null,
-  );
+  const [currentPattern, setCurrentPattern] =
+    useState<GeneratedPattern | null>(null);
 
   const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(
-      null,
-    );
+    useState<LiveAudioFrame | null>(null);
 
-  const [
-    recordingElapsedMs,
-    setRecordingElapsedMs,
-  ] = useState(0);
+  const [recordingElapsedMs, setRecordingElapsedMs] =
+    useState(0);
+
+  const [currentRep, setCurrentRep] =
+    useState(1);
 
   const [result, setResult] =
     useState<MelodicPatternScoreResult | null>(
       null,
     );
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState<string | null>(
-    null,
-  );
+  const [errorMessage, setErrorMessage] =
+    useState<string | null>(null);
 
-  // ==========================================================
-  // REFS
-  // ==========================================================
-
-  const mountedRef =
-    useRef(true);
+  const mountedRef = useRef(true);
 
   const countdownTimerRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null,
+    );
 
   const recordingTimerRef =
-    useRef<ReturnType<
-      typeof setInterval
-    > | null>(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null,
+    );
 
-  const recordingRef =
-    useRef(false);
+  const recordingRef = useRef(false);
 
-  const stopRequestedRef =
-    useRef(false);
+  const stopRequestedRef = useRef(false);
 
   const discardRecordingRef =
     useRef(false);
 
-  const processingRef =
-    useRef(false);
+  const processingRef = useRef(false);
 
   const recordingElapsedRef =
     useRef(0);
 
   const stopRecordingRef =
-    useRef<
-      (() => Promise<void>) | null
-    >(null);
+    useRef<(() => Promise<void>) | null>(
+      null,
+    );
 
   const currentExerciseRef =
     useRef<GeneratedPattern | null>(
       null,
     );
 
-  // ==========================================================
-  // LOAD ADAPTIVE PARAMETERS
-  // ==========================================================
+  const currentRepRef =
+    useRef(1);
 
+  const measurementsRef = useRef<
+    ReturnType<
+      typeof measureMelodicPatternMatching
+    >[]
+  >([]);
+
+  const continueRepetitionRef =
+    useRef(false);
+
+  /*
+   * Load adaptive parameters.
+   *
+   * Completed exercise history for the current
+   * component/tier is preferred. If none exists,
+   * the latest assessment score is used as the
+   * initial ADS reference.
+   */
   useEffect(() => {
     let cancelled = false;
 
-    async function loadAdaptiveParameters() {
-      setIsLoadingAdaptiveParams(true);
+    const loadAdaptiveParams =
+      async () => {
+        setIsLoadingAdaptiveParams(true);
 
-      try {
-        const user =
-          (
+        try {
+          const { auth } =
             await import(
               '@/services/firebase/config'
-            )
-          ).auth.currentUser;
+            );
 
-        if (!user) {
-          const fallbackTier =
-            tier ?? 'beginner';
+          const user =
+            auth.currentUser;
+
+          if (!user) {
+            if (!cancelled) {
+              const fallbackTier =
+                tier ?? 'beginner';
+
+              setCurrentTier(
+                fallbackTier,
+              );
+
+              setParams(
+                MELODIC_PATTERN_MATCHING_PARAMS[
+                  fallbackTier
+                ],
+              );
+            }
+
+            return;
+          }
+
+          const progress =
+            await fetchComponentProgress(
+              user.uid,
+              'pitch',
+            );
+
+          const resolvedTier =
+            tier ??
+            progress?.currentTier ??
+            'beginner';
 
           if (!cancelled) {
+            setCurrentTier(
+              resolvedTier,
+            );
+          }
+
+          const records =
+            await fetchExerciseRecords(
+              user.uid,
+              'pitch',
+            );
+
+          const recentExerciseScores =
+            records
+              .filter(
+                record =>
+                  record.tier ===
+                    resolvedTier &&
+                  record.templateId ===
+                    'melodicPatternMatching',
+              )
+              .sort(
+                (a, b) =>
+                  a.timestamp -
+                  b.timestamp,
+              )
+              .slice(-5)
+              .map(
+                record =>
+                  record.scorePct,
+              );
+
+          const assessment =
+  await getLatestAssessment();
+
+if (!cancelled) {
+  setVocalRange(
+    assessment?.vocalRange ?? null,
+  );
+}
+
+let recentScores =
+  recentExerciseScores;
+
+/*
+ * If there is no exercise history for this
+ * component and tier, use the latest Initial
+ * Assessment pitch score as the ADS reference.
+ */
+if (
+  recentScores.length ===
+  0
+) {
+  const pitchScore =
+    assessment?.scores.find(
+      score =>
+        score.componentId ===
+        'pitch',
+    );
+
+  if (pitchScore) {
+    recentScores = [
+      pitchScore.scorePct,
+    ];
+  }
+}
+
+          const {
+            generateMelodicPatternMatchingParams,
+          } =
+            await import(
+              '@/services/adaptiveDifficultyScaling/parameterGenerator'
+            );
+
+          const generatedParams =
+            await generateMelodicPatternMatchingParams(
+              {
+                tier: resolvedTier,
+                recentScores,
+              },
+            );
+
+          if (!cancelled) {
+            setParams(
+              generatedParams,
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Failed to load melodic pattern matching ADS parameters:',
+            error,
+          );
+
+          if (!cancelled) {
+            const fallbackTier =
+              tier ?? 'beginner';
+
             setCurrentTier(
               fallbackTier,
             );
@@ -239,150 +342,26 @@ export default function MelodicPatternMatchingScreen({
                 fallbackTier
               ],
             );
-
+          }
+        } finally {
+          if (!cancelled) {
             setIsLoadingAdaptiveParams(
               false,
             );
           }
-
-          return;
         }
+      };
 
-        const progress =
-          await fetchComponentProgress(
-            user.uid,
-            'pitch',
-          );
-
-        const resolvedTier =
-          tier ??
-          progress?.currentTier ??
-          'beginner';
-
-        if (cancelled) {
-          return;
-        }
-
-        setCurrentTier(
-          resolvedTier,
-        );
-
-        const records =
-          await fetchExerciseRecords(
-            user.uid,
-            'pitch',
-          );
-
-        const currentTierScores =
-          records
-            .filter(
-              record =>
-                record.tier ===
-                  resolvedTier &&
-                record.templateId ===
-                  'melodicPatternMatching',
-            )
-            .sort(
-              (a, b) =>
-                a.timestamp -
-                b.timestamp,
-            )
-            .slice(-5)
-            .map(
-              record =>
-                record.scorePct,
-            );
-
-        let recentScores =
-          currentTierScores;
-
-        /*
-         * If there is no exercise history for this
-         * component and tier, use the latest Initial
-         * Assessment pitch score as the ADS reference.
-         */
-        if (
-          recentScores.length === 0
-        ) {
-          const assessment =
-            await getLatestAssessment();
-
-          const pitchScore =
-            assessment?.scores.find(
-              score =>
-                score.componentId ===
-                'pitch',
-            );
-
-          if (pitchScore) {
-            recentScores = [
-              pitchScore.scorePct,
-            ];
-          }
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const {
-          generateMelodicPatternMatchingParams,
-        } =
-          await import(
-            '@/services/adaptiveDifficultyScaling/parameterGenerator'
-          );
-
-        const adaptiveParams =
-          generateMelodicPatternMatchingParams({
-            tier: resolvedTier,
-            recentScores,
-          });
-
-        if (!cancelled) {
-          setParams(
-            adaptiveParams,
-          );
-        }
-      } catch (error) {
-        console.error(
-          '❌ Failed to load melodic pattern matching ADS:',
-          error,
-        );
-
-        if (!cancelled) {
-          const fallbackTier =
-            tier ?? 'beginner';
-
-          setCurrentTier(
-            fallbackTier,
-          );
-
-          setParams(
-            MELODIC_PATTERN_MATCHING_PARAMS[
-              fallbackTier
-            ],
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingAdaptiveParams(
-            false,
-          );
-        }
-      }
-    }
-
-    loadAdaptiveParameters();
+    loadAdaptiveParams();
 
     return () => {
       cancelled = true;
     };
   }, [tier]);
 
-  // ==========================================================
-  // CLEANUP
-  // ==========================================================
-
+  /*
+   * Cleanup.
+   */
   useEffect(() => {
     mountedRef.current = true;
 
@@ -420,16 +399,13 @@ export default function MelodicPatternMatchingScreen({
     };
   }, []);
 
-  // ==========================================================
-  // LIVE AUDIO
-  // ==========================================================
-
+  /*
+   * Live microphone frames.
+   */
   const handleLiveFrame =
     useCallback(
       (frame: LiveAudioFrame) => {
-        if (
-          !mountedRef.current
-        ) {
+        if (!mountedRef.current) {
           return;
         }
 
@@ -438,44 +414,15 @@ export default function MelodicPatternMatchingScreen({
       [],
     );
 
-  // ==========================================================
-  // RECORDING STOP
-  // ==========================================================
-
+  /*
+   * Handle the end of one recording.
+   */
   const handleRecordingStop =
     useCallback(
       async (
         samples: Float32Array,
         sampleRate: number,
       ) => {
-        if (
-          discardRecordingRef.current
-        ) {
-          discardRecordingRef.current =
-            false;
-
-          recordingRef.current =
-            false;
-
-          stopRequestedRef.current =
-            false;
-
-          processingRef.current =
-            false;
-
-          return;
-        }
-
-        if (
-          !mountedRef.current ||
-          processingRef.current
-        ) {
-          return;
-        }
-
-        processingRef.current =
-          true;
-
         recordingRef.current =
           false;
 
@@ -490,41 +437,47 @@ export default function MelodicPatternMatchingScreen({
             null;
         }
 
-        setPhase('processing');
+        if (
+          !mountedRef.current ||
+          discardRecordingRef.current ||
+          processingRef.current
+        ) {
+          return;
+        }
+
+        const pattern =
+          currentExerciseRef.current;
+
+        if (!pattern) {
+          setPhase(
+            'instructions',
+          );
+
+          return;
+        }
 
         try {
-          const exercise =
-            currentExerciseRef.current;
-
-          if (
-            !exercise ||
-            exercise.notes.length === 0
-          ) {
-            throw new Error(
-              'No current melodic pattern exercise.',
-            );
-          }
-
           const targetFreqs =
-            exercise.notes.map(
+            pattern.notes.map(
               note =>
                 note.frequency,
             );
 
+          const segmentDurationSec =
+            NOTE_DURATION_SEC +
+            NOTE_GAP_SEC;
+
           const targetTimestamps =
-            exercise.notes.map(
+            pattern.notes.map(
               (_, index) =>
                 index *
-                (
-                  NOTE_DURATION_SEC +
-                  NOTE_GAP_SEC
-                ),
+                segmentDurationSec,
             );
 
           const segments =
             segmentIntoNotes(
               samples,
-              exercise.notes.length,
+              pattern.notes.length,
               0.01,
               sampleRate,
             );
@@ -537,24 +490,95 @@ export default function MelodicPatternMatchingScreen({
               params.minClarity,
             );
 
+          measurementsRef.current.push(
+            measurement,
+          );
+
+          const completedRepetitions =
+            measurementsRef.current
+              .length;
+
+          /*
+           * There are still repetitions left.
+           * Replay the same reference pattern.
+           */
+          if (
+            completedRepetitions <
+            params.repetitions
+          ) {
+            const nextRep =
+              completedRepetitions +
+              1;
+
+            currentRepRef.current =
+              nextRep;
+
+            continueRepetitionRef.current =
+              true;
+
+            processingRef.current =
+              false;
+
+            stopRequestedRef.current =
+              false;
+
+            discardRecordingRef.current =
+              false;
+
+            setCurrentRep(
+              nextRep,
+            );
+
+            setLiveFrame(null);
+
+            recordingElapsedRef.current =
+              0;
+
+            setRecordingElapsedMs(
+              0,
+            );
+
+            setPhase('playing');
+
+            return;
+          }
+
+          /*
+           * Final repetition.
+           */
+          processingRef.current =
+            true;
+
+          setPhase(
+            'processing',
+          );
+
           const score =
-            scoreMelodicPatternMatching(
-              measurement,
+            scoreMelodicPatternMatchingRepetitions(
+              measurementsRef.current,
               targetFreqs,
               targetTimestamps,
               params,
             );
 
-          await saveCompletedExercise(
-            'pitch',
-            'melodicPatternMatching',
-            currentTier,
-            score.score,
-          );
+          const { auth } =
+            await import(
+              '@/services/firebase/config'
+            );
 
-          if (
-            !mountedRef.current
-          ) {
+          const user =
+            auth.currentUser;
+
+          if (user) {
+            await saveCompletedExercise(
+              'pitch',
+              'melodicPatternMatching',
+              currentTier,
+              score.score,
+            );
+          }
+
+          if (!mountedRef.current) {
             return;
           }
 
@@ -562,55 +586,38 @@ export default function MelodicPatternMatchingScreen({
           setPhase('results');
         } catch (error) {
           console.error(
-            '❌ MELODIC PATTERN PROCESSING ERROR:',
+            'Melodic pattern matching processing failed:',
             error,
           );
 
-          if (
-            mountedRef.current
-          ) {
-            setErrorMessage(
-              'We could not analyze your recording. Please try again.',
-            );
-
-            setPhase(
-              'instructions',
-            );
+          if (!mountedRef.current) {
+            return;
           }
-        } finally {
+
           processingRef.current =
             false;
 
-          stopRequestedRef.current =
-            false;
+          setErrorMessage(
+            'Something went wrong while analyzing your recording. Please try again.',
+          );
+
+          setPhase(
+            'instructions',
+          );
         }
       },
-      [
-        currentTier,
-        params.minClarity,
-      ],
+      [currentTier, params],
     );
-
-  // ==========================================================
-  // AUDIO RECORDER
-  // ==========================================================
 
   const {
     startRecording,
     stopRecording,
-    isRecording,
-  } =
-    useAudioRecorder({
-      onFrame:
-        handleLiveFrame,
-
-      onStop:
-        handleRecordingStop,
-    });
-
-  // ==========================================================
-  // STOP REF
-  // ==========================================================
+  } = useAudioRecorder({
+    onFrame:
+      handleLiveFrame,
+    onStop:
+      handleRecordingStop,
+  });
 
   useEffect(() => {
     stopRecordingRef.current =
@@ -622,10 +629,9 @@ export default function MelodicPatternMatchingScreen({
     };
   }, [stopRecording]);
 
-  // ==========================================================
-  // BEGIN RECORDING
-  // ==========================================================
-
+  /*
+   * Start microphone recording.
+   */
   const beginRecording =
     useCallback(
       async () => {
@@ -640,7 +646,8 @@ export default function MelodicPatternMatchingScreen({
           discardRecordingRef.current =
             false;
 
-          setLiveFrame(null);
+          stopRequestedRef.current =
+            false;
 
           recordingElapsedRef.current =
             0;
@@ -649,11 +656,7 @@ export default function MelodicPatternMatchingScreen({
             0,
           );
 
-          stopRequestedRef.current =
-            false;
-
-          processingRef.current =
-            false;
+          setLiveFrame(null);
 
           setPhase('recording');
 
@@ -668,29 +671,20 @@ export default function MelodicPatternMatchingScreen({
           recordingRef.current =
             true;
 
-          const patternDurationSec =
-            params.noteCount *
-              NOTE_DURATION_SEC +
-            Math.max(
-              0,
-              params.noteCount - 1,
-            ) *
-              NOTE_GAP_SEC;
-
           const recordingDurationSec =
-            patternDurationSec +
+            params.noteCount *
+              (NOTE_DURATION_SEC +
+                NOTE_GAP_SEC) +
             RECORDING_BUFFER_SEC;
 
-          const durationMs =
+          const recordingDurationMs =
             recordingDurationSec *
             1000;
 
           recordingTimerRef.current =
             setInterval(() => {
               if (
-                !mountedRef.current ||
-                !recordingRef.current ||
-                stopRequestedRef.current
+                !mountedRef.current
               ) {
                 return;
               }
@@ -698,16 +692,13 @@ export default function MelodicPatternMatchingScreen({
               recordingElapsedRef.current +=
                 100;
 
-              const elapsed =
-                recordingElapsedRef.current;
-
               setRecordingElapsedMs(
-                elapsed,
+                recordingElapsedRef.current,
               );
 
               if (
-                elapsed >=
-                durationMs
+                recordingElapsedRef.current >=
+                recordingDurationMs
               ) {
                 if (
                   recordingTimerRef.current
@@ -721,69 +712,56 @@ export default function MelodicPatternMatchingScreen({
                 }
 
                 if (
-                  stopRequestedRef.current
+                  recordingRef.current &&
+                  !stopRequestedRef.current
                 ) {
-                  return;
+                  stopRequestedRef.current =
+                    true;
+
+                  stopRecording().catch(
+                    error => {
+                      console.error(
+                        'Failed to stop recording:',
+                        error,
+                      );
+                    },
+                  );
                 }
-
-                stopRequestedRef.current =
-                  true;
-
-                stopRecording().catch(
-                  error => {
-                    console.error(
-                      '❌ FAILED TO STOP MELODIC RECORDING:',
-                      error,
-                    );
-
-                    recordingRef.current =
-                      false;
-
-                    stopRequestedRef.current =
-                      false;
-
-                    if (
-                      mountedRef.current
-                    ) {
-                      setErrorMessage(
-                        'We could not finish the recording. Please try again.',
-                      );
-
-                      setPhase(
-                        'instructions',
-                      );
-                    }
-                  },
-                );
               }
             }, 100);
         } catch (error) {
           console.error(
-            '❌ FAILED TO START MELODIC RECORDING:',
+            'Failed to start recording:',
             error,
           );
 
           recordingRef.current =
             false;
 
-          stopRequestedRef.current =
-            false;
+          if (
+            recordingTimerRef.current
+          ) {
+            clearInterval(
+              recordingTimerRef.current,
+            );
 
-          discardRecordingRef.current =
-            false;
+            recordingTimerRef.current =
+              null;
+          }
 
           if (
-            mountedRef.current
+            !mountedRef.current
           ) {
-            setPhase(
-              'instructions',
-            );
-
-            Alert.alert(
-              'Microphone Error',
-              'Unable to start the microphone. Please check your microphone permission and try again.',
-            );
+            return;
           }
+
+          setErrorMessage(
+            'Unable to start microphone recording. Please check your microphone permission and try again.',
+          );
+
+          setPhase(
+            'instructions',
+          );
         }
       },
       [
@@ -793,10 +771,9 @@ export default function MelodicPatternMatchingScreen({
       ],
     );
 
-  // ==========================================================
-  // PLAY PATTERN AND RECORD
-  // ==========================================================
-
+  /*
+   * Play the reference melody.
+   */
   const playPatternAndRecord =
     useCallback(
       async (
@@ -813,7 +790,8 @@ export default function MelodicPatternMatchingScreen({
 
           for (
             let i = 0;
-            i < pattern.notes.length;
+            i <
+            pattern.notes.length;
             i++
           ) {
             if (
@@ -823,7 +801,8 @@ export default function MelodicPatternMatchingScreen({
             }
 
             await playSingleNote(
-              pattern.notes[i].frequency,
+              pattern.notes[i]
+                .frequency,
               NOTE_DURATION_SEC,
             );
 
@@ -831,11 +810,12 @@ export default function MelodicPatternMatchingScreen({
               i <
               pattern.notes.length - 1
             ) {
-              await new Promise(
+              await new Promise<void>(
                 resolve =>
                   setTimeout(
                     resolve,
-                    NOTE_GAP_SEC * 1000,
+                    NOTE_GAP_SEC *
+                      1000,
                   ),
               );
             }
@@ -850,37 +830,68 @@ export default function MelodicPatternMatchingScreen({
           await beginRecording();
         } catch (error) {
           console.error(
-            '❌ FAILED TO PLAY MELODIC PATTERN:',
+            'Failed to play melodic pattern:',
             error,
           );
 
           if (
-            mountedRef.current
+            !mountedRef.current
           ) {
-            setPhase(
-              'instructions',
-            );
-
-            Alert.alert(
-              'Audio Error',
-              'Unable to play the target melody. Please try again.',
-            );
+            return;
           }
+
+          setErrorMessage(
+            'Unable to play the reference melody. Please try again.',
+          );
+
+          setPhase(
+            'instructions',
+          );
         }
       },
-      [
-        beginRecording,
-      ],
+      [beginRecording],
     );
 
-  // ==========================================================
-  // GENERATE PATTERN
-  // ==========================================================
+  /*
+   * Start the next repetition after the
+   * previous recording has been measured.
+   */
+  useEffect(() => {
+    if (
+      !continueRepetitionRef.current
+    ) {
+      return;
+    }
 
+    continueRepetitionRef.current =
+      false;
+
+    const pattern =
+      currentExerciseRef.current;
+
+    if (
+      !pattern ||
+      !mountedRef.current
+    ) {
+      return;
+    }
+
+    playPatternAndRecord(
+      pattern,
+    );
+  }, [
+    currentRep,
+    playPatternAndRecord,
+  ]);
+
+  /*
+   * Generate one melodic pattern.
+   */
   const generatePattern =
     useCallback((): GeneratedPattern => {
-      const notes =
-        [];
+      const notes: ReturnType<
+        typeof createMusicalNote
+      >[] = [];
 
       for (
         let i = 0;
@@ -890,13 +901,9 @@ export default function MelodicPatternMatchingScreen({
         let note =
           getRandomPitchNote(
             currentTier,
+            vocalRange,
           );
 
-        /*
-         * Avoid immediately repeating the exact
-         * same note so the generated melody has
-         * meaningful movement.
-         */
         if (
           notes.length > 0 &&
           note.frequency ===
@@ -916,6 +923,7 @@ export default function MelodicPatternMatchingScreen({
             note =
               getRandomPitchNote(
                 currentTier,
+                vocalRange,
               );
 
             attempts++;
@@ -925,24 +933,33 @@ export default function MelodicPatternMatchingScreen({
         notes.push(note);
       }
 
-      return {
-        notes,
-      };
+      return { notes };
     }, [
       currentTier,
       params.noteCount,
     ]);
 
-  // ==========================================================
-  // COUNTDOWN
-  // ==========================================================
-
+  /*
+   * Start the complete exercise.
+   */
   const startCountdown =
     useCallback(() => {
       if (
-        isLoadingAdaptiveParams
+        isLoadingAdaptiveParams ||
+        !mountedRef.current
       ) {
         return;
+      }
+
+      if (
+        countdownTimerRef.current
+      ) {
+        clearInterval(
+          countdownTimerRef.current,
+        );
+
+        countdownTimerRef.current =
+          null;
       }
 
       const generated =
@@ -955,15 +972,27 @@ export default function MelodicPatternMatchingScreen({
         generated,
       );
 
+      measurementsRef.current =
+        [];
+
+      currentRepRef.current =
+        1;
+
+      continueRepetitionRef.current =
+        false;
+
+      setCurrentRep(1);
+
       setResult(null);
       setErrorMessage(null);
-
       setLiveFrame(null);
 
       recordingElapsedRef.current =
         0;
 
-      setRecordingElapsedMs(0);
+      setRecordingElapsedMs(
+        0,
+      );
 
       processingRef.current =
         false;
@@ -980,40 +1009,40 @@ export default function MelodicPatternMatchingScreen({
       setCountdown(3);
       setPhase('countdown');
 
-      let value = 3;
-
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-      }
+      let remaining = 3;
 
       countdownTimerRef.current =
         setInterval(() => {
-          value--;
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
 
-          if (value <= 0) {
-            if (
-              countdownTimerRef.current
-            ) {
-              clearInterval(
-                countdownTimerRef.current,
-              );
+          remaining -= 1;
 
-              countdownTimerRef.current =
-                null;
-            }
-
-            playPatternAndRecord(
-              generated,
+          if (remaining > 0) {
+            setCountdown(
+              remaining,
             );
 
             return;
           }
 
-          setCountdown(value);
+          if (
+            countdownTimerRef.current
+          ) {
+            clearInterval(
+              countdownTimerRef.current,
+            );
+
+            countdownTimerRef.current =
+              null;
+          }
+
+          playPatternAndRecord(
+            generated,
+          );
         }, 1000);
     }, [
       generatePattern,
@@ -1021,593 +1050,309 @@ export default function MelodicPatternMatchingScreen({
       playPatternAndRecord,
     ]);
 
-  // ==========================================================
-  // RETRY
-  // ==========================================================
+  /*
+   * Retry from the instructions screen.
+   */
+  const retry = useCallback(() => {
+    if (
+      countdownTimerRef.current
+    ) {
+      clearInterval(
+        countdownTimerRef.current,
+      );
 
-  const retry =
-    useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-
-        countdownTimerRef.current =
-          null;
-      }
-
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-
-        recordingTimerRef.current =
-          null;
-      }
-
-      if (recordingRef.current) {
-        discardRecordingRef.current =
-          true;
-
-        stopRequestedRef.current =
-          true;
-
-        stopRecording().catch(
-          error => {
-            console.error(
-              '❌ FAILED TO STOP RECORDING DURING RETRY:',
-              error,
-            );
-
-            discardRecordingRef.current =
-              false;
-
-            stopRequestedRef.current =
-              false;
-          },
-        );
-      } else {
-        discardRecordingRef.current =
-          false;
-      }
-
-      currentExerciseRef.current =
+      countdownTimerRef.current =
         null;
+    }
 
-      setCurrentPattern(null);
-      setResult(null);
-      setLiveFrame(null);
+    if (
+      recordingTimerRef.current
+    ) {
+      clearInterval(
+        recordingTimerRef.current,
+      );
 
-      recordingElapsedRef.current =
-        0;
+      recordingTimerRef.current =
+        null;
+    }
 
-      setRecordingElapsedMs(0);
-
-      processingRef.current =
-        false;
+    if (recordingRef.current) {
+      discardRecordingRef.current =
+        true;
 
       stopRequestedRef.current =
-        false;
+        true;
 
-      recordingRef.current =
-        false;
-
-      setErrorMessage(null);
-
-      setPhase(
-        'instructions',
+      stopRecording().catch(
+        error => {
+          console.error(
+            'Failed to stop recording during retry:',
+            error,
+          );
+        },
       );
-    }, [stopRecording]);
+    } else {
+      discardRecordingRef.current =
+        false;
+    }
 
-  // ==========================================================
-  // RECORDING PROGRESS
-  // ==========================================================
+    measurementsRef.current =
+      [];
 
-  const patternNoteCount =
-    Math.max(
-      1,
-      Math.round(
-        params.noteCount,
-      ),
-    );
+    currentRepRef.current =
+      1;
 
-  const recordingDurationSec =
-    patternNoteCount *
-      NOTE_DURATION_SEC +
-    Math.max(
-      0,
-      patternNoteCount - 1,
-    ) *
-      NOTE_GAP_SEC +
-    RECORDING_BUFFER_SEC;
+    continueRepetitionRef.current =
+      false;
 
-  const recordingDurationMs =
-    recordingDurationSec *
-    1000;
+    setCurrentRep(1);
 
-  const recordingProgress =
-    recordingDurationMs > 0
-      ? Math.min(
-          1,
-          recordingElapsedMs /
-            recordingDurationMs,
-        )
-      : 0;
+    currentExerciseRef.current =
+      null;
 
+    setCurrentPattern(null);
+    setResult(null);
+    setLiveFrame(null);
+
+    recordingElapsedRef.current =
+      0;
+
+    setRecordingElapsedMs(0);
+
+    processingRef.current =
+      false;
+
+    stopRequestedRef.current =
+      false;
+
+    recordingRef.current =
+      false;
+
+    setErrorMessage(null);
+    setPhase('instructions');
+  }, [stopRecording]);
+
+  const goToExercises =
+    useCallback(() => {
+      router.replace(
+        '/dashboard?tab=exercises',
+      );
+    }, []);
+
+  /*
+   * Current note shown during recording.
+   */
   const currentNoteIndex =
     Math.min(
-      patternNoteCount - 1,
       Math.floor(
-        recordingProgress *
-          patternNoteCount,
+        recordingElapsedMs /
+          ((NOTE_DURATION_SEC +
+            NOTE_GAP_SEC) *
+            1000),
+      ),
+      Math.max(
+        0,
+        (currentPattern?.notes
+          .length ?? 1) - 1,
       ),
     );
 
-  const liveTarget =
+  const currentTargetNote =
     currentPattern?.notes[
       currentNoteIndex
     ] ?? null;
 
-  const liveAccuracy =
-    liveFrame &&
-    liveTarget &&
-    liveFrame.pitch > 0
-      ? (() => {
-          const deviation =
-            Math.abs(
-              liveFrame.pitch -
-                liveTarget.frequency,
-            ) /
-            liveTarget.frequency;
-
-          return Math.max(
-            0,
-            Math.min(
-              100,
-              100 - deviation * 100,
-            ),
-          );
-        })()
-      : 0;
-
-  // ==========================================================
-  // INSTRUCTIONS
-  // ==========================================================
-
-  if (
-    phase === 'instructions'
-  ) {
+  /*
+   * Shared ExerciseScreen:
+   * instructions/setup phase.
+   */
+  if (phase === 'instructions') {
     return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            router.replace(
-              '/dashboard?tab=exercises',
-            )
-          }
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          <View
-            style={styles.iconCircle}
-          >
-            <Ionicons
-              name="musical-notes-outline"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          <Text
-            style={styles.title}
-          >
-            Melodic Pattern Matching
-          </Text>
-
-          <Text
-            style={styles.subtitle}
-          >
-            Pitch
-          </Text>
-
-          <View
-            style={
-              styles.instructionCard
-            }
-          >
-            <Text
-              style={styles.cardTitle}
-            >
-              Exercise Instructions
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Listen carefully to the
-              reference melody.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              After the melody plays, sing
-              the same sequence of notes in
-              the same order.
-            </Text>
-
-            <Text
-              style={styles.instruction}
-            >
-              Try to match each note as
-              accurately as possible and keep
-              the timing of the melody.
-            </Text>
-
-            <View
-              style={
-                styles.prepareCard
-              }
-            >
-              <View
-                style={
-                  styles.prepareHeader
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareTitle
-                  }
-                >
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Find a quiet room or area
-                  with minimal background
-                  noise.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  Sit upright or stand with
-                  your back straight and
-                  your shoulders relaxed.
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.prepareItem
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text
-                  style={
-                    styles.prepareText
-                  }
-                >
-                  If available, an external
-                  microphone or audio
-                  recording equipment is
-                  recommended for clearer
-                  audio capture.
-                </Text>
-              </View>
-            </View>
-
-            <View
-              style={styles.targetBox}
-            >
-              <Ionicons
-                name="musical-notes-outline"
-                size={25}
-                color={BROWN}
-              />
-
-              <Text
-                style={styles.targetText}
-              >
-                Match the melody
-              </Text>
-            </View>
-
-            <Text
-              style={styles.helperText}
-            >
-              Your pitch accuracy and timing
-              are combined into the final
-              exercise score.
-            </Text>
-          </View>
-
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text
-              style={styles.tipText}
-            >
-              Listen to the complete melody
-              first, then reproduce the notes
-              in the same order.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.difficultyRow
-            }
-          >
-            <Text
-              style={
-                styles.difficultyLabel
-              }
-            >
-              Difficulty
-            </Text>
-
-            <Text
-              style={
-                styles.difficultyValue
-              }
-            >
-              {currentTier}
-            </Text>
-          </View>
-
-          <View
-            style={styles.detailRow}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              Pattern length
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {patternNoteCount} notes
-            </Text>
-          </View>
-
-          <View
-            style={styles.detailRow}
-          >
-            <Text
-              style={styles.detailLabel}
-            >
-              Pitch tolerance
-            </Text>
-
-            <Text
-              style={styles.detailValue}
-            >
-              {params.tolerancePct.toFixed(
-                1,
-              )}
-              %
-            </Text>
-          </View>
-
-          <Pressable
-            style={[
-              styles.startButton,
-              isLoadingAdaptiveParams && {
-                opacity: 0.6,
-              },
-            ]}
-            disabled={
-              isLoadingAdaptiveParams
-            }
-            onPress={
-              startCountdown
-            }
-          >
-            {isLoadingAdaptiveParams ? (
-              <ActivityIndicator
-                size="small"
-                color={WHITE}
-              />
-            ) : (
-              <>
-                <Text
-                  style={
-                    styles.startButtonText
-                  }
-                >
-                  Start Exercise
-                </Text>
-
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={WHITE}
-                />
-              </>
-            )}
-          </Pressable>
-
-          {errorMessage && (
-            <Text
-              style={
-                styles.errorText
-              }
-            >
-              {errorMessage}
-            </Text>
-          )}
-        </ScrollView>
-      </View>
+      <ExerciseScreen
+        title="Melodic Pattern Matching"
+        category="Pitch"
+        icon="musical-notes-outline"
+        instructions="Listen carefully to the reference melody, then sing the same notes in the same order. The pattern will be repeated several times to evaluate your consistency."
+        preparationSteps={[
+          {
+            icon: 'volume-medium-outline',
+            text: 'Listen carefully to the complete reference melody before singing.',
+          },
+          {
+            icon: 'mic-outline',
+            text: 'Position yourself close enough to the microphone for clear pitch detection.',
+          },
+          {
+            icon: 'musical-note-outline',
+            text: 'Match each note as accurately as possible while keeping the correct order.',
+          },
+        ]}
+        summary={[
+          {
+            label: 'PATTERN',
+            value: `${params.noteCount} notes`,
+            hint: 'melodic sequence',
+          },
+          {
+            label: 'TOLERANCE',
+            value: `±${params.tolerancePct}%`,
+            hint: 'pitch deviation',
+          },
+          {
+            label: 'REPETITIONS',
+            value: String(
+              params.repetitions,
+            ),
+            hint: 'attempts',
+          },
+        ]}
+        tip="Focus on accurate note transitions rather than singing loudly. The same reference melody is played before each repetition."
+        tier={currentTier}
+        onBack={goToExercises}
+        onStart={startCountdown}
+        error={errorMessage}
+        startDisabled={
+          isLoadingAdaptiveParams
+        }
+        startLabel={
+          isLoadingAdaptiveParams
+            ? 'Preparing...'
+            : 'Start Exercise'
+        }
+      />
     );
   }
 
-  // ==========================================================
-  // COUNTDOWN
-  // ==========================================================
+  /*
+   * Shared countdown phase.
+   */
+  if (phase === 'countdown') {
+    return (
+      <ExerciseCountdownScreen
+        icon="musical-notes-outline"
+        title="Get Ready"
+        currentRep={currentRep}
+        repetitions={
+          params.repetitions
+        }
+        countdown={countdown}
+        promptTitle="Listen carefully"
+        prompt="You will hear the reference melody before singing it."
+        onBack={goToExercises}
+      />
+    );
+  }
 
-  if (
-    phase === 'countdown'
-  ) {
+  /*
+   * Reference melody playback.
+   *
+   * This remains a lightweight custom phase because
+   * ExerciseListeningScreen is intended for listening/
+   * recording content rather than the note-by-note
+   * reference playback itself.
+   */
+  if (phase === 'playing') {
     return (
       <View
-        style={styles.centerScreen}
+        style={{
+          flex: 1,
+          backgroundColor: '#FFFFFF',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 28,
+        }}
       >
         <View
-          style={styles.iconCircle}
+          style={{
+            width: 96,
+            height: 96,
+            borderRadius: 48,
+            backgroundColor:
+              '#FCD6DD',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 22,
+          }}
         >
           <Ionicons
             name="musical-notes-outline"
-            size={34}
-            color={BROWN}
+            size={44}
+            color="#4E2F1F"
           />
         </View>
 
         <Text
-          style={styles.phaseTitle}
+          style={{
+            color: '#4E2F1F',
+            fontSize: 26,
+            fontFamily: 'FredokaBold',
+            textAlign: 'center',
+          }}
         >
-          Get Ready
+          Listen to the Pattern
         </Text>
 
         <Text
-          style={styles.countdownText}
+          style={{
+            color: '#8E7770',
+            fontSize: 15,
+            fontFamily: 'FredokaRegular',
+            textAlign: 'center',
+            marginTop: 6,
+          }}
         >
-          {countdown}
+          Repetition {currentRep} of{' '}
+          {params.repetitions}
         </Text>
 
         <Text
-          style={styles.phaseSubtitle}
-        >
-          Listen carefully to the
-          reference melody.
-        </Text>
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // PLAYING
-  // ==========================================================
-
-  if (
-    phase === 'playing'
-  ) {
-    return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="volume-high-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Listen to the Melody
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
+          style={{
+            color: '#8E7770',
+            fontSize: 14,
+            fontFamily: 'FredokaRegular',
+            textAlign: 'center',
+            marginTop: 6,
+            maxWidth: 320,
+          }}
         >
           Remember the notes and their
           order.
         </Text>
 
         <View
-          style={styles.patternPreview}
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: 8,
+            marginTop: 26,
+          }}
         >
           {currentPattern?.notes.map(
             (note, index) => (
               <View
-                key={`target-${index}`}
-                style={
-                  styles.patternNote
-                }
+                key={`${note.name}-${index}`}
+                style={{
+                  minWidth: 48,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor:
+                    '#FFF8FA',
+                  borderWidth: 1,
+                  borderColor:
+                    '#F2DDE5',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 10,
+                }}
               >
                 <Text
-                  style={
-                    styles.patternNoteLabel
-                  }
-                >
-                  {index + 1}
-                </Text>
-
-                <Text
-                  style={
-                    styles.patternNoteName
-                  }
+                  style={{
+                    color: '#4E2F1F',
+                    fontSize: 14,
+                    fontFamily:
+                      'FredokaSemiBold',
+                  }}
                 >
                   {note.name}
                 </Text>
@@ -1617,523 +1362,247 @@ export default function MelodicPatternMatchingScreen({
         </View>
 
         <ActivityIndicator
-          size="small"
-          color={BROWN}
-          style={
-            styles.playingIndicator
-          }
+          size="large"
+          color="#4E2F1F"
+          style={{
+            marginTop: 28,
+          }}
         />
       </View>
     );
   }
 
-  // ==========================================================
-  // RECORDING
-  // ==========================================================
+  /*
+   * Shared listening/recording phase.
+   */
+  if (phase === 'recording') {
+    const targetDuration =
+      params.noteCount *
+        (NOTE_DURATION_SEC +
+          NOTE_GAP_SEC) +
+      RECORDING_BUFFER_SEC;
 
-  if (
-    phase === 'recording'
-  ) {
-    return (
-      <View
-        style={styles.centerScreen}
-      >
+    const elapsed =
+      recordingElapsedMs / 1000;
+
+    const progress =
+      Math.min(
+        100,
+        Math.max(
+          0,
+          (elapsed /
+            targetDuration) *
+            100,
+        ),
+      );
+
+    const liveContent = (
+      <View>
         <View
-          style={
-            styles.recordingIcon
-          }
-        >
-          <Ionicons
-            name="mic"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Sing the Melody
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Match each note in the same order
-          as the reference.
-        </Text>
-
-        <View
-          style={
-            styles.noteProgress
-          }
-        >
-          {currentPattern?.notes.map(
-            (note, index) => (
-              <View
-                key={`progress-${index}`}
-                style={[
-                  styles.noteProgressItem,
-                  index ===
-                    currentNoteIndex &&
-                    styles.noteProgressActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.noteProgressText,
-                    index ===
-                      currentNoteIndex &&
-                      styles.noteProgressTextActive,
-                  ]}
-                >
-                  {note.name}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
-
-        <View
-          style={styles.liveCard}
+          style={{
+            alignItems: 'center',
+            marginBottom: 18,
+          }}
         >
           <Text
-            style={styles.liveLabel}
-          >
-            Current Target
-          </Text>
-
-          <Text
-            style={styles.liveTarget}
-          >
-            {liveTarget?.name ?? '--'}
-          </Text>
-
-          <View
-            style={styles.liveDivider}
-          />
-
-          <Text
-            style={styles.liveLabel}
-          >
-            Your Note
-          </Text>
-
-          <Text
-            style={styles.liveNote}
+            style={{
+              color: '#4E2F1F',
+              fontSize: 40,
+              fontFamily:
+                'FredokaBold',
+            }}
           >
             {liveFrame?.note ?? '--'}
           </Text>
 
           <Text
-            style={
-              styles.liveFrequency
-            }
+            style={{
+              color: '#8E7770',
+              fontSize: 13,
+              fontFamily:
+                'FredokaRegular',
+              marginTop: 3,
+            }}
           >
-            {liveFrame &&
-            liveFrame.pitch > 0
+            {Number.isFinite(
+              liveFrame?.pitch,
+            )
               ? `${Math.round(
-                  liveFrame.pitch,
+                  liveFrame!.pitch,
                 )} Hz`
-              : '--'}
+              : '-- Hz'}
           </Text>
+        </View>
 
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent:
+              'space-between',
+            borderTopWidth: 1,
+            borderTopColor:
+              '#F2DDE5',
+            paddingTop: 14,
+          }}
+        >
           <View
-            style={styles.liveStats}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+            }}
           >
-            <View
-              style={styles.liveStat}
+            <Text
+              style={{
+                color: '#8E7770',
+                fontSize: 11,
+                fontFamily:
+                  'FredokaRegular',
+              }}
             >
-              <Text
-                style={
-                  styles.liveStatLabel
-                }
-              >
-                Accuracy
-              </Text>
+              TARGET
+            </Text>
 
-              <Text
-                style={
-                  styles.liveStatValue
-                }
-              >
-                {Math.round(
-                  liveAccuracy,
-                )}
-                %
-              </Text>
-            </View>
-
-            <View
-              style={styles.liveStat}
+            <Text
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+                marginTop: 3,
+              }}
             >
-              <Text
-                style={
-                  styles.liveStatLabel
-                }
-              >
-                Note
-              </Text>
-
-              <Text
-                style={
-                  styles.liveStatValue
-                }
-              >
-                {Math.min(
-                  currentNoteIndex + 1,
-                  patternNoteCount,
-                )}
-                /{patternNoteCount}
-              </Text>
-            </View>
+              {currentTargetNote?.name ??
+                '--'}
+            </Text>
           </View>
-        </View>
 
-        <View
-          style={
-            styles.recordingIndicator
-          }
-        >
           <View
-            style={
-              styles.recordingDot
-            }
-          />
-
-          <Text
-            style={
-              styles.recordingText
-            }
+            style={{
+              flex: 1,
+              alignItems: 'center',
+            }}
           >
-            {isRecording
-              ? 'Recording...'
-              : 'Preparing microphone...'}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: '#8E7770',
+                fontSize: 11,
+                fontFamily:
+                  'FredokaRegular',
+              }}
+            >
+              YOUR NOTE
+            </Text>
 
-        <View
-          style={styles.recordingBar}
-        >
+            <Text
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+                marginTop: 3,
+              }}
+            >
+              {liveFrame?.note ??
+                '--'}
+            </Text>
+          </View>
+
           <View
-            style={[
-              styles.recordingBarFill,
-              {
-                width: `${Math.round(
-                  recordingProgress *
-                    100,
-                )}%`,
-              },
-            ]}
-          />
+            style={{
+              flex: 1,
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: '#8E7770',
+                fontSize: 11,
+                fontFamily:
+                  'FredokaRegular',
+              }}
+            >
+              NOTE
+            </Text>
+
+            <Text
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+                marginTop: 3,
+              }}
+            >
+              {Math.min(
+                currentNoteIndex + 1,
+                params.noteCount,
+              )}
+              /{params.noteCount}
+            </Text>
+          </View>
         </View>
       </View>
     );
-  }
-
-  // ==========================================================
-  // PROCESSING
-  // ==========================================================
-
-  if (
-    phase === 'processing'
-  ) {
-    return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Analyzing Your Singing
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Checking your pitch accuracy and
-          melodic timing.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={
-            styles.processingIndicator
-          }
-        />
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // RESULTS
-  // ==========================================================
-
-  if (
-    phase === 'results' &&
-    result
-  ) {
-    const detectedNotes =
-      result.noteAccuracies.map(
-        (_, index) => {
-          const frequency =
-            currentExerciseRef.current
-              ?.notes[index]
-              ?.frequency;
-
-          return frequency &&
-            frequency > 0
-            ? frequencyToNote(
-                frequency,
-              )
-            : '--';
-        },
-      );
 
     return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.resultsContent
-          }
-        >
-          <View
-            style={[
-              styles.resultIcon,
-              result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
-            ]}
-          >
-            <Ionicons
-              name={
-                result.passed
-                  ? 'checkmark'
-                  : 'refresh'
-              }
-              size={40}
-              color={BROWN}
-            />
-          </View>
-
-          <Text
-            style={styles.resultTitle}
-          >
-            {result.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
-          </Text>
-
-          <Text
-            style={
-              styles.resultSubtitle
-            }
-          >
-            Melodic Pattern Matching Result
-          </Text>
-
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Overall Score
-            </Text>
-
-            <Text
-              style={styles.scoreValue}
-            >
-              {result.score}%
-            </Text>
-
-            <Text
-              style={
-                styles.scoreDescription
-              }
-            >
-              {result.passed
-                ? 'You matched the melodic pattern accurately.'
-                : 'Try to match each note and its timing more closely.'}
-            </Text>
-          </View>
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Pattern Results
-            </Text>
+      <ExerciseListeningScreen
+        icon="mic-outline"
+        title="Melodic Pattern Matching"
+        currentRep={currentRep}
+        repetitions={
+          params.repetitions
+        }
+        elapsed={elapsed}
+        targetDuration={
+          targetDuration
+        }
+        promptTitle="Your Turn"
+        prompt="Match each note in the same order as the reference melody."
+        liveContent={
+          <View>
+            {liveContent}
 
             <View
-              style={styles.resultRow}
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                justifyContent:
+                  'center',
+                gap: 8,
+                marginTop: 20,
+              }}
             >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Pattern length
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {patternNoteCount} notes
-              </Text>
-            </View>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Pattern accuracy
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {Math.round(
-                  result.patternAccuracy,
-                )}
-                %
-              </Text>
-            </View>
-
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Rhythm accuracy
-              </Text>
-
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {Math.round(
-                  result.rhythmAccuracy,
-                )}
-                %
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Note Results
-            </Text>
-
-            {result.noteAccuracies.map(
-              (
-                accuracy,
-                index,
-              ) => (
-                <View
-                  key={`note-result-${index}`}
-                  style={
-                    styles.resultRow
-                  }
-                >
-                  <Text
-                    style={
-                      styles.resultRowLabel
-                    }
-                  >
-                    Note {index + 1}
-                    {detectedNotes[index]
-                      ? ` · ${detectedNotes[index]}`
-                      : ''}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.resultRowValue
-                    }
-                  >
-                    {Math.round(
-                      accuracy,
-                    )}
-                    %
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
-
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Target Pattern
-            </Text>
-
-            <View
-              style={
-                styles.resultPattern
-              }
-            >
-              {currentExerciseRef.current?.notes.map(
+              {currentPattern?.notes.map(
                 (note, index) => (
                   <View
-                    key={`result-target-${index}`}
-                    style={
-                      styles.resultPatternNote
-                    }
+                    key={`${note.name}-${index}`}
+                    style={{
+                      minWidth: 44,
+                      height: 38,
+                      borderRadius: 19,
+                      backgroundColor:
+                        index ===
+                        currentNoteIndex
+                          ? '#FCD6DD'
+                          : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor:
+                        '#F2DDE5',
+                      alignItems:
+                        'center',
+                      justifyContent:
+                        'center',
+                      paddingHorizontal: 8,
+                    }}
                   >
                     <Text
-                      style={
-                        styles.resultPatternNumber
-                      }
-                    >
-                      {index + 1}
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.resultPatternName
-                      }
+                      style={{
+                        color:
+                          '#4E2F1F',
+                        fontSize: 13,
+                        fontFamily:
+                          'FredokaSemiBold',
+                      }}
                     >
                       {note.name}
                     </Text>
@@ -2142,664 +1611,506 @@ export default function MelodicPatternMatchingScreen({
               )}
             </View>
           </View>
+        }
+        progress={progress}
+        onBack={goToExercises}
+      />
+    );
+  }
+
+  /*
+   * Shared processing phase.
+   */
+  if (phase === 'processing') {
+    return (
+      <ExerciseProcessingScreen
+        icon="analytics-outline"
+        title="Analyzing Your Singing"
+        message="Checking your pitch accuracy and melodic timing across all repetitions."
+        onBack={goToExercises}
+      />
+    );
+  }
+
+  /*
+   * Shared results phase.
+   */
+  if (
+    phase === 'results' &&
+    result
+  ) {
+    return (
+      <ExerciseResultsScreen
+        title={
+          result.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'
+        }
+        subtitle={
+          result.passed
+            ? 'You completed all repetitions successfully.'
+            : 'Review your results and try again to improve your accuracy.'
+        }
+        score={result.score}
+        resultIcon={
+          result.passed
+            ? 'checkmark'
+            : 'refresh-outline'
+        }
+        scoreDetails={
+          <View
+            style={{
+              width: '100%',
+              marginTop: 14,
+              paddingTop: 14,
+              borderTopWidth: 1,
+              borderTopColor:
+                '#F2DDE5',
+            }}
+          >
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                justifyContent:
+                  'space-between',
+                paddingVertical: 5,
+              }}
+            >
+              <Text
+                style={{
+                  color: '#8E7770',
+                  fontSize: 13,
+                  fontFamily:
+                    'FredokaRegular',
+                }}
+              >
+                Repetitions completed
+              </Text>
+
+              <Text
+                style={{
+                  color: '#4E2F1F',
+                  fontSize: 13,
+                  fontFamily:
+                    'FredokaSemiBold',
+                }}
+              >
+                {
+                  result.repetitionsCompleted
+                }
+                /
+                {
+                  params.repetitions
+                }
+              </Text>
+            </View>
+          </View>
+        }
+        scoreMessage={
+          result.passed
+            ? 'Your repetitions were consistently accurate.'
+            : 'Focus on pitch accuracy and keeping the melodic sequence consistent.'
+        }
+        onRetry={retry}
+        onExit={goToExercises}
+      >
+        <View
+          style={{
+            backgroundColor:
+              '#FFFFFF',
+            borderWidth: 1,
+            borderColor:
+              '#F2DDE5',
+            borderRadius: 18,
+            padding: 17,
+            marginBottom: 14,
+          }}
+        >
+          <Text
+            style={{
+              color: '#4E2F1F',
+              fontSize: 17,
+              fontFamily:
+                'FredokaBold',
+              marginBottom: 8,
+            }}
+          >
+            Pattern Results
+          </Text>
 
           <View
-            style={styles.tipCard}
+            style={{
+              flexDirection:
+                'row',
+              justifyContent:
+                'space-between',
+              paddingVertical: 8,
+              borderBottomWidth: 1,
+              borderBottomColor:
+                '#F2DDE5',
+            }}
           >
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
+            <Text
+              style={{
+                color: '#8E7770',
+                fontSize: 13,
+                fontFamily:
+                  'FredokaRegular',
+              }}
+            >
+              Pattern length
+            </Text>
 
             <Text
-              style={styles.tipText}
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+              }}
             >
-              {result.passed
-                ? 'Nice melodic matching! Keep listening to the complete pattern before singing it back.'
-                : 'Listen carefully to each note and focus on reproducing the pattern in the same order and timing.'}
+              {params.noteCount}{' '}
+              notes
             </Text>
           </View>
 
-          <Pressable
-            style={styles.startButton}
-            onPress={retry}
+          <View
+            style={{
+              flexDirection:
+                'row',
+              justifyContent:
+                'space-between',
+              paddingVertical: 8,
+              borderBottomWidth: 1,
+              borderBottomColor:
+                '#F2DDE5',
+            }}
           >
             <Text
-              style={
-                styles.startButtonText
-              }
+              style={{
+                color: '#8E7770',
+                fontSize: 13,
+                fontFamily:
+                  'FredokaRegular',
+              }}
             >
-              Try Again
+              Pattern accuracy
             </Text>
 
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
+            <Text
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+              }}
+            >
+              {Math.round(
+                result.patternAccuracy,
+              )}
+              %
+            </Text>
+          </View>
 
-          <Pressable
-            style={styles.doneButton}
-            onPress={() =>
-              router.replace(
-                '/dashboard?tab=exercises',
-              )
-            }
+          <View
+            style={{
+              flexDirection:
+                'row',
+              justifyContent:
+                'space-between',
+              paddingVertical: 8,
+            }}
           >
             <Text
-              style={
-                styles.doneButtonText
-              }
+              style={{
+                color: '#8E7770',
+                fontSize: 13,
+                fontFamily:
+                  'FredokaRegular',
+              }}
             >
-              Done
+              Rhythm accuracy
             </Text>
-          </Pressable>
-        </ScrollView>
-      </View>
+
+            <Text
+              style={{
+                color: '#4E2F1F',
+                fontSize: 14,
+                fontFamily:
+                  'FredokaSemiBold',
+              }}
+            >
+              {Math.round(
+                result.rhythmAccuracy,
+              )}
+              %
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            backgroundColor:
+              '#FFFFFF',
+            borderWidth: 1,
+            borderColor:
+              '#F2DDE5',
+            borderRadius: 18,
+            padding: 17,
+            marginBottom: 14,
+          }}
+        >
+          <Text
+            style={{
+              color: '#4E2F1F',
+              fontSize: 17,
+              fontFamily:
+                'FredokaBold',
+              marginBottom: 8,
+            }}
+          >
+            Repetition Scores
+          </Text>
+
+          {result.repetitionScores.map(
+            (score, index) => (
+              <View
+                key={`repetition-${index}`}
+                style={{
+                  flexDirection:
+                    'row',
+                  justifyContent:
+                    'space-between',
+                  alignItems:
+                    'center',
+                  minHeight: 42,
+                  borderBottomWidth:
+                    index ===
+                    result
+                      .repetitionScores
+                      .length -
+                      1
+                      ? 0
+                      : 1,
+                  borderBottomColor:
+                    '#F2DDE5',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#8E7770',
+                    fontSize: 13,
+                    fontFamily:
+                      'FredokaRegular',
+                  }}
+                >
+                  Repetition{' '}
+                  {index + 1}
+                </Text>
+
+                <Text
+                  style={{
+                    color: '#4E2F1F',
+                    fontSize: 14,
+                    fontFamily:
+                      'FredokaSemiBold',
+                  }}
+                >
+                  {score}%
+                </Text>
+              </View>
+            ),
+          )}
+        </View>
+
+        <View
+          style={{
+            backgroundColor:
+              '#FFFFFF',
+            borderWidth: 1,
+            borderColor:
+              '#F2DDE5',
+            borderRadius: 18,
+            padding: 17,
+            marginBottom: 14,
+          }}
+        >
+          <Text
+            style={{
+              color: '#4E2F1F',
+              fontSize: 17,
+              fontFamily:
+                'FredokaBold',
+              marginBottom: 8,
+            }}
+          >
+            Note Results
+          </Text>
+
+          {result.noteAccuracies.map(
+            (accuracy, index) => (
+              <View
+                key={`note-${index}`}
+                style={{
+                  flexDirection:
+                    'row',
+                  justifyContent:
+                    'space-between',
+                  alignItems:
+                    'center',
+                  minHeight: 42,
+                  borderBottomWidth:
+                    index ===
+                    result
+                      .noteAccuracies
+                      .length -
+                      1
+                      ? 0
+                      : 1,
+                  borderBottomColor:
+                    '#F2DDE5',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#8E7770',
+                    fontSize: 13,
+                    fontFamily:
+                      'FredokaRegular',
+                  }}
+                >
+                  Note {index + 1}
+                </Text>
+
+                <Text
+                  style={{
+                    color: '#4E2F1F',
+                    fontSize: 14,
+                    fontFamily:
+                      'FredokaSemiBold',
+                  }}
+                >
+                  {Math.round(
+                    accuracy,
+                  )}
+                  %
+                </Text>
+              </View>
+            ),
+          )}
+        </View>
+
+        <View
+          style={{
+            backgroundColor:
+              '#FFF8FA',
+            borderWidth: 1,
+            borderColor:
+              '#F2DDE5',
+            borderRadius: 18,
+            padding: 17,
+            marginBottom: 14,
+          }}
+        >
+          <Text
+            style={{
+              color: '#4E2F1F',
+              fontSize: 17,
+              fontFamily:
+                'FredokaBold',
+              marginBottom: 12,
+            }}
+          >
+            Target Pattern
+          </Text>
+
+          <View
+            style={{
+              flexDirection:
+                'row',
+              flexWrap: 'wrap',
+              justifyContent:
+                'center',
+              gap: 8,
+            }}
+          >
+            {currentPattern?.notes.map(
+              (note, index) => (
+                <View
+                  key={`${note.name}-${index}`}
+                  style={{
+                    minWidth: 48,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor:
+                      '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor:
+                      '#F2DDE5',
+                    alignItems:
+                      'center',
+                    justifyContent:
+                      'center',
+                    paddingHorizontal: 10,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#4E2F1F',
+                      fontSize: 14,
+                      fontFamily:
+                        'FredokaSemiBold',
+                    }}
+                  >
+                    {note.name}
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
+        </View>
+
+        <View
+          style={{
+            flexDirection:
+              'row',
+            alignItems:
+              'flex-start',
+            backgroundColor:
+              '#FFF8FA',
+            borderRadius: 16,
+            padding: 15,
+            marginBottom: 4,
+          }}
+        >
+          <Ionicons
+            name="bulb-outline"
+            size={21}
+            color="#4E2F1F"
+          />
+
+          <Text
+            style={{
+              flex: 1,
+              color: '#4E2F1F',
+              fontSize: 13,
+              lineHeight: 19,
+              fontFamily:
+                'FredokaRegular',
+              marginLeft: 10,
+            }}
+          >
+            Focus on keeping each
+            note accurate and
+            maintaining the same
+            melodic order throughout
+            every repetition.
+          </Text>
+        </View>
+      </ExerciseResultsScreen>
     );
   }
 
   return null;
 }
-
-// ============================================================
-// STYLES
-// ============================================================
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: WHITE,
-  },
-
-  centerScreen: {
-    flex: 1,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 60,
-    alignItems: 'center',
-  },
-
-  resultsContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 24,
-  },
-
-  instructionCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  prepareCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
-
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
-  },
-
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: BROWN,
-    marginBottom: 14,
-  },
-
-  instruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: BROWN,
-    marginBottom: 10,
-  },
-
-  targetBox: {
-    backgroundColor: PINK,
-    borderRadius: 14,
-    paddingVertical: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginVertical: 8,
-  },
-
-  targetText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-  },
-
-  helperText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: PINK,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: BROWN,
-    marginLeft: 10,
-  },
-
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 10,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-    textTransform: 'capitalize',
-  },
-
-  detailRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 7,
-  },
-
-  detailLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  detailValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-  },
-
-  startButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: WHITE,
-  },
-
-  errorText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: BROWN,
-    marginTop: 20,
-  },
-
-  patternPreview: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 28,
-    maxWidth: 340,
-  },
-
-  patternNote: {
-    minWidth: 58,
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 15,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  patternNoteLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: MUTED,
-  },
-
-  patternNoteName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-    marginTop: 3,
-  },
-
-  playingIndicator: {
-    marginTop: 24,
-  },
-
-  recordingIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  noteProgress: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 18,
-  },
-
-  noteProgressItem: {
-    minWidth: 48,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-  },
-
-  noteProgressActive: {
-    backgroundColor: PINK,
-  },
-
-  noteProgressText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  noteProgressTextActive: {
-    color: BROWN,
-  },
-
-  liveCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-    marginTop: 20,
-    alignItems: 'center',
-  },
-
-  liveLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  liveTarget: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: BROWN,
-    marginTop: 3,
-  },
-
-  liveDivider: {
-    width: '70%',
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 12,
-  },
-
-  liveNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: BROWN,
-    marginTop: 3,
-  },
-
-  liveFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    marginTop: 2,
-  },
-
-  liveStats: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 18,
-  },
-
-  liveStat: {
-    alignItems: 'center',
-  },
-
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-  },
-
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 22,
-  },
-
-  recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: BROWN,
-    marginRight: 7,
-  },
-
-  recordingText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  recordingBar: {
-    width: '100%',
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: LIGHT_GRAY,
-    overflow: 'hidden',
-    marginTop: 16,
-  },
-
-  recordingBarFill: {
-    height: '100%',
-    backgroundColor: PINK,
-    borderRadius: 3,
-  },
-
-  processingIndicator: {
-    marginTop: 28,
-  },
-
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-
-  resultIconPassed: {
-    backgroundColor: PINK,
-  },
-
-  resultIconFailed: {
-    backgroundColor: LIGHT_GRAY,
-  },
-
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: BROWN,
-    textAlign: 'center',
-  },
-
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
-    marginTop: 3,
-    marginBottom: 22,
-  },
-
-  scoreCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: BROWN,
-  },
-
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: BROWN,
-    marginVertical: 3,
-  },
-
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-  },
-
-  resultCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: BROWN,
-    marginBottom: 10,
-  },
-
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-
-  resultRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    flex: 1,
-  },
-
-  resultRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-    marginLeft: 12,
-  },
-
-  resultPattern: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-
-  resultPatternNote: {
-    minWidth: 52,
-    backgroundColor: PINK,
-    borderRadius: 13,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-
-  resultPatternNumber: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: MUTED,
-  },
-
-  resultPatternName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
-    marginTop: 2,
-  },
-
-  doneButton: {
-    width: '100%',
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: BROWN,
-  },
-});

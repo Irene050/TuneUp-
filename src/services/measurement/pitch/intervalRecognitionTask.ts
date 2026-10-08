@@ -31,28 +31,8 @@ export interface IntervalRecognitionMeasurement {
 }
 
 const FRAME_MS = 30;
-
-/*
- * A pitch change must be at least approximately this
- * many semitones before it is considered a new note.
- *
- * This prevents normal pitch wobble from becoming
- * additional repetitions.
- */
 const NOTE_CHANGE_SEMITONES = 1.5;
-
-/*
- * A note must contain this many consecutive pitch
- * frames before it is considered stable enough to
- * become a detected note.
- */
 const MIN_NOTE_FRAMES = 5;
-
-/*
- * Small gaps caused by pitch-detector dropouts are
- * tolerated without ending the current note.
- */
-
 const MIN_PITCH_HZ = 80;
 const MAX_PITCH_HZ = 1000;
 

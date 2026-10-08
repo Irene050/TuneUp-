@@ -1,5 +1,5 @@
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
-import { calcRMSVariance } from '@/utils/dsp/rms';
+import { calcRMSConsistency } from '@/utils/dsp/rms';
 
 export interface SustainedSSSSMeasurement {
   actualDurationSec: number;
@@ -30,7 +30,7 @@ export function measureSustainedSSSS(
 
   return {
     actualDurationSec: durationSeconds,
-    consistencyPct: calcRMSVariance(ssssSegment, 50, sampleRate),
+    consistencyPct: calcRMSConsistency(ssssSegment, 50, sampleRate),
     detected: true,
   };
 }

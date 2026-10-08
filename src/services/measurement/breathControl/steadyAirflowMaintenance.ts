@@ -1,5 +1,5 @@
-import { calcAirflowStability } from '@/utils/dsp/airflow';
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
+import { calcRMSConsistency } from '@/utils/dsp/rms';
 
 export interface SteadyAirflowMeasurement {
   stabilityPct: number;
@@ -21,7 +21,7 @@ export function measureSteadyAirflow(
   const segment = samples.subarray(onsetIndex, offsetIndex);
 
   return {
-    stabilityPct: calcAirflowStability(segment, 50, sampleRate),
+    stabilityPct: calcRMSConsistency(segment, 50, sampleRate),
     durationSec: durationSeconds,
     detected: true,
   };

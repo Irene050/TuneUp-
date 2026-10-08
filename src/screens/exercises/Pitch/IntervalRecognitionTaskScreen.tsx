@@ -43,6 +43,8 @@ import {
 
 import {
   createMusicalNote,
+  getRandomIntervalNotes,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import {
@@ -165,6 +167,7 @@ function getRecordingDurationSec(
 
 function generateInterval(
   tier: Tier,
+  vocalRange: VocalRange | null,
 ): GeneratedInterval {
   const availableIntervals =
     tier === 'advanced'
@@ -182,36 +185,16 @@ function generateInterval(
       )
     ];
 
-  const minRoot =
-    interval.semitones >= 12
-      ? 48
-      : 55;
-
-  const maxRoot =
-    interval.semitones >= 12
-      ? 60
-      : 67 - interval.semitones;
-
-  const rootMidi =
-    minRoot +
-    Math.floor(
-      Math.random() *
-        (maxRoot - minRoot + 1),
+  const [rootNote, targetNote] =
+    getRandomIntervalNotes(
+      tier,
+      interval.semitones,
+      vocalRange,
     );
-
-  const targetMidi =
-    rootMidi + interval.semitones;
-
-  const rootNote =
-    createMusicalNote(rootMidi);
-
-  const targetNote =
-    createMusicalNote(targetMidi);
 
   return {
     rootNote,
     targetNote,
-
     interval: {
       ...interval,
       ratio:
@@ -290,6 +273,9 @@ export default function IntervalRecognitionTaskScreen({
     useState<IntervalRecognitionScoreResult | null>(
       null,
     );
+
+  const [vocalRange, setVocalRange] =
+    useState<VocalRange | null>(null);
 
   const [
     errorMessage,
@@ -434,6 +420,13 @@ export default function IntervalRecognitionTaskScreen({
                 record.scorePct,
             );
 
+        const assessment =
+          await getLatestAssessment();
+
+        setVocalRange(
+          assessment?.vocalRange ?? null,
+        );
+
         let recentScores =
           currentTierScores;
 
@@ -445,9 +438,6 @@ export default function IntervalRecognitionTaskScreen({
         if (
           recentScores.length === 0
         ) {
-          const assessment =
-            await getLatestAssessment();
-
           const pitchScore =
             assessment?.scores.find(
               score =>
@@ -1053,6 +1043,7 @@ export default function IntervalRecognitionTaskScreen({
       const generated =
         generateInterval(
           currentTier,
+          vocalRange,
         );
 
       currentExerciseRef.current =
@@ -1138,6 +1129,7 @@ export default function IntervalRecognitionTaskScreen({
       currentTier,
       isLoadingAdaptiveParams,
       playIntervalAndRecord,
+      vocalRange,
     ]);
 
   // ==========================================================

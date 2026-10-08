@@ -1,11 +1,11 @@
-import {
-  VowelBand
-} from '@/utils/dsp/spectral';
+import { VowelBand } from '@/utils/dsp/spectral';
 
 export type Tier =
   | 'beginner'
   | 'intermediate'
   | 'advanced';
+
+// vowel consistency params
 
 export interface VowelConsistencyParams {
   vowel: VowelBand;
@@ -44,15 +44,13 @@ export const VOWEL_CONSISTENCY_PARAMS: Record<
   },
 };
 
-// ============================================================
-// WAVEFORM SMOOTHNESS
-// ============================================================
+// waveform smoothness params
+// must have what note to sing
 
 export interface WaveformSmoothnessParams {
   durationSec: number;
   repetitions: number;
   smoothnessThreshold: number;
-  amplitudeVariancePct: number;
 }
 
 export const WAVEFORM_SMOOTHNESS_PARAMS: Record<
@@ -61,29 +59,25 @@ export const WAVEFORM_SMOOTHNESS_PARAMS: Record<
 > = {
   beginner: {
     durationSec: 8,
-    repetitions: 2,
+    repetitions: 3,
     smoothnessThreshold: 65,
-    amplitudeVariancePct: 10,
   },
 
   intermediate: {
     durationSec: 6,
     repetitions: 4,
     smoothnessThreshold: 80,
-    amplitudeVariancePct: 8,
   },
 
   advanced: {
     durationSec: 4,
-    repetitions: 6,
+    repetitions: 5,
     smoothnessThreshold: 95,
-    amplitudeVariancePct: 5,
   },
 };
 
-// ============================================================
-// FREQUENCY ZONE STABILITY
-// ============================================================
+// frequency zone stability params
+// must have what note to sing
 
 export interface FrequencyZoneStabilityParams {
   durationSec: number;
@@ -114,9 +108,8 @@ export const FREQUENCY_ZONE_STABILITY_PARAMS: Record<
   },
 };
 
-// ============================================================
-// TONE CONSISTENCY
-// ============================================================
+// tone consistency params
+// must have what note to sing
 
 export interface ToneConsistencyParams {
   intervalSec: number;
@@ -151,9 +144,8 @@ export const TONE_CONSISTENCY_PARAMS: Record<
   },
 };
 
-// ============================================================
-// STEADY TONE HOLDING
-// ============================================================
+// steady tone holding params
+// must have what note to sing
 
 export interface SteadyToneHoldingParams {
   durationSec: number;
