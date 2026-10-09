@@ -24,6 +24,7 @@ export default function RegisterScreen() {
   const [birthdate, setBirthdate] = useState('');
   const [gender, setGender] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Birthdate
@@ -31,11 +32,15 @@ export default function RegisterScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   // Gender dropdown
-  const [showGenderDropdown, setShowGenderDropdown] =
-    useState(false);
+  const [showGenderDropdown, setShowGenderDropdown] = useState(false);
 
-  // Password eye
+  // Password visibility
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Check whether the password fields match
+  const passwordsMismatch =
+    confirmPassword.length > 0 && password !== confirmPassword;
 
   function handleDateChange(event: any, date?: Date) {
     if (Platform.OS === 'android') {
@@ -54,17 +59,28 @@ export default function RegisterScreen() {
   }
 
   async function handleRegister() {
+    // Validate required fields
     if (
       !firstName.trim() ||
       !lastName.trim() ||
       !email.trim() ||
       !birthdate.trim() ||
       !gender.trim() ||
-      !password
+      !password ||
+      !confirmPassword
     ) {
       Alert.alert(
         'Missing information',
         'Please complete all fields.',
+      );
+      return;
+    }
+
+    // Validate password confirmation
+    if (password !== confirmPassword) {
+      Alert.alert(
+        'Passwords do not match',
+        'Please make sure both password fields contain the same password.',
       );
       return;
     }
@@ -74,7 +90,7 @@ export default function RegisterScreen() {
 
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
-      await registerUser(fullName, email, password, {
+      await registerUser(fullName, email.trim(), password, {
         birthdate: birthdate.trim(),
         gender: gender.trim(),
       });
@@ -94,18 +110,15 @@ export default function RegisterScreen() {
 
       switch (error?.code) {
         case 'auth/email-already-in-use':
-          message =
-            'An account already exists with this email.';
+          message = 'An account already exists with this email.';
           break;
 
         case 'auth/invalid-email':
-          message =
-            'Please enter a valid email address.';
+          message = 'Please enter a valid email address.';
           break;
 
         case 'auth/weak-password':
-          message =
-            'Password must be at least 6 characters.';
+          message = 'Password must be at least 6 characters.';
           break;
 
         case 'auth/network-request-failed':
@@ -128,18 +141,13 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={
-        Platform.OS === 'ios'
-          ? 'padding'
-          : undefined
-      }
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Register</Text>
@@ -154,13 +162,10 @@ export default function RegisterScreen() {
           />
 
           <View style={styles.form}>
-
             {/* First Name / Last Name */}
             <View style={styles.row}>
               <View style={styles.halfInput}>
-                <Text style={styles.label}>
-                  First Name
-                </Text>
+                <Text style={styles.label}>First Name</Text>
 
                 <TextInput
                   style={styles.input}
@@ -172,9 +177,7 @@ export default function RegisterScreen() {
               </View>
 
               <View style={styles.halfInput}>
-                <Text style={styles.label}>
-                  Last Name
-                </Text>
+                <Text style={styles.label}>Last Name</Text>
 
                 <TextInput
                   style={styles.input}
@@ -187,9 +190,7 @@ export default function RegisterScreen() {
             </View>
 
             {/* Email */}
-            <Text style={styles.label}>
-              Email Address
-            </Text>
+            <Text style={styles.label}>Email Address</Text>
 
             <TextInput
               style={styles.input}
@@ -203,12 +204,9 @@ export default function RegisterScreen() {
 
             {/* Birthdate / Gender */}
             <View style={styles.row}>
-
               {/* Birthdate */}
               <View style={styles.halfInput}>
-                <Text style={styles.label}>
-                  Birthdate
-                </Text>
+                <Text style={styles.label}>Birthdate</Text>
 
                 <Pressable
                   style={styles.input}
@@ -229,16 +227,12 @@ export default function RegisterScreen() {
 
               {/* Gender */}
               <View style={styles.halfInput}>
-                <Text style={styles.label}>
-                  Gender
-                </Text>
+                <Text style={styles.label}>Gender</Text>
 
                 <Pressable
                   style={styles.input}
                   onPress={() =>
-                    setShowGenderDropdown(
-                      (previous) => !previous,
-                    )
+                    setShowGenderDropdown((previous) => !previous)
                   }
                   disabled={loading}
                 >
@@ -253,15 +247,12 @@ export default function RegisterScreen() {
                       {gender || 'Select Gender'}
                     </Text>
 
-                    <Text style={styles.dropdownArrow}>
-                      ▾
-                    </Text>
+                    <Text style={styles.dropdownArrow}>▾</Text>
                   </View>
                 </Pressable>
 
                 {showGenderDropdown && (
                   <View style={styles.dropdown}>
-
                     <Pressable
                       style={styles.dropdownOption}
                       onPress={() => {
@@ -269,9 +260,7 @@ export default function RegisterScreen() {
                         setShowGenderDropdown(false);
                       }}
                     >
-                      <Text style={styles.dropdownText}>
-                        Male
-                      </Text>
+                      <Text style={styles.dropdownText}>Male</Text>
                     </Pressable>
 
                     <Pressable
@@ -281,9 +270,7 @@ export default function RegisterScreen() {
                         setShowGenderDropdown(false);
                       }}
                     >
-                      <Text style={styles.dropdownText}>
-                        Female
-                      </Text>
+                      <Text style={styles.dropdownText}>Female</Text>
                     </Pressable>
 
                     <Pressable
@@ -297,16 +284,13 @@ export default function RegisterScreen() {
                         Non-binary
                       </Text>
                     </Pressable>
-
                   </View>
                 )}
               </View>
             </View>
 
             {/* Password */}
-            <Text style={styles.label}>
-              Password
-            </Text>
+            <Text style={styles.label}>Password</Text>
 
             <View style={styles.passwordContainer}>
               <TextInput
@@ -314,23 +298,74 @@ export default function RegisterScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
                 editable={!loading}
               />
 
               <Pressable
                 style={styles.eyeButton}
                 onPress={() =>
-                  setShowPassword(
-                    (previous) => !previous,
-                  )
+                  setShowPassword((previous) => !previous)
                 }
                 disabled={loading}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? 'Hide password' : 'Show password'
+                }
               >
                 <Text style={styles.eyeText}>
                   {showPassword ? '◉' : '◌'}
                 </Text>
               </Pressable>
             </View>
+
+            {/* Confirm Password */}
+            <Text style={styles.label}>Confirm Password</Text>
+
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={[
+                  styles.passwordInput,
+                  passwordsMismatch && styles.passwordInputError,
+                ]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!loading}
+                returnKeyType="done"
+                onSubmitEditing={handleRegister}
+              />
+
+              <Pressable
+                style={styles.eyeButton}
+                onPress={() =>
+                  setShowConfirmPassword(
+                    (previous) => !previous,
+                  )
+                }
+                disabled={loading}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showConfirmPassword
+                    ? 'Hide confirm password'
+                    : 'Show confirm password'
+                }
+              >
+                <Text style={styles.eyeText}>
+                  {showConfirmPassword ? '◉' : '◌'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Password mismatch message */}
+            {passwordsMismatch && (
+              <Text style={styles.passwordErrorText}>
+                Passwords do not match.
+              </Text>
+            )}
 
             {/* Create Account */}
             <Pressable
@@ -349,7 +384,6 @@ export default function RegisterScreen() {
                 </Text>
               )}
             </Pressable>
-
           </View>
         </View>
       </ScrollView>
@@ -360,9 +394,7 @@ export default function RegisterScreen() {
           value={selectedDate}
           mode="date"
           display={
-            Platform.OS === 'ios'
-              ? 'spinner'
-              : 'calendar'
+            Platform.OS === 'ios' ? 'spinner' : 'calendar'
           }
           maximumDate={new Date()}
           onChange={handleDateChange}
@@ -456,7 +488,7 @@ const styles = StyleSheet.create({
     color: '#A9A0A0',
   },
 
-  /* Gender Dropdown */
+  // Gender Dropdown
   genderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -494,7 +526,7 @@ const styles = StyleSheet.create({
     color: '#3F2B2A',
   },
 
-  /* Password */
+  // Password Inputs
   passwordContainer: {
     position: 'relative',
     width: '100%',
@@ -509,6 +541,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#3F2B2A',
     marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+
+  passwordInputError: {
+    borderColor: '#D93025',
+  },
+
+  passwordErrorText: {
+    color: '#D93025',
+    fontSize: 11,
+    marginTop: -8,
+    marginBottom: 10,
   },
 
   eyeButton: {
