@@ -21,11 +21,13 @@ import {
   ASSESSMENT_DURATION,
   AssessmentAudioBundle,
   AssessmentResult,
+  checkRecordingLevel,
   computeTargetNotes,
   detectVocalRangeFromHums,
+  MIN_NOTE_DURATION_SEC,
   runAssessment,
   TargetNotes,
-  VocalRange,
+  VocalRange
 } from '@/services/assessment/assessmentModule';
 
 import { saveAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,6 +36,8 @@ import {
   NoteToPlay,
   playNoteSequence,
 } from '@/utils/music/notePlayer';
+
+import { calcRMS } from '@/utils/dsp/rms';
 
 import {
   LiveAudioFrame,
@@ -52,12 +56,6 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 
 // ============================================================
-// AUDIO VALIDATION
-// ============================================================
-
-const MIN_RECORDING_RMS = 0.001;
-
-// ============================================================
 // TYPES
 // ============================================================
 
@@ -65,6 +63,7 @@ type AssessmentStep =
   | 'intro'
   | 'lowHum'
   | 'highHum'
+  | 'breathControl'
   | 'pitch'
   | 'tone'
   | 'volume'
@@ -84,6 +83,7 @@ type RecordedSection = {
 const STEP_ORDER: AssessmentStep[] = [
   'lowHum',
   'highHum',
+  'breathControl',
   'pitch',
   'tone',
   'volume',
@@ -110,6 +110,9 @@ function getStepTitle(
 
     case 'highHum':
       return 'Highest Comfortable Note';
+    
+    case 'breathControl':
+      return 'Breath Control';
 
     case 'pitch':
       return 'Pitch';
@@ -138,6 +141,9 @@ function getStepInstruction(
     case 'highHum':
       return 'Sing the highest note that feels comfortable. Do not strain your voice. Hold the same note steadily for the recording.';
 
+    case 'breathControl':
+      return 'Take a comfortable breath, then release the air steadily through an “sss” sound. Keep the airflow as even as possible throughout the recording. Do not force your breath.';
+
     case 'pitch':
       return 'Listen to the note, then sing it back and try to hold the pitch steady.';
 
@@ -159,6 +165,9 @@ function getStepDuration(
   step: AssessmentStep
 ): number {
   switch (step) {
+    case 'breathControl':
+      return ASSESSMENT_DURATION.breathControl;
+
     case 'pitch':
       return ASSESSMENT_DURATION.pitch;
 
@@ -214,6 +223,21 @@ function getStepReferenceNotes(
   }
 }
 
+function isRecordingUsable(
+  step: AssessmentStep,
+  samples: Float32Array
+): boolean {
+  if (step === 'breathControl') {
+    if (samples.length === 0) return false;
+
+    const rms = calcRMS(samples);
+
+    return Number.isFinite(rms) && rms >= 0.0005;
+  }
+
+  return checkRecordingLevel(samples).usable;
+}
+
 // ============================================================
 // FREQUENCY → NOTE
 // ============================================================
@@ -259,110 +283,6 @@ function frequencyToNoteName(
     Math.floor(midi / 12) - 1;
 
   return `${noteNames[noteIndex]}${octave}`;
-}
-
-// ============================================================
-// AUDIO VALIDATION
-// ============================================================
-
-function calculateRMS(
-  samples: Float32Array
-): number {
-  if (
-    samples.length === 0
-  ) {
-    return 0;
-  }
-
-  let sum = 0;
-  let count = 0;
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    const value =
-      samples[i];
-
-    if (
-      !Number.isFinite(value)
-    ) {
-      continue;
-    }
-
-    sum +=
-      value * value;
-
-    count++;
-  }
-
-  if (
-    count === 0
-  ) {
-    return 0;
-  }
-
-  return Math.sqrt(
-    sum / count
-  );
-}
-
-function calculatePeak(
-  samples: Float32Array
-): number {
-  let peak = 0;
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    const value =
-      samples[i];
-
-    if (
-      !Number.isFinite(value)
-    ) {
-      continue;
-    }
-
-    peak = Math.max(
-      peak,
-      Math.abs(value)
-    );
-  }
-
-  return peak;
-}
-
-function hasUsableAudio(
-  samples: Float32Array
-): boolean {
-  if (
-    samples.length === 0
-  ) {
-    return false;
-  }
-
-  const rms =
-    calculateRMS(
-      samples
-    );
-
-  const peak =
-    calculatePeak(
-      samples
-    );
-
-  return (
-    Number.isFinite(rms) &&
-    Number.isFinite(peak) &&
-    rms >=
-      MIN_RECORDING_RMS &&
-    peak >=
-      MIN_RECORDING_RMS * 2
-  );
 }
 
 // ============================================================
@@ -596,142 +516,82 @@ export default function AssessmentScreen() {
   // AUDIO STOP
   // ==========================================================
 
-  const handleAudioStop =
-    useCallback(
-      (
-        samples: Float32Array,
-        sampleRate: number
-      ) => {
-        const recordedStep =
-          recordingStepRef.current;
+  const handleAudioStop = useCallback(
+  (samples: Float32Array, sampleRate: number) => {
+    const recordedStep = recordingStepRef.current;
 
-        recordingStepRef.current =
-          null;
+    recordingStepRef.current = null;
+    clearRecordingTimer();
+    setIsRecordingSection(false);
+    setLiveAudio(null);
+    setRemainingSeconds(0);
+    stoppingRef.current = false;
 
-        clearRecordingTimer();
+    if (!recordedStep) {
+      console.warn(
+        '⚠️ Recording stopped but no assessment step was active.'
+      );
+      return;
+    }
 
-        setIsRecordingSection(
-          false
-        );
+    const level = {
+      ...checkRecordingLevel(samples),
+      usable: isRecordingUsable(recordedStep, samples),
+    };
+    const durationSeconds =
+      sampleRate > 0 ? samples.length / sampleRate : 0;
 
-        setLiveAudio(null);
+    console.log('🎤 ASSESSMENT SECTION COMPLETE:', {
+      step: recordedStep,
+      samples: samples.length,
+      sampleRate,
+      durationSeconds,
+      rms: level.rms,
+      peak: level.peak,
+    });
 
-        setRemainingSeconds(
-          0
-        );
+    if (!level.usable) {
+      console.warn(
+        '⚠️ ASSESSMENT AUDIO REJECTED: signal too quiet.'
+      );
+      setError(
+        'We could not hear enough microphone audio. Please make sure your microphone is working and sing closer to it.'
+      );
+      setStep(recordedStep);
+      return;
+    }
 
-        stoppingRef.current =
-          false;
+    const isHumStep =
+      recordedStep === 'lowHum' || recordedStep === 'highHum';
 
-        if (
-          !recordedStep
-        ) {
-          console.warn(
-            '⚠️ Recording stopped but no assessment step was active.'
-          );
+    if (isHumStep && durationSeconds < MIN_NOTE_DURATION_SEC) {
+      console.warn(
+        '⚠️ ASSESSMENT AUDIO REJECTED: hum too short.',
+        { durationSeconds }
+      );
+      setError(
+        'That recording was too short. Hold one steady note until the timer reaches zero.'
+      );
+      setStep(recordedStep);
+      return;
+    }
 
-          return;
-        }
+    setSections(previous => ({
+      ...previous,
+      [recordedStep]: { samples, sampleRate },
+    }));
 
-        console.log(
-          '🎤 ASSESSMENT SECTION COMPLETE:',
-          {
-            step:
-              recordedStep,
+    // After highHum, the range effect below takes over.
+    if (recordedStep === 'highHum') {
+      return;
+    }
 
-            samples:
-              samples.length,
-
-            sampleRate,
-
-            durationSeconds:
-              sampleRate > 0
-                ? samples.length /
-                  sampleRate
-                : 0,
-
-            rms:
-              calculateRMS(
-                samples
-              ),
-
-            peak:
-              calculatePeak(
-                samples
-              ),
-          }
-        );
-
-        // ======================================================
-        // AUDIO VALIDATION
-        // ======================================================
-
-        if (
-          !hasUsableAudio(
-            samples
-          )
-        ) {
-          console.warn(
-            '⚠️ ASSESSMENT AUDIO REJECTED: signal too quiet.'
-          );
-
-          setError(
-            'We could not hear enough microphone audio. Please make sure your microphone is working and sing closer to it.'
-          );
-
-          setStep(
-            recordedStep
-          );
-
-          return;
-        }
-
-        // ======================================================
-        // STORE SAMPLES + REAL SAMPLE RATE
-        // ======================================================
-
-        setSections(
-          previous => ({
-            ...previous,
-
-            [recordedStep]: {
-              samples,
-              sampleRate,
-            },
-          })
-        );
-
-        // ======================================================
-        // HIGH NOTE
-        // ======================================================
-
-        /*
-         * Once highHum has finished, the useEffect below will
-         * wait for React to commit both lowHum and highHum,
-         * then calculate the range.
-         */
-        if (
-          recordedStep ===
-          'highHum'
-        ) {
-          return;
-        }
-
-        // ======================================================
-        // NEXT STEP
-        // ======================================================
-
-        setTimeout(() => {
-          moveToNextStep(
-            recordedStep
-          );
-        }, 100);
-      },
-      [
-        clearRecordingTimer,
-        moveToNextStep,
-      ]
-    );
+    setTimeout(() => {
+      moveToNextStep(recordedStep);
+    }, 100);
+  },
+  [clearRecordingTimer, moveToNextStep]
+);
 
   // ==========================================================
   // AUDIO RECORDER
@@ -754,192 +614,80 @@ export default function AssessmentScreen() {
   // DETECT VOCAL RANGE
   // ==========================================================
 
-  useEffect(() => {
-    if (
-      step !==
-      'highHum'
-    ) {
-      return;
-    }
+  const restartRangeRecordings = useCallback((message: string) => {
+  setError(message);
+  setSections(previous => {
+    const updated = { ...previous };
+    delete updated.lowHum;
+    delete updated.highHum;
+    return updated;
+  });
+  setVocalRange(null);
+  setStep('lowHum');
+}, []);
 
-    const lowRecording =
-      sections.lowHum;
+useEffect(() => {
+  if (step !== 'highHum') return;
 
-    const highRecording =
-      sections.highHum;
+  const lowRecording = sections.lowHum;
+  const highRecording = sections.highHum;
 
-    if (
-      !lowRecording ||
-      !highRecording
-    ) {
-      return;
-    }
+  if (!lowRecording || !highRecording) return;
+  if (vocalRange) return;
 
-    if (
-      vocalRange
-    ) {
-      return;
-    }
+  if (
+    !checkRecordingLevel(lowRecording.samples).usable ||
+    !checkRecordingLevel(highRecording.samples).usable
+  ) {
+    restartRangeRecordings(
+      'We could not hear enough audio to determine your vocal range. Please try both notes again.'
+    );
+    return;
+  }
 
-    if (
-      !hasUsableAudio(
-        lowRecording.samples
-      ) ||
-      !hasUsableAudio(
-        highRecording.samples
-      )
-    ) {
-      setError(
-        'We could not hear enough audio to determine your vocal range. Please try both notes again.'
-      );
+  if (lowRecording.sampleRate !== highRecording.sampleRate) {
+    console.error('❌ Assessment sample-rate mismatch:', {
+      low: lowRecording.sampleRate,
+      high: highRecording.sampleRate,
+    });
+    restartRangeRecordings(
+      'The microphone sample rate changed during the range recording. Please try the range assessment again.'
+    );
+    return;
+  }
 
-      setSections(
-        previous => {
-          const updated = {
-            ...previous,
-          };
+  try {
+    const range = detectVocalRangeFromHums(
+      lowRecording.samples,
+      highRecording.samples,
+      lowRecording.sampleRate
+    );
 
-          delete updated.lowHum;
-          delete updated.highHum;
+    console.log('🎵 DETECTED VOCAL RANGE:', {
+      lowHz: range.lowHz,
+      highHz: range.highHz,
+      lowNote: frequencyToNoteName(range.lowHz),
+      highNote: frequencyToNoteName(range.highHz),
+    });
 
-          return updated;
-        }
-      );
-
-      setVocalRange(null);
-      setStep(
-        'lowHum'
-      );
-
-      return;
-    }
-
-    /*
-     * The low and high recordings should normally use the same
-     * recorder sample rate.
-     *
-     * If they differ, the current assessment bundle cannot safely
-     * analyze both recordings under one sample rate, so ask the
-     * user to retry rather than silently producing an incorrect
-     * vocal range.
-     */
-    if (
-      lowRecording.sampleRate !==
-      highRecording.sampleRate
-    ) {
-      console.error(
-        '❌ Assessment sample-rate mismatch:',
-        {
-          low:
-            lowRecording.sampleRate,
-
-          high:
-            highRecording.sampleRate,
-        }
-      );
-
-      setError(
-        'The microphone sample rate changed during the range recording. Please try the range assessment again.'
-      );
-
-      setSections(
-        previous => {
-          const updated = {
-            ...previous,
-          };
-
-          delete updated.lowHum;
-          delete updated.highHum;
-
-          return updated;
-        }
-      );
-
-      setVocalRange(null);
-      setStep(
-        'lowHum'
-      );
-
-      return;
-    }
-
-    try {
-      const range =
-        detectVocalRangeFromHums(
-          lowRecording.samples,
-          highRecording.samples,
-          lowRecording.sampleRate
-        );
-
-      console.log(
-        '🎵 DETECTED VOCAL RANGE:',
-        {
-          lowHz:
-            range.lowHz,
-
-          highHz:
-            range.highHz,
-
-          lowNote:
-            frequencyToNoteName(
-              range.lowHz
-            ),
-
-          highNote:
-            frequencyToNoteName(
-              range.highHz
-            ),
-        }
-      );
-
-      setVocalRange(
-        range
-      );
-
-      setError(null);
-
-      setStep(
-        'pitch'
-      );
-    } catch (err) {
-      console.error(
-        'Vocal range detection error:',
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'We could not detect your vocal range. Please try humming both notes again.'
-      );
-
-      setSections(
-        previous => {
-          const updated = {
-            ...previous,
-          };
-
-          delete updated.lowHum;
-          delete updated.highHum;
-
-          return updated;
-        }
-      );
-
-      setVocalRange(
-        null
-      );
-
-      setStep(
-        'lowHum'
-      );
-    }
-  }, [
-    step,
-    sections.lowHum,
-    sections.highHum,
-    vocalRange,
-  ]);
+    setVocalRange(range);
+    setError(null);
+    setStep('breathControl');
+  } catch (err) {
+    console.error('Vocal range detection error:', err);
+    restartRangeRecordings(
+      err instanceof Error
+        ? err.message
+        : 'We could not detect your vocal range. Please try humming both notes again.'
+    );
+  }
+}, [
+  step,
+  sections.lowHum,
+  sections.highHum,
+  vocalRange,
+  restartRangeRecordings,
+]);
 
   // ==========================================================
   // START RECORDING
@@ -1171,6 +919,10 @@ export default function AssessmentScreen() {
           44100;
 
         return {
+          breathSamples:
+            sections.breathControl?.samples ?? 
+            empty,
+
           pitchSamples:
             sections.pitch?.samples ??
             empty,
@@ -1214,6 +966,7 @@ export default function AssessmentScreen() {
           AssessmentStep[] = [
             'lowHum',
             'highHum',
+            'breathControl',
             'pitch',
             'tone',
             'volume',
@@ -1242,9 +995,10 @@ export default function AssessmentScreen() {
           }
 
           if (
-            !hasUsableAudio(
-              recording.samples
-            )
+            !isRecordingUsable(
+            requiredStep,
+            recording.samples
+          )
           ) {
             throw new Error(
               `The ${getStepTitle(
@@ -1289,6 +1043,9 @@ export default function AssessmentScreen() {
         console.log(
           '🎯 PROCESSING ASSESSMENT AUDIO:',
           {
+            breathControl:
+              audio.breathSamples.length,
+
             pitch:
               audio.pitchSamples.length,
 
@@ -1322,7 +1079,7 @@ export default function AssessmentScreen() {
 
         const assessmentResult =
           runAssessment(
-            audio
+            audio, vocalRange ?? undefined
           );
 
         setResult(
@@ -1381,6 +1138,7 @@ export default function AssessmentScreen() {
       }
     }, [
       sections,
+      vocalRange,
       createAssessmentBundle,
     ]);
 
@@ -1798,6 +1556,14 @@ export default function AssessmentScreen() {
           >
             • Vocal Range
           </Text>
+          
+          <Text
+            style={
+              styles.infoItem
+            }
+          >
+            • Breath Control
+          </Text>
 
           <Text
             style={
@@ -1829,14 +1595,6 @@ export default function AssessmentScreen() {
             }
           >
             • Agility
-          </Text>
-
-          <Text
-            style={
-              styles.infoItem
-            }
-          >
-            • Breath Control
           </Text>
         </View>
 

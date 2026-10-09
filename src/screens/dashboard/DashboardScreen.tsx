@@ -1,7 +1,7 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ComponentProps } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -57,9 +57,11 @@ function frequencyToNoteName(frequency: number): string {
 
 export default function DashboardScreen() {
   const { userName } = useAuth();
-
   const {
     summaries: progressSummaries,
+    exerciseRecords,
+    totalExercisesCompleted,
+    practiceDays,
     loading: progressLoading,
   } = useProgress();
 
@@ -67,15 +69,6 @@ export default function DashboardScreen() {
     useState<SavedAssessmentResult | null>(null);
 
   const [assessmentLoading, setAssessmentLoading] = useState(true);
-
-  const totalExercisesCompleted = progressSummaries.reduce(
-    (total, summary) => total + summary.exercisesCompleted,
-    0,
-  );
-
-  const activeComponentCount = progressSummaries.filter(
-    summary => summary.exercisesCompleted > 0,
-  ).length;
 
   const displayName = userName.trim() || 'Singer';
 
@@ -430,33 +423,58 @@ export default function DashboardScreen() {
 
         {/* MY PROGRESS */}
         <View style={styles.progressHeader}>
-          <Text style={styles.sectionTitle}>
-            My Progress
-          </Text>
-        </View>
-
-        <View style={styles.progressCard}>
           <View>
-            <Text style={styles.progressTitle}>
-              Keep practicing!
-            </Text>
-
-            <Text style={styles.progressSubtitle}>
-              Complete exercises to improve your
-              skills.
+            <Text style={styles.sectionTitle}>My Progress</Text>
+            <Text style={styles.progressSectionSubtitle}>
+              Every practice session counts!
             </Text>
           </View>
 
+          <Pressable
+            style={styles.viewProgressButton}
+            onPress={() => router.push('/progress')}
+            accessibilityRole="button"
+            accessibilityLabel="View all progress"
+          >
+            <Text style={styles.viewProgressText}>View all</Text>
+            <Ionicons name="chevron-forward" size={15} color={BROWN} />
+          </Pressable>
+        </View>
+
+        <View style={styles.progressCard}>
+          {/* SUMMARY */}
+          <View style={styles.progressIntro}>
+            <View style={styles.progressIconCircle}>
+              <Ionicons name="trending-up" size={23} color={BROWN} />
+            </View>
+
+            <View style={styles.progressIntroText}>
+              <Text style={styles.progressTitle}>
+                {progressLoading
+                  ? 'Loading your progress...'
+                  : totalExercisesCompleted === 0
+                    ? 'Your journey starts here'
+                    : 'Look how far you’ve come!'}
+              </Text>
+
+              <Text style={styles.progressSubtitle}>
+                {progressLoading
+                  ? 'Getting your latest practice records.'
+                  : totalExercisesCompleted === 0
+                    ? 'Complete your first exercise to start tracking your improvement.'
+                    : 'Keep practicing to strengthen your voice.'}
+              </Text>
+            </View>
+          </View>
+
+          {/* STATISTICS */}
           <View style={styles.progressSummaryRow}>
             <View style={styles.progressSummaryItem}>
               <Text style={styles.progressSummaryValue}>
-                {progressLoading
-                  ? '...'
-                  : totalExercisesCompleted}
+                {progressLoading ? '—' : totalExercisesCompleted}
               </Text>
-
               <Text style={styles.progressSummaryLabel}>
-                exercises completed
+                Total exercises
               </Text>
             </View>
 
@@ -464,16 +482,103 @@ export default function DashboardScreen() {
 
             <View style={styles.progressSummaryItem}>
               <Text style={styles.progressSummaryValue}>
-                {progressLoading
-                  ? '...'
-                  : activeComponentCount}
+                {progressLoading ? '—' : practiceDays}
               </Text>
-
               <Text style={styles.progressSummaryLabel}>
-                components active
+                Practice days
               </Text>
             </View>
           </View>
+
+          {/* COMPONENT PROGRESS */}
+          <View style={styles.progressComponents}>
+            <Text style={styles.progressComponentsTitle}>
+              Your vocal components
+            </Text>
+            {[
+              {
+                id: 'breathControl',
+                name: 'Breath Control',
+                icon: 'leaf-outline',
+              },
+              {
+                id: 'pitch',
+                name: 'Pitch',
+                icon: 'musical-note-outline',
+              },
+              {
+                id: 'tone',
+                name: 'Tone',
+                icon: 'radio-outline',
+              },
+              {
+                id: 'volume',
+                name: 'Volume',
+                icon: 'volume-high-outline',
+              },
+              {
+                id: 'agility',
+                name: 'Agility',
+                icon: 'flash-outline',
+              },
+            ].map((component) => {
+              const summary = progressSummaries.find(
+                (item) => item.componentId === component.id
+              );
+
+              const completed = summary?.exercisesCompleted ?? 0;
+
+              const percentage = Math.round(
+                Math.max(
+                  0,
+                  Math.min(100, summary?.averageRecentScorePct ?? 0)
+                )
+              );
+
+              return (
+                <View
+                  key={component.id}
+                  style={styles.dashboardComponent}
+                >
+                  <View style={styles.dashboardComponentTop}>
+                    <View style={styles.dashboardComponentNameRow}>
+                      <Ionicons
+                        name={
+                          component.icon as ComponentProps<
+                            typeof Ionicons
+                          >['name']
+                        }
+                        size={17}
+                        color={BROWN}
+                      />
+
+                      <Text style={styles.dashboardComponentName}>
+                        {component.name}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.dashboardComponentCount}>
+                      {progressLoading
+                        ? '—'
+                        : `${completed} exercises · ${percentage}%`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* ACTION */}
+          <Pressable
+            style={styles.progressAction}
+            onPress={() => router.push('/progress')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.progressActionText}>
+              Explore my progress
+            </Text>
+            <Ionicons name="arrow-forward" size={17} color={WHITE} />
+          </Pressable>
         </View>
       </ScrollView>
     </View>
@@ -737,63 +842,167 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  progressHeader: {
+  progressSectionSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    marginTop: 3,
+  },
+
+  viewProgressButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
+    gap: 3,
+    paddingVertical: 8,
+    paddingLeft: 8,
+  },
+
+  viewProgressText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
   },
 
   progressCard: {
     backgroundColor: LIGHT_PINK,
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 18,
     borderWidth: 1,
     borderColor: '#F2DDE5',
+    marginBottom: 20,
   },
 
-  progressSummaryRow: {
+  progressIntro: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 18,
   },
 
-  progressSummaryItem: {
-    flex: 1,
+  progressIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: PINK,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
 
-  progressSummaryValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: BROWN,
-  },
-
-  progressSummaryLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-
-  progressSummaryDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: '#F2DDE5',
+  progressIntroText: {
+    flex: 1,
   },
 
   progressTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 18,
+    fontSize: 17,
     color: BROWN,
   },
 
   progressSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
+    lineHeight: 16,
     color: MUTED,
     marginTop: 3,
+  },
+
+  progressSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingVertical: 16,
+    backgroundColor: WHITE,
+    borderRadius: 15,
+  },
+
+  progressSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 5,
+  },
+
+  progressSummaryValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+  },
+
+  progressSummaryLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 3,
+  },
+
+  progressSummaryDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: '#F2DDE5',
+  },
+
+  progressComponents: {
+    marginTop: 20,
+  },
+
+  progressComponentsTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+    marginBottom: 15,
+  },
+
+  dashboardComponent: {
+    marginBottom: 15,
+  },
+
+  dashboardComponentTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+
+  dashboardComponentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+
+  dashboardComponentName: {
+    fontFamily: 'FredokaMedium',
+    fontSize: 12,
+    color: BROWN,
+  },
+
+  dashboardComponentCount: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+  },
+
+  progressAction: {
+    backgroundColor: BROWN,
+    minHeight: 45,
+    borderRadius: 23,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+
+  progressActionText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: WHITE,
+  },
+
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
 });

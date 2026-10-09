@@ -1,7 +1,9 @@
+
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+
 import {
   Pressable,
   ScrollView,
@@ -11,12 +13,31 @@ import {
   View,
 } from 'react-native';
 
+import { auth } from '@/services/firebase/config';
+
+import {
+  fetchAllProgress,
+} from '@/services/progress/progressRepo';
+
+import type {
+  ComponentId,
+  ComponentProgressSummary,
+} from '@/services/progress/progressModule';
+
+// =========================================================
+// COLORS
+// =========================================================
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const BORDER = '#D8C9C2';
 const MUTED = '#A58F84';
+
+// =========================================================
+// CATEGORIES
+// =========================================================
 
 const categories = [
   'All',
@@ -27,6 +48,18 @@ const categories = [
   'Agility',
 ];
 
+const componentIds: Record<string, ComponentId> = {
+  'Breath Control': 'breathControl',
+  Pitch: 'pitch',
+  Tone: 'tone',
+  Volume: 'volume',
+  Agility: 'agility',
+};
+
+// =========================================================
+// EXERCISE DATA
+// =========================================================
+
 type Exercise = {
   name: string;
   category: string;
@@ -34,9 +67,7 @@ type Exercise = {
 };
 
 const exercises: Exercise[] = [
-  // =========================================================
   // BREATH CONTROL
-  // =========================================================
   {
     name: 'Sustained Exhale',
     category: 'Breath Control',
@@ -63,9 +94,7 @@ const exercises: Exercise[] = [
     templateId: 'controlledBreathRelease',
   },
 
-  // =========================================================
   // PITCH
-  // =========================================================
   {
     name: 'Note Matching Exercise',
     category: 'Pitch',
@@ -92,9 +121,7 @@ const exercises: Exercise[] = [
     templateId: 'melodicPatternMatching',
   },
 
-  // =========================================================
   // TONE
-  // =========================================================
   {
     name: 'Vowel Consistency Exercise',
     category: 'Tone',
@@ -105,11 +132,11 @@ const exercises: Exercise[] = [
     category: 'Tone',
     templateId: 'waveformSmoothnessDrill',
   },
-{
-  name: 'Frequency Zone Stability',
-  category: 'Tone',
-  templateId: 'frequencyZoneStability',
-},
+  {
+    name: 'Frequency Zone Stability',
+    category: 'Tone',
+    templateId: 'frequencyZoneStability',
+  },
   {
     name: 'Tone Consistency Exercise',
     category: 'Tone',
@@ -121,9 +148,7 @@ const exercises: Exercise[] = [
     templateId: 'steadyToneHolding',
   },
 
-  // =========================================================
   // VOLUME
-  // =========================================================
   {
     name: 'Dynamic Range Exercise',
     category: 'Volume',
@@ -145,9 +170,7 @@ const exercises: Exercise[] = [
     category: 'Volume',
   },
 
-  // =========================================================
   // AGILITY
-  // =========================================================
   {
     name: 'Rapid Note-Transition Exercise',
     category: 'Agility',
@@ -175,28 +198,39 @@ const exercises: Exercise[] = [
   },
 ];
 
-const recommendedComponents = [
-  {
-    name: 'Breath Control',
-    route: '/exercises/breath-control',
-  },
-  {
-    name: 'Pitch',
-    route: '/exercises/pitch',
-  },
-  {
-    name: 'Tone',
-    route: '/exercises/tone',
-  },
-  {
-    name: 'Volume',
-    route: '/exercises/volume',
-  },
-  {
-    name: 'Agility',
-    route: '/exercises/agility',
-  },
-];
+// =========================================================
+// DEFAULT RECOMMENDATIONS
+// =========================================================
+
+const fallbackRecommendations: Exercise[] = [
+  exercises[0],
+  exercises[5],
+  exercises[10],
+  exercises[15],
+  exercises[20],
+].filter((exercise): exercise is Exercise => Boolean(exercise));
+
+// =========================================================
+// HELPERS
+// =========================================================
+
+function clampPercentage(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.round(Math.max(0, Math.min(100, value)));
+}
+
+function getExerciseDifficulty(
+  exercise: Exercise,
+): string {
+  return 'Beginner';
+}
+
+// =========================================================
+// SCREEN
+// =========================================================
 
 export default function ExercisesScreen() {
   const [selectedCategory, setSelectedCategory] =
@@ -208,9 +242,66 @@ export default function ExercisesScreen() {
   const [search, setSearch] =
     useState('');
 
-  // =========================================================
-  // FILTER
-  // =========================================================
+  const [progressSummaries, setProgressSummaries] =
+    useState<ComponentProgressSummary[]>([]);
+
+  const [recommendationsLoading, setRecommendationsLoading] =
+    useState(true);
+
+  // =======================================================
+  // LOAD PROGRESS WHEN SCREEN GAINS FOCUS
+  // =======================================================
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      async function loadRecommendations() {
+        setRecommendationsLoading(true);
+
+        try {
+          const user = auth.currentUser;
+
+          if (!user) {
+            if (active) {
+              setProgressSummaries([]);
+            }
+
+            return;
+          }
+
+          const summaries = await fetchAllProgress(user.uid);
+
+          if (active) {
+            setProgressSummaries(summaries);
+          }
+        } catch (error) {
+          console.error(
+            'Failed to load exercise recommendations:',
+            error,
+          );
+
+          if (active) {
+            setProgressSummaries([]);
+          }
+        } finally {
+          if (active) {
+            setRecommendationsLoading(false);
+          }
+        }
+      }
+
+      void loadRecommendations();
+
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  // =======================================================
+  // FILTER EXERCISES
+  // =======================================================
 
   const filteredExercises = useMemo(() => {
     return exercises.filter((exercise) => {
@@ -223,160 +314,190 @@ export default function ExercisesScreen() {
           .toLowerCase()
           .includes(search.toLowerCase());
 
-      return (
-        matchesCategory &&
-        matchesSearch
-      );
+      return matchesCategory && matchesSearch;
     });
   }, [selectedCategory, search]);
 
-  // =========================================================
-  // RECOMMENDED CARD NAVIGATION
-  // =========================================================
+  // =======================================================
+  // RECOMMEND EXERCISES
+  // =======================================================
 
-  const handleRecommendedPress = (
-    route: string,
-  ) => {
-    router.push(route as any);
-  };
+  const recommendedExercises = useMemo(() => {
+    if (
+      recommendationsLoading ||
+      progressSummaries.length === 0
+    ) {
+      return fallbackRecommendations;
+    }
 
-  // =========================================================
+    const rankedComponents = Object.entries(componentIds)
+      .map(([category, componentId]) => {
+        const summary = progressSummaries.find(
+          item => item.componentId === componentId,
+        );
+
+        return {
+          category,
+          score: clampPercentage(
+            summary?.averageRecentScorePct ?? 0,
+          ),
+          completed: summary?.exercisesCompleted ?? 0,
+        };
+      })
+      .sort((a, b) => {
+        // Prioritize components that have exercise history.
+        if (a.completed > 0 && b.completed === 0) {
+          return -1;
+        }
+
+        if (a.completed === 0 && b.completed > 0) {
+          return 1;
+        }
+
+        // Among practiced components, lowest score first.
+        if (a.completed > 0 && b.completed > 0) {
+          return a.score - b.score;
+        }
+
+        return 0;
+      });
+
+    const recommendations: Exercise[] = [];
+
+    // First, recommend one exercise from each of the
+    // lowest-scoring components.
+    for (const component of rankedComponents) {
+      const exercise = exercises.find(
+        item => item.category === component.category,
+      );
+
+      if (exercise) {
+        recommendations.push(exercise);
+      }
+
+      if (recommendations.length >= 5) {
+        break;
+      }
+    }
+
+    // Ensure there are at least three recommendations.
+    // Add exercises from the lowest-scoring categories first.
+    for (const component of rankedComponents) {
+      if (recommendations.length >= 3) {
+        break;
+      }
+
+      const remainingExercises = exercises.filter(
+        exercise =>
+          exercise.category === component.category &&
+          !recommendations.some(
+            recommended =>
+              recommended.name === exercise.name,
+          ),
+      );
+
+      for (const exercise of remainingExercises) {
+        recommendations.push(exercise);
+
+        if (recommendations.length >= 3) {
+          break;
+        }
+      }
+    }
+
+    return recommendations.slice(0, 5);
+  }, [progressSummaries, recommendationsLoading]);
+
+  // =======================================================
   // EXERCISE NAVIGATION
-  // =========================================================
+  // =======================================================
 
   const handleExercisePress = (
     exercise: Exercise,
   ) => {
-    // ---------------------------------------------------------
     // BREATH CONTROL
-    // ---------------------------------------------------------
-
     if (
       exercise.category === 'Breath Control' &&
       exercise.templateId
     ) {
-      router.push(
-        `/exercises/breath-control?templateId=${encodeURIComponent(
-          exercise.templateId,
-        )}` as any,
-      );
+      router.push({
+        pathname: '/exercises/breath-control',
+        params: {
+          templateId: exercise.templateId,
+        },
+      } as any);
 
       return;
     }
 
-    // ---------------------------------------------------------
     // PITCH
-    // ---------------------------------------------------------
-
     if (
       exercise.category === 'Pitch' &&
       exercise.templateId
     ) {
-      router.push(
-        `/exercises/pitch?templateId=${encodeURIComponent(
-          exercise.templateId,
-        )}` as any,
-      );
+      router.push({
+        pathname: '/exercises/pitch',
+        params: {
+          templateId: exercise.templateId,
+        },
+      } as any);
 
       return;
     }
 
-    // ---------------------------------------------------------
     // TONE
-    // ---------------------------------------------------------
-
     if (
       exercise.category === 'Tone' &&
       exercise.templateId
     ) {
-      router.push(
-        `/exercises/tone?templateId=${encodeURIComponent(
-          exercise.templateId,
-        )}` as any,
-      );
+      router.push({
+        pathname: '/exercises/tone',
+        params: {
+          templateId: exercise.templateId,
+        },
+      } as any);
 
       return;
     }
 
-    // ---------------------------------------------------------
     // VOLUME
-    // ---------------------------------------------------------
-
     if (exercise.category === 'Volume') {
-      if (
-        exercise.name ===
-        'Dynamic Range Exercise'
-      ) {
-        router.push(
-          '/exercises/volume?exercise=dynamic-range' as any,
-        );
-        return;
-      }
+      const volumeRoutes: Record<string, string> = {
+        'Dynamic Range Exercise': 'dynamic-range',
+        'Controlled Crescendo Drill': 'controlled-crescendo',
+        'Controlled Decrescendo Drill': 'controlled-decrescendo',
+        'Volume Band Targeting': 'volume-band-targeting',
+        'Volume Control Stability': 'volume-control-stability',
+      };
 
-      if (
-        exercise.name ===
-        'Controlled Crescendo Drill'
-      ) {
-        router.push(
-          '/exercises/volume?exercise=controlled-crescendo' as any,
-        );
-        return;
-      }
+      const exerciseParam = volumeRoutes[exercise.name];
 
-      if (
-        exercise.name ===
-        'Controlled Decrescendo Drill'
-      ) {
+      if (exerciseParam) {
         router.push(
-          '/exercises/volume?exercise=controlled-decrescendo' as any,
+          `/exercises/volume?exercise=${exerciseParam}` as any,
         );
-        return;
-      }
-
-      if (
-        exercise.name ===
-        'Volume Band Targeting'
-      ) {
-        router.push(
-          '/exercises/volume?exercise=volume-band-targeting' as any,
-        );
-        return;
-      }
-
-      if (
-        exercise.name ===
-        'Volume Control Stability'
-      ) {
-        router.push(
-          '/exercises/volume?exercise=volume-control-stability' as any,
-        );
-        return;
       }
 
       return;
     }
 
-    // ---------------------------------------------------------
     // AGILITY
-    // ---------------------------------------------------------
-
     if (
       exercise.category === 'Agility' &&
       exercise.templateId
     ) {
-      router.push(
-        `/exercises/agility?templateId=${encodeURIComponent(
-          exercise.templateId,
-        )}` as any,
-      );
-
-      return;
+      router.push({
+        pathname: '/exercises/agility',
+        params: {
+          templateId: exercise.templateId,
+        },
+      } as any);
     }
   };
 
-  // =========================================================
+  // =======================================================
   // UI
-  // =========================================================
+  // =======================================================
 
   return (
     <View style={styles.screen}>
@@ -387,7 +508,6 @@ export default function ExercisesScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-
         {/* SEARCH */}
 
         <View style={styles.searchRow}>
@@ -414,7 +534,7 @@ export default function ExercisesScreen() {
           Vocal Exercises
         </Text>
 
-        {/* RECOMMENDED */}
+        {/* RECOMMENDED FOR YOU */}
 
         <View style={styles.recommendedHeader}>
           <View>
@@ -423,7 +543,9 @@ export default function ExercisesScreen() {
             </Text>
 
             <Text style={styles.recommendedSubtitle}>
-              Based on your assessment
+              {recommendationsLoading
+                ? 'Loading your exercise scores...'
+                : 'Based on your component scores'}
             </Text>
           </View>
         </View>
@@ -431,64 +553,50 @@ export default function ExercisesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={
-            styles.recommendedScroll
-          }
+          contentContainerStyle={styles.recommendedScroll}
         >
+          {recommendedExercises.map((exercise) => (
+            <View
+              key={`${exercise.category}-${exercise.name}`}
+              style={styles.recommendedCard}
+            >
+              {/* IMAGE AREA */}
 
-          {recommendedComponents.map(
-            (component) => (
-              <View
-                key={component.name}
-                style={styles.recommendedCard}
-              >
-
-                {/* IMAGE AREA */}
-
-                <View
-                  style={styles.recommendedImage}
-                >
-                  <View
-                    style={styles.recommendedDifficulty}
-                  >
-                    <Text style={styles.difficultyText}>
-                      Beginner
-                    </Text>
-                  </View>
+              <View style={styles.recommendedImage}>
+                <View style={styles.recommendedDifficulty}>
+                  <Text style={styles.difficultyText}>
+                    {exercise.category}
+                  </Text>
                 </View>
+              </View>
 
-                {/* CARD BOTTOM */}
+              {/* CARD BOTTOM */}
 
-                <View
-                  style={styles.recommendedBottom}
-                >
+              <View style={styles.recommendedBottom}>
+                <View style={styles.recommendedExerciseText}>
                   <Text
                     style={styles.categoryText}
-                    numberOfLines={1}
+                    numberOfLines={2}
                   >
-                    {component.name}
+                    {exercise.name}
                   </Text>
-
-                  <Pressable
-                    style={styles.smallPlayButton}
-                    onPress={() =>
-                      handleRecommendedPress(
-                        component.route,
-                      )
-                    }
-                  >
-                    <Ionicons
-                      name="play"
-                      size={16}
-                      color={BROWN}
-                    />
-                  </Pressable>
                 </View>
 
+                <Pressable
+                  style={styles.smallPlayButton}
+                  onPress={() => handleExercisePress(exercise)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Start ${exercise.name}`}
+                >
+                  <Ionicons
+                    name="play"
+                    size={16}
+                    color={BROWN}
+                  />
+                </Pressable>
               </View>
-            ),
-          )}
-
+            </View>
+          ))}
         </ScrollView>
 
         {/* EXERCISES HEADER */}
@@ -503,20 +611,16 @@ export default function ExercisesScreen() {
           <View style={styles.dropdownWrapper}>
             <Pressable
               style={styles.dropdown}
-              onPress={() =>
-                setFilterOpen(!filterOpen)
-              }
+              onPress={() => setFilterOpen(!filterOpen)}
+              accessibilityRole="button"
+              accessibilityLabel="Filter exercises by category"
             >
               <Text style={styles.dropdownText}>
                 {selectedCategory}
               </Text>
 
               <Ionicons
-                name={
-                  filterOpen
-                    ? 'chevron-up'
-                    : 'chevron-down'
-                }
+                name={filterOpen ? 'chevron-up' : 'chevron-down'}
                 size={15}
                 color={MUTED}
               />
@@ -529,25 +633,19 @@ export default function ExercisesScreen() {
                     key={category}
                     style={[
                       styles.dropdownItem,
-                      selectedCategory ===
-                        category &&
+                      selectedCategory === category &&
                         styles.selectedDropdownItem,
                     ]}
                     onPress={() => {
-                      setSelectedCategory(
-                        category,
-                      );
-
+                      setSelectedCategory(category);
                       setFilterOpen(false);
-
                       setSearch('');
                     }}
                   >
                     <Text
                       style={[
                         styles.dropdownItemText,
-                        selectedCategory ===
-                          category &&
+                        selectedCategory === category &&
                           styles.selectedDropdownText,
                       ]}
                     >
@@ -572,60 +670,48 @@ export default function ExercisesScreen() {
         {/* EXERCISE LIST */}
 
         <View style={styles.exerciseList}>
-
-          {filteredExercises.map(
-            (exercise) => (
-              <Pressable
-                key={exercise.name}
-                style={({ pressed }) => [
-                  styles.exerciseCard,
-                  pressed &&
-                    styles.exercisePressed,
-                ]}
-                onPress={() =>
-                  handleExercisePress(
-                    exercise,
-                  )
-                }
-              >
-
-                <View
-                  style={styles.exerciseNameContainer}
-                >
-                  <Text
-                    style={styles.exerciseName}
-                    numberOfLines={2}
-                  >
-                    {exercise.name}
-                  </Text>
-                </View>
-
-                <View style={styles.levelBadge}>
-                  <Text style={styles.levelText}>
-                    Beginner
-                  </Text>
-                </View>
-
+          {filteredExercises.map((exercise) => (
+            <Pressable
+              key={exercise.name}
+              style={({ pressed }) => [
+                styles.exerciseCard,
+                pressed && styles.exercisePressed,
+              ]}
+              onPress={() => handleExercisePress(exercise)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${exercise.name}`}
+            >
+              <View style={styles.exerciseNameContainer}>
                 <Text
-                  style={styles.exerciseCategory}
-                  numberOfLines={1}
+                  style={styles.exerciseName}
+                  numberOfLines={2}
                 >
-                  {exercise.category}
+                  {exercise.name}
                 </Text>
+              </View>
 
-                <View
-                  style={styles.listPlayButton}
-                >
-                  <Ionicons
-                    name="play"
-                    size={16}
-                    color={BROWN}
-                  />
-                </View>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelText}>
+                  {getExerciseDifficulty(exercise)}
+                </Text>
+              </View>
 
-              </Pressable>
-            ),
-          )}
+              <Text
+                style={styles.exerciseCategory}
+                numberOfLines={1}
+              >
+                {exercise.category}
+              </Text>
+
+              <View style={styles.listPlayButton}>
+                <Ionicons
+                  name="play"
+                  size={16}
+                  color={BROWN}
+                />
+              </View>
+            </Pressable>
+          ))}
 
           {/* NO RESULTS */}
 
@@ -646,13 +732,15 @@ export default function ExercisesScreen() {
               </Text>
             </View>
           )}
-
         </View>
-
       </ScrollView>
     </View>
   );
 }
+
+// =========================================================
+// STYLES
+// =========================================================
 
 const styles = StyleSheet.create({
   screen: {
@@ -670,9 +758,7 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
 
-  // =========================================================
   // SEARCH
-  // =========================================================
 
   searchRow: {
     flexDirection: 'row',
@@ -684,54 +770,39 @@ const styles = StyleSheet.create({
   searchContainer: {
     flex: 1,
     height: 44,
-
     borderWidth: 1,
     borderColor: BORDER,
-
     borderRadius: 10,
-
     backgroundColor: WHITE,
-
     flexDirection: 'row',
     alignItems: 'center',
-
     paddingHorizontal: 12,
   },
 
   searchInput: {
     flex: 1,
-
     marginLeft: 9,
-
     fontFamily: 'FredokaRegular',
     fontSize: 13,
-
     color: BROWN,
-
     padding: 0,
   },
 
-  // =========================================================
   // TITLE
-  // =========================================================
 
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
-
     marginBottom: 20,
   },
 
-  // =========================================================
   // RECOMMENDED
-  // =========================================================
 
   recommendedHeader: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-
     marginBottom: 14,
   },
 
@@ -745,7 +816,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: BROWN,
-
     marginTop: 2,
   },
 
@@ -756,15 +826,10 @@ const styles = StyleSheet.create({
   recommendedCard: {
     width: 180,
     height: 193,
-
     backgroundColor: PINK,
-
     borderRadius: 10,
-
     padding: 14,
-
     marginRight: 14,
-
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 5,
@@ -772,32 +837,23 @@ const styles = StyleSheet.create({
       width: 0,
       height: 3,
     },
-
     elevation: 4,
   },
 
   recommendedImage: {
     height: 111,
-
     backgroundColor: WHITE,
-
     borderRadius: 7,
-
     position: 'relative',
-
     marginBottom: 10,
   },
 
   recommendedDifficulty: {
     position: 'absolute',
-
     right: 7,
     bottom: 7,
-
     backgroundColor: WHITE,
-
     borderRadius: 10,
-
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
@@ -812,6 +868,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flex: 1,
+  },
+
+  recommendedExerciseText: {
+    flex: 1,
+    marginRight: 6,
   },
 
   categoryText: {
@@ -823,14 +885,10 @@ const styles = StyleSheet.create({
   smallPlayButton: {
     width: 38,
     height: 38,
-
     borderRadius: 19,
-
     backgroundColor: WHITE,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 4,
@@ -838,19 +896,15 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-
     elevation: 3,
   },
 
-  // =========================================================
   // EXERCISES HEADER
-  // =========================================================
 
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-
     marginBottom: 2,
   },
 
@@ -860,9 +914,7 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  // =========================================================
   // DROPDOWN
-  // =========================================================
 
   dropdownWrapper: {
     position: 'relative',
@@ -872,13 +924,9 @@ const styles = StyleSheet.create({
   dropdown: {
     width: 108,
     height: 32,
-
     backgroundColor: PINK,
-
     borderRadius: 8,
-
     paddingHorizontal: 12,
-
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -888,28 +936,19 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: BROWN,
-
     maxWidth: 75,
   },
 
   dropdownMenu: {
     position: 'absolute',
-
     top: 37,
     right: 0,
-
     width: 145,
-
     backgroundColor: WHITE,
-
     borderRadius: 10,
-
     paddingVertical: 5,
-
     zIndex: 100,
-
     elevation: 8,
-
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -938,21 +977,16 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
   },
 
-  // =========================================================
   // RESULT COUNT
-  // =========================================================
 
   resultCount: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
-
     marginBottom: 8,
   },
 
-  // =========================================================
   // EXERCISE LIST
-  // =========================================================
 
   exerciseList: {
     gap: 7,
@@ -960,14 +994,10 @@ const styles = StyleSheet.create({
 
   exerciseCard: {
     minHeight: 64,
-
     backgroundColor: LIGHT_PINK,
-
     borderRadius: 9,
-
     paddingHorizontal: 14,
     paddingVertical: 9,
-
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -989,16 +1019,11 @@ const styles = StyleSheet.create({
 
   levelBadge: {
     width: 61,
-
     backgroundColor: PINK,
-
     borderRadius: 10,
-
     paddingVertical: 4,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginRight: 14,
   },
 
@@ -1010,7 +1035,6 @@ const styles = StyleSheet.create({
 
   exerciseCategory: {
     flex: 1,
-
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 12,
@@ -1020,14 +1044,10 @@ const styles = StyleSheet.create({
   listPlayButton: {
     width: 38,
     height: 38,
-
     borderRadius: 19,
-
     backgroundColor: WHITE,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     shadowColor: '#000',
     shadowOpacity: 0.10,
     shadowRadius: 3,
@@ -1035,18 +1055,14 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-
     elevation: 2,
   },
 
-  // =========================================================
   // NO RESULTS
-  // =========================================================
 
   noResults: {
     alignItems: 'center',
     justifyContent: 'center',
-
     paddingVertical: 40,
   },
 
@@ -1054,7 +1070,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
-
     marginTop: 10,
   },
 
@@ -1062,7 +1077,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
-
     marginTop: 4,
   },
 });

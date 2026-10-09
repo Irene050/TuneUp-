@@ -1,10 +1,12 @@
 import {
   addDoc,
   collection,
+  DocumentData,
   getDocs,
   limit,
   orderBy,
   query,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 
 import {
@@ -81,97 +83,73 @@ export async function saveAssessment(
 }
 
 // ============================================================
+// MAP FIRESTORE DOCUMENT → SAVED ASSESSMENT
+// ============================================================
+
+function toSavedAssessment(
+  documentSnapshot: QueryDocumentSnapshot<DocumentData>
+): SavedAssessmentResult {
+  const data = documentSnapshot.data();
+
+  const lowHz = Number(
+    data.vocalRange?.lowHz ?? data.vocalRangeLowHz ?? 0
+  );
+
+  const highHz = Number(
+    data.vocalRange?.highHz ?? data.vocalRangeHighHz ?? 0
+  );
+
+  return {
+    id: documentSnapshot.id,
+
+    vocalRange: { lowHz, highHz },
+    vocalRangeLowHz: lowHz,
+    vocalRangeHighHz: highHz,
+
+    scores: Array.isArray(data.scores) ? data.scores : [],
+    recommendations: data.recommendations ?? {},
+
+    timestamp: Number(data.timestamp ?? 0),
+  };
+}
+
+// ============================================================
+// GET RECENT ASSESSMENTS (NEWEST FIRST)
+// ============================================================
+
+export async function getRecentAssessments(
+  count: number = 2
+): Promise<SavedAssessmentResult[]> {
+  const user = auth.currentUser;
+
+  if (!user) {
+    return [];
+  }
+
+  const assessmentsRef = collection(
+    db,
+    'users',
+    user.uid,
+    'assessments'
+  );
+
+  const recentQuery = query(
+    assessmentsRef,
+    orderBy('timestamp', 'desc'),
+    limit(Math.max(1, Math.floor(count)))
+  );
+
+  const snapshot = await getDocs(recentQuery);
+
+  return snapshot.docs.map(toSavedAssessment);
+}
+
+// ============================================================
 // GET LATEST ASSESSMENT
 // ============================================================
 
-export async function getLatestAssessment():
-  Promise<SavedAssessmentResult | null> {
-  const user =
-    auth.currentUser;
+export async function getLatestAssessment(): Promise<SavedAssessmentResult | null> {
+  const [latest] = await getRecentAssessments(1);
 
-  if (!user) {
-    return null;
-  }
-
-  const assessmentsRef =
-    collection(
-      db,
-      'users',
-      user.uid,
-      'assessments'
-    );
-
-  const latestQuery =
-    query(
-      assessmentsRef,
-      orderBy(
-        'timestamp',
-        'desc'
-      ),
-      limit(1)
-    );
-
-  const snapshot =
-    await getDocs(
-      latestQuery
-    );
-
-  if (
-    snapshot.empty
-  ) {
-    return null;
-  }
-
-  const documentSnapshot =
-    snapshot.docs[0];
-
-  const data =
-    documentSnapshot.data();
-
-  const lowHz =
-    Number(
-      data.vocalRange?.lowHz ??
-      data.vocalRangeLowHz ??
-      0
-    );
-
-  const highHz =
-    Number(
-      data.vocalRange?.highHz ??
-      data.vocalRangeHighHz ??
-      0
-    );
-
-  return {
-    id:
-      documentSnapshot.id,
-
-    vocalRange: {
-      lowHz,
-      highHz,
-    },
-
-    vocalRangeLowHz:
-      lowHz,
-
-    vocalRangeHighHz:
-      highHz,
-
-    scores:
-      Array.isArray(
-        data.scores
-      )
-        ? data.scores
-        : [],
-
-    recommendations:
-      data.recommendations ??
-      {},
-
-    timestamp:
-      Number(
-        data.timestamp ??
-        0
-      ),
-  };
+  return latest ?? null;
 }

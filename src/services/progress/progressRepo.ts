@@ -171,6 +171,32 @@ export async function fetchExerciseRecords(
 }
 
 /* ============================================================
+   FETCH ALL EXERCISE RECORDS
+============================================================ */
+
+export async function fetchAllExerciseRecords(
+  userId: string
+): Promise<ExerciseRecord[]> {
+  const componentIds: ComponentId[] = [
+    'breathControl',
+    'pitch',
+    'tone',
+    'volume',
+    'agility',
+  ];
+
+  const recordsByComponent = await Promise.all(
+    componentIds.map((componentId) =>
+      fetchExerciseRecords(userId, componentId)
+    )
+  );
+
+  return recordsByComponent
+    .flat()
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/* ============================================================
    SAVE EXERCISE + UPDATE COMPONENT SUMMARY
 ============================================================ */
 

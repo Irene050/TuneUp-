@@ -6,13 +6,6 @@ import {
 export interface MelodicPatternMeasurement {
   detectedFreqs: number[];
   noteTimestamps: number[];
-
-  /**
-   * All reliable pitch frames detected inside
-   * each expected note segment.
-   *
-   * Each inner array corresponds to one segment.
-   */
   segmentFrequencies: number[][];
 }
 

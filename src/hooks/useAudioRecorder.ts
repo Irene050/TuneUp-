@@ -957,51 +957,32 @@ export function useAudioRecorder(
   // ==========================================================
   // STOP RECORDING
   // ==========================================================
+  
+  const stoppingRef = useRef(false);
 
   const stopRecording =
-    useCallback(
-      async () => {
-        const recorder =
-          recorderRef.current;
+    useCallback(async () => {
+        const recorder = recorderRef.current;
 
-        if (!recorder) {
-          return;
-        }
+        if (!recorder || stoppingRef.current) return;
+        
+        stoppingRef.current = true;
 
         console.log(
           "🛑 STOPPING RECORDER..."
         );
 
-        // ======================================================
-        // STOP NATIVE RECORDER
-        // ======================================================
-
         try {
-          const result =
-            await recorder.stop();
-
-          console.log(
-            "🛑 RECORDER STOP RESULT:",
-            result
-          );
+          const result = await recorder.stop();
+          console.log("🛑 RECORDER STOP RESULT:", result);
         } catch (error) {
-          console.error(
-            "❌ FAILED TO STOP RECORDER:",
-            error
-          );
+          console.error("❌ FAILED TO STOP RECORDER:", error);
         }
 
-        // ======================================================
-        // STOP AUDIO CALLBACK
-        // ======================================================
-
-        try {
+          try {
           recorder.clearOnAudioReady();
         } catch (error) {
-          console.warn(
-            "⚠️ FAILED TO CLEAR AUDIO CALLBACK:",
-            error
-          );
+          console.warn("⚠️ FAILED TO CLEAR AUDIO CALLBACK:", error);
         }
 
         // ======================================================
@@ -1012,88 +993,50 @@ export function useAudioRecorder(
           sessionActiveRef.current
         ) {
           try {
-            await AudioManager.setAudioSessionActivity(
-              false
-            );
-
-            console.log(
-              "🎧 AUDIO SESSION DEACTIVATED"
-            );
+            await AudioManager.setAudioSessionActivity(false);
+            console.log("🎧 AUDIO SESSION DEACTIVATED");
           } catch (error) {
-            console.warn(
-              "⚠️ FAILED TO DEACTIVATE AUDIO SESSION:",
-              error
-            );
+            console.warn("⚠️ FAILED TO DEACTIVATE AUDIO SESSION:", error);
           }
 
           sessionActiveRef.current =
             false;
         }
 
-        // ======================================================
-        // COMBINE RAW CHUNKS
-        // ======================================================
+        // Snapshot the recorded data
+        const chunks = chunksRef.current;
+        const totalSamples = sampleCountRef.current;
 
-        const totalSamples =
-          sampleCountRef.current;
+        // Reset state BEFORE notifying, so the next startRecording works
+        recorderRef.current = null;
+        chunksRef.current = [];
+        sampleCountRef.current = 0;
+        lastLiveAnalysisRef.current = 0;
+        resetLiveDetection();
+        setIsRecording(false);
+        stoppingRef.current = false;
 
-        const fullBuffer =
-          new Float32Array(
-            totalSamples
-          );
-
+        // Combine raw chunks
+        const fullBuffer = new Float32Array(totalSamples);
         let offset = 0;
 
-        for (
-          const chunk
-          of chunksRef.current
-        ) {
-          fullBuffer.set(
-            chunk,
-            offset
-          );
-
-          offset +=
-            chunk.length;
+        for (const chunk of chunks) {
+          fullBuffer.set(chunk, offset);
+          offset += chunk.length;
         }
 
-        // ======================================================
-        // FINAL AUDIO DIAGNOSTICS
-        // ======================================================
+        // Final diagnostics
+        const finalSignal = analyzeAudioSignal(fullBuffer, DEFAULT_SAMPLE_RATE);
+        const durationSeconds = fullBuffer.length / DEFAULT_SAMPLE_RATE;
 
-        const finalSignal =
-          analyzeAudioSignal(
-            fullBuffer,
-            DEFAULT_SAMPLE_RATE
-          );
+        console.log("🛑 RECORDING STOPPED");
 
-        const durationSeconds =
-          fullBuffer.length /
-          DEFAULT_SAMPLE_RATE;
-
-        console.log(
-          "🛑 RECORDING STOPPED"
-        );
-
-        console.log(
-          "🎧 FINAL AUDIO SIGNAL:",
+        console.log("🎧 FINAL AUDIO SIGNAL:",
           {
             ...finalSignal,
             durationSeconds,
           }
         );
-
-        // ======================================================
-        // SEND COMPLETE RAW RECORDING
-        // ======================================================
-        //
-        // No filtering.
-        // No silence removal.
-        // No pitch smoothing.
-        // No interpolation.
-        //
-        // The assessment receives the actual recorded PCM.
-        // ======================================================
 
         try {
           onStopRef.current?.(
@@ -1101,30 +1044,8 @@ export function useAudioRecorder(
             DEFAULT_SAMPLE_RATE
           );
         } catch (error) {
-          console.error(
-            "❌ onStop CALLBACK ERROR:",
-            error
-          );
+          console.error("❌ onStop CALLBACK ERROR:", error);
         }
-
-        // ======================================================
-        // CLEANUP
-        // ======================================================
-
-        recorderRef.current =
-          null;
-
-        chunksRef.current = [];
-
-        sampleCountRef.current =
-          0;
-
-        lastLiveAnalysisRef.current =
-          0;
-
-        resetLiveDetection();
-
-        setIsRecording(false);
       },
       [resetLiveDetection]
     );

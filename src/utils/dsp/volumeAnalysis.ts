@@ -19,24 +19,31 @@ export function calcRangeAccuracy(dbArray: number[], targetRange: [number, numbe
   return min >= targetRange[0] && max <= targetRange[1];
 }
 
+
 export function calcDerivativeSmoothness(dbArray: number[]): number {
-  if (dbArray.length < 2) return 0;
-  const derivative: number[] = [];
-  for (let i = 1; i < dbArray.length; i++) derivative.push(dbArray[i] - dbArray[i - 1]);
-  const mean = derivative.reduce((a, b) => a + b, 0) / derivative.length;
-  const variance = derivative.reduce((sum, d) => sum + Math.abs(d - mean), 0) / derivative.length;
-  const relVar = mean === 0 ? 1 : Math.abs(variance / mean);
-  return Math.max(0, 100 - relVar * 100);
+  const values = dbArray.filter(Number.isFinite);
+  if (values.length < 2) return 0;
+  let totalChange = 0;
+  for (let i = 1; i < values.length; i++) {
+    totalChange += Math.abs(values[i] - values[i - 1]);
+  }
+  const meanAbsoluteChange = totalChange / (values.length - 1);
+  const score = 100 * (1 - meanAbsoluteChange / 5);
+  return Math.round(Math.max(0, Math.min(100, score)));
 }
 
 export function calcVolumeConsistency(dbArray: number[]): number {
-  if (dbArray.length === 0) return 0;
-  const mean = dbArray.reduce((a, b) => a + b, 0) / dbArray.length;
-  const variance = dbArray.reduce((sum, d) => sum + (d - mean) ** 2, 0) / dbArray.length;
-  const stdDev = Math.sqrt(variance);
-  const relStdDev = mean === 0 ? 1 : Math.abs(stdDev / mean);
-  return Math.max(0, 100 - relStdDev * 100);
+  const values = dbArray.filter(Number.isFinite);
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    values.length;
+  const standardDeviation = Math.sqrt(variance);
+  const score = 100 * (1 - standardDeviation / 12);
+  return Math.round(Math.max(0, Math.min(100, score)));
 }
+
 
 export function checkBandCompliance(avgDb: number, targetBand: [number, number]): boolean {
   return avgDb >= targetBand[0] && avgDb <= targetBand[1];
