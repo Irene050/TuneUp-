@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -21,7 +22,10 @@ import {
   type Tier,
 } from '@/constants/exercises/agility';
 
-import { LiveAudioFrame, useAudioRecorder } from '@/hooks/useAudioRecorder';
+import {
+  LiveAudioFrame,
+  useAudioRecorder,
+} from '@/hooks/useAudioRecorder';
 
 import {
   measureRapidNoteTransition,
@@ -60,7 +64,7 @@ import {
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
 // ============================================================
-// COLORS
+// COLORS AND CONFIGURATION
 // ============================================================
 
 const BROWN = '#4E2F1F';
@@ -70,13 +74,6 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
-
-const GREEN = '#39734A';
-const RED = '#A04444';
-
-// ============================================================
-// CONFIG
-// ============================================================
 
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
@@ -109,18 +106,30 @@ type ExerciseSequence = {
   names: string[];
 };
 
+type AttemptResult = {
+  repetition: number;
+  overall: number;
+  pitchScore: number;
+  sequenceScore: number;
+  speedScore: number;
+  passed: boolean;
+  feedback: string;
+  transitionCount: number;
+  transitionsPerSecond: number;
+  averageTransitionTimeMs: number;
+};
+
 type ExerciseResult = {
   overall: number;
   pitchScore: number;
   sequenceScore: number;
   speedScore: number;
-
   passed: boolean;
   feedback: string;
-
   transitionCount: number;
   transitionsPerSecond: number;
   averageTransitionTimeMs: number;
+  attempts: AttemptResult[];
 };
 
 // ============================================================
@@ -132,9 +141,29 @@ function getRandomInteger(
   max: number,
 ): number {
   return (
-    Math.floor(
-      Math.random() * (max - min + 1),
-    ) + min
+    Math.floor(Math.random() * (max - min + 1)) +
+    min
+  );
+}
+
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, value));
+}
+
+function average(
+  values: number[],
+): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return (
+    values.reduce((sum, value) => sum + value, 0) /
+    values.length
   );
 }
 
@@ -146,15 +175,8 @@ function generateExerciseSequence(
 ): ExerciseSequence {
   const midiNotes: number[] = [];
 
-  for (
-    let index = 0;
-    index < noteCount;
-    index += 1
-  ) {
-    let midi = getRandomInteger(
-      minMidi,
-      maxMidi,
-    );
+  for (let index = 0; index < noteCount; index += 1) {
+    let midi = getRandomInteger(minMidi, maxMidi);
 
     // Avoid identical consecutive notes.
     if (
@@ -162,17 +184,16 @@ function generateExerciseSequence(
       midi === midiNotes[index - 1]
     ) {
       if (midi === maxMidi) {
-        midi = midi - 1;
+        midi -= 1;
       } else {
-        midi = midi + 1;
+        midi += 1;
       }
     }
 
     midiNotes.push(midi);
   }
 
-  const musicalNotes =
-    midiNotes.map(createMusicalNote);
+  const musicalNotes = midiNotes.map(createMusicalNote);
 
   return {
     notes: musicalNotes.map(note => ({
@@ -184,9 +205,7 @@ function generateExerciseSequence(
       note => note.frequency,
     ),
 
-    names: musicalNotes.map(
-      note => note.name,
-    ),
+    names: musicalNotes.map(note => note.name),
   };
 }
 
@@ -202,10 +221,10 @@ export default function RapidNoteTransitionExerciseScreen({
   // ----------------------------------------------------------
 
   const baseParams = useMemo(
-    () =>
-      RAPID_NOTE_TRANSITION_PARAMS[tier],
+    () => RAPID_NOTE_TRANSITION_PARAMS[tier],
     [tier],
   );
+
   // ----------------------------------------------------------
   // ADAPTIVE PARAMETERS
   // ----------------------------------------------------------
@@ -233,86 +252,44 @@ export default function RapidNoteTransitionExerciseScreen({
           return;
         }
 
-        const exerciseRecords =
-          await fetchExerciseRecords(
-            user.uid,
-            'agility',
-          );
+        const exerciseRecords = await fetchExerciseRecords(
+          user.uid,
+          'agility',
+        );
 
         if (cancelled) {
           return;
         }
 
-        /*
-         * ADS uses only records belonging to:
-         * - the agility component
-         * - this exact exercise template
-         * - the user's current tier
-         *
-         * If matching exercise history exists,
-         * the latest five exercise scores are used.
-         *
-         * If no matching exercise history exists,
-         * the latest Agility assessment score is used
-         * as the cold-start reference.
-         *
-         * The assessment score is NOT mixed with
-         * exercise scores once exercise history exists.
-         */
-        const matchingExerciseRecords =
-          exerciseRecords
-            .filter(
-              record =>
-                record.templateId ===
-                  'rapidNoteTransition' &&
-                record.tier === tier,
-            )
-            .sort(
-              (a, b) =>
-                a.timestamp -
-                b.timestamp,
-            );
+        // Use only this exercise's records at the current tier.
+        const matchingExerciseRecords = exerciseRecords
+          .filter(
+            record =>
+              record.templateId === 'rapidNoteTransition' &&
+              record.tier === tier,
+          )
+          .sort((a, b) => a.timestamp - b.timestamp);
 
-        let recentScores =
-          matchingExerciseRecords
-            .slice(-5)
-            .map(
-              record =>
-                record.scorePct,
-            );
+        // Use up to five recent scores when exercise history exists.
+        let recentScores = matchingExerciseRecords
+          .slice(-5)
+          .map(record => record.scorePct);
 
-        // ----------------------------------------------------
-        // COLD-START ASSESSMENT FALLBACK
-        // ----------------------------------------------------
+        // Assessment is only a cold-start fallback.
+        if (matchingExerciseRecords.length === 0) {
+          const latestAssessment = await getLatestAssessment();
 
-        if (
-          matchingExerciseRecords.length ===
-          0
-        ) {
-          const latestAssessment =
-            await getLatestAssessment();
-
-          if (
-            latestAssessment &&
-            !cancelled
-          ) {
+          if (latestAssessment && !cancelled) {
             const agilityScore =
               latestAssessment.scores.find(
-                score =>
-                  score.componentId ===
-                  'agility',
+                score => score.componentId === 'agility',
               )?.scorePct;
 
             if (
-              typeof agilityScore ===
-                'number' &&
-              Number.isFinite(
-                agilityScore,
-              )
+              typeof agilityScore === 'number' &&
+              Number.isFinite(agilityScore)
             ) {
-              recentScores = [
-                agilityScore,
-              ];
+              recentScores = [agilityScore];
             }
           }
         }
@@ -328,7 +305,7 @@ export default function RapidNoteTransitionExerciseScreen({
           });
 
         console.log(
-          '🎯 Rapid Note Transition ADS parameters:',
+          'Rapid Note Transition ADS parameters:',
           {
             tier,
             recentScores,
@@ -337,12 +314,10 @@ export default function RapidNoteTransitionExerciseScreen({
           },
         );
 
-        setAdaptiveParams(
-          generatedParams,
-        );
+        setAdaptiveParams(generatedParams);
       } catch (error) {
         console.error(
-          '❌ Failed to load Rapid Note Transition ADS parameters:',
+          'Failed to load Rapid Note Transition ADS parameters:',
           error,
         );
 
@@ -379,24 +354,18 @@ export default function RapidNoteTransitionExerciseScreen({
       targetSpeed:
         adaptiveParams.minSpeed +
         Math.random() *
-          (
-            adaptiveParams.maxSpeed -
-            adaptiveParams.minSpeed
-          ),
+          (adaptiveParams.maxSpeed - adaptiveParams.minSpeed),
 
-      repetitions:
-        adaptiveParams.repetitions,
+      repetitions: adaptiveParams.repetitions,
 
-      accuracyThreshold:
-        adaptiveParams.accuracyThreshold,
+      accuracyThreshold: adaptiveParams.accuracyThreshold,
 
-      sequence:
-        generateExerciseSequence(
-          adaptiveParams.minMidi,
-          adaptiveParams.maxMidi,
-          noteCount,
-          adaptiveParams.noteDurationSec,
-        ),
+      sequence: generateExerciseSequence(
+        adaptiveParams.minMidi,
+        adaptiveParams.maxMidi,
+        noteCount,
+        adaptiveParams.noteDurationSec,
+      ),
     };
   }, [adaptiveParams]);
 
@@ -407,16 +376,12 @@ export default function RapidNoteTransitionExerciseScreen({
   const [screenState, setScreenState] =
     useState<Screen>('instructions');
 
-  const screenRef =
-    useRef<Screen>('instructions');
+  const screenRef = useRef<Screen>('instructions');
 
-  const setScreen = useCallback(
-    (nextScreen: Screen) => {
-      screenRef.current = nextScreen;
-      setScreenState(nextScreen);
-    },
-    [],
-  );
+  const setScreen = useCallback((nextScreen: Screen) => {
+    screenRef.current = nextScreen;
+    setScreenState(nextScreen);
+  }, []);
 
   const screen = screenState;
 
@@ -428,6 +393,9 @@ export default function RapidNoteTransitionExerciseScreen({
 
   const [currentRepetition, setCurrentRepetition] =
     useState(1);
+
+  const [attemptResults, setAttemptResults] =
+    useState<AttemptResult[]>([]);
 
   const [liveTransitionCount, setLiveTransitionCount] =
     useState(0);
@@ -445,108 +413,80 @@ export default function RapidNoteTransitionExerciseScreen({
   const [result, setResult] =
     useState<ExerciseResult | null>(null);
 
-  const [errorMessage, setErrorMessage] =
-    useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // ----------------------------------------------------------
   // REFS
   // ----------------------------------------------------------
 
-  const mountedRef =
-    useRef(true);
+  const mountedRef = useRef(true);
 
   const countdownTimerRef =
-    useRef<
-      ReturnType<typeof setInterval> | null
-    >(null);
+    useRef<ReturnType<typeof setInterval> | null>(null);
 
   const recordingTimerRef =
-    useRef<
-      ReturnType<typeof setInterval> | null
-    >(null);
+    useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const recordingStartRef =
-    useRef<number | null>(null);
+  const recordingStartRef = useRef<number | null>(null);
 
-  const previousPitchRef =
-    useRef(0);
+  const previousPitchRef = useRef(0);
 
-  const transitionCountRef =
-    useRef(0);
+  const transitionCountRef = useRef(0);
 
-  const finishingRef =
-    useRef(false);
+  const finishingRef = useRef(false);
 
-  const playingSequenceRef =
-    useRef(false);
+  const playingSequenceRef = useRef(false);
 
-  const referenceStartedRef =
-    useRef(false);
+  const referenceStartedRef = useRef(false);
+
+  // Keep completed attempts available to async callbacks.
+  const attemptResultsRef = useRef<AttemptResult[]>([]);
 
   // ----------------------------------------------------------
   // TIMER CLEANUP
   // ----------------------------------------------------------
 
-  const clearTimers =
-    useCallback(() => {
-      if (countdownTimerRef.current) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
+  const clearTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
 
-        countdownTimerRef.current =
-          null;
-      }
-
-      if (recordingTimerRef.current) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-
-        recordingTimerRef.current =
-          null;
-      }
-    }, []);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
 
   // ----------------------------------------------------------
   // RESET LIVE STATE
   // ----------------------------------------------------------
 
-  const resetLiveState =
-    useCallback(() => {
-      previousPitchRef.current = 0;
+  const resetLiveState = useCallback(() => {
+    previousPitchRef.current = 0;
+    transitionCountRef.current = 0;
+    recordingStartRef.current = null;
+    finishingRef.current = false;
 
-      transitionCountRef.current = 0;
+    setLiveTransitionCount(0);
+    setLiveTransitionSpeed(0);
+    setElapsedSeconds(0);
 
-      recordingStartRef.current = null;
-
-      finishingRef.current = false;
-
-      setLiveTransitionCount(0);
-
-      setLiveTransitionSpeed(0);
-
-      setElapsedSeconds(0);
-
-      setLivePitch({
-        pitch: 0,
-        note: '--',
-        clarity: 0,
-      });
-    }, []);
+    setLivePitch({
+      pitch: 0,
+      note: '--',
+      clarity: 0,
+    });
+  }, []);
 
   // ----------------------------------------------------------
   // LIVE AUDIO FRAME
   // ----------------------------------------------------------
 
-const handleLiveFrame =
-  useCallback(
+  const handleLiveFrame = useCallback(
     (frame: LiveAudioFrame) => {
-      if (!mountedRef.current) {
-        return;
-      }
-
       if (
+        !mountedRef.current ||
         screenRef.current !== 'recording'
       ) {
         return;
@@ -558,186 +498,283 @@ const handleLiveFrame =
         clarity: frame.clarity,
       });
 
+      if (
+        !Number.isFinite(frame.pitch) ||
+        frame.pitch <= 0
+      ) {
+        return;
+      }
+
+      const previousPitch = previousPitchRef.current;
+
+      if (
+        previousPitch > 0 &&
+        Number.isFinite(previousPitch)
+      ) {
+        const semitoneChange =
+          12 * Math.log2(frame.pitch / previousPitch);
+
         if (
-          !Number.isFinite(frame.pitch) ||
-          frame.pitch <= 0
+          Number.isFinite(semitoneChange) &&
+          Math.abs(semitoneChange) >= 1
         ) {
-          return;
+          transitionCountRef.current += 1;
+
+          setLiveTransitionCount(
+            transitionCountRef.current,
+          );
         }
+      }
 
-        const previousPitch =
-          previousPitchRef.current;
+      previousPitchRef.current = frame.pitch;
 
-        if (
-          previousPitch > 0 &&
-          Number.isFinite(previousPitch)
-        ) {
-          const semitoneChange =
-            12 *
-            Math.log2(
-              frame.pitch / previousPitch,
-            );
+      if (recordingStartRef.current !== null) {
+        const elapsed =
+          (Date.now() - recordingStartRef.current) / 1000;
 
-          if (
-            Number.isFinite(semitoneChange) &&
-            Math.abs(semitoneChange) >= 1
-          ) {
-            transitionCountRef.current += 1;
-
-            setLiveTransitionCount(
-              transitionCountRef.current,
-            );
-          }
+        if (elapsed > 0) {
+          setLiveTransitionSpeed(
+            transitionCountRef.current / elapsed,
+          );
         }
-
-        previousPitchRef.current =
-          frame.pitch;
-
-        if (recordingStartRef.current) {
-          const elapsed =
-            (
-              Date.now() -
-              recordingStartRef.current
-            ) / 1000;
-
-          if (elapsed > 0) {
-            setLiveTransitionSpeed(
-              transitionCountRef.current /
-                elapsed,
-            );
-          }
-        }
-      },
-      [],
-    );
+      }
+    },
+    [],
+  );
 
   // ----------------------------------------------------------
   // PROCESS COMPLETED RECORDING
   // ----------------------------------------------------------
 
-  const handleRecordingStop =
-    useCallback(
-      async (
-        samples: Float32Array,
-        sampleRate: number,
-      ) => {
-        clearTimers();
+  const handleRecordingStop = useCallback(
+    async (
+      samples: Float32Array,
+      sampleRate: number,
+    ) => {
+      clearTimers();
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setScreen('processing');
+
+      try {
+        if (!samples || samples.length === 0) {
+          throw new Error(
+            'No audio samples were recorded. Please try this repetition again.',
+          );
+        }
+
+        if (
+          !Number.isFinite(sampleRate) ||
+          sampleRate <= 0
+        ) {
+          throw new Error(
+            'The recording has an invalid sample rate. Please try again.',
+          );
+        }
+
+        const measurement = measureRapidNoteTransition(
+          samples,
+          sampleRate,
+          exerciseConfig.sequence.frequencies,
+        );
+
+        // Do not score an attempt with no usable transitions.
+        if (
+          measurement.detectedPitches.length < 2 ||
+          measurement.detectedNotes.length < 2 ||
+          measurement.transitionCount < 1
+        ) {
+          throw new Error(
+            'Not enough clear note transitions were detected. Please try this repetition again in a quiet area.',
+          );
+        }
+
+        // Keep the existing per-attempt scoring service unchanged.
+        const scored = scoreRapidNoteTransition(
+          measurement,
+          exerciseConfig.targetSpeed,
+          exerciseConfig.accuracyThreshold,
+        );
+
+        const repetitionResult: AttemptResult = {
+          repetition: currentRepetition,
+          overall: clampScore(scored.overall),
+          pitchScore: clampScore(scored.pitchScore),
+          sequenceScore: clampScore(scored.sequenceScore),
+          speedScore: clampScore(scored.speedScore),
+          passed: scored.passed,
+          feedback: scored.feedback,
+          transitionCount: measurement.transitionCount,
+          transitionsPerSecond:
+            measurement.transitionsPerSecond,
+          averageTransitionTimeMs:
+            measurement.averageTransitionTimeMs,
+        };
+
+        const updatedAttempts = [
+          ...attemptResultsRef.current,
+          repetitionResult,
+        ];
+
+        attemptResultsRef.current = updatedAttempts;
+        setAttemptResults(updatedAttempts);
+
+        console.log(
+          `Rapid Note Transition repetition ${currentRepetition}/${exerciseConfig.repetitions} completed:`,
+          repetitionResult,
+        );
 
         if (!mountedRef.current) {
           return;
         }
 
-        setScreen('processing');
+        // ----------------------------------------------------
+        // MORE REPETITIONS REMAIN
+        // ----------------------------------------------------
+
+        if (
+          currentRepetition <
+          exerciseConfig.repetitions
+        ) {
+          const nextRepetition = currentRepetition + 1;
+
+          setCurrentRepetition(nextRepetition);
+
+          // Reset per-attempt recording and live state.
+          resetLiveState();
+
+          referenceStartedRef.current = false;
+          playingSequenceRef.current = false;
+
+          setErrorMessage('');
+
+          console.log(
+            `Preparing repetition ${nextRepetition}/${exerciseConfig.repetitions}`,
+          );
+
+          // The countdown effect starts the next attempt.
+          setScreen('countdown');
+          return;
+        }
+
+        // ----------------------------------------------------
+        // ALL REPETITIONS COMPLETED
+        // ----------------------------------------------------
+
+        const overall = Math.round(
+          average(updatedAttempts.map(item => item.overall)),
+        );
+
+        const pitchScore = Math.round(
+          average(updatedAttempts.map(item => item.pitchScore)),
+        );
+
+        const sequenceScore = Math.round(
+          average(updatedAttempts.map(item => item.sequenceScore)),
+        );
+
+        const speedScore = Math.round(
+          average(updatedAttempts.map(item => item.speedScore)),
+        );
+
+        const transitionCount = Math.round(
+          average(
+            updatedAttempts.map(item => item.transitionCount),
+          ),
+        );
+
+        const transitionsPerSecond = average(
+          updatedAttempts.map(
+            item => item.transitionsPerSecond,
+          ),
+        );
+
+        const averageTransitionTimeMs = average(
+          updatedAttempts.map(
+            item => item.averageTransitionTimeMs,
+          ),
+        );
+
+        // The tier's configured accuracy goal is used for the
+        // aggregate exercise result.
+        const passed =
+          overall >= exerciseConfig.accuracyThreshold &&
+          pitchScore >= 60 &&
+          sequenceScore >= 60;
+
+        const feedback = passed
+          ? `You completed all ${exerciseConfig.repetitions} repetitions and met the ${exerciseConfig.accuracyThreshold}% exercise goal. Keep practicing for smoother, more consistent transitions.`
+          : `You completed all ${exerciseConfig.repetitions} repetitions. Your average score was ${overall}%, below the ${exerciseConfig.accuracyThreshold}% exercise goal. Focus on accurate notes before increasing speed.`;
+
+        const finalResult: ExerciseResult = {
+          overall,
+          pitchScore,
+          sequenceScore,
+          speedScore,
+          passed,
+          feedback,
+          transitionCount,
+          transitionsPerSecond,
+          averageTransitionTimeMs,
+          attempts: updatedAttempts,
+        };
+
+        setResult(finalResult);
 
         try {
-          if (
-            !samples ||
-            samples.length === 0
-          ) {
-            throw new Error(
-              'No audio samples were recorded.',
-            );
-          }
-
-          const measurement =
-            measureRapidNoteTransition(
-              samples,
-              sampleRate,
-              exerciseConfig.sequence.frequencies,
-            );
-
-          const scored =
-            scoreRapidNoteTransition(
-              measurement,
-            );
-
-          const finalScore =
-            Math.round(scored.overall);
-
-          // ----------------------------------------------------
-          // SAVE PROGRESS
-          // ----------------------------------------------------
-
-          try {
-            await saveCompletedExercise(
-              'agility',
-              'rapidNoteTransition',
-              tier,
-              finalScore,
-            );
-
-            console.log(
-              '💾 Rapid Note Transition progress saved:',
-              {
-                componentId: 'agility',
-                templateId:
-                  'rapidNoteTransition',
-                tier,
-                scorePct: finalScore,
-              },
-            );
-          } catch (saveError) {
-            console.error(
-              '❌ Failed to save Rapid Note Transition progress:',
-              saveError,
-            );
-          }
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          // ----------------------------------------------------
-          // SET RESULTS
-          // ----------------------------------------------------
-
-          setResult({
-            overall: scored.overall,
-            pitchScore:
-              scored.pitchScore,
-            sequenceScore:
-              scored.sequenceScore,
-            speedScore:
-              scored.speedScore,
-
-            passed: scored.passed,
-            feedback: scored.feedback,
-
-            transitionCount:
-              measurement.transitionCount,
-
-            transitionsPerSecond:
-              measurement.transitionsPerSecond,
-
-            averageTransitionTimeMs:
-              measurement.averageTransitionTimeMs,
-          });
-
-          setScreen('results');
+          await saveCompletedExercise(
+            'agility',
+            'rapidNoteTransition',
+            tier,
+            finalResult.overall,
+          );
         } catch (error) {
           console.error(
-            'Rapid Note Transition processing failed:',
+            'Failed to save Rapid Note Transition result:',
             error,
           );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setErrorMessage(
-            'We could not analyze this recording. Please try again.',
-          );
-
-          setScreen('instructions');
         }
-      },
-      [
-        clearTimers,
-        exerciseConfig.sequence.frequencies,
-        setScreen,
-        tier,
-      ],
-    );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setResult(finalResult);
+        setScreen('results');
+      } catch (error) {
+        console.error(
+          'Rapid Note Transition processing failed:',
+          error,
+        );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'We could not analyze this recording. Please try again.',
+        );
+
+        // Return to instructions so the user can restart the set.
+        setScreen('instructions');
+      }
+    },
+    [
+      clearTimers,
+      currentRepetition,
+      exerciseConfig.accuracyThreshold,
+      exerciseConfig.repetitions,
+      exerciseConfig.sequence.frequencies,
+      resetLiveState,
+      setScreen,
+      tier,
+    ],
+  );
 
   // ----------------------------------------------------------
   // AUDIO RECORDER
@@ -753,144 +790,114 @@ const handleLiveFrame =
   });
 
   // ----------------------------------------------------------
-  // PLAY REFERENCE SEQUENCE
+  // PLAY REFERENCE AND RECORD ONE REPETITION
   // ----------------------------------------------------------
 
-  const playReferenceSequence =
-    useCallback(
-      async () => {
-        if (
-          playingSequenceRef.current ||
-          referenceStartedRef.current
-        ) {
+  const playReferenceSequence = useCallback(
+    async () => {
+      if (
+        playingSequenceRef.current ||
+        referenceStartedRef.current
+      ) {
+        return;
+      }
+
+      referenceStartedRef.current = true;
+      playingSequenceRef.current = true;
+
+      clearTimers();
+
+      try {
+        if (!mountedRef.current) {
           return;
         }
 
-        referenceStartedRef.current =
-          true;
+        resetLiveState();
 
-        playingSequenceRef.current =
-          true;
+        console.log(
+          `Playing reference for repetition ${currentRepetition}/${exerciseConfig.repetitions}`,
+        );
 
-        clearTimers();
+        setScreen('listening');
 
-        try {
-          if (!mountedRef.current) {
-            return;
-          }
+        await playNoteSequence(
+          exerciseConfig.sequence.notes,
+        );
 
-          console.log(
-            '🎵 Starting Rapid Note Transition reference sequence',
-          );
-
-          setScreen('listening');
-
-          await playNoteSequence(
-            exerciseConfig.sequence.notes,
-          );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          console.log(
-            '🎤 Reference finished. Starting recording...',
-          );
-
-          setScreen('recording');
-
-          recordingStartRef.current =
-            Date.now();
-
-          setElapsedSeconds(0);
-
-          await startRecording();
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          console.log(
-            '🎤 Recording started successfully',
-          );
-
-          let elapsed = 0;
-
-          recordingTimerRef.current =
-            setInterval(() => {
-              if (!mountedRef.current) {
-                return;
-              }
-
-              elapsed += 0.1;
-
-              setElapsedSeconds(
-                Math.min(
-                  elapsed,
-                  MAX_RECORDING_SECONDS,
-                ),
-              );
-
-              if (
-                elapsed >=
-                MAX_RECORDING_SECONDS
-              ) {
-                if (
-                  recordingTimerRef.current
-                ) {
-                  clearInterval(
-                    recordingTimerRef.current,
-                  );
-
-                  recordingTimerRef.current =
-                    null;
-                }
-
-                if (
-                  !finishingRef.current
-                ) {
-                  finishingRef.current =
-                    true;
-
-                  console.log(
-                    '⏹️ Maximum recording time reached',
-                  );
-
-                  void stopRecording();
-                }
-              }
-            }, 100);
-        } catch (error) {
-          console.error(
-            'Failed to play Rapid Note Transition reference sequence:',
-            error,
-          );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setErrorMessage(
-            'The reference sequence could not be played or the microphone could not be started. Please try again.',
-          );
-
-          setScreen('instructions');
-        } finally {
-          playingSequenceRef.current =
-            false;
+        if (!mountedRef.current) {
+          return;
         }
-      },
-      [
-        clearTimers,
-        exerciseConfig.sequence.notes,
-        setScreen,
-        startRecording,
-        stopRecording,
-      ],
-    );
+
+        setScreen('recording');
+
+        const recordingStartedAt = Date.now();
+
+        await startRecording();
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        recordingStartRef.current = recordingStartedAt;
+
+        let elapsed = 0;
+
+        recordingTimerRef.current = setInterval(() => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          elapsed += 0.1;
+
+          setElapsedSeconds(
+            Math.min(elapsed, MAX_RECORDING_SECONDS),
+          );
+
+          if (elapsed >= MAX_RECORDING_SECONDS) {
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+
+            if (!finishingRef.current) {
+              finishingRef.current = true;
+              void stopRecording();
+            }
+          }
+        }, 100);
+      } catch (error) {
+        console.error(
+          'Failed to play the reference or start recording:',
+          error,
+        );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setErrorMessage(
+          'The reference sequence could not be played or the microphone could not be started. Please try again.',
+        );
+
+        setScreen('instructions');
+      } finally {
+        playingSequenceRef.current = false;
+      }
+    },
+    [
+      clearTimers,
+      currentRepetition,
+      exerciseConfig.repetitions,
+      exerciseConfig.sequence.notes,
+      resetLiveState,
+      setScreen,
+      startRecording,
+      stopRecording,
+    ],
+  );
 
   // ----------------------------------------------------------
-  // COUNTDOWN
+  // COUNTDOWN FOR EACH REPETITION
   // ----------------------------------------------------------
 
   useEffect(() => {
@@ -900,45 +907,27 @@ const handleLiveFrame =
 
     clearTimers();
 
-    setCountdown(
-      COUNTDOWN_SECONDS,
-    );
+    setCountdown(COUNTDOWN_SECONDS);
 
-    let remaining =
-      COUNTDOWN_SECONDS;
+    let remaining = COUNTDOWN_SECONDS;
 
-    console.log(
-      '⏱️ Rapid Note Transition countdown started',
-    );
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
 
-    countdownTimerRef.current =
-      setInterval(() => {
-        remaining -= 1;
+      if (!mountedRef.current) {
+        return;
+      }
 
-        if (!mountedRef.current) {
-          return;
-        }
+      if (remaining > 0) {
+        setCountdown(remaining);
+        return;
+      }
 
-        console.log(
-          '⏱️ Countdown:',
-          remaining,
-        );
+      clearTimers();
+      setCountdown(0);
 
-        if (remaining > 0) {
-          setCountdown(remaining);
-          return;
-        }
-
-        clearTimers();
-
-        setCountdown(0);
-
-        console.log(
-          '⏱️ Countdown finished',
-        );
-
-        void playReferenceSequence();
-      }, 1000);
+      void playReferenceSequence();
+    }, 1000);
 
     return clearTimers;
   }, [
@@ -960,135 +949,127 @@ const handleLiveFrame =
       clearTimers();
 
       void disposeNotePlayer();
-
       void stopRecording();
     };
+  }, [clearTimers, stopRecording]);
+
+  // ----------------------------------------------------------
+  // START / RESTART THE COMPLETE SET
+  // ----------------------------------------------------------
+
+  const startExercise = useCallback(() => {
+    if (
+      screenRef.current !== 'instructions' ||
+      isLoadingAdaptiveParams
+    ) {
+      return;
+    }
+
+    clearTimers();
+    resetLiveState();
+
+    attemptResultsRef.current = [];
+    setAttemptResults([]);
+
+    referenceStartedRef.current = false;
+    playingSequenceRef.current = false;
+
+    setCurrentRepetition(1);
+    setResult(null);
+    setErrorMessage('');
+    setCountdown(COUNTDOWN_SECONDS);
+
+    setScreen('countdown');
   }, [
     clearTimers,
+    isLoadingAdaptiveParams,
+    resetLiveState,
+    setScreen,
+  ]);
+
+  // ----------------------------------------------------------
+  // FINISH CURRENT REPETITION
+  // ----------------------------------------------------------
+
+  const finishRecording = useCallback(async () => {
+    if (
+      finishingRef.current ||
+      !isRecording ||
+      screenRef.current !== 'recording'
+    ) {
+      return;
+    }
+
+    finishingRef.current = true;
+    clearTimers();
+
+    try {
+      await stopRecording();
+    } catch (error) {
+      console.error(
+        'Failed to stop the recording:',
+        error,
+      );
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setErrorMessage(
+        'We could not stop the recording. Please restart the exercise.',
+      );
+
+      setScreen('instructions');
+    }
+  }, [
+    clearTimers,
+    isRecording,
+    setScreen,
     stopRecording,
   ]);
 
   // ----------------------------------------------------------
-  // START EXERCISE
+  // RETRY THE COMPLETE SET
   // ----------------------------------------------------------
 
-  const startExercise =
-    useCallback(() => {
-      console.log(
-        '▶️ Starting Rapid Note Transition exercise',
-      );
+  const retryExercise = useCallback(() => {
+    clearTimers();
+    resetLiveState();
 
-      clearTimers();
+    attemptResultsRef.current = [];
+    setAttemptResults([]);
 
-      resetLiveState();
+    referenceStartedRef.current = false;
+    playingSequenceRef.current = false;
 
-      referenceStartedRef.current =
-        false;
+    setCurrentRepetition(1);
+    setResult(null);
+    setErrorMessage('');
+    setCountdown(COUNTDOWN_SECONDS);
 
-      playingSequenceRef.current =
-        false;
+    setScreen('instructions');
+  }, [
+    clearTimers,
+    resetLiveState,
+    setScreen,
+  ]);
 
-      setErrorMessage('');
+  // ============================================================
+  // REUSABLE NOTE SEQUENCE
+  // ============================================================
 
-      setResult(null);
-
-      setCurrentRepetition(1);
-
-      setCountdown(
-        COUNTDOWN_SECONDS,
-      );
-
-      setScreen('countdown');
-    }, [
-      clearTimers,
-      resetLiveState,
-      setScreen,
-    ]);
-
-  // ----------------------------------------------------------
-  // FINISH RECORDING
-  // ----------------------------------------------------------
-
-  const finishRecording =
-    useCallback(
-      async () => {
-        if (
-          finishingRef.current ||
-          !isRecording
-        ) {
-          return;
-        }
-
-        console.log(
-          '⏹️ User finished recording',
-        );
-
-        finishingRef.current = true;
-
-        clearTimers();
-
-        try {
-          await stopRecording();
-        } catch (error) {
-          console.error(
-            'Failed to stop Rapid Note Transition recording:',
-            error,
-          );
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setErrorMessage(
-            'We could not stop the recording. Please try again.',
-          );
-
-          setScreen('instructions');
-
-          finishingRef.current =
-            false;
-        }
-      },
-      [
-        clearTimers,
-        isRecording,
-        setScreen,
-        stopRecording,
-      ],
-    );
-
-  // ----------------------------------------------------------
-  // RETRY
-  // ----------------------------------------------------------
-
-  const retryExercise =
-    useCallback(() => {
-      clearTimers();
-
-      resetLiveState();
-
-      referenceStartedRef.current =
-        false;
-
-      playingSequenceRef.current =
-        false;
-
-      setResult(null);
-
-      setErrorMessage('');
-
-      setCurrentRepetition(1);
-
-      setCountdown(
-        COUNTDOWN_SECONDS,
-      );
-
-      setScreen('instructions');
-    }, [
-      clearTimers,
-      resetLiveState,
-      setScreen,
-    ]);
+  const renderNoteSequence = () => (
+    <View style={styles.noteSequence}>
+      {exerciseConfig.sequence.names.map((name, index) => (
+        <View
+          key={`${name}-${index}`}
+          style={styles.notePill}
+        >
+          <Text style={styles.noteText}>{name}</Text>
+        </View>
+      ))}
+    </View>
+  );
 
   // ============================================================
   // INSTRUCTIONS
@@ -1132,168 +1113,101 @@ const handleLiveFrame =
               size={21}
               color={BROWN}
             />
-
             <Text style={styles.prepareTitle}>
               Before You Begin
             </Text>
           </View>
 
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="volume-mute-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Find a quiet area with minimal background noise.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="body-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Stand or sit upright with your shoulders relaxed.
-            </Text>
-          </View>
-
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="mic-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              Keep a comfortable distance from the microphone while singing.
-            </Text>
-          </View>
+          {[
+            'Find a quiet area with minimal background noise.',
+            'Stand or sit upright with your shoulders relaxed.',
+            'Keep a comfortable distance from the microphone while singing.',
+          ].map((item, index) => (
+            <View
+              key={item}
+              style={styles.prepareItem}
+            >
+              <Ionicons
+                name={
+                  index === 0
+                    ? 'volume-mute-outline'
+                    : index === 1
+                      ? 'body-outline'
+                      : 'mic-outline'
+                }
+                size={17}
+                color={BROWN}
+              />
+              <Text style={styles.prepareText}>
+                {item}
+              </Text>
+            </View>
+          ))}
         </View>
 
         <Text style={styles.cardTitle}>
           Exercise Details
         </Text>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Difficulty
-          </Text>
+        <DetailRow
+          label="Difficulty"
+          value={tier.charAt(0).toUpperCase() + tier.slice(1)}
+        />
 
-          <Text style={styles.detailValue}>
-            {tier.charAt(0).toUpperCase() +
-              tier.slice(1)}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Notes
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {isLoadingAdaptiveParams
+        <DetailRow
+          label="Notes"
+          value={
+            isLoadingAdaptiveParams
               ? '...'
-              : exerciseConfig.noteCount}
-          </Text>
-        </View>
+              : String(exerciseConfig.noteCount)
+          }
+        />
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Target Speed
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {isLoadingAdaptiveParams
+        <DetailRow
+          label="Target Speed"
+          value={
+            isLoadingAdaptiveParams
               ? '...'
-              : `${exerciseConfig.targetSpeed.toFixed(
-                  1,
-                )} notes/sec`}
-          </Text>
-        </View>
+              : `${exerciseConfig.targetSpeed.toFixed(1)} transitions/sec`
+          }
+        />
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Repetitions
-          </Text>
-
-          <Text style={styles.detailValue}>
-            {isLoadingAdaptiveParams
+        <DetailRow
+          label="Repetitions"
+          value={
+            isLoadingAdaptiveParams
               ? '...'
-              : exerciseConfig.repetitions}
-          </Text>
-        </View>
+              : String(exerciseConfig.repetitions)
+          }
+        />
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>
-            Accuracy Goal
-          </Text>
+        <DetailRow
+          label="Accuracy Goal"
+          value={`${exerciseConfig.accuracyThreshold}%`}
+        />
 
-          <Text style={styles.detailValue}>
-            {exerciseConfig.accuracyThreshold}%
-          </Text>
-        </View>
-
-        <Text
-          style={[
-            styles.cardTitle,
-            { marginTop: 14 },
-          ]}
-        >
+        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
           Exercise Instructions
         </Text>
 
-        <View style={styles.prepareItem}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={17}
-            color={BROWN}
-          />
-
-          <Text style={styles.prepareText}>
-            Listen carefully to the reference sequence.
-          </Text>
-        </View>
-
-        <View style={styles.prepareItem}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={17}
-            color={BROWN}
-          />
-
-          <Text style={styles.prepareText}>
-            Sing the same notes in the same order.
-          </Text>
-        </View>
-
-        <View style={styles.prepareItem}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={17}
-            color={BROWN}
-          />
-
-          <Text style={styles.prepareText}>
-            Move quickly and smoothly between each note.
-          </Text>
-        </View>
-
-        <View style={styles.prepareItem}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={17}
-            color={BROWN}
-          />
-
-          <Text style={styles.prepareText}>
-            Focus on maintaining accurate pitch throughout the sequence.
-          </Text>
-        </View>
+        {[
+          'Listen carefully to the reference sequence.',
+          'Sing the same notes in the same order.',
+          'Move quickly and smoothly between each note.',
+          'Focus on maintaining accurate pitch throughout the sequence.',
+        ].map(item => (
+          <View
+            key={item}
+            style={styles.prepareItem}
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+            <Text style={styles.prepareText}>{item}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={styles.referenceCard}>
@@ -1305,23 +1219,10 @@ const handleLiveFrame =
           LISTEN AND REMEMBER THE NOTE ORDER
         </Text>
 
-        <View style={styles.noteSequence}>
-          {exerciseConfig.sequence.names.map(
-            (name, index) => (
-              <View
-                key={`${name}-${index}`}
-                style={styles.notePill}
-              >
-                <Text style={styles.noteText}>
-                  {name}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
+        {renderNoteSequence()}
 
         <Text style={styles.referenceHint}>
-          The sequence will play automatically before recording begins.
+          The same sequence will play before each repetition.
         </Text>
       </View>
 
@@ -1332,7 +1233,6 @@ const handleLiveFrame =
             size={18}
             color={BROWN}
           />
-
           <Text style={styles.errorText}>
             {errorMessage}
           </Text>
@@ -1345,43 +1245,23 @@ const handleLiveFrame =
           size={19}
           color={BROWN}
         />
-
         <Text style={styles.tipText}>
           Focus on clean transitions first. Speed should come naturally after the notes are accurate.
-        </Text>
-      </View>
-
-      <View style={styles.difficultyRow}>
-        <Text style={styles.difficultyLabel}>
-          Difficulty
-        </Text>
-
-        <Text style={styles.difficultyValue}>
-          {tier.charAt(0).toUpperCase() +
-            tier.slice(1)}
         </Text>
       </View>
 
       <Pressable
         style={[
           styles.startButton,
-          isLoadingAdaptiveParams &&
-            styles.disabledButton,
+          isLoadingAdaptiveParams && styles.disabledButton,
         ]}
         onPress={startExercise}
         disabled={isLoadingAdaptiveParams}
       >
         {isLoadingAdaptiveParams ? (
-          <ActivityIndicator
-            size="small"
-            color={WHITE}
-          />
+          <ActivityIndicator size="small" color={WHITE} />
         ) : (
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
+          <Ionicons name="play" size={18} color={WHITE} />
         )}
 
         <Text style={styles.startButtonText}>
@@ -1409,6 +1289,10 @@ const handleLiveFrame =
 
       <Text style={styles.phaseTitle}>
         Get Ready
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Repetition {currentRepetition} of {exerciseConfig.repetitions}
       </Text>
 
       <Text style={styles.countdownText}>
@@ -1440,6 +1324,10 @@ const handleLiveFrame =
       </Text>
 
       <Text style={styles.phaseSubtitle}>
+        Repetition {currentRepetition} of {exerciseConfig.repetitions}
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
         Pay attention to the order and pitch of each note.
       </Text>
 
@@ -1447,21 +1335,7 @@ const handleLiveFrame =
         <Text style={styles.referenceLabel}>
           REFERENCE NOTES
         </Text>
-
-        <View style={styles.noteSequence}>
-          {exerciseConfig.sequence.names.map(
-            (name, index) => (
-              <View
-                key={`${name}-${index}`}
-                style={styles.notePill}
-              >
-                <Text style={styles.noteText}>
-                  {name}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
+        {renderNoteSequence()}
       </View>
 
       <ActivityIndicator
@@ -1482,8 +1356,7 @@ const handleLiveFrame =
 
   const renderRecording = () => {
     const progress = Math.min(
-      elapsedSeconds /
-        MAX_RECORDING_SECONDS,
+      elapsedSeconds / MAX_RECORDING_SECONDS,
       1,
     );
 
@@ -1502,12 +1375,15 @@ const handleLiveFrame =
         </Text>
 
         <Text style={styles.recordingSubtitle}>
+          Repetition {currentRepetition} of {exerciseConfig.repetitions}
+        </Text>
+
+        <Text style={styles.recordingSubtitle}>
           Follow the reference notes as quickly and accurately as possible.
         </Text>
 
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
-
           <Text style={styles.recordingBadgeText}>
             RECORDING
           </Text>
@@ -1524,66 +1400,40 @@ const handleLiveFrame =
 
           <Text style={styles.liveFrequency}>
             {livePitch.pitch > 0
-              ? `${livePitch.pitch.toFixed(
-                  1,
-                )} Hz`
+              ? `${livePitch.pitch.toFixed(1)} Hz`
               : '--'}
           </Text>
 
           <View style={styles.liveDivider} />
 
           <View style={styles.liveStats}>
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Transitions
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {liveTransitionCount}
-              </Text>
-            </View>
-
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Notes/sec
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {liveTransitionSpeed.toFixed(
-                  1,
-                )}
-              </Text>
-            </View>
+            <LiveStat
+              label="Transitions"
+              value={String(liveTransitionCount)}
+            />
+            <LiveStat
+              label="Transitions/sec"
+              value={liveTransitionSpeed.toFixed(1)}
+            />
           </View>
 
           <View style={styles.liveStats}>
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Clarity
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {Math.round(
-                  livePitch.clarity * 100,
-                )}
-                %
-              </Text>
-            </View>
+            <LiveStat
+              label="Clarity"
+              value={`${Math.round(livePitch.clarity * 100)}%`}
+            />
           </View>
         </View>
 
         <Text style={styles.timerText}>
-          Recording Time:{' '}
-          {elapsedSeconds.toFixed(1)}s
+          Recording Time: {elapsedSeconds.toFixed(1)}s
         </Text>
 
         <View style={styles.timerTrack}>
           <View
             style={[
               styles.timerFill,
-              {
-                width: `${progress * 100}%`,
-              },
+              { width: `${progress * 100}%` },
             ]}
           />
         </View>
@@ -1592,28 +1442,13 @@ const handleLiveFrame =
           <Text style={styles.cardTitle}>
             Sing This Sequence
           </Text>
-
-          <View style={styles.noteSequence}>
-            {exerciseConfig.sequence.names.map(
-              (name, index) => (
-                <View
-                  key={`${name}-${index}`}
-                  style={styles.notePill}
-                >
-                  <Text style={styles.noteText}>
-                    {name}
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
+          {renderNoteSequence()}
         </View>
 
         <Pressable
           style={[
             styles.finishButton,
-            !isRecording &&
-              styles.disabledButton,
+            !isRecording && styles.disabledButton,
           ]}
           onPress={finishRecording}
           disabled={!isRecording}
@@ -1623,9 +1458,8 @@ const handleLiveFrame =
             size={18}
             color={BROWN}
           />
-
           <Text style={styles.finishButtonText}>
-            Finish Recording
+            Finish This Repetition
           </Text>
         </Pressable>
       </View>
@@ -1639,14 +1473,15 @@ const handleLiveFrame =
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-        />
+        <ActivityIndicator size="large" color={BROWN} />
       </View>
 
       <Text style={styles.phaseTitle}>
         Analyzing Your Singing
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Repetition {currentRepetition} of {exerciseConfig.repetitions}
       </Text>
 
       <Text style={styles.phaseSubtitle}>
@@ -1675,20 +1510,14 @@ const handleLiveFrame =
           ]}
         >
           <Ionicons
-            name={
-              result.passed
-                ? 'checkmark'
-                : 'refresh'
-            }
+            name={result.passed ? 'checkmark' : 'refresh'}
             size={40}
             color={BROWN}
           />
         </View>
 
         <Text style={styles.resultTitle}>
-          {result.passed
-            ? 'Great Job!'
-            : 'Keep Practicing!'}
+          {result.passed ? 'Great Job!' : 'Keep Practicing!'}
         </Text>
 
         <Text style={styles.resultSubtitle}>
@@ -1697,7 +1526,7 @@ const handleLiveFrame =
 
         <View style={styles.scoreCard}>
           <Text style={styles.scoreLabel}>
-            OVERALL SCORE
+            AVERAGE OVERALL SCORE
           </Text>
 
           <Text style={styles.scoreValue}>
@@ -1705,147 +1534,85 @@ const handleLiveFrame =
           </Text>
 
           <Text style={styles.scoreDescription}>
-            out of 100
+            out of 100 · {result.attempts.length} of{' '}
+            {exerciseConfig.repetitions} repetitions completed
           </Text>
         </View>
 
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>
-            Performance Breakdown
+            Repetition Scores
           </Text>
 
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Pitch Accuracy
-              </Text>
+          {result.attempts.map((attempt, index) => (
+            <View
+              key={`attempt-${attempt.repetition}`}
+              style={[
+                styles.attemptRow,
+                index === result.attempts.length - 1 &&
+                  styles.attemptRowLast,
+              ]}
+            >
+              <View style={styles.attemptTextGroup}>
+                <Text style={styles.attemptTitle}>
+                  Repetition {attempt.repetition}
+                </Text>
+                <Text style={styles.attemptSubtitle}>
+                  Pitch {Math.round(attempt.pitchScore)}% · Sequence{' '}
+                  {Math.round(attempt.sequenceScore)}% · Speed{' '}
+                  {Math.round(attempt.speedScore)}%
+                </Text>
+              </View>
 
-              <Text style={styles.scoreRowValue}>
-                {result.pitchScore}%
-              </Text>
-            </View>
-
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      Math.max(
-                        result.pitchScore,
-                        0,
-                      ),
-                      100,
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Sequence Accuracy
-              </Text>
-
-              <Text style={styles.scoreRowValue}>
-                {result.sequenceScore}%
+              <Text style={styles.attemptScore}>
+                {Math.round(attempt.overall)}
               </Text>
             </View>
-
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      Math.max(
-                        result.sequenceScore,
-                        0,
-                      ),
-                      100,
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-
-          <View style={styles.scoreRowLast}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Transition Speed
-              </Text>
-
-              <Text style={styles.scoreRowValue}>
-                {result.speedScore}%
-              </Text>
-            </View>
-
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      Math.max(
-                        result.speedScore,
-                        0,
-                      ),
-                      100,
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
+          ))}
         </View>
 
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>
-            Performance Metrics
+            Average Performance Breakdown
           </Text>
 
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
-              Transitions
-            </Text>
+          <ScoreBar
+            label="Pitch Accuracy"
+            value={result.pitchScore}
+          />
 
-            <Text style={styles.metricValue}>
-              {result.transitionCount}
-            </Text>
-          </View>
+          <ScoreBar
+            label="Sequence Accuracy"
+            value={result.sequenceScore}
+          />
 
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
-              Transitions/sec
-            </Text>
+          <ScoreBar
+            label="Transition Speed"
+            value={result.speedScore}
+            last
+          />
+        </View>
 
-            <Text style={styles.metricValue}>
-              {result.transitionsPerSecond.toFixed(
-                1,
-              )}
-            </Text>
-          </View>
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
+            Average Performance Metrics
+          </Text>
 
-          <View
-            style={[
-              styles.metricRow,
-              styles.metricRowLast,
-            ]}
-          >
-            <Text style={styles.metricLabel}>
-              Average Transition
-            </Text>
+          <MetricRow
+            label="Transitions per attempt"
+            value={String(result.transitionCount)}
+          />
 
-            <Text style={styles.metricValue}>
-              {result.averageTransitionTimeMs.toFixed(
-                0,
-              )}{' '}
-              ms
-            </Text>
-          </View>
+          <MetricRow
+            label="Transitions/sec"
+            value={result.transitionsPerSecond.toFixed(1)}
+          />
+
+          <MetricRow
+            label="Average Transition Time"
+            value={`${result.averageTransitionTimeMs.toFixed(0)} ms`}
+            last
+          />
         </View>
 
         <View style={styles.tipCard}>
@@ -1854,7 +1621,6 @@ const handleLiveFrame =
             size={20}
             color={BROWN}
           />
-
           <Text style={styles.tipText}>
             {result.feedback}
           </Text>
@@ -1869,7 +1635,6 @@ const handleLiveFrame =
             size={18}
             color={WHITE}
           />
-
           <Text style={styles.startButtonText}>
             Try Again
           </Text>
@@ -1878,9 +1643,7 @@ const handleLiveFrame =
         <Pressable
           style={styles.doneButton}
           onPress={() =>
-            router.replace(
-              '/dashboard?tab=exercises',
-            )
+            router.replace('/dashboard?tab=exercises')
           }
         >
           <Text style={styles.doneButtonText}>
@@ -1905,24 +1668,101 @@ const handleLiveFrame =
       }
       showsVerticalScrollIndicator={false}
     >
-      {screen === 'instructions' &&
-        renderInstructions()}
-
-      {screen === 'countdown' &&
-        renderCountdown()}
-
-      {screen === 'listening' &&
-        renderListening()}
-
-      {screen === 'recording' &&
-        renderRecording()}
-
-      {screen === 'processing' &&
-        renderProcessing()}
-
-      {screen === 'results' &&
-        renderResults()}
+      {screen === 'instructions' && renderInstructions()}
+      {screen === 'countdown' && renderCountdown()}
+      {screen === 'listening' && renderListening()}
+      {screen === 'recording' && renderRecording()}
+      {screen === 'processing' && renderProcessing()}
+      {screen === 'results' && renderResults()}
     </ScrollView>
+  );
+}
+
+// ============================================================
+// SMALL PRESENTATIONAL COMPONENTS
+// ============================================================
+
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
+function LiveStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.liveStat}>
+      <Text style={styles.liveStatLabel}>{label}</Text>
+      <Text style={styles.liveStatValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ScoreBar({
+  label,
+  value,
+  last = false,
+}: {
+  label: string;
+  value: number;
+  last?: boolean;
+}) {
+  const safeValue = clampScore(value);
+
+  return (
+    <View style={last ? styles.scoreRowLast : styles.scoreRow}>
+      <View style={styles.scoreRowHeader}>
+        <Text style={styles.scoreRowLabel}>{label}</Text>
+        <Text style={styles.scoreRowValue}>
+          {Math.round(safeValue)}%
+        </Text>
+      </View>
+
+      <View style={styles.progressBackground}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${safeValue}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+  last = false,
+}: {
+  label: string;
+  value: string;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.metricRow,
+        last && styles.metricRowLast,
+      ]}
+    >
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -1931,19 +1771,6 @@ const handleLiveFrame =
 // ============================================================
 
 const styles = StyleSheet.create({
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: WHITE,
-  },
-
   screen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1969,6 +1796,19 @@ const styles = StyleSheet.create({
   resultsWrapper: {
     flexGrow: 1,
     width: '100%',
+  },
+
+  backButton: {
+    position: 'absolute',
+    top: 55,
+    left: 24,
+    zIndex: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: WHITE,
   },
 
   iconCircle: {
@@ -2241,14 +2081,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 3,
+    marginTop: 5,
     maxWidth: 310,
-  },
-
-  microphoneArea: {
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 18,
   },
 
   recordingBadge: {
@@ -2278,35 +2112,6 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  detectedLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    letterSpacing: 0.7,
-    color: MUTED,
-    textAlign: 'center',
-  },
-
-  liveNotes: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 10,
-  },
-
-  liveNote: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: PINK,
-  },
-
-  liveNoteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
-  },
-
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2327,6 +2132,70 @@ const styles = StyleSheet.create({
   timerFill: {
     height: '100%',
     backgroundColor: PINK,
+  },
+
+  liveCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+  },
+
+  liveLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
+  },
+
+  liveCurrentNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 42,
+    color: BROWN,
+    marginTop: 4,
+  },
+
+  liveFrequency: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+
+  liveDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: 15,
+  },
+
+  liveStats: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 6,
+  },
+
+  liveStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  liveStatLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    textAlign: 'center',
+  },
+
+  liveStatValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+    marginTop: 3,
   },
 
   resultIcon: {
@@ -2373,6 +2242,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
+    textAlign: 'center',
   },
 
   scoreValue: {
@@ -2390,35 +2260,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  statusBadge: {
-    marginTop: 14,
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-  },
-
-  statusPassed: {
-    backgroundColor: PINK,
-  },
-
-  statusNeedsWork: {
-    backgroundColor: LIGHT_GRAY,
-  },
-
-  statusText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-
-  statusPassedText: {
-    color: GREEN,
-  },
-
-  statusNeedsWorkText: {
-    color: RED,
-  },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2434,6 +2275,45 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: BROWN,
     marginBottom: 14,
+  },
+
+  attemptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+
+  attemptRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+
+  attemptTextGroup: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  attemptTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
+
+  attemptSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 4,
+    lineHeight: 15,
+  },
+
+  attemptScore: {
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    color: BROWN,
   },
 
   scoreRow: {
@@ -2525,90 +2405,6 @@ const styles = StyleSheet.create({
     marginLeft: 9,
   },
 
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingHorizontal: 4,
-  },
-
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-  },
-
-  liveCard: {
-    width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 22,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-  },
-
-  liveLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: MUTED,
-  },
-
-  liveCurrentNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: BROWN,
-    marginTop: 4,
-  },
-
-  liveFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-
-  liveDivider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 15,
-  },
-
-  liveStats: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 6,
-  },
-
-  liveStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-  },
-
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
-    marginTop: 3,
-  },
-
   doneButton: {
     width: '100%',
     height: 54,
@@ -2622,13 +2418,6 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
-  },
-
-  feedbackText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
     color: BROWN,
   },
 });

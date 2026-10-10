@@ -1,17 +1,20 @@
+
+import {
+  extractAgilityNotes,
+  extractAgilityPitchFrames,
+  frequencyToMidi,
+} from '@/utils/dsp/agility';
+
 export type VocalRunAccuracyMeasurement = {
   detectedPitches: number[];
   detectedNotes: number[];
   targetNotes: number[];
-
   pitchAccuracy: number;
   sequenceAccuracy: number;
-
   noteCount: number;
   correctNoteCount: number;
-
   transitionCount: number;
   correctTransitionCount: number;
-
   durationMs: number;
   notesPerSecond: number;
 };
@@ -19,104 +22,129 @@ export type VocalRunAccuracyMeasurement = {
 const MIN_FREQUENCY = 70;
 const MAX_FREQUENCY = 1000;
 const MIN_RMS = 0.008;
+const MIN_CORRELATION = 0.70;
 
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
-
+const CONFIRMATION_FRAMES = 3;
 const NOTE_TOLERANCE_SEMITONES = 1;
 
-function frequencyToMidi(frequency: number): number {
-  return 69 + 12 * Math.log2(frequency / 440);
-}
-
-function midiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
-function rms(
-  samples: Float32Array,
-  start: number,
-  end: number,
-): number {
-  let sum = 0;
-  let count = 0;
-
-  for (let i = start; i < end; i++) {
-    const value = samples[i] ?? 0;
-    sum += value * value;
-    count++;
-  }
-
-  return count > 0 ? Math.sqrt(sum / count) : 0;
-}
-
-function detectPitch(
-  frame: Float32Array,
-  sampleRate: number,
-): number | null {
-  let energy = 0;
-
-  for (let i = 0; i < frame.length; i++) {
-    energy += frame[i] * frame[i];
-  }
-
-  const frameRms = Math.sqrt(energy / frame.length);
-
-  if (frameRms < MIN_RMS) {
-    return null;
-  }
-
-  const minLag = Math.floor(sampleRate / MAX_FREQUENCY);
-  const maxLag = Math.floor(sampleRate / MIN_FREQUENCY);
-
-  let bestLag = -1;
-  let bestCorrelation = 0;
-
-  for (
-    let lag = minLag;
-    lag <= maxLag && lag < frame.length;
-    lag++
-  ) {
-    let correlation = 0;
-    let energyA = 0;
-    let energyB = 0;
-
-    for (let i = 0; i < frame.length - lag; i++) {
-      const a = frame[i];
-      const b = frame[i + lag];
-
-      correlation += a * b;
-      energyA += a * a;
-      energyB += b * b;
-    }
-
-    const denominator = Math.sqrt(energyA * energyB);
-
-    if (denominator === 0) {
-      continue;
-    }
-
-    const normalizedCorrelation = correlation / denominator;
-
-    if (normalizedCorrelation > bestCorrelation) {
-      bestCorrelation = normalizedCorrelation;
-      bestLag = lag;
-    }
-  }
-
-  if (bestLag <= 0 || bestCorrelation < 0.3) {
-    return null;
-  }
-
-  return sampleRate / bestLag;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
+function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+type AlignmentResult = {
+  correctNoteCount: number;
+  totalError: number;
+  matchedTargetIndices: number[];
+  matchedDetectedIndices: number[];
+  editDistance: number;
+};
+
+function alignNotes(
+  detectedNotes: number[],
+  targetNotes: number[],
+): AlignmentResult {
+  const detectedLength = detectedNotes.length;
+  const targetLength = targetNotes.length;
+
+  const dp: number[][] = Array.from(
+    { length: detectedLength + 1 },
+    () => Array(targetLength + 1).fill(0),
+  );
+
+  const direction: number[][] = Array.from(
+    { length: detectedLength + 1 },
+    () => Array(targetLength + 1).fill(0),
+  );
+
+  // 1 = match/substitution, 2 = extra detected note, 3 = missed target.
+  for (let i = 1; i <= detectedLength; i++) {
+    dp[i][0] = i;
+    direction[i][0] = 2;
+  }
+
+  for (let j = 1; j <= targetLength; j++) {
+    dp[0][j] = j;
+    direction[0][j] = 3;
+  }
+
+  for (let i = 1; i <= detectedLength; i++) {
+    for (let j = 1; j <= targetLength; j++) {
+      const error = Math.abs(
+        detectedNotes[i - 1] - targetNotes[j - 1],
+      );
+
+      const substitutionCost =
+        error <= NOTE_TOLERANCE_SEMITONES ? 0 : 1;
+
+      const substitution =
+        dp[i - 1][j - 1] + substitutionCost;
+      const insertion = dp[i - 1][j] + 1;
+      const deletion = dp[i][j - 1] + 1;
+
+      const best = Math.min(substitution, insertion, deletion);
+      dp[i][j] = best;
+
+      if (best === substitution) {
+        direction[i][j] = 1;
+      } else if (best === insertion) {
+        direction[i][j] = 2;
+      } else {
+        direction[i][j] = 3;
+      }
+    }
+  }
+
+  const matchedTargetIndices: number[] = [];
+  const matchedDetectedIndices: number[] = [];
+
+  let correctNoteCount = 0;
+  let totalError = 0;
+
+  let i = detectedLength;
+  let j = targetLength;
+
+  while (i > 0 || j > 0) {
+    const step = direction[i][j];
+
+    if (i > 0 && j > 0 && step === 1) {
+      const detectedIndex = i - 1;
+      const targetIndex = j - 1;
+
+      const error = Math.abs(
+        detectedNotes[detectedIndex] - targetNotes[targetIndex],
+      );
+
+      matchedDetectedIndices.push(detectedIndex);
+      matchedTargetIndices.push(targetIndex);
+      totalError += error;
+
+      if (error <= NOTE_TOLERANCE_SEMITONES) {
+        correctNoteCount++;
+      }
+
+      i--;
+      j--;
+    } else if (i > 0 && (j === 0 || step === 2)) {
+      i--;
+    } else if (j > 0) {
+      j--;
+    } else {
+      break;
+    }
+  }
+
+  matchedTargetIndices.reverse();
+  matchedDetectedIndices.reverse();
+
+  return {
+    correctNoteCount,
+    totalError,
+    matchedTargetIndices,
+    matchedDetectedIndices,
+    editDistance: dp[detectedLength][targetLength],
+  };
 }
 
 export function measureVocalRunAccuracy(
@@ -124,90 +152,85 @@ export function measureVocalRunAccuracy(
   sampleRate: number,
   targetFrequencies: number[],
 ): VocalRunAccuracyMeasurement {
-  const detectedPitches: number[] = [];
-  const detectedNotes: number[] = [];
+  const durationMs =
+    Number.isFinite(sampleRate) && sampleRate > 0
+      ? (samples.length / sampleRate) * 1000
+      : 0;
 
-  if (targetFrequencies.length === 0 || samples.length === 0) {
+  const targetNotes = targetFrequencies.map((frequency) =>
+    Math.round(frequencyToMidi(frequency)),
+  );
+
+  const emptyResult = (): VocalRunAccuracyMeasurement => ({
+    detectedPitches: [],
+    detectedNotes: [],
+    targetNotes,
+    pitchAccuracy: 0,
+    sequenceAccuracy: 0,
+    noteCount: 0,
+    correctNoteCount: 0,
+    transitionCount: 0,
+    correctTransitionCount: 0,
+    durationMs,
+    notesPerSecond: 0,
+  });
+
+  if (
+    targetNotes.length === 0 ||
+    targetNotes.some((note) => !Number.isFinite(note)) ||
+    samples.length < FRAME_SIZE ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0
+  ) {
+    return emptyResult();
+  }
+
+  const pitchFrames = extractAgilityPitchFrames(
+    samples,
+    sampleRate,
+    FRAME_SIZE,
+    HOP_SIZE,
+    {
+      minFrequency: MIN_FREQUENCY,
+      maxFrequency: MAX_FREQUENCY,
+      minRms: MIN_RMS,
+      minCorrelation: MIN_CORRELATION,
+    },
+  );
+
+  const detectedPitches = pitchFrames.map(
+    (frame) => frame.frequency,
+  );
+
+  const noteEvents = extractAgilityNotes(
+    pitchFrames,
+    CONFIRMATION_FRAMES,
+  );
+
+  const detectedNotes = noteEvents.map((note) => note.midi);
+
+  if (detectedNotes.length === 0) {
     return {
-      detectedPitches: [],
-      detectedNotes: [],
-      targetNotes: [],
-      pitchAccuracy: 0,
-      sequenceAccuracy: 0,
-      noteCount: 0,
-      correctNoteCount: 0,
-      transitionCount: 0,
-      correctTransitionCount: 0,
-      durationMs: 0,
-      notesPerSecond: 0,
+      ...emptyResult(),
+      detectedPitches,
     };
   }
 
-  for (
-    let start = 0;
-    start + FRAME_SIZE <= samples.length;
-    start += HOP_SIZE
-  ) {
-    const frame = samples.slice(
-      start,
-      start + FRAME_SIZE,
-    );
+  const alignment = alignNotes(detectedNotes, targetNotes);
 
-    const frequency = detectPitch(frame, sampleRate);
-
-    if (frequency === null) {
-      continue;
-    }
-
-    const midi = frequencyToMidi(frequency);
-    const roundedMidi = Math.round(midi);
-
-    detectedPitches.push(frequency);
-
-    const previousNote =
-      detectedNotes[detectedNotes.length - 1];
-
-    if (
-      previousNote === undefined ||
-      previousNote !== roundedMidi
-    ) {
-      detectedNotes.push(roundedMidi);
-    }
-  }
-
-const targetNotes = targetFrequencies.map((frequency) =>
-  Math.round(frequencyToMidi(frequency)),
-);
-
-  const comparedCount = Math.min(
-    detectedNotes.length,
-    targetNotes.length,
+  const sequenceAccuracy = clamp(
+    100 *
+      (1 -
+        alignment.editDistance /
+          Math.max(detectedNotes.length, targetNotes.length)),
+    0,
+    100,
   );
 
-  let correctNoteCount = 0;
-  let totalSemitoneError = 0;
-
-  for (let i = 0; i < comparedCount; i++) {
-    const detected = detectedNotes[i];
-    const target = targetNotes[i];
-
-    const error = Math.abs(detected - target);
-
-    totalSemitoneError += error;
-
-    if (error <= NOTE_TOLERANCE_SEMITONES) {
-      correctNoteCount++;
-    }
-  }
-
-  const sequenceAccuracy =
-    comparedCount > 0
-      ? (correctNoteCount / comparedCount) * 100
-      : 0;
-
   const averageSemitoneError =
-    comparedCount > 0
-      ? totalSemitoneError / comparedCount
+    alignment.matchedDetectedIndices.length > 0
+      ? alignment.totalError /
+        alignment.matchedDetectedIndices.length
       : 12;
 
   const pitchAccuracy = clamp(
@@ -219,53 +242,62 @@ const targetNotes = targetFrequencies.map((frequency) =>
   let transitionCount = 0;
   let correctTransitionCount = 0;
 
-  for (let i = 1; i < detectedNotes.length; i++) {
-    if (detectedNotes[i] !== detectedNotes[i - 1]) {
-      transitionCount++;
+  for (
+    let index = 1;
+    index < alignment.matchedDetectedIndices.length;
+    index++
+  ) {
+    const previousDetectedIndex =
+      alignment.matchedDetectedIndices[index - 1];
+    const currentDetectedIndex =
+      alignment.matchedDetectedIndices[index];
 
-      if (i < targetNotes.length) {
-        const detectedInterval =
-          detectedNotes[i] - detectedNotes[i - 1];
+    const previousTargetIndex =
+      alignment.matchedTargetIndices[index - 1];
+    const currentTargetIndex =
+      alignment.matchedTargetIndices[index];
 
-        const targetInterval =
-          targetNotes[i] - targetNotes[i - 1];
+    // Only score consecutive target notes.
+    // Extra detected notes no longer cause the transition
+    // to be silently excluded.
+    if (currentTargetIndex !== previousTargetIndex + 1) {
+      continue;
+    }
 
-        if (
-          Math.abs(
-            detectedInterval - targetInterval,
-          ) <= NOTE_TOLERANCE_SEMITONES
-        ) {
-          correctTransitionCount++;
-        }
-      }
+    transitionCount++;
+
+    const detectedInterval =
+      detectedNotes[currentDetectedIndex] -
+      detectedNotes[previousDetectedIndex];
+
+    const targetInterval =
+      targetNotes[currentTargetIndex] -
+      targetNotes[previousTargetIndex];
+
+    if (
+      Math.abs(detectedInterval - targetInterval) <=
+      NOTE_TOLERANCE_SEMITONES
+    ) {
+      correctTransitionCount++;
     }
   }
 
-  const durationMs =
-    (samples.length / sampleRate) * 1000;
-
   const durationSeconds = durationMs / 1000;
-
-  const notesPerSecond =
-    durationSeconds > 0
-      ? detectedNotes.length / durationSeconds
-      : 0;
 
   return {
     detectedPitches,
     detectedNotes,
     targetNotes,
-
     pitchAccuracy,
     sequenceAccuracy,
-
     noteCount: detectedNotes.length,
-    correctNoteCount,
-
+    correctNoteCount: alignment.correctNoteCount,
     transitionCount,
     correctTransitionCount,
-
     durationMs,
-    notesPerSecond,
+    notesPerSecond:
+      durationSeconds > 0
+        ? detectedNotes.length / durationSeconds
+        : 0,
   };
 }

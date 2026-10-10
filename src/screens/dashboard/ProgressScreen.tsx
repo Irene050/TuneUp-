@@ -253,6 +253,35 @@ export default function ProgressScreen() {
   const [progressError, setProgressError] =
     useState(false);
 
+
+  // ==========================================================
+  // ALL-TIME COMPONENT IMPROVEMENT
+  // ==========================================================
+
+  const allTimeComponentChanges = useMemo(() => {
+    const result = {} as Record<ComponentId, number | null>;
+
+    for (const component of components) {
+      const componentAttempts = attempts
+        .filter(attempt => attempt.componentId === component.id)
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      if (componentAttempts.length < 2) {
+        result[component.id] = null;
+        continue;
+      }
+
+      const firstScore = componentAttempts[0].scorePct;
+      const latestScore =
+        componentAttempts[componentAttempts.length - 1].scorePct;
+
+      result[component.id] = latestScore - firstScore;
+    }
+
+    return result;
+  }, [attempts]);
+
+  
   // ==========================================================
   // LOAD DATA WHEN SCREEN GETS FOCUS
   // ==========================================================
@@ -692,11 +721,10 @@ export default function ProgressScreen() {
                   </View>
 
                       <View style={styles.deltaRow}>
-                        <DeltaBadge delta={delta} />
-
                         <Text style={styles.componentScore}>
                           {score === null ? '—' : `${score}%`}
                         </Text>
+                        <DeltaBadge delta={delta} />
                       </View>
                     </View>
 
@@ -817,11 +845,17 @@ export default function ProgressScreen() {
                       {component.name}
                     </Text>
                   </View>
-                  <Text style={styles.componentScore}>
-                    {recentScore}%
-                  </Text>
-                </View>
 
+                  <View style={styles.deltaRow}>
+                    <Text style={styles.componentScore}>
+                      {recentScore}%
+                    </Text>
+
+                    <DeltaBadge
+                      delta={allTimeComponentChanges[component.id]}
+                    />
+                  </View>
+                </View>
                 <View style={styles.progressBackground}>
                   <View
                     style={[
@@ -846,24 +880,10 @@ export default function ProgressScreen() {
                     {formatTier(progress.currentTier)}
                   </Text>
                 </View>
-
-                <View style={styles.comparisonRow}>
-                  <Text style={styles.comparisonText}>
-                    {comparison.current.count}{' '}
-                    {comparison.current.count === 1
-                      ? 'exercise'
-                      : 'exercises'}{' '}
-                    in {periodLabel.toLowerCase()}
-                  </Text>
-
-                  <DeltaBadge delta={comparison.scoreDelta} />
-                </View>
-
                 <Text style={styles.comparisonHint}>
-                  Score change vs {compareLabel}
-                  {comparison.scoreDelta === null
-                    ? ': not enough data'
-                    : ''}
+                  {allTimeComponentChanges[component.id] === null
+                    ? 'Complete another exercise to track improvement.'
+                    : 'Improvement across all recorded exercises'}
                 </Text>
               </View>
             );

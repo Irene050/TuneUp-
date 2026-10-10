@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -45,7 +46,17 @@ import {
   scoreVocalRunAccuracy,
 } from '@/services/scoring/agility/vocalRunAccuracyTask';
 
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+
+import {
+  detectPitchAutocorrelation,
+} from '@/utils/dsp/agility';
+
+import {
+  frequencyToNoteName,
+} from '@/utils/music/notes';
 
 // ============================================================
 // COLORS
@@ -70,6 +81,8 @@ const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
+const MAX_RECORDING_SAMPLES =
+  SAMPLE_RATE * MAX_RECORDING_SECONDS;
 
 // ============================================================
 // TYPES
@@ -83,24 +96,24 @@ type Phase =
   | 'processing'
   | 'results';
 
+type LivePitch = {
+  note: string;
+  frequency: number;
+};
+
 type ExerciseResult = {
   overall: number;
   pitchScore: number;
   sequenceScore: number;
   transitionScore: number;
-
   passed: boolean;
   feedback: string;
-
   noteCount: number;
   correctNoteCount: number;
-
   transitionCount: number;
   correctTransitionCount: number;
-
   notesPerSecond: number;
   durationMs: number;
-
   repetitionsCompleted: number;
 };
 
@@ -113,45 +126,35 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const frequencyToNoteName = (
-  frequency: number,
-): string => {
-  if (
-    !Number.isFinite(frequency) ||
-    frequency <= 0
-  ) {
-    return '--';
-  }
-
-  const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  const midi = Math.round(
-    69 +
-      12 *
-        Math.log2(frequency / 440),
+function isValidTier(value: unknown): value is Tier {
+  return (
+    value === 'beginner' ||
+    value === 'intermediate' ||
+    value === 'advanced'
   );
+}
 
-  const noteIndex =
-    ((midi % 12) + 12) % 12;
-
-  const octave =
-    Math.floor(midi / 12) - 1;
-
-  return `${noteNames[noteIndex]}${octave}`;
-};
+function getRecentVocalRunScores(
+  records: Awaited<
+    ReturnType<typeof fetchExerciseRecords>
+  >,
+  tier: Tier,
+): number[] {
+  return records
+    .filter(
+      (exercise) =>
+        exercise.templateId === 'vocalRunAccuracy' &&
+        exercise.tier === tier,
+    )
+    .slice(-5)
+    .map((exercise) => exercise.scorePct)
+    .filter(
+      (score) =>
+        Number.isFinite(score) &&
+        score >= 0 &&
+        score <= 100,
+    );
+}
 
 // ============================================================
 // COMPONENT
@@ -162,21 +165,17 @@ export default function VocalRunAccuracyTaskScreen() {
   // TIER
   // ==========================================================
 
-  const [tier, setTier] =
-    useState<Tier>('beginner');
+  const [tier, setTier] = useState<Tier>('beginner');
 
-  const [tierLoading, setTierLoading] =
-    useState(true);
+  const [tierLoading, setTierLoading] = useState(true);
 
   // ==========================================================
   // ADAPTIVE CONFIGURATION
   // ==========================================================
 
-  const [adaptiveConfig, setAdaptiveConfig] =
-    useState(
-      () =>
-        RAPID_VOCAL_RUN_PARAMS.beginner,
-    );
+  const [adaptiveConfig, setAdaptiveConfig] = useState(
+    () => RAPID_VOCAL_RUN_PARAMS.beginner,
+  );
 
   const [
     isLoadingAdaptiveParams,
@@ -184,162 +183,7 @@ export default function VocalRunAccuracyTaskScreen() {
   ] = useState(true);
 
   // ==========================================================
-  // LOAD COMPONENT TIER
-  // ==========================================================
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadComponentTier =
-      async () => {
-        const user =
-          auth.currentUser;
-
-        if (!user) {
-          if (!cancelled) {
-            setTier('beginner');
-            setTierLoading(false);
-          }
-
-          return;
-        }
-
-        try {
-          const progress =
-            await fetchComponentProgress(
-              user.uid,
-              'agility',
-            );
-
-          if (!cancelled) {
-            setTier(
-              (progress?.currentTier as Tier) ??
-                'beginner',
-            );
-          }
-        } catch (error) {
-          console.warn(
-            'Failed to load agility component tier:',
-            error,
-          );
-
-          if (!cancelled) {
-            setTier('beginner');
-          }
-        } finally {
-          if (!cancelled) {
-            setTierLoading(false);
-          }
-        }
-      };
-
-    void loadComponentTier();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // ==========================================================
-  // LOAD ADAPTIVE PARAMETERS
-  // ==========================================================
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadAdaptiveParameters =
-      async () => {
-        setIsLoadingAdaptiveParams(true);
-
-        const currentBaseParams =
-          RAPID_VOCAL_RUN_PARAMS[tier];
-
-        setAdaptiveConfig(
-          currentBaseParams,
-        );
-
-        const user =
-          auth.currentUser;
-
-        if (!user) {
-          if (!cancelled) {
-            setIsLoadingAdaptiveParams(false);
-          }
-
-          return;
-        }
-
-        try {
-          const records =
-            await fetchExerciseRecords(
-              user.uid,
-              'agility',
-            );
-
-          if (cancelled) {
-            return;
-          }
-
-          const recentScores =
-            records
-              .filter(
-                (exercise) =>
-                  exercise.templateId ===
-                    'vocalRunAccuracy' &&
-                  exercise.tier === tier,
-              )
-              .slice(-5)
-              .map(
-                (exercise) =>
-                  exercise.scorePct,
-              );
-
-          const generatedParams =
-            generateVocalRunAccuracyParams({
-              tier,
-              recentScores,
-            });
-
-          if (!cancelled) {
-            setAdaptiveConfig(
-              generatedParams,
-            );
-          }
-        } catch (error) {
-          console.warn(
-            'Failed to load Vocal Run Accuracy adaptive parameters:',
-            error,
-          );
-
-          if (!cancelled) {
-            setAdaptiveConfig(
-              currentBaseParams,
-            );
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoadingAdaptiveParams(false);
-          }
-        }
-      };
-
-    if (!tierLoading) {
-      void loadAdaptiveParameters();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tier, tierLoading]);
-
-  // ==========================================================
-  // ACTIVE CONFIG
-  // ==========================================================
-
-  const config = adaptiveConfig;
-
-  // ==========================================================
-  // STATE
+  // PHASE AND RESULTS
   // ==========================================================
 
   const [phase, setPhase] =
@@ -360,12 +204,19 @@ export default function VocalRunAccuracyTaskScreen() {
   const [errorMessage, setErrorMessage] =
     useState('');
 
+  const [livePitch, setLivePitch] =
+    useState<LivePitch | null>(null);
+
+  const [isPlayingReference, setIsPlayingReference] =
+    useState(false);
+
   // ==========================================================
   // REFS
   // ==========================================================
 
-  const mountedRef =
-    useRef(true);
+  const mountedRef = useRef(true);
+
+  const phaseRef = useRef<Phase>('instructions');
 
   const audioContextRef =
     useRef<AudioContext | null>(null);
@@ -373,90 +224,97 @@ export default function VocalRunAccuracyTaskScreen() {
   const recorderRef =
     useRef<AudioRecorder | null>(null);
 
-  const samplesRef =
-    useRef<number[]>([]);
+  const samplesRef = useRef<number[]>([]);
 
-  const measurementsRef =
-    useRef<
-      ReturnType<
-        typeof measureVocalRunAccuracy
-      >[]
-    >([]);
+  const measurementsRef = useRef<
+    ReturnType<typeof measureVocalRunAccuracy>[]
+  >([]);
 
   const recordingStartRef =
     useRef<number | null>(null);
 
   const recordingTimerRef =
-    useRef<
-      ReturnType<typeof setInterval> | null
-    >(null);
+    useRef<ReturnType<typeof setInterval> | null>(
+      null,
+    );
 
-  const processingRef =
-    useRef(false);
+  const processingRef = useRef(false);
 
-  const phaseRef =
-    useRef<Phase>('instructions');
+  // Invalidate delayed work when leaving or resetting the exercise.
+  const exerciseRunIdRef = useRef(0);
+  const countdownRunIdRef = useRef(0);
+  const referencePlaybackIdRef = useRef(0);
+  const referencePlayingRef = useRef(false);
 
   // ==========================================================
   // SET PHASE
   // ==========================================================
 
-  const setExercisePhase =
-    useCallback((next: Phase) => {
+  const setExercisePhase = useCallback(
+    (next: Phase) => {
       phaseRef.current = next;
       setPhase(next);
-    }, []);
+    },
+    [],
+  );
 
   // ==========================================================
   // TIMER CLEANUP
   // ==========================================================
 
-  const clearRecordingTimer =
-    useCallback(() => {
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-
-        recordingTimerRef.current =
-          null;
-      }
-    }, []);
+  const clearRecordingTimer = useCallback(() => {
+    if (recordingTimerRef.current !== null) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
 
   // ==========================================================
   // STOP RECORDING
   // ==========================================================
 
-  const stopRecording =
-    useCallback(() => {
-      clearRecordingTimer();
+  const stopRecording = useCallback(() => {
+    clearRecordingTimer();
 
-      const recorder =
-        recorderRef.current;
+    const recorder = recorderRef.current;
 
-      if (recorder) {
-        try {
-          recorder.clearOnAudioReady();
-        } catch {}
+    recorderRef.current = null;
 
-        try {
-          void recorder.stop();
-        } catch {}
-
-        recorderRef.current = null;
+    if (recorder) {
+      try {
+        recorder.clearOnAudioReady();
+      } catch {
+        // Recorder may already be stopped.
       }
 
-      recordingStartRef.current =
-        null;
-
       try {
-        void AudioManager.setAudioSessionActivity(
-          false,
-        );
-      } catch {}
-    }, [clearRecordingTimer]);
+        void recorder.stop();
+      } catch {
+        // Recorder may already be stopped.
+      }
+    }
+
+    recordingStartRef.current = null;
+
+    try {
+      void AudioManager.setAudioSessionActivity(false);
+    } catch {
+      // Audio session may already be inactive.
+    }
+  }, [clearRecordingTimer]);
+
+  // ==========================================================
+  // CANCEL REFERENCE PLAYBACK
+  // ==========================================================
+
+  const cancelReferencePlayback = useCallback(() => {
+    referencePlaybackIdRef.current += 1;
+    referencePlayingRef.current = false;
+
+    if (mountedRef.current) {
+      setIsPlayingReference(false);
+    }
+  }, []);
 
   // ==========================================================
   // UNMOUNT CLEANUP
@@ -468,2374 +326,1798 @@ export default function VocalRunAccuracyTaskScreen() {
     return () => {
       mountedRef.current = false;
 
+      exerciseRunIdRef.current += 1;
+      countdownRunIdRef.current += 1;
+      referencePlaybackIdRef.current += 1;
+
+      referencePlayingRef.current = false;
+
       stopRecording();
 
-      if (audioContextRef.current) {
-        try {
-          audioContextRef.current.close();
-        } catch {}
+      const context = audioContextRef.current;
+      audioContextRef.current = null;
 
-        audioContextRef.current =
-          null;
+      if (context) {
+        try {
+          void context.close();
+        } catch {
+          // Context may already be closed.
+        }
       }
     };
   }, [stopRecording]);
 
   // ==========================================================
+  // LOAD COMPONENT TIER
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadComponentTier = async () => {
+      const user = auth.currentUser;
+
+      if (!user) {
+        if (!cancelled) {
+          setTier('beginner');
+          setTierLoading(false);
+        }
+
+        return;
+      }
+
+      try {
+        const progress = await fetchComponentProgress(
+          user.uid,
+          'agility',
+        );
+
+        if (!cancelled) {
+          const savedTier = progress?.currentTier;
+
+          setTier(
+            isValidTier(savedTier)
+              ? savedTier
+              : 'beginner',
+          );
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to load agility component tier:',
+          error,
+        );
+
+        if (!cancelled) {
+          setTier('beginner');
+        }
+      } finally {
+        if (!cancelled) {
+          setTierLoading(false);
+        }
+      }
+    };
+
+    void loadComponentTier();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ==========================================================
+  // LOAD ADAPTIVE PARAMETERS
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdaptiveParameters = async () => {
+      setIsLoadingAdaptiveParams(true);
+
+      const currentBaseParams =
+        RAPID_VOCAL_RUN_PARAMS[tier];
+
+      setAdaptiveConfig(currentBaseParams);
+
+      const user = auth.currentUser;
+
+      if (!user) {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
+
+        return;
+      }
+
+      try {
+        const records = await fetchExerciseRecords(
+          user.uid,
+          'agility',
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const recentScores = getRecentVocalRunScores(
+          records,
+          tier,
+        );
+
+        const generatedParams =
+          generateVocalRunAccuracyParams({
+            tier,
+            recentScores,
+          });
+
+        if (!cancelled) {
+          setAdaptiveConfig(generatedParams);
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to load Vocal Run Accuracy adaptive parameters:',
+          error,
+        );
+
+        if (!cancelled) {
+          setAdaptiveConfig(currentBaseParams);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
+      }
+    };
+
+    if (!tierLoading) {
+      void loadAdaptiveParameters();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier, tierLoading]);
+
+  // ==========================================================
+  // ACTIVE CONFIG
+  // ==========================================================
+
+  const config = adaptiveConfig;
+
+  // ==========================================================
   // MICROPHONE PERMISSION
   // ==========================================================
 
-  const requestMicrophonePermission =
-    useCallback(
-      async (): Promise<boolean> => {
-        try {
-          const permission =
-            await AudioManager.requestRecordingPermissions();
+  const requestMicrophonePermission = useCallback(
+    async (): Promise<boolean> => {
+      try {
+        const permission =
+          await AudioManager.requestRecordingPermissions();
 
-          if (
-            permission !== 'Granted'
-          ) {
-            setErrorMessage(
-              'Microphone permission is required to perform this exercise.',
-            );
-
-            return false;
-          }
-
-          return true;
-        } catch (error) {
-          console.warn(
-            'Microphone permission request failed:',
-            error,
-          );
-
+        if (permission !== 'Granted') {
           if (mountedRef.current) {
             setErrorMessage(
-              'We could not access the microphone. Please check your microphone permissions.',
+              'Microphone permission is required to perform this exercise.',
             );
           }
 
           return false;
         }
-      },
-      [],
-    );
+
+        return true;
+      } catch (error) {
+        console.warn(
+          'Microphone permission request failed:',
+          error,
+        );
+
+        if (mountedRef.current) {
+          setErrorMessage(
+            'We could not access the microphone. Please check your microphone permissions.',
+          );
+        }
+
+        return false;
+      }
+    },
+    [],
+  );
 
   // ==========================================================
   // REFERENCE PLAYBACK
   // ==========================================================
 
-  const playReference =
-    useCallback(async () => {
-      try {
-        const context =
-          audioContextRef.current ??
-          new AudioContext({
-            sampleRate:
-              SAMPLE_RATE,
-          });
+  const playReference = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      phaseRef.current !== 'reference' ||
+      referencePlayingRef.current
+    ) {
+      return;
+    }
 
-        audioContextRef.current =
-          context;
+    const playbackId =
+      ++referencePlaybackIdRef.current;
 
-        await context.resume();
+    referencePlayingRef.current = true;
+    setIsPlayingReference(true);
+    setErrorMessage('');
 
-        for (
-          const frequency of config.frequencies
+    try {
+      const context =
+        audioContextRef.current ??
+        new AudioContext({
+          sampleRate: SAMPLE_RATE,
+        });
+
+      audioContextRef.current = context;
+
+      await context.resume();
+
+      for (const frequency of config.frequencies) {
+        if (
+          !mountedRef.current ||
+          playbackId !== referencePlaybackIdRef.current ||
+          phaseRef.current !== 'reference'
         ) {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          const oscillator =
-            context.createOscillator();
-
-          const gain =
-            context.createGain();
-
-          oscillator.frequency.value =
-            frequency;
-
-          gain.gain.value = 0.12;
-
-          oscillator.connect(gain);
-
-          gain.connect(
-            context.destination,
-          );
-
-          const startTime =
-            context.currentTime;
-
-          oscillator.start(
-            startTime,
-          );
-
-          oscillator.stop(
-            startTime +
-              config.noteDurationSec,
-          );
-
-          await sleep(
-            config.noteDurationSec *
-              1000,
-          );
+          return;
         }
-      } catch (error) {
-        console.warn(
-          'Reference playback failed:',
-          error,
+
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.frequency.value = frequency;
+        gain.gain.value = 0.12;
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+
+        const startTime = context.currentTime;
+
+        oscillator.start(startTime);
+        oscillator.stop(
+          startTime + config.noteDurationSec,
         );
 
+        await sleep(config.noteDurationSec * 1000);
+      }
+    } catch (error) {
+      console.warn(
+        'Reference playback failed:',
+        error,
+      );
+
+      if (
+        mountedRef.current &&
+        playbackId === referencePlaybackIdRef.current
+      ) {
+        setErrorMessage(
+          'The reference sequence could not be played. Please try again.',
+        );
+      }
+    } finally {
+      if (
+        playbackId === referencePlaybackIdRef.current
+      ) {
+        referencePlayingRef.current = false;
+
         if (mountedRef.current) {
-          setErrorMessage(
-            'The reference sequence could not be played. Please try again.',
-          );
+          setIsPlayingReference(false);
         }
       }
-    }, [config]);
+    }
+  }, [config]);
+
+  const handlePlayReference = useCallback(async () => {
+    await playReference();
+  }, [playReference]);
 
   // ==========================================================
   // BEGIN EXERCISE
   // ==========================================================
 
-  const beginExercise =
-    useCallback(async () => {
-      setErrorMessage('');
+  const beginExercise = useCallback(async () => {
+    if (
+      tierLoading ||
+      isLoadingAdaptiveParams ||
+      phaseRef.current !== 'instructions'
+    ) {
+      return;
+    }
 
-      measurementsRef.current = [];
-      setCurrentRepetition(1);
+    setErrorMessage('');
 
-      const permission =
-        await requestMicrophonePermission();
+    const runId = ++exerciseRunIdRef.current;
 
-      if (!permission) {
-        return;
-      }
+    countdownRunIdRef.current += 1;
+    cancelReferencePlayback();
 
-      setExercisePhase(
-        'reference',
-      );
-    }, [
-      requestMicrophonePermission,
-      setExercisePhase,
-    ]);
+    measurementsRef.current = [];
+    samplesRef.current = [];
 
-  // ==========================================================
-  // START REFERENCE
-  // ==========================================================
+    processingRef.current = false;
 
-  const handlePlayReference =
-    useCallback(async () => {
-      setErrorMessage('');
+    setCurrentRepetition(1);
+    setCountdown(COUNTDOWN_SECONDS);
+    setRecordingTime(0);
+    setLivePitch(null);
+    setResult(null);
 
-      await playReference();
-    }, [playReference]);
+    const permission =
+      await requestMicrophonePermission();
 
-  // ==========================================================
-  // START COUNTDOWN
-  // ==========================================================
+    if (
+      !permission ||
+      !mountedRef.current ||
+      runId !== exerciseRunIdRef.current
+    ) {
+      return;
+    }
 
-  const startCountdown =
-    useCallback(async () => {
-      setErrorMessage('');
-
-      setExercisePhase(
-        'countdown',
-      );
-
-      for (
-        let value =
-          COUNTDOWN_SECONDS;
-        value >= 1;
-        value--
-      ) {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        setCountdown(value);
-
-        await sleep(1000);
-      }
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      await startRecording();
-    }, [setExercisePhase]);
-
-  // ==========================================================
-  // START RECORDING
-  // ==========================================================
-
-  const startRecording =
-    useCallback(async () => {
-      if (
-        recorderRef.current
-      ) {
-        return;
-      }
-
-      try {
-        processingRef.current =
-          false;
-
-        samplesRef.current = [];
-
-        setRecordingTime(0);
-
-        const recorder =
-          new AudioRecorder();
-
-        recorderRef.current =
-          recorder;
-
-        const callbackResult =
-          recorder.onAudioReady(
-            {
-              sampleRate:
-                SAMPLE_RATE,
-
-              bufferLength:
-                BUFFER_SIZE,
-
-              channelCount: 1,
-            },
-            ({
-              buffer,
-              numFrames,
-            }) => {
-              try {
-                const channelData =
-                  buffer.getChannelData(
-                    0,
-                  );
-
-                const frameCount =
-                  Math.min(
-                    numFrames,
-                    channelData.length,
-                  );
-
-                for (
-                  let index = 0;
-                  index <
-                  frameCount;
-                  index++
-                ) {
-                  const sample =
-                    channelData[
-                      index
-                    ];
-
-                  if (
-                    Number.isFinite(
-                      sample,
-                    )
-                  ) {
-                    samplesRef.current.push(
-                      sample,
-                    );
-                  }
-                }
-              } catch (error) {
-                console.warn(
-                  'Could not read audio buffer:',
-                  error,
-                );
-              }
-            },
-          );
-
-        if (
-          callbackResult.status ===
-          'error'
-        ) {
-          throw new Error(
-            callbackResult.message,
-          );
-        }
-
-        await AudioManager.setAudioSessionActivity(
-          true,
-        );
-
-        const startResult =
-          await recorder.start();
-
-        if (
-          startResult.status ===
-          'error'
-        ) {
-          throw new Error(
-            startResult.message,
-          );
-        }
-
-        if (!mountedRef.current) {
-          stopRecording();
-          return;
-        }
-
-        recordingStartRef.current =
-          Date.now();
-
-        setRecordingTime(0);
-
-        setExercisePhase(
-          'recording',
-        );
-
-        recordingTimerRef.current =
-          setInterval(() => {
-            const start =
-              recordingStartRef.current;
-
-            if (!start) {
-              return;
-            }
-
-            const elapsed =
-              (Date.now() - start) /
-              1000;
-
-            if (!mountedRef.current) {
-              return;
-            }
-
-            setRecordingTime(
-              Math.min(
-                elapsed,
-                MAX_RECORDING_SECONDS,
-              ),
-            );
-
-            if (
-              elapsed >=
-              MAX_RECORDING_SECONDS
-            ) {
-              void processRecording();
-            }
-          }, 100);
-      } catch (error) {
-        console.warn(
-          'Recording failed:',
-          error,
-        );
-
-        stopRecording();
-
-        if (mountedRef.current) {
-          setErrorMessage(
-            'We could not start the recording. Please try again.',
-          );
-
-          setExercisePhase(
-            'instructions',
-          );
-        }
-      }
-    }, [
-      setExercisePhase,
-      stopRecording,
-    ]);
+    setExercisePhase('reference');
+  }, [
+    cancelReferencePlayback,
+    isLoadingAdaptiveParams,
+    requestMicrophonePermission,
+    setExercisePhase,
+    tierLoading,
+  ]);
 
   // ==========================================================
   // PROCESS RECORDING
   // ==========================================================
 
-  const processRecording =
-    useCallback(async () => {
+  const processRecording = useCallback(async () => {
+    if (
+      processingRef.current ||
+      phaseRef.current !== 'recording'
+    ) {
+      return;
+    }
+
+    processingRef.current = true;
+
+    const runId = exerciseRunIdRef.current;
+
+    stopRecording();
+    setExercisePhase('processing');
+
+    try {
+      await sleep(200);
+
       if (
-        processingRef.current
+        !mountedRef.current ||
+        runId !== exerciseRunIdRef.current
       ) {
         return;
       }
 
-      if (
-        phaseRef.current !==
-        'recording'
-      ) {
-        return;
-      }
+      const samples = new Float32Array(
+        samplesRef.current,
+      );
 
-      processingRef.current =
-        true;
-
-      stopRecording();
-
-      if (mountedRef.current) {
-        setExercisePhase(
-          'processing',
+      if (samples.length === 0) {
+        throw new Error(
+          'No audio samples were captured.',
         );
       }
 
-      await sleep(300);
+      const measurement = measureVocalRunAccuracy(
+        samples,
+        SAMPLE_RATE,
+        config.frequencies,
+      );
 
-      try {
-        const samples =
-          new Float32Array(
-            samplesRef.current,
-          );
+      console.log(
+        'Vocal Run Accuracy measurement:',
+        {
+          targetNotes: measurement.targetNotes,
+          detectedNotes: measurement.detectedNotes,
+          pitchAccuracy: measurement.pitchAccuracy,
+          sequenceAccuracy: measurement.sequenceAccuracy,
+          noteCount: measurement.noteCount,
+          correctNoteCount: measurement.correctNoteCount,
+          transitionCount: measurement.transitionCount,
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+        },
+      );
 
-        if (samples.length === 0) {
-          throw new Error(
-            'No audio samples were captured.',
-          );
-        }
+      measurementsRef.current.push(measurement);
 
-        // ======================================================
-        // MEASURE CURRENT REPETITION
-        // ======================================================
+      const completedRepetitions =
+        measurementsRef.current.length;
 
-        const measurement =
-          measureVocalRunAccuracy(
-            samples,
-            SAMPLE_RATE,
-            config.frequencies,
-          );
+      // ----------------------------------------------
+      // MORE REPETITIONS REMAIN
+      // ----------------------------------------------
 
-        measurementsRef.current.push(
-          measurement,
-        );
-
-        const completedRepetitions =
-          measurementsRef.current.length;
-
-        // ======================================================
-        // CONTINUE TO NEXT REPETITION
-        // ======================================================
-
+      if (completedRepetitions < config.repetitions) {
         if (
-          completedRepetitions <
-          config.repetitions
+          !mountedRef.current ||
+          runId !== exerciseRunIdRef.current
         ) {
-          if (mountedRef.current) {
-            setCurrentRepetition(
-              completedRepetitions + 1,
-            );
-
-            setCountdown(
-              COUNTDOWN_SECONDS,
-            );
-
-            setExercisePhase(
-              'reference',
-            );
-          }
-
           return;
         }
 
-        // ======================================================
-        // AGGREGATE ALL REPETITIONS
-        // ======================================================
+        samplesRef.current = [];
 
-        const measurements =
-          measurementsRef.current;
+        setCurrentRepetition(
+          completedRepetitions + 1,
+        );
 
-        const average = (
-          values: number[],
-        ) =>
-          values.length > 0
-            ? values.reduce(
-                (sum, value) =>
-                  sum + value,
-                0,
-              ) / values.length
-            : 0;
+        setCountdown(COUNTDOWN_SECONDS);
+        setRecordingTime(0);
+        setLivePitch(null);
 
-        const totalNoteCount =
-          measurements.reduce(
-            (sum, item) =>
-              sum + item.noteCount,
-            0,
-          );
+        setExercisePhase('reference');
+        return;
+      }
 
-        const totalCorrectNoteCount =
-          measurements.reduce(
-            (sum, item) =>
-              sum +
-              item.correctNoteCount,
-            0,
-          );
+      // ----------------------------------------------
+      // AGGREGATE MEASUREMENTS
+      // ----------------------------------------------
 
-        const totalTransitionCount =
-          measurements.reduce(
-            (sum, item) =>
-              sum +
-              item.transitionCount,
-            0,
-          );
+      const measurements = measurementsRef.current;
 
-        const totalCorrectTransitionCount =
-          measurements.reduce(
-            (sum, item) =>
-              sum +
-              item.correctTransitionCount,
-            0,
-          );
+      const average = (values: number[]) =>
+        values.length > 0
+          ? values.reduce(
+              (sum, value) => sum + value,
+              0,
+            ) / values.length
+          : 0;
 
-        const totalDurationMs =
-          measurements.reduce(
-            (sum, item) =>
-              sum + item.durationMs,
-            0,
-          );
+      const totalNoteCount = measurements.reduce(
+        (sum, item) => sum + item.noteCount,
+        0,
+      );
 
-        const pitchScore =
-          average(
-            measurements.map(
-              (item) =>
-                item.pitchAccuracy,
-            ),
-          );
+      const totalCorrectNoteCount =
+        measurements.reduce(
+          (sum, item) => sum + item.correctNoteCount,
+          0,
+        );
 
-        const sequenceScore =
-          average(
-            measurements.map(
-              (item) =>
-                item.sequenceAccuracy,
-            ),
-          );
+      const totalTransitionCount =
+        measurements.reduce(
+          (sum, item) => sum + item.transitionCount,
+          0,
+        );
 
-        const transitionScores =
-          measurements.map(
-            (item) =>
-              item.transitionCount > 0
-                ? (item.correctTransitionCount /
-                    item.transitionCount) *
-                  100
-                : item.sequenceAccuracy,
-          );
+      const totalCorrectTransitionCount =
+        measurements.reduce(
+          (sum, item) =>
+            sum + item.correctTransitionCount,
+          0,
+        );
 
-        const transitionScore =
-          average(
-            transitionScores,
-          );
+      const totalDurationMs = measurements.reduce(
+        (sum, item) => sum + item.durationMs,
+        0,
+      );
 
-        const notesPerSecond =
-          totalDurationMs > 0
-            ? totalNoteCount /
-              (totalDurationMs /
-                1000)
-            : 0;
+      // Keep the existing mean-per-repetition behavior
+      // for pitch and sequence accuracy.
+      const pitchScore = average(
+        measurements.map(
+          (item) => item.pitchAccuracy,
+        ),
+      );
 
-        // ======================================================
-        // CREATE AGGREGATED MEASUREMENT
-        // ======================================================
+      const sequenceScore = average(
+        measurements.map(
+          (item) => item.sequenceAccuracy,
+        ),
+      );
 
-        const aggregatedMeasurement = {
-          detectedPitches:
-            measurements.flatMap(
-              (item) =>
-                item.detectedPitches,
-            ),
+      // Use pooled transition counts rather than averaging
+      // per-repetition percentages.
+      const transitionScore =
+        totalTransitionCount > 0
+          ? (totalCorrectTransitionCount /
+              totalTransitionCount) *
+            100
+          : sequenceScore;
 
-          detectedNotes:
-            measurements.flatMap(
-              (item) =>
-                item.detectedNotes,
-            ),
+      const notesPerSecond =
+        totalDurationMs > 0
+          ? totalNoteCount / (totalDurationMs / 1000)
+          : 0;
 
-          targetNotes:
-            measurements.flatMap(
-              (item) =>
-                item.targetNotes,
-            ),
+      const aggregatedMeasurement = {
+        detectedPitches: measurements.flatMap(
+          (item) => item.detectedPitches,
+        ),
 
-          pitchAccuracy:
-            pitchScore,
+        detectedNotes: measurements.flatMap(
+          (item) => item.detectedNotes,
+        ),
 
-          sequenceAccuracy:
-            sequenceScore,
+        targetNotes: measurements.flatMap(
+          (item) => item.targetNotes,
+        ),
 
-          noteCount:
-            totalNoteCount,
+        pitchAccuracy: pitchScore,
+        sequenceAccuracy: sequenceScore,
+        noteCount: totalNoteCount,
+        correctNoteCount: totalCorrectNoteCount,
+        transitionCount: totalTransitionCount,
+        correctTransitionCount:
+          totalCorrectTransitionCount,
+        durationMs: totalDurationMs,
+        notesPerSecond,
+      };
 
-          correctNoteCount:
-            totalCorrectNoteCount,
+      // ----------------------------------------------
+      // SCORE ONCE
+      // ----------------------------------------------
 
-          transitionCount:
-            totalTransitionCount,
+      const score = scoreVocalRunAccuracy(
+        aggregatedMeasurement,
+        config.accuracyThreshold,
+      );
 
-          correctTransitionCount:
-            totalCorrectTransitionCount,
+      if (
+        !mountedRef.current ||
+        runId !== exerciseRunIdRef.current
+      ) {
+        return;
+      }
 
-          durationMs:
-            totalDurationMs,
-
-          notesPerSecond,
-        };
-
-        // ======================================================
-        // SCORE AGGREGATED PERFORMANCE
-        // ======================================================
-
-        const score =
-          scoreVocalRunAccuracy(
-            aggregatedMeasurement,
-          );
-
-        const sequenceRequirementMet =
-          sequenceScore >=
-          config.accuracyThreshold;
-
-        const passed =
-          score.overall >= 70 &&
-          pitchScore >= 60 &&
-          sequenceRequirementMet;
-
-        const feedback =
-          !sequenceRequirementMet
+      const feedback =
+        score.passed
+          ? score.feedback
+          : sequenceScore < config.accuracyThreshold
             ? `Sequence accuracy must reach at least ${config.accuracyThreshold}% for the ${config.label.toLowerCase()} level.`
             : score.feedback;
 
-        // ======================================================
-        // SAVE FINAL EXERCISE PROGRESS
-        // ======================================================
+      // ----------------------------------------------
+      // SAVE PROGRESS
+      // ----------------------------------------------
 
-        try {
-          await saveCompletedExercise(
-            'agility',
-            'vocalRunAccuracy',
-            tier,
-            score.overall,
-          );
+      // saveCompletedExercise handles its own errors.
+      // This screen cannot assume that a resolved call
+      // means the backend write definitely succeeded.
+      await saveCompletedExercise(
+        'agility',
+        'vocalRunAccuracy',
+        tier,
+        score.overall,
+      );
 
-          console.log(
-            '💾 Vocal Run Accuracy progress saved:',
-            score.overall,
-          );
-        } catch (saveError) {
-          console.error(
-            '❌ Failed to save Vocal Run Accuracy progress:',
-            saveError,
-          );
-        }
+      if (
+        !mountedRef.current ||
+        runId !== exerciseRunIdRef.current
+      ) {
+        return;
+      }
 
-        if (!mountedRef.current) {
+      console.log(
+        'Vocal Run Accuracy progress save attempted:',
+        score.overall,
+      );
+
+      // ----------------------------------------------
+      // DISPLAY RESULTS
+      // ----------------------------------------------
+
+      setResult({
+        overall: score.overall,
+        pitchScore: score.pitchScore,
+        sequenceScore: score.sequenceScore,
+        transitionScore: score.transitionScore,
+        passed: score.passed,
+        feedback,
+        noteCount: totalNoteCount,
+        correctNoteCount: totalCorrectNoteCount,
+        transitionCount: totalTransitionCount,
+        correctTransitionCount:
+          totalCorrectTransitionCount,
+        notesPerSecond,
+        durationMs: totalDurationMs,
+        repetitionsCompleted: measurements.length,
+      });
+
+      setLivePitch(null);
+      setExercisePhase('results');
+    } catch (error) {
+      console.warn(
+        'Vocal Run Accuracy processing failed:',
+        error,
+      );
+
+      if (
+        mountedRef.current &&
+        runId === exerciseRunIdRef.current
+      ) {
+        setErrorMessage(
+          'We could not analyze this recording. Please try again.',
+        );
+
+        setExercisePhase('instructions');
+      }
+    } finally {
+      if (runId === exerciseRunIdRef.current) {
+        processingRef.current = false;
+      }
+    }
+  }, [
+    config,
+    setExercisePhase,
+    stopRecording,
+    tier,
+  ]);
+
+  // ==========================================================
+  // START RECORDING
+  // ==========================================================
+
+  const startRecording = useCallback(async () => {
+    if (
+      recorderRef.current ||
+      phaseRef.current !== 'countdown'
+    ) {
+      return;
+    }
+
+    const runId = exerciseRunIdRef.current;
+
+    try {
+      samplesRef.current = [];
+
+      setRecordingTime(0);
+      setLivePitch(null);
+
+      const recorder = new AudioRecorder();
+
+      recorderRef.current = recorder;
+
+      const callbackResult = recorder.onAudioReady(
+        {
+          sampleRate: SAMPLE_RATE,
+          bufferLength: BUFFER_SIZE,
+          channelCount: 1,
+        },
+        ({ buffer, numFrames }) => {
+          if (
+            !mountedRef.current ||
+            runId !== exerciseRunIdRef.current ||
+            phaseRef.current !== 'recording'
+          ) {
+            return;
+          }
+
+          try {
+            const channelData = buffer.getChannelData(0);
+
+            const frameCount = Math.min(
+              numFrames,
+              channelData.length,
+            );
+
+            // Preserve raw PCM for final measurement.
+            // Never exceed the configured recording limit.
+            const remainingSamples =
+              MAX_RECORDING_SAMPLES -
+              samplesRef.current.length;
+
+            const samplesToCopy = Math.min(
+              frameCount,
+              Math.max(remainingSamples, 0),
+            );
+
+            for (
+              let index = 0;
+              index < samplesToCopy;
+              index++
+            ) {
+              const sample = channelData[index];
+
+              if (Number.isFinite(sample)) {
+                samplesRef.current.push(sample);
+              }
+            }
+
+            // Live detection is separate from saved raw samples.
+            const liveFrame = new Float32Array(
+              channelData.slice(0, frameCount),
+            );
+
+            const detected = detectPitchAutocorrelation(
+              liveFrame,
+              SAMPLE_RATE,
+              {
+                minFrequency: 70,
+                maxFrequency: 1000,
+                minRms: 0.008,
+                minCorrelation: 0.70,
+              },
+            );
+
+            if (
+              mountedRef.current &&
+              typeof detected === 'number' &&
+              Number.isFinite(detected) &&
+              detected >= 70 &&
+              detected <= 1000
+            ) {
+              setLivePitch({
+                note: frequencyToNoteName(detected),
+                frequency: detected,
+              });
+            } else if (mountedRef.current) {
+              setLivePitch(null);
+            }
+          } catch (error) {
+            console.warn(
+              'Could not process live audio frame:',
+              error,
+            );
+          }
+        },
+      );
+
+      if (callbackResult.status === 'error') {
+        throw new Error(callbackResult.message);
+      }
+
+      await AudioManager.setAudioSessionActivity(true);
+
+      if (
+        !mountedRef.current ||
+        runId !== exerciseRunIdRef.current
+      ) {
+        stopRecording();
+        return;
+      }
+
+      const startResult = await recorder.start();
+
+      if (startResult.status === 'error') {
+        throw new Error(startResult.message);
+      }
+
+      if (
+        !mountedRef.current ||
+        runId !== exerciseRunIdRef.current
+      ) {
+        stopRecording();
+        return;
+      }
+
+      recordingStartRef.current = Date.now();
+
+      setRecordingTime(0);
+      setExercisePhase('recording');
+
+      recordingTimerRef.current = setInterval(() => {
+        const start = recordingStartRef.current;
+
+        if (
+          start === null ||
+          !mountedRef.current ||
+          runId !== exerciseRunIdRef.current
+        ) {
           return;
         }
 
-        setResult({
-          overall:
-            score.overall,
+        const elapsed = (Date.now() - start) / 1000;
 
-          pitchScore,
-
-          sequenceScore,
-
-          transitionScore,
-
-          passed,
-
-          feedback,
-
-          noteCount:
-            totalNoteCount,
-
-          correctNoteCount:
-            totalCorrectNoteCount,
-
-          transitionCount:
-            totalTransitionCount,
-
-          correctTransitionCount:
-            totalCorrectTransitionCount,
-
-          notesPerSecond,
-
-          durationMs:
-            totalDurationMs,
-
-          repetitionsCompleted:
-            measurements.length,
-        });
-
-        setExercisePhase(
-          'results',
-        );
-      } catch (error) {
-        console.warn(
-          'Vocal Run Accuracy processing failed:',
-          error,
+        setRecordingTime(
+          Math.min(elapsed, MAX_RECORDING_SECONDS),
         );
 
-        if (mountedRef.current) {
-          setErrorMessage(
-            'We could not analyze this recording. Please try again.',
-          );
-
-          setExercisePhase(
-            'instructions',
-          );
+        if (elapsed >= MAX_RECORDING_SECONDS) {
+          void processRecording();
         }
-      } finally {
-        processingRef.current =
-          false;
+      }, 100);
+    } catch (error) {
+      console.warn('Recording failed:', error);
+
+      stopRecording();
+
+      if (
+        mountedRef.current &&
+        runId === exerciseRunIdRef.current
+      ) {
+        setLivePitch(null);
+
+        setErrorMessage(
+          'We could not start the recording. Please try again.',
+        );
+
+        setExercisePhase('instructions');
       }
-    }, [
-      config,
-      setExercisePhase,
-      stopRecording,
-      tier,
-    ]);
+    }
+  }, [
+    processRecording,
+    setExercisePhase,
+    stopRecording,
+  ]);
+
+  // ==========================================================
+  // START COUNTDOWN
+  // ==========================================================
+
+const startCountdown = useCallback(async () => {
+  const runId = ++countdownRunIdRef.current;
+
+  setErrorMessage('');
+  setExercisePhase('countdown');
+
+  for (
+    let value = COUNTDOWN_SECONDS;
+    value >= 1;
+    value--
+  ) {
+    if (
+      !mountedRef.current ||
+      countdownRunIdRef.current !== runId
+    ) {
+      return;
+    }
+
+    setCountdown(value);
+    await sleep(1000);
+  }
+
+  if (
+    !mountedRef.current ||
+    countdownRunIdRef.current !== runId
+  ) {
+    return;
+  }
+
+  await startRecording();
+}, [setExercisePhase, startRecording]);
 
   // ==========================================================
   // FINISH RECORDING
   // ==========================================================
 
-  const finishRecording =
-    useCallback(() => {
-      if (
-        !recorderRef.current ||
-        processingRef.current
-      ) {
-        return;
-      }
+  const finishRecording = useCallback(() => {
+    if (
+      phaseRef.current !== 'recording' ||
+      !recorderRef.current ||
+      processingRef.current
+    ) {
+      return;
+    }
 
-      void processRecording();
-    }, [processRecording]);
+    void processRecording();
+  }, [processRecording]);
+
+  // ==========================================================
+  // CANCEL / BACK TO INSTRUCTIONS
+  // ==========================================================
+
+  const returnToInstructions = useCallback(() => {
+    exerciseRunIdRef.current += 1;
+    countdownRunIdRef.current += 1;
+
+    cancelReferencePlayback();
+    stopRecording();
+
+    processingRef.current = false;
+
+    samplesRef.current = [];
+    measurementsRef.current = [];
+
+    setResult(null);
+    setCurrentRepetition(1);
+    setRecordingTime(0);
+    setCountdown(COUNTDOWN_SECONDS);
+    setLivePitch(null);
+    setErrorMessage('');
+
+    setExercisePhase('instructions');
+  }, [
+    cancelReferencePlayback,
+    setExercisePhase,
+    stopRecording,
+  ]);
 
   // ==========================================================
   // RESET
   // ==========================================================
 
-  const resetExercise =
-    useCallback(() => {
-      stopRecording();
+  const resetExercise = useCallback(() => {
+  countdownRunIdRef.current += 1;
 
-      processingRef.current =
-        false;
+  stopRecording();
 
-      samplesRef.current = [];
+  processingRef.current = false;
 
-      measurementsRef.current = [];
+  samplesRef.current = [];
+  measurementsRef.current = [];
 
-      setResult(null);
+  setResult(null);
+  setCurrentRepetition(1);
+  setRecordingTime(0);
+  setCountdown(COUNTDOWN_SECONDS);
+  setLivePitch(null);
+  setErrorMessage('');
 
-      setCurrentRepetition(1);
-
-      setRecordingTime(0);
-
-      setCountdown(
-        COUNTDOWN_SECONDS,
-      );
-
-      setErrorMessage('');
-
-      setExercisePhase(
-        'instructions',
-      );
-    }, [
-      setExercisePhase,
-      stopRecording,
-    ]);
+  setExercisePhase('instructions');
+}, [setExercisePhase, stopRecording]);
 
   // ==========================================================
   // INSTRUCTIONS
   // ==========================================================
 
-  const renderInstructions =
-    () => (
-      <View style={styles.content}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-          hitSlop={10}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={BROWN}
-          />
-        </Pressable>
+  const renderInstructions = () => (
+    <View style={styles.content}>
+      <Pressable
+        style={styles.backButton}
+        onPress={() => router.back()}
+        hitSlop={10}
+      >
+        <Ionicons
+          name="arrow-back"
+          size={24}
+          color={BROWN}
+        />
+      </Pressable>
 
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="flash-outline"
-            size={34}
-            color={BROWN}
-          />
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="flash-outline"
+          size={34}
+          color={BROWN}
+        />
+      </View>
+
+      <Text style={styles.title}>
+        Vocal Run Accuracy
+      </Text>
+
+      <Text style={styles.subtitle}>
+        VOCAL AGILITY
+      </Text>
+
+      <View style={styles.instructionCard}>
+        <View style={styles.prepareCard}>
+          <View style={styles.prepareHeader}>
+            <Ionicons
+              name="information-circle-outline"
+              size={21}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareTitle}>
+              Before You Begin
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="volume-mute-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Find a quiet area with minimal background noise.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="body-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Stand or sit upright with your shoulders relaxed.
+            </Text>
+          </View>
+
+          <View style={styles.prepareItem}>
+            <Ionicons
+              name="mic-outline"
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              Keep a comfortable distance from the microphone while singing.
+            </Text>
+          </View>
         </View>
 
-        <Text style={styles.title}>
-          Vocal Run Accuracy
+        <Text style={styles.cardTitle}>
+          Exercise Details
         </Text>
 
-        <Text style={styles.subtitle}>
-          VOCAL AGILITY
-        </Text>
-
-        <View
-          style={
-            styles.instructionCard
-          }
-        >
-          <View
-            style={
-              styles.prepareCard
-            }
-          >
-            <View
-              style={
-                styles.prepareHeader
-              }
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={21}
-                color={BROWN}
-              />
-
-              <Text
-                style={
-                  styles.prepareTitle
-                }
-              >
-                Before You Begin
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.prepareItem
-              }
-            >
-              <Ionicons
-                name="volume-mute-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text
-                style={
-                  styles.prepareText
-                }
-              >
-                Find a quiet area with minimal background noise.
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.prepareItem
-              }
-            >
-              <Ionicons
-                name="body-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text
-                style={
-                  styles.prepareText
-                }
-              >
-                Stand or sit upright with your shoulders relaxed.
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.prepareItem
-              }
-            >
-              <Ionicons
-                name="mic-outline"
-                size={17}
-                color={BROWN}
-              />
-
-              <Text
-                style={
-                  styles.prepareText
-                }
-              >
-                Keep a comfortable distance from the microphone while singing.
-              </Text>
-            </View>
-          </View>
-
-          <Text
-            style={styles.cardTitle}
-          >
-            Exercise Details
-          </Text>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Difficulty
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.label}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Speed
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.speedLabel}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Notes
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.frequencies.length}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Repetitions
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.repetitions}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Sequence Target
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.accuracyThreshold}%
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text
-              style={
-                styles.detailLabel
-              }
-            >
-              Note Duration
-            </Text>
-
-            <Text
-              style={
-                styles.detailValue
-              }
-            >
-              {config.noteDurationSec.toFixed(
-                2,
-              )}{' '}
-              sec
-            </Text>
-          </View>
-
-          <Text
-            style={[
-              styles.cardTitle,
-              {
-                marginTop: 14,
-              },
-            ]}
-          >
-            Exercise Instructions
-          </Text>
-
-          <View
-            style={
-              styles.prepareItem
-            }
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.prepareText
-              }
-            >
-              Listen carefully to the reference vocal run.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.prepareItem
-            }
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.prepareText
-              }
-            >
-              Sing every note in the same order.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.prepareItem
-            }
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.prepareText
-              }
-            >
-              Keep your pitch accurate throughout the run.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.prepareItem
-            }
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.prepareText
-              }
-            >
-              Move smoothly between each note.
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.prepareItem
-            }
-          >
-            <Ionicons
-              name="repeat-outline"
-              size={17}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.prepareText
-              }
-            >
-              Complete all {config.repetitions} repetitions of the vocal run.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={
-            styles.referenceCard
-          }
-        >
-          <Text
-            style={styles.cardTitle}
-          >
-            Reference Sequence
-          </Text>
-
-          <Text
-            style={
-              styles.referenceLabel
-            }
-          >
-            LISTEN AND FOLLOW THE NOTE ORDER
-          </Text>
-
-          <View
-            style={
-              styles.noteSequence
-            }
-          >
-            {config.frequencies.map(
-              (
-                frequency,
-                index,
-              ) => (
-                <View
-                  key={`${frequency}-${index}`}
-                  style={
-                    styles.notePill
-                  }
-                >
-                  <Text
-                    style={
-                      styles.noteNumber
-                    }
-                  >
-                    {index + 1}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.noteText
-                    }
-                  >
-                    {frequencyToNoteName(
-                      frequency,
-                    )}
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
-
-          <Text
-            style={
-              styles.referenceHint
-            }
-          >
-            The reference run will play before each repetition.
-          </Text>
-        </View>
-
-        {errorMessage ? (
-          <View
-            style={
-              styles.errorCard
-            }
-          >
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.errorText
-              }
-            >
-              {errorMessage}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={19}
-            color={BROWN}
-          />
-
-          <Text
-            style={styles.tipText}
-          >
-            Focus on accurate notes and smooth transitions. Speed should come naturally with practice.
-          </Text>
-        </View>
-
-        <View
-          style={
-            styles.difficultyRow
-          }
-        >
-          <Text
-            style={
-              styles.difficultyLabel
-            }
-          >
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
             Difficulty
           </Text>
-
-          <Text
-            style={
-              styles.difficultyValue
-            }
-          >
+          <Text style={styles.detailValue}>
             {config.label}
           </Text>
         </View>
 
-        <Pressable
-          style={styles.startButton}
-          onPress={beginExercise}
-        >
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Speed
+          </Text>
+          <Text style={styles.detailValue}>
+            {config.speedLabel}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Notes
+          </Text>
+          <Text style={styles.detailValue}>
+            {config.frequencies.length}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Repetitions
+          </Text>
+          <Text style={styles.detailValue}>
+            {config.repetitions}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Sequence Target
+          </Text>
+          <Text style={styles.detailValue}>
+            {config.accuracyThreshold}%
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>
+            Note Duration
+          </Text>
+          <Text style={styles.detailValue}>
+            {config.noteDurationSec.toFixed(2)} sec
+          </Text>
+        </View>
+
+        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
+          Exercise Instructions
+        </Text>
+
+        {[
+          'Listen carefully to the reference vocal run.',
+          'Sing every note in the same order.',
+          'Keep your pitch accurate throughout the run.',
+          'Move smoothly between each note.',
+          `Complete all ${config.repetitions} repetitions of the vocal run.`,
+        ].map((instruction, index) => (
+          <View
+            key={instruction}
+            style={styles.prepareItem}
+          >
+            <Ionicons
+              name={
+                index === 4
+                  ? 'repeat-outline'
+                  : 'checkmark-circle-outline'
+              }
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              {instruction}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.referenceCard}>
+        <Text style={styles.cardTitle}>
+          Reference Sequence
+        </Text>
+
+        <Text style={styles.referenceLabel}>
+          LISTEN AND FOLLOW THE NOTE ORDER
+        </Text>
+
+        <View style={styles.noteSequence}>
+          {config.frequencies.map((frequency, index) => (
+            <View
+              key={`${frequency}-${index}`}
+              style={styles.notePill}
+            >
+              <Text style={styles.noteNumber}>
+                {index + 1}
+              </Text>
+
+              <Text style={styles.noteText}>
+                {frequencyToNoteName(frequency)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.referenceHint}>
+          The reference run will play before each repetition.
+        </Text>
+      </View>
+
+      {errorMessage ? (
+        <View style={styles.errorCard}>
           <Ionicons
-            name="play"
+            name="alert-circle-outline"
             size={18}
-            color={WHITE}
+            color={BROWN}
           />
 
-          <Text
-            style={
-              styles.startButtonText
-            }
-          >
-            Start Exercise
+          <Text style={styles.errorText}>
+            {errorMessage}
           </Text>
-        </Pressable>
+        </View>
+      ) : null}
+
+      <View style={styles.tipCard}>
+        <Ionicons
+          name="bulb-outline"
+          size={19}
+          color={BROWN}
+        />
+
+        <Text style={styles.tipText}>
+          Focus on accurate notes and smooth transitions. Speed should come naturally with practice.
+        </Text>
       </View>
-    );
+
+      <View style={styles.difficultyRow}>
+        <Text style={styles.difficultyLabel}>
+          Difficulty
+        </Text>
+
+        <Text style={styles.difficultyValue}>
+          {config.label}
+        </Text>
+      </View>
+
+      <Pressable
+        style={styles.startButton}
+        onPress={beginExercise}
+      >
+        <Ionicons
+          name="play"
+          size={18}
+          color={WHITE}
+        />
+
+        <Text style={styles.startButtonText}>
+          Start Exercise
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   // ==========================================================
   // REFERENCE
   // ==========================================================
 
-  const renderReference =
-    () => (
-      <View style={styles.content}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            setExercisePhase(
-              'instructions',
-            )
-          }
-          hitSlop={10}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={BROWN}
-          />
-        </Pressable>
+  const renderReference = () => (
+    <View style={styles.content}>
+      <Pressable
+        style={styles.backButton}
+        onPress={returnToInstructions}
+        hitSlop={10}
+      >
+        <Ionicons
+          name="arrow-back"
+          size={24}
+          color={BROWN}
+        />
+      </Pressable>
 
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="musical-notes-outline"
+          size={34}
+          color={BROWN}
+        />
+      </View>
 
-        <Text
-          style={styles.title}
-        >
-          Repetition {currentRepetition}
+      <Text style={styles.title}>
+        Repetition {currentRepetition}
+      </Text>
+
+      <Text style={styles.subtitle}>
+        OF {config.repetitions} REPETITIONS
+      </Text>
+
+      <View style={styles.referenceProgressCard}>
+        <Text style={styles.referenceProgressLabel}>
+          EXERCISE PROGRESS
         </Text>
 
-        <Text
-          style={styles.subtitle}
-        >
-          OF {config.repetitions} REPETITIONS
+        <View style={styles.repetitionDots}>
+          {Array.from({
+            length: config.repetitions,
+          }).map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.repetitionDot,
+                index < currentRepetition
+                  ? styles.repetitionDotCompleted
+                  : styles.repetitionDotPending,
+              ]}
+            />
+          ))}
+        </View>
+
+        <Text style={styles.referenceProgressText}>
+          Repetition {currentRepetition} of {config.repetitions}
+        </Text>
+      </View>
+
+      <View style={styles.referenceCard}>
+        <Text style={styles.cardTitle}>
+          Note Sequence
         </Text>
 
-        <View
-          style={
-            styles.referenceProgressCard
-          }
-        >
-          <Text
-            style={
-              styles.referenceProgressLabel
-            }
-          >
-            EXERCISE PROGRESS
-          </Text>
+        <Text style={styles.referenceLabel}>
+          FOLLOW THE NOTES IN ORDER
+        </Text>
 
-          <View
-            style={
-              styles.repetitionDots
-            }
-          >
-            {Array.from({
-              length:
-                config.repetitions,
-            }).map(
-              (_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.repetitionDot,
-                    index <
-                      currentRepetition
-                      ? styles.repetitionDotCompleted
-                      : styles.repetitionDotPending,
-                  ]}
-                />
-              ),
-            )}
-          </View>
+        <View style={styles.noteSequence}>
+          {config.frequencies.map((frequency, index) => (
+            <View
+              key={`${frequency}-${index}`}
+              style={styles.notePill}
+            >
+              <Text style={styles.noteNumber}>
+                {index + 1}
+              </Text>
 
-          <Text
-            style={
-              styles.referenceProgressText
-            }
-          >
-            Repetition{' '}
-            {currentRepetition} of{' '}
-            {config.repetitions}
-          </Text>
+              <Text style={styles.noteText}>
+                {frequencyToNoteName(frequency)}
+              </Text>
+            </View>
+          ))}
         </View>
 
-        <View
-          style={
-            styles.referenceCard
-          }
-        >
-          <Text
-            style={styles.cardTitle}
-          >
-            Note Sequence
-          </Text>
+        <Text style={styles.referenceHint}>
+          Listen to the complete run before you begin singing.
+        </Text>
+      </View>
 
-          <Text
-            style={
-              styles.referenceLabel
-            }
-          >
-            FOLLOW THE NOTES IN ORDER
-          </Text>
-
-          <View
-            style={
-              styles.noteSequence
-            }
-          >
-            {config.frequencies.map(
-              (
-                frequency,
-                index,
-              ) => (
-                <View
-                  key={`${frequency}-${index}`}
-                  style={
-                    styles.notePill
-                  }
-                >
-                  <Text
-                    style={
-                      styles.noteNumber
-                    }
-                  >
-                    {index + 1}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.noteText
-                    }
-                  >
-                    {frequencyToNoteName(
-                      frequency,
-                    )}
-                  </Text>
-                </View>
-              ),
-            )}
-          </View>
-
-          <Text
-            style={
-              styles.referenceHint
-            }
-          >
-            Listen to the complete run before you begin singing.
-          </Text>
-        </View>
-
-        <Pressable
-          style={styles.startButton}
-          onPress={
-            handlePlayReference
-          }
-        >
+      <Pressable
+        style={[
+          styles.startButton,
+          isPlayingReference && styles.disabledButton,
+        ]}
+        disabled={isPlayingReference}
+        onPress={handlePlayReference}
+      >
+        {isPlayingReference ? (
+          <ActivityIndicator color={WHITE} />
+        ) : (
           <Ionicons
             name="play"
             size={18}
             color={WHITE}
           />
+        )}
 
-          <Text
-            style={
-              styles.startButtonText
-            }
-          >
-            Play Reference
-          </Text>
-        </Pressable>
+        <Text style={styles.startButtonText}>
+          {isPlayingReference
+            ? 'Playing Reference...'
+            : 'Play Reference'}
+        </Text>
+      </Pressable>
 
-        <Pressable
-          style={styles.finishButton}
-          onPress={
-            startCountdown
-          }
-        >
-          <Ionicons
-            name="arrow-forward"
-            size={18}
-            color={BROWN}
-          />
+      <Pressable
+        style={[
+          styles.finishButton,
+          isPlayingReference && styles.disabledButton,
+        ]}
+        disabled={isPlayingReference}
+        onPress={startCountdown}
+      >
+        <Ionicons
+          name="arrow-forward"
+          size={18}
+          color={BROWN}
+        />
 
-          <Text
-            style={
-              styles.finishButtonText
-            }
-          >
-            Continue
-          </Text>
-        </Pressable>
-      </View>
-    );
+        <Text style={styles.finishButtonText}>
+          Continue
+        </Text>
+      </Pressable>
+
+      {errorMessage ? (
+        <Text style={styles.errorText}>
+          {errorMessage}
+        </Text>
+      ) : null}
+    </View>
+  );
 
   // ==========================================================
   // COUNTDOWN
   // ==========================================================
 
-  const renderCountdown =
-    () => (
-      <View
-        style={
-          styles.centerScreen
-        }
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="flash-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={
-            styles.phaseTitle
-          }
-        >
-          Get Ready
-        </Text>
-
-        <Text
-          style={
-            styles.repetitionLabel
-          }
-        >
-          REPETITION{' '}
-          {currentRepetition} OF{' '}
-          {config.repetitions}
-        </Text>
-
-        <Text
-          style={
-            styles.countdownText
-          }
-        >
-          {countdown}
-        </Text>
-
-        <Text
-          style={
-            styles.phaseSubtitle
-          }
-        >
-          Prepare to sing the vocal run.
-        </Text>
+  const renderCountdown = () => (
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="flash-outline"
+          size={34}
+          color={BROWN}
+        />
       </View>
-    );
+
+      <Text style={styles.phaseTitle}>
+        Get Ready
+      </Text>
+
+      <Text style={styles.repetitionLabel}>
+        REPETITION {currentRepetition} OF {config.repetitions}
+      </Text>
+
+      <Text style={styles.countdownText}>
+        {countdown}
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Prepare to sing the vocal run.
+      </Text>
+
+      <Pressable
+        style={styles.finishButton}
+        onPress={returnToInstructions}
+      >
+        <Text style={styles.finishButtonText}>
+          Cancel
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   // ==========================================================
   // RECORDING
   // ==========================================================
 
-  const renderRecording =
-    () => {
-      const progress =
-        Math.min(
-          recordingTime /
-            MAX_RECORDING_SECONDS,
-          1,
-        );
+  const renderRecording = () => {
+    const progress = Math.min(
+      recordingTime / MAX_RECORDING_SECONDS,
+      1,
+    );
 
-      return (
-        <View
-          style={styles.content}
-        >
-          <View
-            style={
-              styles.recordingIcon
-            }
-          >
-            <Ionicons
-              name="mic"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          <Text
-            style={
-              styles.recordingTitle
-            }
-          >
-            Sing the Vocal Run
-          </Text>
-
-          <Text
-            style={
-              styles.repetitionLabel
-            }
-          >
-            REPETITION{' '}
-            {currentRepetition} OF{' '}
-            {config.repetitions}
-          </Text>
-
-          <Text
-            style={
-              styles.recordingSubtitle
-            }
-          >
-            Follow the sequence as accurately and smoothly as possible.
-          </Text>
-
-          <View
-            style={
-              styles.recordingBadge
-            }
-          >
-            <View
-              style={
-                styles.recordingDot
-              }
-            />
-
-            <Text
-              style={
-                styles.recordingBadgeText
-              }
-            >
-              RECORDING
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.liveCard
-            }
-          >
-            <Text
-              style={
-                styles.liveLabel
-              }
-            >
-              TARGET SEQUENCE
-            </Text>
-
-            <View
-              style={
-                styles.liveSequence
-              }
-            >
-              {config.frequencies.map(
-                (
-                  frequency,
-                  index,
-                ) => (
-                  <View
-                    key={`${frequency}-${index}`}
-                    style={
-                      styles.liveNote
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.liveNoteNumber
-                      }
-                    >
-                      {index + 1}
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.liveNoteText
-                      }
-                    >
-                      {frequencyToNoteName(
-                        frequency,
-                      )}
-                    </Text>
-                  </View>
-                ),
-              )}
-            </View>
-
-            <View
-              style={
-                styles.liveDivider
-              }
-            />
-
-            <View
-              style={
-                styles.liveStats
-              }
-            >
-              <View
-                style={
-                  styles.liveStat
-                }
-              >
-                <Text
-                  style={
-                    styles.liveStatLabel
-                  }
-                >
-                  Notes
-                </Text>
-
-                <Text
-                  style={
-                    styles.liveStatValue
-                  }
-                >
-                  {config.frequencies.length}
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.liveStat
-                }
-              >
-                <Text
-                  style={
-                    styles.liveStatLabel
-                  }
-                >
-                  Target Speed
-                </Text>
-
-                <Text
-                  style={
-                    styles.liveStatValue
-                  }
-                >
-                  {config.speedLabel}
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.liveStat
-                }
-              >
-                <Text
-                  style={
-                    styles.liveStatLabel
-                  }
-                >
-                  Progress
-                </Text>
-
-                <Text
-                  style={
-                    styles.liveStatValue
-                  }
-                >
-                  {currentRepetition}/
-                  {config.repetitions}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Text
-            style={styles.timerText}
-          >
-            Recording Time:{' '}
-            {recordingTime.toFixed(1)}
-            s
-          </Text>
-
-          <View
-            style={
-              styles.timerTrack
-            }
-          >
-            <View
-              style={[
-                styles.timerFill,
-                {
-                  width: `${progress * 100}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <Pressable
-            style={
-              styles.finishButton
-            }
-            onPress={
-              finishRecording
-            }
-          >
-            <Ionicons
-              name="stop"
-              size={18}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.finishButtonText
-              }
-            >
-              Finish Recording
-            </Text>
-          </Pressable>
+    return (
+      <View style={styles.content}>
+        <View style={styles.recordingIcon}>
+          <Ionicons
+            name="mic"
+            size={34}
+            color={BROWN}
+          />
         </View>
-      );
-    };
+
+        <Text style={styles.recordingTitle}>
+          Sing the Vocal Run
+        </Text>
+
+        <Text style={styles.repetitionLabel}>
+          REPETITION {currentRepetition} OF {config.repetitions}
+        </Text>
+
+        <Text style={styles.recordingSubtitle}>
+          Follow the sequence as accurately and smoothly as possible.
+        </Text>
+
+        <View style={styles.recordingBadge}>
+          <View style={styles.recordingDot} />
+
+          <Text style={styles.recordingBadgeText}>
+            RECORDING
+          </Text>
+        </View>
+
+        <View style={styles.liveCard}>
+          <Text style={styles.liveLabel}>
+            TARGET SEQUENCE
+          </Text>
+
+          <View style={styles.liveSequence}>
+            {config.frequencies.map((frequency, index) => (
+              <View
+                key={`${frequency}-${index}`}
+                style={styles.liveNote}
+              >
+                <Text style={styles.liveNoteNumber}>
+                  {index + 1}
+                </Text>
+
+                <Text style={styles.liveNoteText}>
+                  {frequencyToNoteName(frequency)}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.liveDivider} />
+
+          <View style={styles.liveStats}>
+            <View style={styles.liveStat}>
+              <Text style={styles.liveStatLabel}>
+                Notes
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {config.frequencies.length}
+              </Text>
+            </View>
+
+            <View style={styles.liveStat}>
+              <Text style={styles.liveStatLabel}>
+                Target Speed
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {config.speedLabel}
+              </Text>
+            </View>
+
+            <View style={styles.liveStat}>
+              <Text style={styles.liveStatLabel}>
+                Progress
+              </Text>
+
+              <Text style={styles.liveStatValue}>
+                {currentRepetition}/{config.repetitions}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.detectedPitchCard}>
+          <Text style={styles.liveLabel}>
+            LIVE DETECTED PITCH
+          </Text>
+
+          <Text style={styles.detectedPitchNote}>
+            {livePitch?.note ?? '--'}
+          </Text>
+
+          <Text style={styles.detectedPitchFrequency}>
+            {livePitch
+              ? `${livePitch.frequency.toFixed(1)} Hz`
+              : 'Sing a note to begin detection'}
+          </Text>
+
+          <Text style={styles.detectedPitchHint}>
+            {livePitch
+              ? 'Pitch detected from your microphone'
+              : 'Listening for a clear vocal pitch'}
+          </Text>
+        </View>
+
+        <Text style={styles.timerText}>
+          Recording Time: {recordingTime.toFixed(1)}s
+        </Text>
+
+        <View style={styles.timerTrack}>
+          <View
+            style={[
+              styles.timerFill,
+              { width: `${progress * 100}%` },
+            ]}
+          />
+        </View>
+
+        <Pressable
+          style={styles.finishButton}
+          onPress={finishRecording}
+        >
+          <Ionicons
+            name="stop"
+            size={18}
+            color={BROWN}
+          />
+
+          <Text style={styles.finishButtonText}>
+            Finish Recording
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.cancelButton}
+          onPress={returnToInstructions}
+        >
+          <Text style={styles.cancelButtonText}>
+            Cancel Exercise
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   // ==========================================================
   // PROCESSING
   // ==========================================================
 
-  const renderProcessing =
-    () => (
-      <View
-        style={
-          styles.centerScreen
-        }
-      >
-        <View
-          style={
-            styles.iconCircle
-          }
-        >
-          <ActivityIndicator
-            size="large"
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={
-            styles.phaseTitle
-          }
-        >
-          Analyzing Your Singing
-        </Text>
-
-        <Text
-          style={
-            styles.repetitionLabel
-          }
-        >
-          REPETITION{' '}
-          {Math.min(
-            currentRepetition,
-            config.repetitions,
-          )}{' '}
-          OF {config.repetitions}
-        </Text>
-
-        <Text
-          style={
-            styles.phaseSubtitle
-          }
-        >
-          Measuring pitch accuracy, sequence accuracy, transitions, and performance speed.
-        </Text>
+  const renderProcessing = () => (
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+        />
       </View>
-    );
+
+      <Text style={styles.phaseTitle}>
+        Analyzing Your Singing
+      </Text>
+
+      <Text style={styles.repetitionLabel}>
+        REPETITION{' '}
+        {Math.min(
+          currentRepetition,
+          config.repetitions,
+        )}{' '}
+        OF {config.repetitions}
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Measuring pitch accuracy, sequence accuracy, transitions, and performance speed.
+      </Text>
+    </View>
+  );
 
   // ==========================================================
   // RESULTS
   // ==========================================================
 
-  const renderResults =
-    () => {
-      if (!result) {
-        return null;
-      }
+  const renderResults = () => {
+    if (!result) {
+      return null;
+    }
 
-      return (
+    return (
+      <View style={styles.resultsContent}>
         <View
-          style={
-            styles.resultsContent
-          }
+          style={[
+            styles.resultIcon,
+            result.passed
+              ? styles.resultIconPassed
+              : styles.resultIconFailed,
+          ]}
         >
-          <View
+          <Ionicons
+            name={result.passed ? 'checkmark' : 'refresh'}
+            size={40}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.resultTitle}>
+          {result.passed
+            ? 'Great Job!'
+            : 'Keep Practicing!'}
+        </Text>
+
+        <Text style={styles.resultSubtitle}>
+          Vocal Run Accuracy Result
+        </Text>
+
+        <View style={styles.repetitionResultCard}>
+          <Ionicons
+            name="repeat-outline"
+            size={20}
+            color={BROWN}
+          />
+
+          <View style={styles.repetitionResultTextContainer}>
+            <Text style={styles.repetitionResultTitle}>
+              Repetitions Completed
+            </Text>
+
+            <Text style={styles.repetitionResultValue}>
+              {result.repetitionsCompleted} of {config.repetitions}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.scoreCard}>
+          <Text style={styles.scoreLabel}>
+            OVERALL SCORE
+          </Text>
+
+          <Text style={styles.scoreValue}>
+            {Math.round(result.overall)}
+          </Text>
+
+          <Text style={styles.scoreDescription}>
+            out of 100
+          </Text>
+        </View>
+
+        <View style={styles.statusBadge}>
+          <Text
             style={[
-              styles.resultIcon,
+              styles.statusText,
               result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
+                ? styles.statusPassedText
+                : styles.statusNeedsWorkText,
             ]}
           >
-            <Ionicons
-              name={
-                result.passed
-                  ? 'checkmark'
-                  : 'refresh'
-              }
-              size={40}
-              color={BROWN}
-            />
-          </View>
+            {result.passed ? 'PASSED' : 'KEEP PRACTICING'}
+          </Text>
+        </View>
 
-          <Text
-            style={
-              styles.resultTitle
-            }
-          >
-            {result.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
+            Accuracy Breakdown
           </Text>
 
-          <Text
-            style={
-              styles.resultSubtitle
-            }
-          >
-            Vocal Run Accuracy Result
+          {[
+            {
+              label: 'Pitch Accuracy',
+              value: result.pitchScore,
+            },
+            {
+              label: 'Sequence Accuracy',
+              value: result.sequenceScore,
+            },
+            {
+              label: 'Transition Accuracy',
+              value: result.transitionScore,
+            },
+          ].map((item, index) => (
+            <View
+              key={item.label}
+              style={
+                index === 2
+                  ? styles.scoreRowLast
+                  : styles.scoreRow
+              }
+            >
+              <View style={styles.scoreRowHeader}>
+                <Text style={styles.scoreRowLabel}>
+                  {item.label}
+                </Text>
+
+                <Text style={styles.scoreRowValue}>
+                  {Math.round(item.value)}%
+                </Text>
+              </View>
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(
+                        Math.max(item.value, 0),
+                        100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+
+              {index === 1 ? (
+                <Text style={styles.thresholdText}>
+                  Required: {config.accuracyThreshold}%
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
+            Performance Metrics
           </Text>
 
-          <View
-            style={
-              styles.repetitionResultCard
-            }
-          >
-            <Ionicons
-              name="repeat-outline"
-              size={20}
-              color={BROWN}
-            />
-
+          {[
+            {
+              label: 'Correct Notes',
+              value: `${result.correctNoteCount}/${result.noteCount}`,
+            },
+            {
+              label: 'Correct Transitions',
+              value: `${result.correctTransitionCount}/${result.transitionCount}`,
+            },
+            {
+              label: 'Notes/sec',
+              value: result.notesPerSecond.toFixed(2),
+            },
+            {
+              label: 'Total Duration',
+              value: `${(result.durationMs / 1000).toFixed(1)}s`,
+            },
+          ].map((item, index) => (
             <View
-              style={
-                styles.repetitionResultTextContainer
-              }
-            >
-              <Text
-                style={
-                  styles.repetitionResultTitle
-                }
-              >
-                Repetitions Completed
-              </Text>
-
-              <Text
-                style={
-                  styles.repetitionResultValue
-                }
-              >
-                {result.repetitionsCompleted}{' '}
-                of {config.repetitions}
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={
-              styles.scoreCard
-            }
-          >
-            <Text
-              style={
-                styles.scoreLabel
-              }
-            >
-              OVERALL SCORE
-            </Text>
-
-            <Text
-              style={
-                styles.scoreValue
-              }
-            >
-              {Math.round(
-                result.overall,
-              )}
-            </Text>
-
-            <Text
-              style={
-                styles.scoreDescription
-              }
-            >
-              out of 100
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.statusBadge
-            }
-          >
-            <Text
-              style={[
-                styles.statusText,
-                result.passed
-                  ? styles.statusPassedText
-                  : styles.statusNeedsWorkText,
-              ]}
-            >
-              {result.passed
-                ? 'PASSED'
-                : 'KEEP PRACTICING'}
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.resultCard
-            }
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Accuracy Breakdown
-            </Text>
-
-            <View
-              style={
-                styles.scoreRow
-              }
-            >
-              <View
-                style={
-                  styles.scoreRowHeader
-                }
-              >
-                <Text
-                  style={
-                    styles.scoreRowLabel
-                  }
-                >
-                  Pitch Accuracy
-                </Text>
-
-                <Text
-                  style={
-                    styles.scoreRowValue
-                  }
-                >
-                  {Math.round(
-                    result.pitchScore,
-                  )}
-                  %
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.progressBackground
-                }
-              >
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(
-                        Math.max(
-                          result.pitchScore,
-                          0,
-                        ),
-                        100,
-                      )}%`,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-
-            <View
-              style={
-                styles.scoreRow
-              }
-            >
-              <View
-                style={
-                  styles.scoreRowHeader
-                }
-              >
-                <Text
-                  style={
-                    styles.scoreRowLabel
-                  }
-                >
-                  Sequence Accuracy
-                </Text>
-
-                <Text
-                  style={
-                    styles.scoreRowValue
-                  }
-                >
-                  {Math.round(
-                    result.sequenceScore,
-                  )}
-                  %
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.progressBackground
-                }
-              >
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(
-                        Math.max(
-                          result.sequenceScore,
-                          0,
-                        ),
-                        100,
-                      )}%`,
-                    },
-                  ]}
-                />
-              </View>
-
-              <Text
-                style={
-                  styles.thresholdText
-                }
-              >
-                Required:{' '}
-                {config.accuracyThreshold}%
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.scoreRowLast
-              }
-            >
-              <View
-                style={
-                  styles.scoreRowHeader
-                }
-              >
-                <Text
-                  style={
-                    styles.scoreRowLabel
-                  }
-                >
-                  Transition Accuracy
-                </Text>
-
-                <Text
-                  style={
-                    styles.scoreRowValue
-                  }
-                >
-                  {Math.round(
-                    result.transitionScore,
-                  )}
-                  %
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.progressBackground
-                }
-              >
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(
-                        Math.max(
-                          result.transitionScore,
-                          0,
-                        ),
-                        100,
-                      )}%`,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-
-          <View
-            style={
-              styles.resultCard
-            }
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Performance Metrics
-            </Text>
-
-            <View
-              style={
-                styles.metricRow
-              }
-            >
-              <Text
-                style={
-                  styles.metricLabel
-                }
-              >
-                Correct Notes
-              </Text>
-
-              <Text
-                style={
-                  styles.metricValue
-                }
-              >
-                {result.correctNoteCount}/
-                {result.noteCount}
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.metricRow
-              }
-            >
-              <Text
-                style={
-                  styles.metricLabel
-                }
-              >
-                Correct Transitions
-              </Text>
-
-              <Text
-                style={
-                  styles.metricValue
-                }
-              >
-                {
-                  result.correctTransitionCount
-                }
-                /
-                {
-                  result.transitionCount
-                }
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.metricRow
-              }
-            >
-              <Text
-                style={
-                  styles.metricLabel
-                }
-              >
-                Notes/sec
-              </Text>
-
-              <Text
-                style={
-                  styles.metricValue
-                }
-              >
-                {result.notesPerSecond.toFixed(
-                  2,
-                )}
-              </Text>
-            </View>
-
-            <View
+              key={item.label}
               style={[
                 styles.metricRow,
-                styles.metricRowLast,
+                index === 3 && styles.metricRowLast,
               ]}
             >
-              <Text
-                style={
-                  styles.metricLabel
-                }
-              >
-                Total Duration
+              <Text style={styles.metricLabel}>
+                {item.label}
               </Text>
 
-              <Text
-                style={
-                  styles.metricValue
-                }
-              >
-                {(
-                  result.durationMs /
-                  1000
-                ).toFixed(1)}
-                s
+              <Text style={styles.metricValue}>
+                {item.value}
               </Text>
             </View>
-          </View>
-
-          <View
-            style={
-              styles.tipCard
-            }
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={20}
-              color={BROWN}
-            />
-
-            <Text
-              style={
-                styles.tipText
-              }
-            >
-              {result.feedback}
-            </Text>
-          </View>
-
-          <Pressable
-            style={
-              styles.startButton
-            }
-            onPress={
-              resetExercise
-            }
-          >
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
-
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Try Again
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={
-              styles.doneButton
-            }
-            onPress={() =>
-              router.replace(
-                '/dashboard?tab=exercises',
-              )
-            }
-          >
-            <Text
-              style={
-                styles.doneButtonText
-              }
-            >
-              Done
-            </Text>
-          </Pressable>
+          ))}
         </View>
-      );
-    };
+
+        <View style={styles.tipCard}>
+          <Ionicons
+            name="bulb-outline"
+            size={20}
+            color={BROWN}
+          />
+
+          <Text style={styles.tipText}>
+            {result.feedback}
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.startButton}
+          onPress={resetExercise}
+        >
+          <Ionicons
+            name="refresh"
+            size={18}
+            color={WHITE}
+          />
+
+          <Text style={styles.startButtonText}>
+            Try Again
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.doneButton}
+          onPress={() =>
+            router.replace('/dashboard?tab=exercises')
+          }
+        >
+          <Text style={styles.doneButtonText}>
+            Done
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   // ==========================================================
   // MAIN RENDER
   // ==========================================================
 
-  if (
-    tierLoading ||
-    isLoadingAdaptiveParams
-  ) {
+  if (tierLoading || isLoadingAdaptiveParams) {
     return (
-      <View
-        style={
-          styles.centerScreen
-        }
-      >
-        <View
-          style={styles.iconCircle}
-        >
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
           <ActivityIndicator
             size="large"
             color={BROWN}
           />
         </View>
 
-        <Text
-          style={
-            styles.phaseTitle
-          }
-        >
+        <Text style={styles.phaseTitle}>
           Preparing Exercise
         </Text>
 
-        <Text
-          style={
-            styles.phaseSubtitle
-          }
-        >
+        <Text style={styles.phaseSubtitle}>
           Loading your current difficulty and exercise settings.
         </Text>
       </View>
@@ -2850,27 +2132,14 @@ export default function VocalRunAccuracyTaskScreen() {
           ? styles.resultsWrapper
           : undefined
       }
-      showsVerticalScrollIndicator={
-        false
-      }
+      showsVerticalScrollIndicator={false}
     >
-      {phase === 'instructions' &&
-        renderInstructions()}
-
-      {phase === 'reference' &&
-        renderReference()}
-
-      {phase === 'countdown' &&
-        renderCountdown()}
-
-      {phase === 'recording' &&
-        renderRecording()}
-
-      {phase === 'processing' &&
-        renderProcessing()}
-
-      {phase === 'results' &&
-        renderResults()}
+      {phase === 'instructions' && renderInstructions()}
+      {phase === 'reference' && renderReference()}
+      {phase === 'countdown' && renderCountdown()}
+      {phase === 'recording' && renderRecording()}
+      {phase === 'processing' && renderProcessing()}
+      {phase === 'results' && renderResults()}
     </ScrollView>
   );
 }
@@ -3056,6 +2325,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
 
+  disabledButton: {
+    opacity: 0.55,
+  },
+
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
@@ -3078,6 +2351,18 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
+  },
+
+  cancelButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 4,
+  },
+
+  cancelButtonText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
   },
 
   referenceCard: {
@@ -3359,6 +2644,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
     marginTop: 3,
+  },
+
+  detectedPitchCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+  },
+
+  detectedPitchNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 38,
+    color: BROWN,
+    marginTop: 12,
+  },
+
+  detectedPitchFrequency: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+    marginTop: 4,
+  },
+
+  detectedPitchHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
   },
 
   timerText: {

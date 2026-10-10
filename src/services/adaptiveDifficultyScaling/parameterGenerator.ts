@@ -2508,238 +2508,128 @@ export function generateRapidNoteTransitionParams({
   tier,
   recentScores,
 }: GenerateRapidNoteTransitionParamsInput) {
-  const baseParams =
-    RAPID_NOTE_TRANSITION_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * MINIMUM NOTE COUNT
-   * ---------------------------------------------------------
-   *
-   * Higher scores -> more required notes.
-   * Lower scores -> fewer required notes.
-   */
+  const baseParams = RAPID_NOTE_TRANSITION_PARAMS[tier];
 
   const minNotesRange = {
     min: baseParams.minNotes * 0.8,
     max: baseParams.minNotes * 1.2,
   };
 
-  const adjustedMinNotes =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      minNotesRange,
-      'higher',
-    );
-
-  const generatedMinNotes =
-    Math.max(
-      1,
-      Math.round(
-        (
-          adjustedMinNotes.min +
-          adjustedMinNotes.max
-        ) / 2,
-      ),
-    );
-
-  /*
-   * ---------------------------------------------------------
-   * MAXIMUM NOTE COUNT
-   * ---------------------------------------------------------
-   *
-   * Higher scores -> more possible notes.
-   * Lower scores -> fewer possible notes.
-   */
-
   const maxNotesRange = {
     min: baseParams.maxNotes * 0.8,
     max: baseParams.maxNotes * 1.2,
   };
-
-  const adjustedMaxNotes =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      maxNotesRange,
-      'higher',
-    );
-
-  const generatedMaxNotes =
-    Math.max(
-      generatedMinNotes,
-      Math.round(
-        (
-          adjustedMaxNotes.min +
-          adjustedMaxNotes.max
-        ) / 2,
-      ),
-    );
-
-  /*
-   * ---------------------------------------------------------
-   * MINIMUM TRANSITION SPEED
-   * ---------------------------------------------------------
-   *
-   * Higher scores -> faster minimum speed.
-   * Lower scores -> slower minimum speed.
-   */
 
   const minSpeedRange = {
     min: baseParams.minSpeed * 0.8,
     max: baseParams.minSpeed * 1.2,
   };
 
-  const adjustedMinSpeed =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      minSpeedRange,
-      'higher',
-    );
-
-  const generatedMinSpeed =
-    (
-      adjustedMinSpeed.min +
-      adjustedMinSpeed.max
-    ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * MAXIMUM TRANSITION SPEED
-   * ---------------------------------------------------------
-   *
-   * Higher scores -> faster maximum speed.
-   * Lower scores -> slower maximum speed.
-   */
-
   const maxSpeedRange = {
     min: baseParams.maxSpeed * 0.8,
     max: baseParams.maxSpeed * 1.2,
   };
-
-  const adjustedMaxSpeed =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      maxSpeedRange,
-      'higher',
-    );
-
-  const generatedMaxSpeed =
-    (
-      adjustedMaxSpeed.min +
-      adjustedMaxSpeed.max
-    ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * REPETITIONS
-   * ---------------------------------------------------------
-   *
-   * Higher scores -> more repetitions.
-   * Lower scores -> fewer repetitions.
-   */
 
   const repetitionsRange = {
     min: baseParams.repetitions * 0.8,
     max: baseParams.repetitions * 1.2,
   };
 
-  const adjustedRepetitions =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      repetitionsRange,
-      'higher',
-    );
-
-  const generatedRepetitions =
-    Math.max(
-      1,
-      Math.round(
-        (
-          adjustedRepetitions.min +
-          adjustedRepetitions.max
-        ) / 2,
-      ),
-    );
-
-  /*
-   * ---------------------------------------------------------
-   * NOTE DURATION
-   * ---------------------------------------------------------
-   *
-   * Shorter notes require faster and more precise
-   * transitions.
-   *
-   * Higher scores -> shorter note duration.
-   * Lower scores -> longer note duration.
-   */
-
   const noteDurationRange = {
     min: baseParams.noteDurationSec * 0.8,
     max: baseParams.noteDurationSec * 1.2,
   };
 
-  const adjustedNoteDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      noteDurationRange,
-      'lower',
-    );
+  const adjustedMinNotes = calculateAdjustedParameterBounds(
+    recentScores,
+    minNotesRange,
+    'higher',
+  );
+
+  const adjustedMaxNotes = calculateAdjustedParameterBounds(
+    recentScores,
+    maxNotesRange,
+    'higher',
+  );
+
+  const adjustedMinSpeed = calculateAdjustedParameterBounds(
+    recentScores,
+    minSpeedRange,
+    'higher',
+  );
+
+  const adjustedMaxSpeed = calculateAdjustedParameterBounds(
+    recentScores,
+    maxSpeedRange,
+    'higher',
+  );
+
+  const adjustedRepetitions = calculateAdjustedParameterBounds(
+    recentScores,
+    repetitionsRange,
+    'higher',
+  );
+
+  const adjustedNoteDuration = calculateAdjustedParameterBounds(
+    recentScores,
+    noteDurationRange,
+    'lower',
+  );
+
+  const generatedMinNotes = Math.max(
+    1,
+    Math.round(
+      (adjustedMinNotes.min + adjustedMinNotes.max) / 2,
+    ),
+  );
+
+  const generatedMaxNotes = Math.max(
+    generatedMinNotes,
+    Math.round(
+      (adjustedMaxNotes.min + adjustedMaxNotes.max) / 2,
+    ),
+  );
+
+  const generatedMinSpeed =
+    (adjustedMinSpeed.min + adjustedMinSpeed.max) / 2;
+
+  const generatedMaxSpeed =
+    (adjustedMaxSpeed.min + adjustedMaxSpeed.max) / 2;
+
+  // Preserve the relationship minSpeed <= maxSpeed.
+  const minSpeed = Math.min(
+    generatedMinSpeed,
+    generatedMaxSpeed,
+  );
+
+  const maxSpeed = Math.max(
+    generatedMinSpeed,
+    generatedMaxSpeed,
+  );
+
+  const generatedRepetitions = Math.max(
+    1,
+    Math.round(
+      (adjustedRepetitions.min + adjustedRepetitions.max) / 2,
+    ),
+  );
 
   const generatedNoteDurationSec =
-    (
-      adjustedNoteDuration.min +
-      adjustedNoteDuration.max
-    ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * RETURN
-   * ---------------------------------------------------------
-   */
+    (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
 
   return {
     ...baseParams,
+    minNotes: generatedMinNotes,
+    maxNotes: generatedMaxNotes,
+    minSpeed: Number(minSpeed.toFixed(2)),
+    maxSpeed: Number(maxSpeed.toFixed(2)),
+    repetitions: generatedRepetitions,
+    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
 
-    minNotes:
-      generatedMinNotes,
-
-    maxNotes:
-      generatedMaxNotes,
-
-    minSpeed: Number(
-  Math.min(
-    generatedMinSpeed,
-    generatedMaxSpeed,
-  ).toFixed(2),
-),
-
-maxSpeed: Number(
-  Math.max(
-    generatedMinSpeed,
-    generatedMaxSpeed,
-  ).toFixed(2),
-),
-
-    repetitions:
-      generatedRepetitions,
-
-    noteDurationSec:
-      Number(
-        generatedNoteDurationSec.toFixed(2),
-      ),
-
-    // Retained at the tier-defined value because
-    // this is a scoring criterion.
-    accuracyThreshold:
-      baseParams.accuracyThreshold,
-
-    // Retained at the tier-defined values because
-    // they define the exercise's pitch range.
-    minMidi:
-      baseParams.minMidi,
-
-    maxMidi:
-      baseParams.maxMidi,
+    // Keep these values fixed at the configured tier values.
+    accuracyThreshold: baseParams.accuracyThreshold,
+    minMidi: baseParams.minMidi,
+    maxMidi: baseParams.maxMidi,
   };
 }
 

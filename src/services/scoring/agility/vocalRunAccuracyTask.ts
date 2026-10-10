@@ -1,3 +1,4 @@
+
 import type { VocalRunAccuracyMeasurement } from '@/services/measurement/agility/vocalRunAccuracyTask';
 
 export type VocalRunAccuracyScore = {
@@ -19,6 +20,7 @@ function clamp(
 
 export function scoreVocalRunAccuracy(
   measurement: VocalRunAccuracyMeasurement,
+  requiredSequenceAccuracy = 60,
 ): VocalRunAccuracyScore {
   const pitchScore = clamp(
     measurement.pitchAccuracy,
@@ -43,6 +45,7 @@ export function scoreVocalRunAccuracy(
         )
       : sequenceScore;
 
+  // Preserve the established scoring weights.
   const overall =
     pitchScore * 0.4 +
     sequenceScore * 0.35 +
@@ -51,7 +54,8 @@ export function scoreVocalRunAccuracy(
   const passed =
     overall >= 70 &&
     pitchScore >= 60 &&
-    sequenceScore >= 60;
+    sequenceScore >=
+      clamp(requiredSequenceAccuracy, 0, 100);
 
   let feedback = '';
 
@@ -67,6 +71,9 @@ export function scoreVocalRunAccuracy(
   } else if (pitchScore < 60) {
     feedback =
       'Focus on matching each target note more accurately.';
+  } else if (sequenceScore < requiredSequenceAccuracy) {
+    feedback =
+      'Practice the complete note sequence slowly until you can perform it accurately.';
   } else if (transitionScore < 60) {
     feedback =
       'Practice moving smoothly and accurately between consecutive notes.';
