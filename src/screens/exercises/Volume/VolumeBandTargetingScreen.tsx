@@ -235,6 +235,73 @@ function getStatusColor(
   }
 }
 
+const MIN_VOICED_FRAMES = 8;
+const MIN_LIVE_INPUT_DBFS = -75;
+const LIVE_LEVEL_OFFSET = 70;
+
+/** A usable singing frame, rather than silence or background noise. */
+function isUsableVoiceFrame(
+  frame: LiveAudioFrame | null | undefined,
+): frame is LiveAudioFrame {
+  return Boolean(
+    frame &&
+      Number.isFinite(frame.volume) &&
+      frame.volume > MIN_LIVE_INPUT_DBFS &&
+      Number.isFinite(frame.pitch) &&
+      frame.pitch > 0 &&
+      Number.isFinite(frame.clarity) &&
+      frame.clarity >= 0.45 &&
+      typeof frame.note === 'string' &&
+      frame.note !== '--',
+  );
+}
+
+/** Convert negative dBFS into the app's positive 0–70 relative level.
+ *  The +70 offset is a display scale, not calibrated acoustic dB SPL.
+ */
+function getLiveDisplayLevel(
+  frame: LiveAudioFrame | null | undefined,
+): number {
+  if (!isUsableVoiceFrame(frame)) {
+    return 0;
+  }
+
+  return clamp(
+    frame.volume + LIVE_LEVEL_OFFSET,
+    0,
+    70,
+  );
+}
+
+/** Reject recordings that contain only silence or very low-level mic noise. */
+function hasSufficientRecordedSignal(
+  samples: Float32Array,
+): boolean {
+  if (!samples || samples.length === 0) {
+    return false;
+  }
+
+  let sumSquares = 0;
+  let peak = 0;
+  let activeSamples = 0;
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const value = samples[index] ?? 0;
+    const absolute = Math.abs(value);
+    sumSquares += value * value;
+    peak = Math.max(peak, absolute);
+
+    if (absolute >= 0.005) {
+      activeSamples += 1;
+    }
+  }
+
+  const rms = Math.sqrt(sumSquares / samples.length);
+  const activeRatio = activeSamples / samples.length;
+
+  return rms >= 0.002 && peak >= 0.01 && activeRatio >= 0.01;
+}
+
 function TargetBandMeter({
   liveDb,
   targetRange,
@@ -287,7 +354,7 @@ function TargetBandMeter({
               styles.meterSubtitle
             }
           >
-            Keep your voice inside the pink band
+            Move into the pink band and hold steady
           </Text>
         </View>
 
@@ -364,39 +431,10 @@ function StabilityHistory({
   targetRange: [number, number];
 }) {
   const bars = useMemo(() => {
-    if (history.length === 0) {
-      return Array(30).fill(0);
-    }
-
+    const visibleHistory = history.slice(-30);
     return Array.from(
       { length: 30 },
-      (_, index) => {
-        const position =
-          (index / 29) *
-          Math.max(
-            history.length - 1,
-            1,
-          );
-
-        const left =
-          Math.floor(position);
-
-        const right =
-          Math.min(
-            Math.ceil(position),
-            history.length - 1,
-          );
-
-        const fraction =
-          position - left;
-
-        return (
-          history[left] *
-            (1 - fraction) +
-          history[right] *
-            fraction
-        );
-      },
+      (_, index) => visibleHistory[index] ?? null,
     );
   }, [history]);
 
@@ -439,7 +477,7 @@ function StabilityHistory({
               styles.historyTitle
             }
           >
-            Your Volume
+            Your Live Voice
           </Text>
 
           <Text
@@ -447,7 +485,7 @@ function StabilityHistory({
               styles.historySubtitle
             }
           >
-            Stay as steady as possible
+            Bars show your detected voice over time
           </Text>
         </View>
 
@@ -475,32 +513,33 @@ function StabilityHistory({
         <View
           style={styles.historyBars}
         >
-          {bars.map(
-            (db, index) => {
-              const position =
-                normalizeBandPosition(
-                  db,
-                );
-
-              return (
-                <View
-                  key={`bar-${index}`}
-                  style={[
-                    styles.historyBar,
-                    {
-                      height:
-                        db > 0
-                          ? `${Math.max(
-                              5,
-                              position * 90,
-                            )}%`
-                          : '0%',
-                    },
-                  ]}
-                />
-              );
-            },
+          {history.length === 0 && (
+            <View style={styles.historyEmpty}>
+              <Text style={styles.historyEmptyText}>
+                Sing {REFERENCE_NOTE.name} on “Ah” to see your live voice track.
+              </Text>
+            </View>
           )}
+          {bars.map((db, index) => {
+            const position =
+              db === null ? 0 : normalizeBandPosition(db);
+
+            return (
+              <View
+                key={`bar-${index}`}
+                style={[
+                  styles.historyBar,
+                  {
+                    height:
+                      db !== null && db > 0
+                        ? `${Math.max(5, position * 90)}%`
+                        : '0%',
+                    opacity: db === null ? 0 : 1,
+                  },
+                ]}
+              />
+            );
+          })}
         </View>
       </View>
 
@@ -525,12 +564,12 @@ function StabilityHistory({
   );
 }
 
-function Header() {
+function Header({ onBack }: { onBack?: () => void } = {}) {
   return (
     <View style={styles.header}>
       <Pressable
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={onBack ?? (() => router.back())}
       >
         <Ionicons
           name="arrow-back"
@@ -619,6 +658,18 @@ export default function VolumeBandTargeting({
 }) {
   const [phase, setPhase] =
     useState<Phase>('directions');
+
+  // Keep callbacks in sync with the current phase, even if the recorder
+  // retains an earlier callback instance.
+  const phaseRef = useRef<Phase>('directions');
+  phaseRef.current = phase;
+
+  const shouldProcessResultRef = useRef(false);
+  const cancelledRecordingRef = useRef(false);
+  const voicedFrameCountRef = useRef(0);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+  const [noVoiceDetected, setNoVoiceDetected] = useState(false);
 
   const [resolvedTier, setResolvedTier] =
     useState<Tier>(
@@ -905,118 +956,104 @@ export default function VolumeBandTargeting({
   } = useAudioRecorder({
     onFrame: (frame) => {
       if (
-        phase !==
-        'exercise'
+        phaseRef.current !== 'exercise' ||
+        cancelledRecordingRef.current
       ) {
         return;
       }
 
-      setLiveFrame(frame);
-
-      const db =
-        Number.isFinite(
-          frame.volume,
-        )
-          ? Math.abs(
-              frame.volume,
-            )
-          : 0;
-
-      if (db <= 0) {
+      // Do not turn a silent -100 dBFS frame into an apparent 100 dB voice.
+      if (!isUsableVoiceFrame(frame)) {
+        setLiveFrame(null);
         return;
       }
 
-      setLiveHistory(
-        (previous) => {
-          const next = [
-            ...previous,
-            db,
-          ];
+      voicedFrameCountRef.current += 1;
+      setLiveFrame(frame);
 
-          return next.length >
-            HISTORY_LIMIT
-            ? next.slice(
-                -HISTORY_LIMIT,
-              )
-            : next;
-        },
+      const displayLevel = getLiveDisplayLevel(frame);
+      setLiveHistory((previous) =>
+        [...previous, displayLevel].slice(-HISTORY_LIMIT),
       );
     },
 
-    onStop: (
-      samples,
-      sampleRate,
-    ) => {
-      const currentParams =
-        paramsRef.current;
+    onStop: (samples, sampleRate) => {
+      // A back-navigation/manual cancellation must not produce a result.
+      if (cancelledRecordingRef.current) {
+        setLiveFrame(null);
+        return;
+      }
 
-      const measurement =
-        measureVolumeBandTargeting(
-          samples,
-          sampleRate,
-          {
-            windowMs:
-              WINDOW_MS,
-
-            targetDbRange:
-              currentParams.targetDbRange,
-
-            durationSec:
-              currentParams.durationSec,
-
-            repetitions:
-              currentParams.repetitions,
-
-            toleranceDb:
-              currentParams.toleranceDb,
-          },
+      // Only the natural completion timer is allowed to score this attempt.
+      if (!shouldProcessResultRef.current) {
+        setLiveFrame(null);
+        setRecordingNotice(
+          'The recording stopped before the exercise finished. Please try again.',
         );
+        setPhase('directions');
+        return;
+      }
+      shouldProcessResultRef.current = false;
 
-      const result =
-        scoreVolumeBandTargeting(
-          measurement,
-          {
-            passingScore:
-              currentParams.consistencyThreshold,
-          },
+      // No sustained pitched voice + no meaningful recorded signal = no score.
+      if (
+        voicedFrameCountRef.current < MIN_VOICED_FRAMES ||
+        !hasSufficientRecordedSignal(samples)
+      ) {
+        // Keep the standard results design, but explicitly mark this as no input.
+        // Intentionally skip scoring and saving for a silent attempt.
+        setNoVoiceDetected(true);
+        setScore(0);
+        setConsistency(0);
+        setAverageDb(0);
+        setTargetReached(false);
+        setPassed(false);
+        setMeasurementQuality(0);
+        setRepScores(
+          Array.from(
+            { length: paramsRef.current.repetitions },
+            () => 0,
+          ),
         );
+        setLiveFrame(null);
+        setLiveHistory([]);
+        recordingStartedAtRef.current = null;
+        finishingRef.current = false;
+        setPhase('results');
+        return;
+      }
 
-      setScore(
-        result.overallScore,
+      const currentParams = paramsRef.current;
+      const measurement = measureVolumeBandTargeting(
+        samples,
+        sampleRate,
+        {
+          windowMs: WINDOW_MS,
+          targetDbRange: currentParams.targetDbRange,
+          durationSec: currentParams.durationSec,
+          repetitions: currentParams.repetitions,
+          toleranceDb: currentParams.toleranceDb,
+        },
       );
 
-      setConsistency(
-        result.consistency,
+      const result = scoreVolumeBandTargeting(
+        measurement,
+        {
+          passingScore: currentParams.consistencyThreshold,
+        },
       );
 
-      setAverageDb(
-        measurement.averageDb,
-      );
-
-      setTargetReached(
-        result.targetReached,
-      );
-
-      setPassed(
-        result.passed,
-      );
-
-      setMeasurementQuality(
-        result.measurementQuality,
-      );
-
+      setScore(result.overallScore);
+      setConsistency(result.consistency);
+      setAverageDb(measurement.averageDb);
+      setTargetReached(result.targetReached);
+      setPassed(result.passed);
+      setMeasurementQuality(result.measurementQuality);
       setRepScores(
-        measurement.repConsistency.map(
-          (value) =>
-            Math.round(value),
-        ),
+        measurement.repConsistency.map((value) => Math.round(value)),
       );
 
-      /*
-       * Save only the naturally completed exercise.
-       * The recorder reaches onStop here after the
-       * configured duration has elapsed.
-       */
+      // Keep the original results screen and saving behavior for valid attempts.
       void saveCompletedExercise(
         'volume',
         'volumeBandTargeting',
@@ -1029,91 +1066,88 @@ export default function VolumeBandTargeting({
     },
   });
 
-  /*
-   * ==========================================================
-   * TIMER
-   * ==========================================================
-   */
+  // Keep this duration in component scope so the timer and countdown
+  // always use the currently resolved exercise parameters.
   const totalDurationMs =
-    params.durationSec *
-    params.repetitions *
-    1000;
+    params.durationSec * params.repetitions * 1000;
+
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
 
   useEffect(() => {
-    if (
-      phase !==
-      'exercise'
-    ) {
+    if (phase !== 'exercise') {
       return;
     }
 
-    const timer =
-      setInterval(() => {
-        setElapsedMs(
-          (previous) => {
-            const next =
-              Math.min(
-                previous + 50,
-                totalDurationMs,
-              );
+    const timer = setInterval(() => {
+      const startedAt = recordingStartedAtRef.current;
+      if (startedAt === null) {
+        return;
+      }
 
-            if (
-              next >=
-                totalDurationMs &&
-              !finishingRef.current
-            ) {
-              finishingRef.current =
-                true;
-
-              void stopRecording();
-            }
-
-            return next;
-          },
-        );
-      }, 50);
-
-    return () => {
-      clearInterval(
-        timer,
+      const nextElapsed = Math.min(
+        Date.now() - startedAt,
+        totalDurationMs,
       );
-    };
-  }, [
-    phase,
-    stopRecording,
-    totalDurationMs,
-  ]);
+      setElapsedMs(nextElapsed);
+
+      if (
+        nextElapsed >= totalDurationMs &&
+        !finishingRef.current
+      ) {
+        finishingRef.current = true;
+        shouldProcessResultRef.current = true;
+
+        void (async () => {
+          try {
+            await stopRecordingRef.current();
+          } catch (error) {
+            console.error(
+              'VOLUME BAND TARGETING STOP ERROR:',
+              error,
+            );
+            shouldProcessResultRef.current = false;
+            setRecordingNotice(
+              'The recording could not be finalized. Please try again.',
+            );
+            setPhase('directions');
+          }
+        })();
+      }
+    }, 50);
+
+    return () => clearInterval(timer);
+  }, [phase, totalDurationMs]);
 
   /*
    * ==========================================================
    * START RECORDING
    * ==========================================================
    */
-  const beginRecording =
-    async () => {
-      finishingRef.current =
-        false;
+  const beginRecording = async () => {
+    finishingRef.current = false;
+    shouldProcessResultRef.current = false;
+    cancelledRecordingRef.current = false;
+    voicedFrameCountRef.current = 0;
+    recordingStartedAtRef.current = null;
 
-      try {
-        await startRecording();
-
-        setPhase(
-          'exercise',
-        );
-      } catch (error) {
-        console.error(
-          'VOLUME BAND TARGETING START ERROR:',
-          error,
-        );
-
-        finishingRef.current =
-          false;
-
-        setPhase(
-          'directions',
-        );
-      }
-    };
+    try {
+      await startRecording();
+      recordingStartedAtRef.current = Date.now();
+      setPhase('exercise');
+    } catch (error) {
+      console.error(
+        'VOLUME BAND TARGETING START ERROR:',
+        error,
+      );
+      recordingStartedAtRef.current = null;
+      finishingRef.current = false;
+      setRecordingNotice(
+        'The microphone could not start. Please check microphone permission and try again.',
+      );
+      setPhase('directions');
+    }
+  };
 
   /*
    * ==========================================================
@@ -1127,6 +1161,12 @@ export default function VolumeBandTargeting({
       }
 
       setElapsedMs(0);
+      setRecordingNotice(null);
+      setNoVoiceDetected(false);
+      shouldProcessResultRef.current = false;
+      cancelledRecordingRef.current = false;
+      voicedFrameCountRef.current = 0;
+      recordingStartedAtRef.current = null;
 
       setCountdown(
         PREPARATION_COUNTDOWN_SECONDS,
@@ -1241,15 +1281,7 @@ export default function VolumeBandTargeting({
       1,
     );
 
-  const liveDb =
-    liveFrame &&
-    Number.isFinite(
-      liveFrame.volume,
-    )
-      ? Math.abs(
-          liveFrame.volume,
-        )
-      : 0;
+  const liveDb = getLiveDisplayLevel(liveFrame);
 
   const status =
     getLiveStatus(
@@ -1285,6 +1317,19 @@ export default function VolumeBandTargeting({
             styles.pageContent
           }
         >
+          {recordingNotice !== null && (
+            <View style={styles.audioNotice}>
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={ACCENT}
+              />
+              <Text style={styles.audioNoticeText}>
+                {recordingNotice}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.badge}>
             <Ionicons
               name="options-outline"
@@ -1312,80 +1357,35 @@ export default function VolumeBandTargeting({
           </Text>
 
           <View
-            style={styles.referenceCard}
+            style={
+              styles.instructionsCard
+            }
           >
-            <View
-              style={styles.referenceIcon}
+            <Text
+              style={styles.sectionTitle}
             >
-              <Ionicons
-                name="musical-note"
-                size={20}
-                color={ACCENT}
-              />
-            </View>
+              How to do it
+            </Text>
 
-            <View
-              style={styles.referenceCopy}
-            >
-              <Text
-                style={
-                  styles.referenceEyebrow
-                }
-              >
-                REFERENCE NOTE
-              </Text>
+            <Instruction
+              number="1"
+              text={`Tap Play ${REFERENCE_NOTE.name} and listen to the reference note.`}
+            />
 
-              <Text
-                style={
-                  styles.referenceNote
-                }
-              >
-                {REFERENCE_NOTE.name}
-              </Text>
+            <Instruction
+              number="2"
+              text={`Sing the same ${REFERENCE_NOTE.name} note on “Ah.”`}
+            />
 
-              <Text
-                style={
-                  styles.referenceText
-                }
-              >
-                Sing this note on “Ah” while
-                controlling your volume.
-              </Text>
-            </View>
+            <Instruction
+              number="3"
+              text={`Keep your volume inside the ${targetRangeText} target band.`}
+            />
 
-            <Pressable
-              style={[
-                styles.referenceButton,
-                referencePlaying &&
-                  styles.referenceButtonDisabled,
-              ]}
-              disabled={
-                referencePlaying
-              }
-              onPress={() =>
-                void playReferenceNote()
-              }
-            >
-              <Ionicons
-                name={
-                  referencePlaying
-                    ? 'volume-high'
-                    : 'play'
-                }
-                size={16}
-                color={WHITE}
-              />
-
-              <Text
-                style={
-                  styles.referenceButtonText
-                }
-              >
-                {referencePlaying
-                  ? 'Playing...'
-                  : `Play ${REFERENCE_NOTE.name}`}
-              </Text>
-            </Pressable>
+            <Instruction
+              number="4"
+              text={`Hold for ${params.durationSec} seconds, then repeat the exercise.`}
+            />
           </View>
 
           <View
@@ -1476,6 +1476,83 @@ export default function VolumeBandTargeting({
           </View>
 
           <View
+            style={styles.referenceCard}
+          >
+            <View
+              style={styles.referenceIcon}
+            >
+              <Ionicons
+                name="musical-note"
+                size={20}
+                color={ACCENT}
+              />
+            </View>
+
+            <View
+              style={styles.referenceCopy}
+            >
+              <Text
+                style={
+                  styles.referenceEyebrow
+                }
+              >
+                REFERENCE NOTE
+              </Text>
+
+              <Text
+                style={
+                  styles.referenceNote
+                }
+              >
+                {REFERENCE_NOTE.name}
+              </Text>
+
+              <Text
+                style={
+                  styles.referenceText
+                }
+              >
+                Sing this note on “Ah” while
+                controlling your volume.
+              </Text>
+            </View>
+
+            <Pressable
+              style={[
+                styles.referenceButton,
+                referencePlaying &&
+                  styles.referenceButtonDisabled,
+              ]}
+              disabled={
+                referencePlaying
+              }
+              onPress={() =>
+                void playReferenceNote()
+              }
+            >
+              <Ionicons
+                name={
+                  referencePlaying
+                    ? 'volume-high'
+                    : 'play'
+                }
+                size={16}
+                color={WHITE}
+              />
+
+              <Text
+                style={
+                  styles.referenceButtonText
+                }
+              >
+                {referencePlaying
+                  ? 'Playing...'
+                  : `Play ${REFERENCE_NOTE.name}`}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View
             style={styles.statsRow}
           >
             <View
@@ -1543,38 +1620,6 @@ export default function VolumeBandTargeting({
                 consistency
               </Text>
             </View>
-          </View>
-
-          <View
-            style={
-              styles.instructionsCard
-            }
-          >
-            <Text
-              style={styles.sectionTitle}
-            >
-              How to do it
-            </Text>
-
-            <Instruction
-              number="1"
-              text={`Tap Play ${REFERENCE_NOTE.name} and listen to the reference note.`}
-            />
-
-            <Instruction
-              number="2"
-              text={`Sing the same ${REFERENCE_NOTE.name} note on “Ah.”`}
-            />
-
-            <Instruction
-              number="3"
-              text={`Keep your volume inside the ${targetRangeText} target band.`}
-            />
-
-            <Instruction
-              number="4"
-              text={`Hold for ${params.durationSec} seconds, then repeat the exercise.`}
-            />
           </View>
 
           <View
@@ -1755,16 +1800,23 @@ export default function VolumeBandTargeting({
     phase ===
     'exercise'
   ) {
-    const statusColor =
-      getStatusColor(
-        status,
-      );
+    const statusColor = getStatusColor(status);
 
     return (
       <SafeAreaView
         style={styles.container}
       >
-        <Header />
+        <Header
+          onBack={() => {
+            // Leave without scoring/saving an incomplete attempt.
+            cancelledRecordingRef.current = true;
+            shouldProcessResultRef.current = false;
+            finishingRef.current = true;
+            recordingStartedAtRef.current = null;
+            void stopRecordingRef.current();
+            router.back();
+          }}
+        />
 
         <ScrollView
           showsVerticalScrollIndicator={
@@ -1887,6 +1939,24 @@ export default function VolumeBandTargeting({
             />
           </View>
 
+          <View style={styles.goalCard}>
+            <View style={styles.goalIcon}>
+              <Ionicons
+                name="locate-outline"
+                size={18}
+                color={ACCENT}
+              />
+            </View>
+            <View style={styles.goalCopy}>
+              <Text style={styles.goalTitle}>
+                How to stay in the band
+              </Text>
+              <Text style={styles.goalText}>
+                Sing {REFERENCE_NOTE.name} on “Ah”. Move the marker into the pink band, then keep your voice steady until the timer ends.
+              </Text>
+            </View>
+          </View>
+
           <View
             style={[
               styles.liveCard,
@@ -1979,48 +2049,6 @@ export default function VolumeBandTargeting({
             }
           />
 
-          <View
-            style={
-              styles.goalCard
-            }
-          >
-            <View
-              style={
-                styles.goalIcon
-              }
-            >
-              <Ionicons
-                name="lock-closed-outline"
-                size={18}
-                color={ACCENT}
-              />
-            </View>
-
-            <View
-              style={
-                styles.goalCopy
-              }
-            >
-              <Text
-                style={
-                  styles.goalTitle
-                }
-              >
-                Stay steady
-              </Text>
-
-              <Text
-                style={
-                  styles.goalText
-                }
-              >
-                The goal is not to move up or
-                down. Keep your voice inside
-                the target zone.
-              </Text>
-            </View>
-          </View>
-
           {!isRecording && (
             <Text
               style={
@@ -2064,9 +2092,11 @@ export default function VolumeBandTargeting({
         >
           <Ionicons
             name={
-              passed
-                ? 'checkmark-circle'
-                : 'refresh-circle'
+              noVoiceDetected
+                ? 'alert-circle-outline'
+                : passed
+                  ? 'checkmark-circle'
+                  : 'refresh-circle'
             }
             size={18}
             color={ACCENT}
@@ -2077,9 +2107,11 @@ export default function VolumeBandTargeting({
               styles.statusPillText
             }
           >
-            {passed
-              ? 'EXERCISE PASSED'
-              : 'KEEP PRACTICING'}
+            {noVoiceDetected
+              ? 'NO VOICE DETECTED'
+              : passed
+                ? 'EXERCISE PASSED'
+                : 'KEEP PRACTICING'}
           </Text>
         </View>
 
@@ -2096,11 +2128,13 @@ export default function VolumeBandTargeting({
             styles.resultSubtitle
           }
         >
-          {passed
-            ? 'Nice control. You stayed inside the target band consistently.'
-            : targetReached
-              ? 'You reached the band. Now work on keeping the volume steadier.'
-              : `Focus on finding and staying inside the ${targetRangeText} zone.`}
+          {noVoiceDetected
+            ? `No singing was detected during this attempt. No score was calculated or saved. Sing ${REFERENCE_NOTE.name} on “Ah” near the microphone, then try again.`
+            : passed
+              ? 'Nice control. You stayed inside the target band consistently.'
+              : targetReached
+                ? 'You reached the band. Now work on keeping the volume steadier.'
+                : `Focus on finding and staying inside the ${targetRangeText} zone.`}
         </Text>
 
         <View
@@ -2113,7 +2147,7 @@ export default function VolumeBandTargeting({
               styles.scoreNumber
             }
           >
-            {score}
+            {noVoiceDetected ? '—' : score}
           </Text>
 
           <Text
@@ -2121,7 +2155,7 @@ export default function VolumeBandTargeting({
               styles.scoreOutOf
             }
           >
-            /100
+            {noVoiceDetected ? 'NO INPUT' : '/100'}
           </Text>
         </View>
 
@@ -2130,7 +2164,7 @@ export default function VolumeBandTargeting({
             styles.scoreCaption
           }
         >
-          Consistency Score
+          {noVoiceDetected ? 'No score recorded' : 'Consistency Score'}
         </Text>
 
         <View
@@ -2145,7 +2179,7 @@ export default function VolumeBandTargeting({
                 label={`Repetition ${
                   index + 1
                 }`}
-                value={`${repScore}%`}
+                value={noVoiceDetected ? '—' : `${repScore}%`}
                 last={
                   index ===
                   repScores.length - 1
@@ -2156,7 +2190,7 @@ export default function VolumeBandTargeting({
 
           <ResultRow
             label="Average Volume"
-            value={`${formatDb(
+            value={noVoiceDetected ? 'No input' : `${formatDb(
               averageDb,
             )} dB`}
           />
@@ -2170,15 +2204,17 @@ export default function VolumeBandTargeting({
 
           <ResultRow
             label="Consistency"
-            value={`${consistency}%`}
+            value={noVoiceDetected ? '—' : `${consistency}%`}
           />
 
           <ResultRow
             label="Band Compliance"
             value={
-              targetReached
-                ? 'Inside ✓'
-                : 'Outside'
+              noVoiceDetected
+                ? 'No input'
+                : targetReached
+                  ? 'Inside ✓'
+                  : 'Outside'
             }
             last
           />
@@ -2207,9 +2243,9 @@ export default function VolumeBandTargeting({
                 styles.qualityText
               }
             >
-              {measurementQuality}% of
-              expected audio windows were
-              available.
+              {noVoiceDetected
+                ? 'No usable singing signal was detected. This attempt was not scored or saved.'
+                : `${measurementQuality}% of expected audio windows were available.`}
             </Text>
           </View>
 
@@ -2218,7 +2254,7 @@ export default function VolumeBandTargeting({
               styles.qualityValue
             }
           >
-            {measurementQuality}%
+            {noVoiceDetected ? '—' : `${measurementQuality}%`}
           </Text>
         </View>
 
@@ -2570,6 +2606,27 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
+  audioNotice: {
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: LIGHT_PINK,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+
+  audioNoticeText: {
+    flex: 1,
+    color: DARK,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+
   tipCard: {
     marginTop: 16,
     padding: 15,
@@ -2710,8 +2767,8 @@ const styles = StyleSheet.create({
 
   exerciseContent: {
     paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 30,
+    paddingTop: 14,
+    paddingBottom: 24,
   },
 
   exerciseTopRow: {
@@ -2791,8 +2848,8 @@ const styles = StyleSheet.create({
   },
 
   liveCard: {
-    marginTop: 18,
-    padding: 20,
+    marginTop: 13,
+    padding: 15,
     borderRadius: 24,
     backgroundColor: LIGHT_PINK,
     borderWidth: 2,
@@ -2814,8 +2871,8 @@ const styles = StyleSheet.create({
 
   liveVolume: {
     color: DARK,
-    fontSize: 54,
-    lineHeight: 61,
+    fontSize: 46,
+    lineHeight: 52,
     fontWeight: '900',
   },
 
@@ -2848,8 +2905,8 @@ const styles = StyleSheet.create({
   },
 
   meterCard: {
-    marginTop: 15,
-    padding: 16,
+    marginTop: 12,
+    padding: 13,
     borderRadius: 22,
     backgroundColor: WHITE,
     borderWidth: 1,
@@ -2882,8 +2939,8 @@ const styles = StyleSheet.create({
 
   meter: {
     position: 'relative',
-    height: 52,
-    marginTop: 18,
+    height: 42,
+    marginTop: 13,
     borderRadius: 26,
     backgroundColor: '#F5E9EC',
     overflow: 'hidden',
@@ -2935,8 +2992,8 @@ const styles = StyleSheet.create({
   },
 
   historyCard: {
-    marginTop: 15,
-    padding: 16,
+    marginTop: 12,
+    padding: 13,
     borderRadius: 22,
     backgroundColor: WHITE,
     borderWidth: 1,
@@ -2963,8 +3020,8 @@ const styles = StyleSheet.create({
 
   history: {
     position: 'relative',
-    height: 145,
-    marginTop: 13,
+    height: 125,
+    marginTop: 11,
     borderRadius: 16,
     backgroundColor: '#FFF9FB',
     overflow: 'hidden',
@@ -2991,6 +3048,24 @@ const styles = StyleSheet.create({
     minWidth: 2,
     backgroundColor: ACCENT,
     borderRadius: 5,
+  },
+
+  historyEmpty: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+  historyEmptyText: {
+    color: MUTED,
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center',
   },
 
   historyLegend: {
