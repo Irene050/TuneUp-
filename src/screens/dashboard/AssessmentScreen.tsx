@@ -64,6 +64,7 @@ type AssessmentStep =
   | 'lowHum'
   | 'highHum'
   | 'breathControl'
+  | 'processingHum'
   | 'pitch'
   | 'tone'
   | 'volume'
@@ -583,6 +584,7 @@ export default function AssessmentScreen() {
 
     // After highHum, the range effect below takes over.
     if (recordedStep === 'highHum') {
+      setStep('processingHum');
       return;
     }
 
@@ -627,7 +629,7 @@ export default function AssessmentScreen() {
 }, []);
 
 useEffect(() => {
-  if (step !== 'highHum') return;
+  if (step !== 'processingHum') return;
 
   const lowRecording = sections.lowHum;
   const highRecording = sections.highHum;
@@ -1179,11 +1181,63 @@ useEffect(() => {
     }, [
       clearRecordingTimer,
     ]);
+  
+    
+  // ============================================================
+  // HUM PROCESSING SCREEN
+  // ============================================================
+
+  if (step === 'processingHum') {
+    return (
+      <View style={styles.centerScreen}>
+        <View style={styles.humProcessingIcon}>
+          <Ionicons
+            name="musical-notes"
+            size={42}
+            color={BROWN}
+          />
+        </View>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.humProcessingSpinner}
+        />
+
+        <Text style={styles.processingTitle}>
+          Analyzing Your Hums...
+        </Text>
+
+        <Text style={styles.processingText}>
+          We're listening to your recorded notes to
+          determine your comfortable vocal range.
+        </Text>
+
+        <View style={styles.humProcessingCard}>
+          <Ionicons
+            name="checkmark-circle"
+            size={22}
+            color={BROWN}
+          />
+
+          <Text style={styles.humProcessingCardText}>
+            Humming recordings captured
+          </Text>
+        </View>
+
+        <Text style={styles.humProcessingHint}>
+          This may take a moment. Please wait while
+          we prepare your next exercise.
+        </Text>
+      </View>
+    );
+  }
+
 
   // ==========================================================
   // PROCESSING
   // ==========================================================
-
+  
   if (
     step ===
     'processing'
@@ -2327,6 +2381,51 @@ const styles = StyleSheet.create({
       BROWN,
     marginBottom:
       7,
+  },
+  
+  humProcessingIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+
+  humProcessingSpinner: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  humProcessingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    width: '100%',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#F2DDE5',
+  },
+
+  humProcessingCardText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
+
+  humProcessingHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 19,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 22,
   },
 
   warning: {

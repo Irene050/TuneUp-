@@ -4,7 +4,6 @@ import FrequencyZoneStabilityScreen from '../../src/screens/exercises/Tone/Frequ
 import SteadyToneHoldingScreen from '../../src/screens/exercises/Tone/SteadyToneHoldingScreen';
 import ToneConsistencyExerciseScreen from '../../src/screens/exercises/Tone/ToneConsistencyExerciseScreen';
 import ToneExercisesScreen from '../../src/screens/exercises/Tone/ToneExercisesScreen';
-import ToneFreeModeScreen from '../../src/screens/exercises/Tone/ToneFreeModeScreen';
 import VowelConsistencyExerciseScreen from '../../src/screens/exercises/Tone/VowelConsistencyExerciseScreen';
 import WaveformSmoothnessDrillScreen from '../../src/screens/exercises/Tone/WaveformSmoothnessDrillScreen';
 
@@ -13,10 +12,6 @@ export default function ToneRoute() {
     templateId?: string;
     mode?: string;
   }>();
-
-  if (mode === 'free') {
-    return <ToneFreeModeScreen />;
-  }
 
   switch (templateId) {
     case 'vowelConsistencyExercise':
