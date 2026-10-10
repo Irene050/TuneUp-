@@ -1,26 +1,36 @@
-// src/screens/exercises/Volume/ControlledDecrescendoDrillScreen.tsx
-
 import { Ionicons } from '@expo/vector-icons';
+
 import { router } from 'expo-router';
+
 import type { ReactNode } from 'react';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
+
 import {
   Pressable,
+
   SafeAreaView,
+
   ScrollView,
+
   StyleSheet,
+
   Text,
+
   View,
 } from 'react-native';
 
 import {
   CONTROLLED_DECRESCENDO_PARAMS,
+
   type ControlledDecrescendoParams,
+
   type Tier,
 } from '@/constants/exercises/volume';
 
 import {
   LiveAudioFrame,
+
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 
@@ -28,6 +38,7 @@ import { getLatestAssessment } from '@/services/assessment/assessmentRepository'
 
 import {
   fetchComponentProgress,
+
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 
@@ -54,538 +65,785 @@ import {
 } from '@/utils/music/notePlayer';
 
 const BROWN = '#4E2F1F';
+
 const DARK = '#5A343D';
+
 const PINK = '#FCD6DD';
+
 const LIGHT_PINK = '#FFF8FA';
+
 const BORDER = '#F0DEE3';
+
 const ACCENT = '#D86C89';
+
 const MUTED = '#9A817D';
+
 const WHITE = '#FFFFFF';
+
 const SOFT_TEXT = '#765D63';
 
 const BAR_COUNT = 28;
+
 const DISPLAY_MAX_DB = 60;
+
 const WINDOW_MS = 50;
 
 const REFERENCE_NOTE = createMusicalNote(60);
+
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 
 type Phase =
+
   | 'directions'
+
   | 'exercise'
+
   | 'results';
 
 interface ControlledDecrescendoDrillProps {
+
   tier?: Tier;
+
 }
 
 function clamp(
+
   value: number,
+
   min: number,
+
   max: number,
+
 ): number {
+
   return Math.max(
+
     min,
+
     Math.min(max, value),
+
   );
+
 }
 
 function volumeToHeight(
+
   db: number,
+
 ): number {
+
   if (!Number.isFinite(db)) {
+
     return 0;
+
   }
 
   return clamp(
+
     db / DISPLAY_MAX_DB,
+
     0,
+
     1,
+
   );
+
 }
 
 function formatDb(
+
   db: number,
+
 ): string {
+
   if (
+
     !Number.isFinite(db) ||
+
     db <= 0
+
   ) {
+
     return '--';
+
   }
 
   return String(
+
     Math.round(db),
+
   );
+
 }
 
 function formatTimer(
+
   ms: number,
+
 ): string {
+
   const seconds =
+
     Math.max(
+
       0,
+
       Math.ceil(ms / 1000),
+
     );
 
   return `0:${String(
+
     seconds,
+
   ).padStart(2, '0')}`;
+
 }
 
 function buildTargetCurve(
+
   targetRange: [number, number],
+
 ): number[] {
+
   const startVolume =
+
     targetRange[1];
 
   const endVolume =
+
     targetRange[0];
 
   return Array.from(
+
     {
+
       length: BAR_COUNT,
+
     },
+
     (_, index) => {
+
       const progress =
+
         index /
+
         Math.max(
+
           BAR_COUNT - 1,
+
           1,
+
         );
 
       const targetDb =
+
         startVolume -
+
         progress *
+
           (
+
             startVolume -
+
             endVolume
+
           );
 
       return volumeToHeight(
+
         targetDb,
+
       );
+
     },
+
   );
+
 }
 
-function buildActualCurve(
-  history: number[],
-): number[] {
-  if (history.length === 0) {
-    return Array(
-      BAR_COUNT,
-    ).fill(0);
-  }
-
-  if (history.length === 1) {
-    return Array(
-      BAR_COUNT,
-    ).fill(
-      volumeToHeight(
-        history[0],
-      ),
-    );
-  }
-
+function buildActualCurve(history: number[]): number[] {
   return Array.from(
-    {
-      length: BAR_COUNT,
-    },
-    (_, index) => {
-      const position =
-        (
-          index /
-          (BAR_COUNT - 1)
-        ) *
-        (history.length - 1);
-
-      const left =
-        Math.floor(
-          position,
-        );
-
-      const right =
-        Math.min(
-          Math.ceil(
-            position,
-          ),
-          history.length - 1,
-        );
-
-      const fraction =
-        position - left;
-
-      const db =
-        history[left] *
-          (1 - fraction) +
-        history[right] *
-          fraction;
-
-      return volumeToHeight(
-        db,
-      );
-    },
+    { length: BAR_COUNT },
+    (_, index) => volumeToHeight(history[index] ?? 0),
   );
 }
 
 function getTrend(
+
   history: number[],
+
 ): 'down' | 'flat' | 'up' {
+
   if (history.length < 4) {
+
     return 'flat';
+
   }
 
   const recent =
+
     history.slice(-4);
 
   const change =
+
     recent[
+
       recent.length - 1
+
     ] -
+
     recent[0];
 
   if (change <= -2) {
+
     return 'down';
+
   }
 
   if (change >= 2) {
+
     return 'up';
+
   }
 
   return 'flat';
+
 }
 
 function DirectionIndicator({
+
   trend,
+
 }: {
+
   trend: 'down' | 'flat' | 'up';
+
 }) {
+
   if (trend === 'down') {
+
     return (
+
       <View style={styles.trendGood}>
+
         <Ionicons
+
           name="arrow-down"
+
           size={16}
+
           color={ACCENT}
+
         />
 
         <Text style={styles.trendGoodText}>
+
           Going softer
+
         </Text>
+
       </View>
+
     );
+
   }
 
   if (trend === 'up') {
+
     return (
+
       <View style={styles.trendBad}>
+
         <Ionicons
+
           name="arrow-up"
+
           size={16}
+
           color="#A95E6A"
+
         />
 
         <Text style={styles.trendBadText}>
+
           Getting louder
+
         </Text>
+
       </View>
+
     );
+
   }
 
   return (
+
     <View style={styles.trendNeutral}>
+
       <Ionicons
+
         name="remove"
+
         size={16}
+
         color={MUTED}
+
       />
 
       <Text style={styles.trendNeutralText}>
+
         Keep the decrease steady
+
       </Text>
+
     </View>
+
   );
+
 }
 
 function Header() {
+
   return (
+
     <View style={styles.header}>
+
       <Pressable
+
         style={styles.backButton}
+
         onPress={() => router.back()}
+
       >
+
         <Ionicons
+
           name="arrow-back"
+
           size={20}
+
           color={BROWN}
+
         />
+
       </Pressable>
 
       <Text style={styles.headerTitle}>
+
         Volume Control
+
       </Text>
 
       <View style={styles.headerSpacer} />
+
     </View>
+
   );
+
 }
 
 function TargetCurveChart({
+
   history,
+
   targetRange,
+
 }: {
+
   history: number[];
+
   targetRange: [number, number];
+
 }) {
+
   const targetBars = useMemo(
+
     () =>
+
       buildTargetCurve(
+
         targetRange,
+
       ),
+
     [targetRange],
+
   );
 
   const actualBars = useMemo(
+
     () =>
+
       buildActualCurve(
+
         history,
+
       ),
+
     [history],
+
   );
 
   return (
+
     <View style={styles.chartCard}>
+
       <View style={styles.chartHeader}>
+
         <View>
+
           <Text style={styles.chartTitle}>
+
             Your Decrescendo
+
           </Text>
 
           <Text style={styles.chartSubtitle}>
-            Follow the target downward
+
+            Light bars = target; dark bars = your live voice.
+
           </Text>
+
         </View>
 
         <View style={styles.legend}>
+
           <View style={styles.legendItem}>
+
             <View style={styles.targetDot} />
 
             <Text style={styles.legendText}>
+
               Target
+
             </Text>
+
           </View>
 
           <View style={styles.legendItem}>
+
             <View style={styles.actualDot} />
 
             <Text style={styles.legendText}>
+
               You
+
             </Text>
+
           </View>
+
         </View>
+
       </View>
 
       <View style={styles.chart}>
+
         <View style={styles.chartGrid}>
+
           <View style={styles.gridLine} />
+
           <View style={styles.gridLine} />
+
           <View style={styles.gridLine} />
+
           <View style={styles.gridLine} />
+
         </View>
 
         <View style={styles.chartLayer}>
-          {targetBars.map(
-            (height, index) => (
+        {targetBars.map((targetHeight, index) => {
+          const actualHeight = actualBars[index] ?? 0;
+
+          return (
+            <View key={`bar-pair-${index}`} style={styles.barPair}>
               <View
-                key={`target-${index}`}
                 style={[
                   styles.bar,
                   styles.targetBar,
-                  {
-                    height:
-                      `${Math.max(
-                        8,
-                        height * 78,
-                      )}%`,
-                  },
+                  { height: `${Math.max(8, targetHeight * 78)}%` },
                 ]}
               />
-            ),
-          )}
-        </View>
-
-        <View style={styles.chartLayer}>
-          {actualBars.map(
-            (height, index) => (
               <View
-                key={`actual-${index}`}
                 style={[
                   styles.bar,
                   styles.actualBar,
                   {
                     height:
-                      height > 0
-                        ? `${Math.max(
-                            5,
-                            height * 78,
-                          )}%`
+                      actualHeight > 0
+                        ? `${Math.max(4, actualHeight * 78)}%`
                         : '0%',
                   },
                 ]}
               />
-            ),
-          )}
-        </View>
-      </View>
-
-      <View style={styles.chartScale}>
-        <Text style={styles.scaleText}>
-          {targetRange[1]} dB
-        </Text>
-
-        <Text style={styles.scaleText}>
-          {targetRange[0]} dB
-        </Text>
+            </View>
+          );
+        })}
       </View>
     </View>
+
+      <View style={styles.chartScale}>
+
+        <Text style={styles.scaleText}>
+
+          {targetRange[1]} dB
+
+        </Text>
+
+        <Text style={styles.scaleText}>
+
+          {targetRange[0]} dB
+
+        </Text>
+
+      </View>
+
+    </View>
+
   );
+
 }
 
 function InstructionRow({
+
   number,
+
   children,
+
 }: {
+
   number: string;
+
   children: ReactNode;
+
 }) {
+
   return (
+
     <View style={styles.instructionRow}>
+
       <View style={styles.instructionNumber}>
+
         <Text
+
           style={
+
             styles.instructionNumberText
+
           }
+
         >
+
           {number}
+
         </Text>
+
       </View>
 
       <Text style={styles.instructionText}>
+
         {children}
+
       </Text>
+
     </View>
+
   );
+
 }
 
 function ResultRow({
+
   label,
+
   value,
+
   last = false,
+
 }: {
+
   label: string;
+
   value: string;
+
   last?: boolean;
+
 }) {
+
   return (
+
     <View
+
       style={[
+
         styles.resultRow,
+
         last && styles.lastResultRow,
+
       ]}
+
     >
+
       <Text style={styles.resultLabel}>
+
         {label}
+
       </Text>
 
       <Text style={styles.resultValue}>
+
         {value}
+
       </Text>
+
     </View>
+
   );
+
 }
 
 /**
+
  * ComponentScore uses scorePct as the
+
  * assessment component score.
+
  *
+
  * Assessment scores are only used as
+
  * the cold-start seed for ADS.
+
  */
+
 function getAssessmentScore(
+
   assessment: Awaited<
+
     ReturnType<typeof getLatestAssessment>
+
   >,
+
 ): number | null {
+
   if (!assessment) {
+
     return null;
+
   }
 
   const volumeScore =
+
     assessment.scores.find(
+
       (item) =>
+
         item.componentId ===
+
         'volume',
+
     );
 
   if (!volumeScore) {
+
     return null;
+
   }
 
   const score =
+
     Number(
+
       volumeScore.scorePct,
+
     );
 
   return Number.isFinite(score)
+
     ? score
+
     : null;
+
 }
 
 export default function ControlledDecrescendoDrill({
+
   tier: requestedTier,
+
 }: ControlledDecrescendoDrillProps) {
+
   const [
+
     resolvedTier,
+
     setResolvedTier,
+
   ] = useState<Tier>(
+
     requestedTier ??
+
       'beginner',
+
   );
 
   const [
+
     params,
+
     setParams,
+
   ] =
+
     useState<ControlledDecrescendoParams>(
+
       CONTROLLED_DECRESCENDO_PARAMS.beginner,
+
     );
 
   const [
+
     paramsReady,
+
     setParamsReady,
+
   ] = useState(
+
     requestedTier !== undefined,
+
   );
 
   const [
+
     phase,
+
     setPhase,
+
   ] = useState<Phase>(
+
     'directions',
+
   );
 
   const [
+
     elapsedMs,
+
     setElapsedMs,
+
   ] = useState(0);
 
   const [
+
     liveFrame,
+
     setLiveFrame,
+
   ] =
+
     useState<LiveAudioFrame | null>(
+
       null,
+
     );
 
   const [
@@ -593,1004 +851,1733 @@ export default function ControlledDecrescendoDrill({
     setLiveHistory,
   ] = useState<number[]>([]);
 
+  const [liveTrack, setLiveTrack] = useState<number[]>([]);
+  const exerciseStartedAtRef = useRef<number | null>(null);
+  const trackedRepIndexRef = useRef(-1);
+
   const [
+
     score,
+
     setScore,
+
   ] = useState(0);
 
   const [
+
     repScores,
+
     setRepScores,
+
   ] = useState<number[]>([]);
 
   const [
+
     startDb,
+
     setStartDb,
+
   ] = useState(0);
 
   const [
+
     endDb,
+
     setEndDb,
+
   ] = useState(0);
 
   const [
+
     targetReached,
+
     setTargetReached,
+
   ] = useState(false);
 
   const [
+
     directionCorrect,
+
     setDirectionCorrect,
+
   ] = useState(false);
 
   const [
+
     measurementQuality,
+
     setMeasurementQuality,
+
   ] = useState(0);
 
   const finishingRef =
+
     useRef(false);
 
   /*
+
    * Resolve tier and generate ADS parameters.
+
    *
+
    * Priority:
+
    * 1. Explicit tier prop
+
    * 2. Saved Volume progress tier
+
    * 3. Beginner
+
    *
+
    * Continuous ADS:
+
    * - same component
+
    * - same template
+
    * - same tier
+
    * - latest five exercise scores
+
    *
+
    * Cold start:
+
    * - latest Volume assessment score
+
    */
+
   useEffect(() => {
+
     let cancelled = false;
 
     const loadParameters =
+
       async () => {
+
         try {
+
           let tier =
+
             requestedTier;
 
           const user =
+
             auth.currentUser;
 
           if (
+
             !tier &&
+
             user
+
           ) {
+
             const progress =
+
               await fetchComponentProgress(
+
                 user.uid,
+
                 'volume',
+
               );
 
             tier =
+
               progress?.currentTier;
+
           }
 
           const finalTier =
+
             tier ??
+
             'beginner';
 
           let recentScores:
+
             number[] = [];
 
           if (user) {
+
             const records =
+
               await fetchExerciseRecords(
+
                 user.uid,
+
                 'volume',
+
               );
 
             const history =
+
               records
+
                 .filter(
+
                   (record) =>
+
                     record.templateId ===
+
                       'controlledDecrescendo' &&
+
                     record.tier ===
+
                       finalTier,
+
                 )
+
                 .sort(
+
                   (a, b) =>
+
                     a.timestamp -
+
                     b.timestamp,
+
                 );
 
             recentScores =
+
               history
+
                 .slice(-5)
+
                 .map(
+
                   (record) =>
+
                     record.scorePct,
+
                 );
 
             /*
+
              * Assessment is only a
+
              * cold-start seed.
+
              */
+
             if (
+
               recentScores.length ===
+
               0
+
             ) {
+
               const assessment =
+
                 await getLatestAssessment();
 
               const assessmentScore =
+
                 getAssessmentScore(
+
                   assessment,
+
                 );
 
               if (
+
                 assessmentScore !==
+
                 null
+
               ) {
+
                 recentScores = [
+
                   assessmentScore,
+
                 ];
+
               }
+
             }
+
           }
 
           const generated =
+
             generateControlledDecrescendoParams(
+
               {
+
                 tier:
+
                   finalTier,
+
                 recentScores,
+
               },
+
             );
 
           if (cancelled) {
+
             return;
+
           }
 
           setResolvedTier(
+
             finalTier,
+
           );
 
           setParams(
+
             generated,
+
           );
 
           setParamsReady(
+
             true,
+
           );
+
         } catch (error) {
+
           console.error(
+
             'CONTROLLED DECRESCENDO PARAMETER LOAD ERROR:',
+
             error,
+
           );
 
           if (!cancelled) {
+
             const fallbackTier =
+
               requestedTier ??
+
               'beginner';
 
             setResolvedTier(
+
               fallbackTier,
+
             );
 
             setParams(
+
               CONTROLLED_DECRESCENDO_PARAMS[
+
                 fallbackTier
+
               ],
+
             );
 
             setParamsReady(
+
               true,
+
             );
+
           }
+
         }
+
       };
 
     void loadParameters();
 
     return () => {
+
       cancelled = true;
+
     };
+
   }, [
+
     requestedTier,
+
   ]);
 
   const targetStart =
+
     params.targetDbRange[1];
 
   const targetEnd =
+
     params.targetDbRange[0];
 
   const durationSeconds =
+
     params.durationSec;
 
   const repetitions =
+
     params.repetitions;
 
   const totalDurationMs =
+
     durationSeconds *
+
     repetitions *
+
     1000;
 
   const repDurationMs =
+
     durationSeconds *
+
     1000;
 
   const playReferenceNote =
+
     async () => {
+
       try {
+
         await playSingleNote(
+
           REFERENCE_NOTE.frequency,
+
           REFERENCE_NOTE_DURATION_SEC,
+
         );
+
       } catch (error) {
+
         console.error(
+
           'REFERENCE NOTE PLAYBACK ERROR:',
+
           error,
+
         );
+
       }
+
     };
 
   const {
+
     startRecording,
+
     stopRecording,
+
     isRecording,
+
   } =
+
     useAudioRecorder({
+
       onFrame: (
+
         frame,
+
       ) => {
+
         if (
+
           phase !==
+
           'exercise'
+
         ) {
+
           return;
+
         }
 
-        setLiveFrame(
-          frame,
-        );
+        setLiveFrame(frame);
 
-        const liveDb =
-          Number.isFinite(
-            frame.volume,
-          )
-            ? Math.abs(
-                frame.volume,
-              )
-            : 0;
+        const rawDbfs = frame.volume;
+        const hasValidDbfs =
+          Number.isFinite(rawDbfs) &&
+          rawDbfs > -100 &&
+          rawDbfs <= 0;
 
-        if (
-          liveDb <= 0
-        ) {
-          return;
+        // Convert negative dBFS to the exercise's 0-60 level scale.
+        // -20 dBFS becomes level 40; silence near -100 becomes level 0.
+        const liveLevel = hasValidDbfs
+          ? clamp(DISPLAY_MAX_DB + rawDbfs, 0, DISPLAY_MAX_DB)
+          : 0;
+
+        // Keep recent non-silent samples for the trend guidance.
+        if (liveLevel > 0) {
+          setLiveHistory(previous => [...previous, liveLevel].slice(-60));
         }
 
-        setLiveHistory(
-          (
-            previous,
-          ) => {
-            const next = [
-              ...previous,
-              liveDb,
-            ];
+        // Draw the voice at the matching time point in the current repetition.
+        const startedAt = exerciseStartedAtRef.current;
+        if (startedAt !== null) {
+          const elapsed = Math.max(0, Date.now() - startedAt);
+          const repIndex = Math.min(
+            Math.max(0, repetitions - 1),
+            Math.floor(elapsed / repDurationMs),
+          );
+          const repElapsed = elapsed % repDurationMs;
+          const sampleIndex = Math.min(
+            BAR_COUNT - 1,
+            Math.floor((repElapsed / repDurationMs) * BAR_COUNT),
+          );
 
-            return next.length >
-              60
-              ? next.slice(-60)
-              : next;
-          },
-        );
+          setLiveTrack(previous => {
+            const next =
+              trackedRepIndexRef.current !== repIndex ||
+              previous.length !== BAR_COUNT
+                ? Array(BAR_COUNT).fill(0)
+                : [...previous];
+
+            trackedRepIndexRef.current = repIndex;
+            next[sampleIndex] = liveLevel;
+            return next;
+          });
+        }
       },
 
       onStop: (
+
         samples,
+
         sampleRate,
+
       ) => {
+
         const measurement =
+
           measureControlledDecrescendo(
+
             samples,
+
             sampleRate,
+
             {
+
               windowMs:
+
                 WINDOW_MS,
 
               targetRange:
+
                 params.targetDbRange,
 
               expectedDurationSeconds:
+
                 durationSeconds,
 
               repetitions,
 
               volumeDecreaseThreshold:
+
                 params.volumeDecreaseThreshold,
+
             },
+
           );
 
         const result =
+
           scoreControlledDecrescendo(
+
             measurement,
+
           );
 
         setScore(
+
           result.overallScore,
+
         );
 
         setRepScores(
+
           measurement.repSmoothness.map(
+
             (value) =>
+
               Math.round(value),
+
           ),
+
         );
 
         setStartDb(
+
           measurement.startDb,
+
         );
 
         setEndDb(
+
           measurement.endDb,
+
         );
 
         setTargetReached(
+
           result.targetReached,
+
         );
 
         setDirectionCorrect(
+
           result.directionCorrect,
+
         );
 
         setMeasurementQuality(
+
           result.measurementQuality,
+
         );
 
-        setLiveFrame(
-          null,
-        );
-
-        setPhase(
-          'results',
-        );
+        setLiveFrame(null);
+        setLiveHistory([]);
+        setLiveTrack([]);
+        exerciseStartedAtRef.current = null;
+        trackedRepIndexRef.current = -1;
+        setPhase('results');
 
         /*
+
          * Save only naturally completed
+
          * exercise results.
+
          */
+
         void saveCompletedExercise(
+
           'volume',
+
           'controlledDecrescendo',
+
           resolvedTier,
+
           result.overallScore,
+
         );
+
       },
+
     });
 
   useEffect(() => {
+
     if (
+
       phase !==
+
       'exercise'
+
     ) {
+
       return;
+
     }
 
     const timer =
+
       setInterval(
+
         () => {
+
           setElapsedMs(
+
             (
+
               previous,
+
             ) => {
+
               const next =
+
                 Math.min(
+
                   previous + 50,
+
                   totalDurationMs,
+
                 );
 
               if (
+
                 next >=
+
                   totalDurationMs &&
+
                 !finishingRef.current
+
               ) {
+
                 finishingRef.current =
+
                   true;
 
                 void stopRecording();
+
               }
 
               return next;
+
             },
+
           );
+
         },
+
         50,
+
       );
 
     return () => {
+
       clearInterval(
+
         timer,
+
       );
+
     };
+
   }, [
+
     phase,
+
     stopRecording,
+
     totalDurationMs,
+
   ]);
 
   const startExercise =
+
     async () => {
+
       setElapsedMs(0);
       setLiveFrame(null);
       setLiveHistory([]);
+      setLiveTrack(Array(BAR_COUNT).fill(0));
+      trackedRepIndexRef.current = 0;
+      exerciseStartedAtRef.current = null;
       setScore(0);
 
       setRepScores(
+
         Array(
+
           repetitions,
+
         ).fill(0),
+
       );
 
       setStartDb(0);
+
       setEndDb(0);
+
       setTargetReached(false);
+
       setDirectionCorrect(false);
+
       setMeasurementQuality(0);
 
       finishingRef.current =
+
         false;
 
       try {
+
         /*
+
          * Play the shared reference note
+
          * before recording begins.
+
          */
+
         await playReferenceNote();
 
-        setPhase(
-          'exercise',
-        );
-
+        exerciseStartedAtRef.current = Date.now();
+        trackedRepIndexRef.current = 0;
+        setLiveTrack(Array(BAR_COUNT).fill(0));
+        setPhase('exercise');
         await startRecording();
+
       } catch (error) {
+
         console.error(
+
           'CONTROLLED DECRESCENDO START ERROR:',
+
           error,
+
         );
 
         setPhase(
+
           'directions',
+
         );
 
         finishingRef.current =
+
           false;
+
       }
+
     };
 
   const currentRep =
+
     Math.min(
+
       repetitions,
+
       Math.floor(
+
         elapsedMs /
+
           repDurationMs,
+
       ) + 1,
+
     );
 
   const currentRepElapsed =
+
     elapsedMs %
+
     repDurationMs;
 
   const progress =
+
     clamp(
+
       currentRepElapsed /
+
         repDurationMs,
+
       0,
+
       1,
+
     );
 
-  const currentVolume =
-    liveFrame &&
-    Number.isFinite(
-      liveFrame.volume,
-    )
-      ? formatDb(
-          Math.abs(
-            liveFrame.volume,
-          ),
-        )
-      : '--';
+  const liveDbfs =
+    liveFrame && Number.isFinite(liveFrame.volume)
+      ? liveFrame.volume
+      : -100;
 
   const liveDb =
-    liveFrame &&
-    Number.isFinite(
-      liveFrame.volume,
-    )
-      ? Math.abs(
-          liveFrame.volume,
-        )
+    liveDbfs > -100 && liveDbfs <= 0
+      ? clamp(DISPLAY_MAX_DB + liveDbfs, 0, DISPLAY_MAX_DB)
       : 0;
 
+  const currentVolume = liveDb > 0 ? formatDb(liveDb) : '--';
+
   const trend =
-    getTrend(
-      liveHistory,
-    );
+    liveDb > 0 ? getTrend(liveHistory) : 'flat';
 
   const guidance =
-    trend === 'down'
-      ? 'Good. Keep getting softer.'
-      : trend === 'up'
-        ? 'You are getting louder. Ease the volume down.'
-        : liveDb === 0
-          ? `Start singing around ${targetStart} dB.`
-          : 'Gradually lower your volume.';
+    liveDb === 0
+      ? `Start near ${targetStart} dB, then slowly fade down.`
+      : trend === 'down'
+        ? `Good! Keep fading down toward ${targetEnd} dB.`
+        : trend === 'up'
+          ? 'Your voice is getting louder. Gently lower it.'
+          : `Lower your voice smoothly toward ${targetEnd} dB. Keep the sound going.`;
 
   const passed =
+
     score >= 75 &&
+
     targetReached &&
+
     directionCorrect;
 
   if (!paramsReady) {
+
     return (
+
       <SafeAreaView
+
         style={styles.container}
+
       >
+
         <Header />
 
         <View
+
           style={{
+
             flex: 1,
+
             alignItems: 'center',
+
             justifyContent:
+
               'center',
+
             paddingHorizontal: 30,
+
           }}
+
         >
+
           <Text
+
             style={{
+
               color: DARK,
+
               fontSize: 18,
+
               fontWeight: '900',
+
             }}
+
           >
+
             Preparing your exercise...
+
           </Text>
 
           <Text
+
             style={{
+
               marginTop: 8,
+
               color: MUTED,
+
               fontSize: 13,
+
               textAlign: 'center',
+
             }}
+
           >
+
             Adjusting the exercise to
+
             your current practice level.
+
           </Text>
+
         </View>
+
       </SafeAreaView>
+
     );
+
   }
 
   /*
+
    * ==========================================================
+
    * DIRECTIONS
+
    * ==========================================================
+
    */
 
   if (
+
     phase ===
+
     'directions'
+
   ) {
+
     return (
+
       <SafeAreaView
+
         style={styles.container}
+
       >
+
         <Header />
 
         <ScrollView
+
           showsVerticalScrollIndicator={
+
             false
+
           }
+
           contentContainerStyle={
+
             styles.pageContent
+
           }
+
         >
+
           <View
+
             style={styles.badge}
+
           >
+
             <Ionicons
+
               name="volume-low-outline"
+
               size={15}
+
               color={ACCENT}
+
             />
 
             <Text
+
               style={styles.badgeText}
+
             >
+
               VOLUME CONTROL
+
             </Text>
+
           </View>
 
           <Text
+
             style={styles.title}
+
           >
+
             Controlled Decrescendo
+
           </Text>
 
           <Text
+
             style={styles.subtitle}
+
           >
+
             Practice gradually making your
+
             voice softer while keeping the
+
             decrease smooth and controlled.
+
           </Text>
 
           <View
+
             style={styles.targetCard}
+
           >
+
             <Text
+
               style={
+
                 styles.targetEyebrow
+
               }
+
             >
+
               YOUR TARGET
+
             </Text>
 
             <View
+
               style={
+
                 styles.targetRow
+
               }
+
             >
+
               <View
+
                 style={
+
                   styles.targetPoint
+
                 }
+
               >
+
                 <Text
+
                   style={
+
                     styles.targetNumber
+
                   }
+
                 >
+
                   {targetStart}
+
                 </Text>
 
                 <Text
+
                   style={
+
                     styles.targetUnit
+
                   }
+
                 >
+
                   dB START
+
                 </Text>
+
               </View>
 
               <Ionicons
+
                 name="arrow-forward"
+
                 size={23}
+
                 color={ACCENT}
+
               />
 
               <View
+
                 style={
+
                   styles.targetPoint
+
                 }
+
               >
+
                 <Text
+
                   style={
+
                     styles.targetNumber
+
                   }
+
                 >
+
                   {targetEnd}
+
                 </Text>
 
                 <Text
+
                   style={
+
                     styles.targetUnit
+
                   }
+
                 >
+
                   dB END
+
                 </Text>
+
               </View>
+
             </View>
 
             <View
+
               style={styles.metaRow}
+
             >
+
               <View
+
                 style={styles.metaPill}
+
               >
+
                 <Ionicons
+
                   name="timer-outline"
+
                   size={15}
+
                   color={BROWN}
+
                 />
 
                 <Text
+
                   style={
+
                     styles.metaText
+
                   }
+
                 >
+
                   {durationSeconds}{' '}
+
                   seconds
+
                 </Text>
+
               </View>
 
               <View
+
                 style={styles.metaPill}
+
               >
+
                 <Ionicons
+
                   name="repeat-outline"
+
                   size={15}
+
                   color={BROWN}
+
                 />
 
                 <Text
+
                   style={
+
                     styles.metaText
+
                   }
+
                 >
+
                   {repetitions} reps
+
                 </Text>
+
               </View>
 
               <View
+
                 style={styles.metaPill}
+
               >
+
                 <Ionicons
+
                   name="trending-down-outline"
+
                   size={15}
+
                   color={BROWN}
+
                 />
 
                 <Text
+
                   style={
+
                     styles.metaText
+
                   }
+
                 >
+
                   Smooth
+
                 </Text>
+
               </View>
+
             </View>
+
           </View>
 
           <View
+
             style={
+
               styles.instructionsCard
+
             }
+
           >
+
             <Text
+
               style={
+
                 styles.sectionTitle
+
               }
+
             >
+
               How to do it
+
             </Text>
 
             <InstructionRow number="1">
+
               Start your voice around{' '}
+
               {targetStart} dB.
+
             </InstructionRow>
 
             <InstructionRow number="2">
+
               Slowly reduce your volume
+
               over {durationSeconds}{' '}
+
               seconds.
+
             </InstructionRow>
 
             <InstructionRow number="3">
+
               Finish around {targetEnd}{' '}
+
               dB.
+
             </InstructionRow>
 
             <InstructionRow number="4">
+
               Do not suddenly drop or
+
               cut off the sound.
+
             </InstructionRow>
+
           </View>
 
           <View
+
             style={styles.tipCard}
+
           >
+
             <Ionicons
+
               name="bulb-outline"
+
               size={20}
+
               color={ACCENT}
+
             />
 
             <View
+
               style={styles.tipCopy}
+
             >
+
               <Text
+
                 style={styles.tipTitle}
+
               >
+
                 Think “fade”
+
               </Text>
 
               <Text
+
                 style={styles.tipText}
+
               >
+
                 Imagine slowly turning a
+
                 volume knob down instead of
+
                 switching your voice off.
+
               </Text>
+
             </View>
+
           </View>
 
           <View
+
             style={styles.referenceCard}
+
           >
+
             <View>
+
               <Text
+
                 style={
+
                   styles.referenceEyebrow
+
                 }
+
               >
+
                 REFERENCE NOTE
+
               </Text>
 
               <Text
+
                 style={
+
                   styles.referenceNote
+
                 }
+
               >
+
                 {REFERENCE_NOTE.name}
+
               </Text>
+
             </View>
 
             <Pressable
+
               style={
+
                 styles.referenceButton
+
               }
+
               onPress={() =>
+
                 void playReferenceNote()
+
               }
+
             >
+
               <Ionicons
+
                 name="play"
+
                 size={17}
+
                 color={BROWN}
+
               />
+
             </Pressable>
+
           </View>
 
           <Pressable
+
             style={
+
               styles.primaryButton
+
             }
+
             onPress={() =>
+
               void startExercise()
+
             }
+
           >
+
             <Ionicons
+
               name="play"
+
               size={18}
+
               color={WHITE}
+
             />
 
             <Text
+
               style={
+
                 styles.primaryButtonText
+
               }
+
             >
+
               Start Exercise
+
             </Text>
+
           </Pressable>
+
         </ScrollView>
+
       </SafeAreaView>
+
     );
+
   }
 
   /*
+
    * ==========================================================
+
    * ACTUAL EXERCISE
+
    * ==========================================================
+
    */
 
   if (
+
     phase ===
+
     'exercise'
+
   ) {
+
     return (
+
       <SafeAreaView
+
         style={styles.container}
+
       >
+
         <Header />
 
         <ScrollView
+
           showsVerticalScrollIndicator={
+
             false
+
           }
+
           contentContainerStyle={
+
             styles.exerciseContent
+
           }
+
         >
+
           <View
+
             style={
+
               styles.exerciseTopRow
+
             }
+
           >
+
             <View>
+
               <Text
+
                 style={
+
                   styles.exerciseEyebrow
+
                 }
+
               >
+
                 CONTROLLED DECRESCENDO
+
               </Text>
 
               <Text
+
                 style={
+
                   styles.exerciseTitle
+
                 }
+
               >
+
                 Get softer gradually
+
               </Text>
+
             </View>
 
             <View
+
               style={
+
                 styles.repBadge
+
               }
+
             >
+
               <Text
+
                 style={
+
                   styles.repBadgeText
+
                 }
+
               >
+
                 REP {currentRep}/
+
                 {repetitions}
+
               </Text>
+
             </View>
+
           </View>
 
           <View
+
             style={styles.timerRow}
+
           >
+
             <View
+
               style={
+
                 styles.timerBadge
+
               }
+
             >
+
               <Ionicons
+
                 name="time-outline"
+
                 size={15}
+
                 color={ACCENT}
+
               />
 
               <Text
+
                 style={styles.timerText}
+
               >
+
                 {formatTimer(
+
                   repDurationMs -
+
                     currentRepElapsed,
+
                 )}
+
               </Text>
+
             </View>
 
             <Text
+
               style={
+
                 styles.rangeHint
+
               }
+
             >
+
               {targetStart} → {targetEnd}{' '}
+
               dB
+
             </Text>
+
           </View>
 
           <View
+
             style={
+
               styles.progressTrack
+
             }
+
           >
+
             <View
+
               style={[
+
                 styles.progressFill,
+
                 {
+
                   width:
+
                     `${progress * 100}%`,
+
                 },
+
               ]}
+
             />
+
+          </View>
+
+          <View style={styles.exerciseGuideCard}>
+            <View style={styles.exerciseGuideHeader}>
+              <Ionicons
+                name="information-circle-outline"
+                size={16}
+                color={ACCENT}
+              />
+              <Text style={styles.exerciseGuideTitle}>YOUR GUIDE</Text>
+            </View>
+
+            <View style={styles.exerciseGuideSteps}>
+              <View style={styles.exerciseGuideStep}>
+                <View style={styles.exerciseGuideNumber}>
+                  <Text style={styles.exerciseGuideNumberText}>1</Text>
+                </View>
+                <Text style={styles.exerciseGuideStepTitle}>START</Text>
+                <Text style={styles.exerciseGuideStepText}>Near {targetStart} dB</Text>
+              </View>
+
+              <View style={styles.exerciseGuideStep}>
+                <View style={styles.exerciseGuideNumber}>
+                  <Text style={styles.exerciseGuideNumberText}>2</Text>
+                </View>
+                <Text style={styles.exerciseGuideStepTitle}>FADE</Text>
+                <Text style={styles.exerciseGuideStepText}>Lower slowly</Text>
+              </View>
+
+              <View style={styles.exerciseGuideStep}>
+                <View style={styles.exerciseGuideNumber}>
+                  <Text style={styles.exerciseGuideNumberText}>3</Text>
+                </View>
+                <Text style={styles.exerciseGuideStepTitle}>FINISH</Text>
+                <Text style={styles.exerciseGuideStepText}>Near {targetEnd} dB</Text>
+              </View>
+            </View>
+
+            <Text style={styles.exerciseGuideNote}>
+              Keep your voice continuous. Do not cut the sound off suddenly.
+            </Text>
           </View>
 
           <View
@@ -1598,483 +2585,795 @@ export default function ControlledDecrescendoDrill({
               styles.liveReadoutCard
             }
           >
+
             <Text
+
               style={styles.liveLabel}
+
             >
+
               YOUR VOICE
+
             </Text>
 
             <View
+
               style={
+
                 styles.liveVolumeRow
+
               }
+
             >
+
               <Text
+
                 style={
+
                   styles.liveVolume
+
                 }
+
               >
+
                 {currentVolume}
+
               </Text>
 
               <Text
+
                 style={styles.liveUnit}
+
               >
+
                 dB
+
               </Text>
+
             </View>
 
             <DirectionIndicator
+
               trend={trend}
+
             />
 
             <Text
+
               style={styles.guidance}
+
             >
+
               {guidance}
+
             </Text>
+
           </View>
 
-          <TargetCurveChart
-            history={
-              liveHistory
-            }
-            targetRange={
-              params.targetDbRange
-            }
-          />
+          <TargetCurveChart history={liveTrack} targetRange={params.targetDbRange} />
 
           <View
+
             style={styles.bottomInfo}
+
           >
+
             <View>
+
               <Text
+
                 style={
+
                   styles.bottomLabel
+
                 }
+
               >
+
                 TARGET
+
               </Text>
 
               <Text
+
                 style={
+
                   styles.bottomValue
+
                 }
+
               >
+
                 {targetStart} → {targetEnd}{' '}
+
                 dB
+
               </Text>
+
             </View>
 
             <View
+
               style={
+
                 styles.smoothnessBadge
+
               }
+
             >
+
               <Text
+
                 style={
+
                   styles.smoothnessNumber
+
                 }
+
               >
+
                 {params.smoothnessThreshold}%
+
               </Text>
 
               <Text
+
                 style={
+
                   styles.smoothnessLabel
+
                 }
+
               >
+
                 smoothness target
+
               </Text>
+
             </View>
+
           </View>
 
           {!isRecording && (
+
             <Text
+
               style={
+
                 styles.waitingText
+
               }
+
             >
+
               Starting microphone...
+
             </Text>
+
           )}
+
         </ScrollView>
+
       </SafeAreaView>
+
     );
+
   }
 
   /*
+
    * ==========================================================
+
    * RESULTS
+
    * ==========================================================
+
    */
 
   return (
+
     <SafeAreaView
+
       style={styles.container}
+
     >
+
       <Header />
 
       <ScrollView
+
         showsVerticalScrollIndicator={
+
           false
+
         }
+
         contentContainerStyle={
+
           styles.resultsContent
+
         }
+
       >
+
         <View
+
           style={[
+
             styles.statusPill,
+
             passed
+
               ? styles.passPill
+
               : styles.tryPill,
+
           ]}
+
         >
+
           <Ionicons
+
             name={
+
               passed
+
                 ? 'checkmark-circle'
+
                 : 'refresh-circle'
+
             }
+
             size={18}
+
             color={ACCENT}
+
           />
 
           <Text
+
             style={styles.statusText}
+
           >
+
             {passed
+
               ? 'EXERCISE PASSED'
+
               : 'KEEP PRACTICING'}
+
           </Text>
+
         </View>
 
         <Text
+
           style={
+
             styles.resultTitle
+
           }
+
         >
+
           Decrescendo Results
+
         </Text>
 
         <Text
+
           style={
+
             styles.resultSubtitle
+
           }
+
         >
+
           {passed
+
             ? 'Nice control. Your voice followed the downward movement.'
+
             : 'Try making the decrease more gradual and even.'}
+
         </Text>
 
         <View
+
           style={
+
             styles.scoreCircle
+
           }
+
         >
+
           <Text
+
             style={
+
               styles.scoreNumber
+
             }
+
           >
+
             {score}
+
           </Text>
 
           <Text
+
             style={
+
               styles.scoreOutOf
+
             }
+
           >
+
             /100
+
           </Text>
+
         </View>
 
         <Text
+
           style={
+
             styles.scoreCaption
+
           }
+
         >
+
           Smoothness Score
+
         </Text>
 
         <View
+
           style={
+
             styles.resultCard
+
           }
+
         >
+
           {repScores.map(
+
             (
+
               repScore,
+
               index,
+
             ) => (
+
               <ResultRow
+
                 key={`rep-${index}`}
+
                 label={`Repetition ${
+
                   index + 1
+
                 }`}
+
                 value={`${repScore}%`}
+
               />
+
             ),
+
           )}
 
           <ResultRow
+
             label="Start Volume"
+
             value={`${formatDb(
+
               startDb,
+
             )} dB`}
+
           />
 
           <ResultRow
+
             label="End Volume"
+
             value={`${formatDb(
+
               endDb,
+
             )} dB`}
+
           />
 
           <ResultRow
+
             label="Direction"
+
             value={
+
               directionCorrect
+
                 ? 'Descending ✓'
+
                 : 'Not descending'
+
             }
+
           />
 
           <ResultRow
+
             label="Target"
+
             value={
+
               targetReached
+
                 ? `${targetStart} → ${targetEnd} dB ✓`
+
                 : 'Target not reached'
+
             }
+
             last
+
           />
+
         </View>
 
         <View
+
           style={
+
             styles.qualityCard
+
           }
+
         >
+
           <View
+
             style={
+
               styles.qualityCopy
+
             }
+
           >
+
             <Text
+
               style={
+
                 styles.qualityTitle
+
               }
+
             >
+
               Measurement quality
+
             </Text>
 
             <Text
+
               style={
+
                 styles.qualityText
+
               }
+
             >
+
               {measurementQuality}% of
+
               expected audio windows
+
               were available.
+
             </Text>
+
           </View>
 
           <Text
+
             style={
+
               styles.qualityValue
+
             }
+
           >
+
             {measurementQuality}%
+
           </Text>
+
         </View>
 
         <Pressable
+
           style={
+
             styles.primaryButton
+
           }
+
           onPress={() =>
+
             void startExercise()
+
           }
+
         >
+
           <Ionicons
+
             name="refresh"
+
             size={18}
+
             color={WHITE}
+
           />
 
           <Text
+
             style={
+
               styles.primaryButtonText
+
             }
+
           >
+
             Try Again
+
           </Text>
+
         </Pressable>
 
         {passed && (
+
           <Pressable
+
             style={
+
               styles.secondaryButton
+
             }
+
             onPress={() =>
+
               router.replace(
+
                 '/exercises/volume' as any,
+
               )
+
             }
+
           >
+
             <Text
+
               style={
+
                 styles.secondaryButtonText
+
               }
+
             >
+
               Next Exercise
+
             </Text>
+
           </Pressable>
+
         )}
+
       </ScrollView>
+
     </SafeAreaView>
+
   );
+
 }
 
 const styles = StyleSheet.create({
+
   container: {
+
     flex: 1,
+
     backgroundColor: WHITE,
+
   },
 
   header: {
+
     height: 58,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     paddingHorizontal: 18,
+
     borderBottomWidth: 1,
+
     borderBottomColor: BORDER,
+
   },
 
   backButton: {
+
     width: 36,
+
     height: 36,
+
     borderRadius: 18,
+
     backgroundColor: LIGHT_PINK,
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
   },
 
   headerTitle: {
+
     flex: 1,
+
     textAlign: 'center',
+
     fontSize: 17,
+
     fontWeight: '800',
+
     color: DARK,
+
     marginRight: 36,
+
   },
 
   headerSpacer: {
+
     width: 36,
+
   },
 
   pageContent: {
-    paddingHorizontal: 22,
-    paddingTop: 28,
-    paddingBottom: 30,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 18,
   },
 
   badge: {
+
     alignSelf: 'center',
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 6,
+
     paddingHorizontal: 11,
+
     paddingVertical: 6,
+
     borderRadius: 20,
+
     backgroundColor: PINK,
+
   },
 
   badgeText: {
+
     color: ACCENT,
+
     fontSize: 11,
+
     fontWeight: '900',
+
     letterSpacing: 1.2,
+
   },
 
   title: {
-    marginTop: 14,
+    marginTop: 8,
     color: DARK,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 27,
+    lineHeight: 32,
     fontWeight: '900',
     textAlign: 'center',
   },
 
   subtitle: {
-    marginTop: 10,
+    marginTop: 5,
     color: SOFT_TEXT,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 19,
     textAlign: 'center',
   },
 
   targetCard: {
-    marginTop: 24,
-    padding: 20,
-    borderRadius: 24,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 20,
     backgroundColor: LIGHT_PINK,
     borderWidth: 1,
     borderColor: BORDER,
   },
 
   targetEyebrow: {
+
     color: ACCENT,
+
     fontSize: 11,
+
     fontWeight: '900',
+
     letterSpacing: 1,
+
     textAlign: 'center',
+
   },
 
   targetRow: {
-    marginTop: 14,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 20,
+    gap: 14,
   },
 
   targetPoint: {
-    minWidth: 82,
+    minWidth: 72,
     alignItems: 'center',
   },
 
   targetNumber: {
     color: BROWN,
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 34,
+    lineHeight: 38,
     fontWeight: '900',
   },
 
   targetUnit: {
-    marginTop: 4,
+    marginTop: 3,
     color: MUTED,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1,
   },
 
   metaRow: {
-    marginTop: 18,
+    marginTop: 11,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     flexWrap: 'wrap',
   },
 
   metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 16,
     backgroundColor: WHITE,
     borderWidth: 1,
@@ -2083,14 +3382,14 @@ const styles = StyleSheet.create({
 
   metaText: {
     color: BROWN,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
 
   instructionsCard: {
-    marginTop: 18,
-    padding: 18,
-    borderRadius: 22,
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 18,
     backgroundColor: WHITE,
     borderWidth: 1,
     borderColor: BORDER,
@@ -2098,21 +3397,21 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: DARK,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
   },
 
   instructionRow: {
-    marginTop: 12,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 8,
   },
 
   instructionNumber: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2120,49 +3419,51 @@ const styles = StyleSheet.create({
 
   instructionNumberText: {
     color: ACCENT,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
   },
 
   instructionText: {
     flex: 1,
     color: SOFT_TEXT,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 17,
   },
 
   tipCard: {
-    marginTop: 16,
-    padding: 15,
-    borderRadius: 18,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 16,
     backgroundColor: '#FFF9FB',
     borderWidth: 1,
     borderColor: '#F3DCE3',
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
 
   tipCopy: {
+
     flex: 1,
+
   },
 
   tipTitle: {
     color: DARK,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
   },
 
   tipText: {
     marginTop: 2,
     color: MUTED,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 15,
   },
 
   referenceCard: {
-    marginTop: 16,
-    padding: 15,
-    borderRadius: 18,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 16,
     backgroundColor: LIGHT_PINK,
     borderWidth: 1,
     borderColor: BORDER,
@@ -2172,32 +3473,37 @@ const styles = StyleSheet.create({
   },
 
   referenceEyebrow: {
+
     color: ACCENT,
+
     fontSize: 10,
+
     fontWeight: '900',
+
     letterSpacing: 1,
+
   },
 
   referenceNote: {
-    marginTop: 4,
+    marginTop: 3,
     color: BROWN,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
   },
 
   referenceButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   primaryButton: {
-    marginTop: 20,
-    height: 56,
-    borderRadius: 28,
+    marginTop: 12,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2207,96 +3513,234 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: WHITE,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
   },
 
   exerciseContent: {
+
     paddingHorizontal: 18,
+
     paddingTop: 20,
+
     paddingBottom: 30,
+
   },
 
   exerciseTopRow: {
+
     flexDirection: 'row',
+
     alignItems: 'flex-start',
+
     justifyContent: 'space-between',
+
   },
 
   exerciseEyebrow: {
+
     color: ACCENT,
+
     fontSize: 11,
+
     fontWeight: '900',
+
     letterSpacing: 1.2,
+
   },
 
   exerciseTitle: {
+
     marginTop: 5,
+
     color: DARK,
+
     fontSize: 23,
+
     fontWeight: '900',
+
   },
 
   repBadge: {
+
     paddingHorizontal: 10,
+
     paddingVertical: 7,
+
     borderRadius: 16,
+
     backgroundColor: PINK,
+
   },
 
   repBadgeText: {
+
+    color: ACCENT,
+
+    fontSize: 10,
+
+    fontWeight: '900',
+
+  },
+
+  timerRow: {
+
+    marginTop: 18,
+
+    flexDirection: 'row',
+
+    justifyContent: 'space-between',
+
+    alignItems: 'center',
+
+  },
+
+  timerBadge: {
+
+    paddingHorizontal: 10,
+
+    paddingVertical: 7,
+
+    borderRadius: 15,
+
+    backgroundColor: LIGHT_PINK,
+
+    flexDirection: 'row',
+
+    alignItems: 'center',
+
+    gap: 6,
+
+  },
+
+  timerText: {
+
+    color: DARK,
+
+    fontSize: 13,
+
+    fontWeight: '900',
+
+  },
+
+  rangeHint: {
+
+    color: MUTED,
+
+    fontSize: 13,
+
+    fontWeight: '800',
+
+  },
+
+  progressTrack: {
+
+    marginTop: 12,
+
+    height: 6,
+
+    borderRadius: 3,
+
+    backgroundColor: '#F5E9EC',
+
+    overflow: 'hidden',
+
+  },
+
+  progressFill: {
+
+    height: '100%',
+
+    borderRadius: 3,
+
+    backgroundColor: ACCENT,
+
+  },
+
+  exerciseGuideCard: {
+    marginTop: 12,
+    padding: 11,
+    borderRadius: 18,
+    backgroundColor: '#FFF9FB',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  exerciseGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+
+  exerciseGuideTitle: {
+    color: DARK,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  exerciseGuideSteps: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+
+  exerciseGuideStep: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 3,
+    borderRadius: 12,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: '#F3E3E7',
+  },
+
+  exerciseGuideNumber: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+
+  exerciseGuideNumberText: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
   },
 
-  timerRow: {
-    marginTop: 18,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  timerBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 15,
-    backgroundColor: LIGHT_PINK,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  timerText: {
+  exerciseGuideStepTitle: {
     color: DARK,
-    fontSize: 13,
+    fontSize: 9,
     fontWeight: '900',
+    letterSpacing: 0.3,
   },
 
-  rangeHint: {
+  exerciseGuideStepText: {
+    marginTop: 2,
+    color: SOFT_TEXT,
+    fontSize: 9,
+    lineHeight: 12,
+    textAlign: 'center',
+  },
+
+  exerciseGuideNote: {
+    marginTop: 8,
     color: MUTED,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-
-  progressTrack: {
-    marginTop: 12,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F5E9EC',
-    overflow: 'hidden',
-  },
-
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: ACCENT,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
   },
 
   liveReadoutCard: {
-    marginTop: 18,
-    paddingVertical: 18,
-    borderRadius: 24,
+    marginTop: 12,
+    paddingVertical: 13,
+    borderRadius: 22,
     alignItems: 'center',
     backgroundColor: LIGHT_PINK,
     borderWidth: 1,
@@ -2304,401 +3748,678 @@ const styles = StyleSheet.create({
   },
 
   liveLabel: {
+
     color: ACCENT,
+
     fontSize: 10,
+
     fontWeight: '900',
+
     letterSpacing: 1.1,
+
   },
 
   liveVolumeRow: {
+
     marginTop: 2,
+
     flexDirection: 'row',
+
     alignItems: 'baseline',
+
   },
 
   liveVolume: {
     color: DARK,
-    fontSize: 54,
-    lineHeight: 62,
+    fontSize: 46,
+    lineHeight: 52,
     fontWeight: '900',
   },
 
   liveUnit: {
+
     marginLeft: 6,
+
     color: MUTED,
+
     fontSize: 16,
+
     fontWeight: '800',
+
   },
 
   trendGood: {
+
     marginTop: 4,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 5,
+
   },
 
   trendGoodText: {
+
     color: ACCENT,
+
     fontSize: 12,
+
     fontWeight: '900',
+
   },
 
   trendBad: {
+
     marginTop: 4,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 5,
+
   },
 
   trendBadText: {
+
     color: '#A95E6A',
+
     fontSize: 12,
+
     fontWeight: '900',
+
   },
 
   trendNeutral: {
+
     marginTop: 4,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 5,
+
   },
 
   trendNeutralText: {
+
     color: MUTED,
+
     fontSize: 12,
+
     fontWeight: '800',
+
   },
 
   guidance: {
+
     marginTop: 5,
+
     color: SOFT_TEXT,
+
     fontSize: 12,
+
     fontWeight: '700',
+
   },
 
   chartCard: {
-    marginTop: 16,
-    padding: 16,
+
+    marginTop: 12,
+
+    padding: 13,
+
     borderRadius: 22,
+
     backgroundColor: WHITE,
+
     borderWidth: 1,
+
     borderColor: BORDER,
+
   },
 
   chartHeader: {
+
     flexDirection: 'row',
+
     justifyContent: 'space-between',
+
     alignItems: 'flex-start',
+
   },
 
   chartTitle: {
+
     color: DARK,
+
     fontSize: 16,
+
     fontWeight: '900',
+
   },
 
   chartSubtitle: {
+
     marginTop: 2,
+
     color: MUTED,
+
     fontSize: 11,
+
   },
 
   legend: {
+
     flexDirection: 'row',
+
     gap: 10,
+
   },
 
   legendItem: {
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 4,
+
   },
 
   targetDot: {
+
     width: 7,
+
     height: 7,
+
     borderRadius: 4,
+
     backgroundColor: '#E9AAB9',
+
   },
 
   actualDot: {
+
     width: 7,
+
     height: 7,
+
     borderRadius: 4,
+
     backgroundColor: ACCENT,
+
   },
 
   legendText: {
+
     color: MUTED,
+
     fontSize: 9,
+
     fontWeight: '800',
+
   },
 
   chart: {
+
     position: 'relative',
-    height: 190,
-    marginTop: 14,
+
+    height: 165,
+
+    marginTop: 12,
+
     borderRadius: 16,
+
     backgroundColor: '#FFF9FB',
+
     overflow: 'hidden',
+
     paddingHorizontal: 8,
+
     justifyContent: 'flex-end',
+
   },
 
   chartGrid: {
+
     ...StyleSheet.absoluteFill,
+
     justifyContent: 'space-around',
+
     paddingVertical: 28,
+
   },
 
   gridLine: {
+
     height: StyleSheet.hairlineWidth,
+
     backgroundColor: '#F3E3E7',
+
   },
 
   chartLayer: {
     ...StyleSheet.absoluteFill,
     paddingHorizontal: 8,
     flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 1,
+  },
+
+  barPair: {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+    flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 2,
+    justifyContent: 'center',
+    gap: 1,
   },
 
   bar: {
     flex: 1,
-    minWidth: 3,
-    borderRadius: 5,
+    minWidth: 0,
+    borderRadius: 2,
   },
 
   targetBar: {
+
     backgroundColor: '#E9AAB9',
+
     opacity: 0.6,
+
   },
 
   actualBar: {
+
     backgroundColor: ACCENT,
+
     opacity: 0.9,
+
   },
 
   chartScale: {
+
     marginTop: 7,
+
     flexDirection: 'row',
+
     justifyContent: 'space-between',
+
   },
 
   scaleText: {
+
     color: MUTED,
+
     fontSize: 10,
+
     fontWeight: '800',
+
   },
 
   bottomInfo: {
-    marginTop: 15,
-    padding: 15,
+
+    marginTop: 12,
+
+    padding: 13,
+
     borderRadius: 18,
+
     backgroundColor: LIGHT_PINK,
+
     flexDirection: 'row',
+
     justifyContent: 'space-between',
+
     alignItems: 'center',
+
   },
 
   bottomLabel: {
+
     color: ACCENT,
+
     fontSize: 9,
+
     fontWeight: '900',
+
     letterSpacing: 0.8,
+
   },
 
   bottomValue: {
+
     marginTop: 3,
+
     color: BROWN,
+
     fontSize: 16,
+
     fontWeight: '900',
+
   },
 
   smoothnessBadge: {
+
     alignItems: 'flex-end',
+
   },
 
   smoothnessNumber: {
+
     color: ACCENT,
+
     fontSize: 18,
+
     fontWeight: '900',
+
   },
 
   smoothnessLabel: {
+
     marginTop: 1,
+
     color: MUTED,
+
     fontSize: 9,
+
   },
 
   waitingText: {
+
     marginTop: 10,
+
     textAlign: 'center',
+
     color: MUTED,
+
     fontSize: 11,
+
   },
 
   resultsContent: {
+
     paddingHorizontal: 22,
+
     paddingTop: 25,
+
     paddingBottom: 30,
+
     alignItems: 'center',
+
   },
 
   statusPill: {
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     gap: 6,
+
     paddingHorizontal: 12,
+
     paddingVertical: 7,
+
     borderRadius: 17,
+
   },
 
   passPill: {
+
     backgroundColor: PINK,
+
   },
 
   tryPill: {
+
     backgroundColor: '#FFF1F3',
+
   },
 
   statusText: {
+
     color: ACCENT,
+
     fontSize: 10,
+
     fontWeight: '900',
+
     letterSpacing: 0.9,
+
   },
 
   resultTitle: {
+
     marginTop: 15,
+
     color: DARK,
+
     fontSize: 28,
+
     fontWeight: '900',
+
     textAlign: 'center',
+
   },
 
   resultSubtitle: {
+
     marginTop: 8,
+
     color: SOFT_TEXT,
+
     fontSize: 14,
+
     lineHeight: 20,
+
     textAlign: 'center',
+
   },
 
   scoreCircle: {
+
     marginTop: 20,
+
     width: 168,
+
     height: 168,
+
     borderRadius: 84,
+
     backgroundColor: PINK,
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
   },
 
   scoreNumber: {
+
     color: DARK,
+
     fontSize: 50,
+
     lineHeight: 54,
+
     fontWeight: '900',
+
   },
 
   scoreOutOf: {
+
     color: MUTED,
+
     fontSize: 13,
+
     fontWeight: '800',
+
   },
 
   scoreCaption: {
+
     marginTop: 8,
+
     color: ACCENT,
+
     fontSize: 12,
+
     fontWeight: '900',
+
   },
 
   resultCard: {
+
     width: '100%',
+
     marginTop: 18,
+
     paddingHorizontal: 16,
+
     borderRadius: 20,
+
     backgroundColor: WHITE,
+
     borderWidth: 1,
+
     borderColor: BORDER,
+
   },
 
   resultRow: {
+
     minHeight: 44,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     justifyContent: 'space-between',
+
     borderBottomWidth: 1,
+
     borderBottomColor: '#F4E9EC',
+
   },
 
   lastResultRow: {
+
     borderBottomWidth: 0,
+
   },
 
   resultLabel: {
+
     color: SOFT_TEXT,
+
     fontSize: 13,
+
   },
 
   resultValue: {
+
     color: DARK,
+
     fontSize: 13,
+
     fontWeight: '900',
+
   },
 
   qualityCard: {
+
     width: '100%',
+
     marginTop: 14,
+
     padding: 14,
+
     borderRadius: 17,
+
     backgroundColor: LIGHT_PINK,
+
     flexDirection: 'row',
+
     justifyContent: 'space-between',
+
     alignItems: 'center',
+
     gap: 12,
+
   },
 
   qualityCopy: {
+
     flex: 1,
+
   },
 
   qualityTitle: {
+
     color: DARK,
+
     fontSize: 12,
+
     fontWeight: '900',
+
   },
 
   qualityText: {
+
     marginTop: 2,
+
     color: MUTED,
+
     fontSize: 10,
+
     lineHeight: 16,
+
   },
 
   qualityValue: {
+
     color: ACCENT,
+
     fontSize: 18,
+
     fontWeight: '900',
+
   },
 
   secondaryButton: {
+
     width: '100%',
+
     height: 54,
+
     marginTop: 10,
+
     borderRadius: 27,
+
     borderWidth: 1.5,
+
     borderColor: ACCENT,
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
   },
 
   secondaryButtonText: {
+
     color: ACCENT,
+
     fontSize: 15,
+
     fontWeight: '900',
+
   },
+
 });
