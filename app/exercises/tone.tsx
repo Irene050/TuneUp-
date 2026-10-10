@@ -8,9 +8,8 @@ import VowelConsistencyExerciseScreen from '../../src/screens/exercises/Tone/Vow
 import WaveformSmoothnessDrillScreen from '../../src/screens/exercises/Tone/WaveformSmoothnessDrillScreen';
 
 export default function ToneRoute() {
-  const { mode, templateId } = useLocalSearchParams<{
+  const { templateId } = useLocalSearchParams<{
     templateId?: string;
-    mode?: string;
   }>();
 
   switch (templateId) {
