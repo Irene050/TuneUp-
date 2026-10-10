@@ -53,41 +53,16 @@ const volumeExercises = [
   },
 ];
 
-const openExercise = (
-  id: string,
-) => {
-  switch (id) {
-    case 'dynamic-range':
-      router.push(
-        '/exercises/volume?exercise=dynamic-range' as any,
-      );
-      break;
 
-    case 'controlled-crescendo':
-      router.push(
-        '/exercises/volume?exercise=controlled-crescendo' as any,
-      );
-      break;
-
-    case 'controlled-decrescendo':
-      router.push(
-        '/exercises/volume?exercise=controlled-decrescendo' as any,
-      );
-      break;
-
-    case 'volume-band-targeting':
-      router.push(
-        '/exercises/volume?exercise=volume-band-targeting' as any,
-      );
-      break;
-
-    case 'volume-control-stability':
-      router.push(
-        '/exercises/volume?exercise=volume-control-stability' as any,
-      );
-      break;
-  }
+const openExercise = (id: string) => {
+  router.push({
+    pathname: '/exercises/volume',
+    params: {
+      templateId: id,
+    },
+  } as any);
 };
+
 
 export default function VolumeExercisesScreen() {
   return (
