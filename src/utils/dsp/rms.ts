@@ -20,11 +20,8 @@ export function calcRMSConsistency(
   const frameSize = Math.floor(
     (frameSizeMs / 1000) * sampleRate
   );
-
   if (frameSize <= 0) return 0;
-
   const rmsValues: number[] = [];
-
   for (
     let i = 0;
     i + frameSize <= samples.length;
@@ -50,7 +47,6 @@ export function calcRMSConsistency(
     ) / rmsValues.length;
 
   const relativeVariance = variance / mean;
-
   return Math.max(0, 100 - relativeVariance * 100);
 }
 
@@ -61,6 +57,5 @@ export function rmsToDb(
   if (!Number.isFinite(rmsValue) || rmsValue <= 0) {
     return -100;
   }
-
   return 20 * Math.log10(rmsValue / refLevel);
 }

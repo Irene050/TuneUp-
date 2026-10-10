@@ -24,42 +24,11 @@ export function detectOnsetOffset(
     };
   }
 
-  // ----------------------------------------------------------
-  // ANALYSIS SETTINGS
-  // ----------------------------------------------------------
-
-  // 50 ms RMS analysis windows.
   const windowMs = 50;
-
-  const windowSize = Math.max(
-    1,
-    Math.floor(
-      (windowMs / 1000) * sampleRate
-    )
-  );
-
-  /*
-   * Require several consecutive active windows before
-   * declaring that the exhale has started.
-   *
-   * 3 x 50 ms = approximately 150 ms.
-   */
+  const windowSize = Math.max(1, Math.floor((windowMs / 1000) * sampleRate));
   const requiredActiveWindows = 3;
-
-  /*
-   * Allow a short interruption without immediately
-   * ending the detected exhale.
-   *
-   * 3 x 50 ms = approximately 150 ms.
-   */
   const allowedInactiveWindows = 3;
-
-  // ----------------------------------------------------------
-  // CALCULATE RMS PER WINDOW
-  // ----------------------------------------------------------
-
   const rmsValues: number[] = [];
-
   const windowStartIndices: number[] = [];
 
   for (
@@ -67,20 +36,14 @@ export function detectOnsetOffset(
     start < samples.length;
     start += windowSize
   ) {
-    const end = Math.min(
-      start + windowSize,
-      samples.length
-    );
-
+    const end = Math.min(start + windowSize, samples.length);
     const length = end - start;
-
+    
     if (length <= 0) {
       continue;
     }
 
-    const rms = calcRMS(
-  samples.subarray(start, end)
-);
+    const rms = calcRMS(samples.subarray(start, end));
 
     rmsValues.push(rms);
     windowStartIndices.push(start);
@@ -94,18 +57,10 @@ export function detectOnsetOffset(
     };
   }
 
-  // ----------------------------------------------------------
-  // ACTIVE / INACTIVE WINDOWS
-  // ----------------------------------------------------------
-
   const active =
     rmsValues.map(
       rms => rms >= threshold
     );
-
-  // ----------------------------------------------------------
-  // FIND ONSET
-  // ----------------------------------------------------------
 
   let onsetWindow = -1;
   let activeCount = 0;
@@ -122,10 +77,6 @@ export function detectOnsetOffset(
         activeCount >=
         requiredActiveWindows
       ) {
-        /*
-         * Start at the beginning of the first
-         * window in the confirmed active sequence.
-         */
         onsetWindow =
           i -
           requiredActiveWindows +
@@ -138,7 +89,6 @@ export function detectOnsetOffset(
     }
   }
 
-  // No sustained activity detected.
   if (onsetWindow === -1) {
     return {
       onsetIndex: 0,
@@ -146,10 +96,6 @@ export function detectOnsetOffset(
       durationSeconds: 0,
     };
   }
-
-  // ----------------------------------------------------------
-  // FIND OFFSET
-  // ----------------------------------------------------------
 
   let lastActiveWindow =
     onsetWindow;
@@ -171,51 +117,20 @@ export function detectOnsetOffset(
         inactiveCount >=
         allowedInactiveWindows
       ) {
-        /*
-         * Stop at the end of the last confirmed
-         * active window rather than at the first
-         * quiet window.
-         */
         break;
       }
     }
   }
 
-  // ----------------------------------------------------------
-  // CONVERT WINDOWS TO SAMPLE INDICES
-  // ----------------------------------------------------------
+  const onsetIndex = windowStartIndices[onsetWindow];
 
-  const onsetIndex =
-    windowStartIndices[
-      onsetWindow
-    ];
-
-  const offsetWindowEnd =
-    Math.min(
-      (
+  const offsetWindowEnd = Math.min((
         windowStartIndices[
           lastActiveWindow
-        ] +
-        windowSize
-      ),
-      samples.length
-    );
+        ] + windowSize), samples.length);
 
-  const offsetIndex =
-    Math.max(
-      onsetIndex,
-      offsetWindowEnd - 1
-    );
-
-  // ----------------------------------------------------------
-  // DURATION
-  // ----------------------------------------------------------
-
-  const durationSeconds =
-    (
-      offsetIndex -
-      onsetIndex
-    ) / sampleRate;
+  const offsetIndex = Math.max(onsetIndex, offsetWindowEnd - 1);
+  const durationSeconds = (offsetIndex - onsetIndex) / sampleRate;
 
   return {
     onsetIndex,

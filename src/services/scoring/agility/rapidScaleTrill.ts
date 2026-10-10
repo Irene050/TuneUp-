@@ -1,6 +1,5 @@
-import type {
-    RapidScaleTrillMeasurement,
-} from '@/services/measurement/agility/rapidScaleTrill';
+
+import type { RapidScaleTrillMeasurement } from '@/services/measurement/agility/rapidScaleTrill';
 
 export type RapidScaleTrillScore = {
   overall: number;
@@ -17,16 +16,16 @@ function clamp(
   min: number,
   max: number,
 ): number {
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
+  return Math.max(min, Math.min(max, value));
 }
 
 function calculateSpeedScore(
   notesPerSecond: number,
 ): number {
-  if (notesPerSecond <= 1) {
+  if (
+    !Number.isFinite(notesPerSecond) ||
+    notesPerSecond <= 1
+  ) {
     return 0;
   }
 
@@ -35,15 +34,27 @@ function calculateSpeedScore(
   }
 
   return clamp(
-    ((notesPerSecond - 1) / 4) *
-      100,
+    ((notesPerSecond - 1) / 4) * 100,
     0,
     100,
   );
 }
 
+/**
+ * Scores a Rapid Scale Trill attempt.
+ *
+ * Weights:
+ * - Pitch accuracy: 35%
+ * - Sequence accuracy: 30%
+ * - Transition accuracy: 20%
+ * - Speed: 15%
+ *
+ * The optional threshold defaults to 70 to preserve
+ * compatibility with existing callers.
+ */
 export function scoreRapidScaleTrill(
   measurement: RapidScaleTrillMeasurement,
+  accuracyThreshold = 70,
 ): RapidScaleTrillScore {
   const pitchScore = clamp(
     measurement.pitchAccuracy,
@@ -63,52 +74,59 @@ export function scoreRapidScaleTrill(
     100,
   );
 
-  const speedScore =
-    calculateSpeedScore(
-      measurement.notesPerSecond,
-    );
+  const speedScore = calculateSpeedScore(
+    measurement.notesPerSecond,
+  );
 
   const overall =
     pitchScore * 0.35 +
-    sequenceScore * 0.30 +
-    transitionScore * 0.20 +
+    sequenceScore * 0.3 +
+    transitionScore * 0.2 +
     speedScore * 0.15;
 
+  const roundedOverall =
+    Math.round(overall * 100) / 100;
+
+  const threshold = clamp(
+    Number.isFinite(accuracyThreshold)
+      ? accuracyThreshold
+      : 70,
+    0,
+    100,
+  );
+
   const passed =
-    overall >= 70 &&
+    roundedOverall >= threshold &&
     pitchScore >= 60 &&
     sequenceScore >= 60;
 
-  let feedback = '';
+  let feedback: string;
 
-  if (overall >= 90) {
+  if (measurement.noteCount === 0) {
     feedback =
-      'Excellent! Your scale trill was fast, accurate, and well controlled.';
-  } else if (overall >= 80) {
-    feedback =
-      'Great job! Your note sequence and transitions were performed with good control.';
-  } else if (overall >= 70) {
-    feedback =
-      'Good work! Continue practicing the rapid note changes for greater consistency.';
+      'No clear notes were detected. Try singing closer to the microphone in a quiet area.';
   } else if (pitchScore < 60) {
     feedback =
-      'Focus on matching each note accurately before increasing your speed.';
+      'Focus on matching each target pitch before increasing your speed.';
   } else if (sequenceScore < 60) {
     feedback =
-      'Practice the scale pattern slowly so each note stays in the correct order.';
+      'Practice the notes in the correct order. Listen to the reference sequence again before trying.';
   } else if (transitionScore < 60) {
     feedback =
-      'Work on making each transition between notes cleaner and more controlled.';
-  } else if (speedScore < 60) {
+      'Work on moving cleanly between neighboring notes without skipping or adding notes.';
+  } else if (speedScore < 50) {
     feedback =
-      'Gradually increase your speed while keeping your pitch accurate.';
+      'Gradually increase the pace while keeping each note clear and accurate.';
+  } else if (passed) {
+    feedback =
+      'Great work! Your pitch, note order, and transitions are coming together. Keep practicing for consistency.';
   } else {
     feedback =
-      'Keep practicing the scale pattern with consistent pitch and smooth transitions.';
+      'You are making progress. Keep the notes accurate and in order, then gradually increase your speed.';
   }
 
   return {
-    overall,
+    overall: roundedOverall,
     pitchScore,
     sequenceScore,
     transitionScore,

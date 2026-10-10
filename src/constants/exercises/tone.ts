@@ -45,7 +45,6 @@ export const VOWEL_CONSISTENCY_PARAMS: Record<
 };
 
 // waveform smoothness params
-// must have what note to sing
 
 export interface WaveformSmoothnessParams {
   durationSec: number;
@@ -77,7 +76,6 @@ export const WAVEFORM_SMOOTHNESS_PARAMS: Record<
 };
 
 // frequency zone stability params
-// must have what note to sing
 
 export interface FrequencyZoneStabilityParams {
   durationSec: number;
