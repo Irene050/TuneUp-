@@ -1,4 +1,3 @@
-// src/screens/exercises/Volume/DynamicRangeExerciseScreen.tsx
 import {
   DYNAMIC_RANGE_PARAMS,
   type DynamicRangeParams,
