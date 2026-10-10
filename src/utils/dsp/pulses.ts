@@ -14,18 +14,12 @@ export function detectPulses(
   if (samples.length === 0 || meanAmp <= 0) return [];
 
   const threshold = meanAmp * 1.5;
-
-  // Analyze in short envelope windows instead of raw per-sample
-  // amplitude, so a single pulse's internal oscillation doesn't
-  // get counted as multiple peaks.
   const windowMs = 20;
   const windowSize = Math.max(
     1,
     Math.floor((windowMs / 1000) * sampleRate)
   );
 
-  // Minimum time that must pass after a detected peak before
-  // another one can register (refractory period).
   const refractoryMs = 100;
   const refractorySamples = Math.floor(
     (refractoryMs / 1000) * sampleRate
@@ -76,11 +70,9 @@ export function detectPulses(
       if (inPeak) {
         lastPeakEnd = start;
       }
-
       inPeak = false;
     }
   }
-
   return peaks;
 }
 
@@ -93,18 +85,13 @@ export function calcPulseConsistency(
     (p) => p.amplitude
   );
 
-  const mean =
-    amplitudes.reduce(
-      (a, b) => a + b,
-      0
-    ) / amplitudes.length;
-
-  const variance =
-    amplitudes.reduce(
-      (sum, a) =>
-        sum + Math.abs(a - mean),
-      0
-    ) / amplitudes.length;
+  const mean = amplitudes.reduce(
+    (a, b) => 
+      a + b, 0) / amplitudes.length;
+  
+    const variance = amplitudes.reduce(
+      (sum, a) => 
+        sum + Math.abs(a - mean), 0) / amplitudes.length;
 
   const relativeVar =
     mean === 0
