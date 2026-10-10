@@ -8,9 +8,8 @@ import RapidScaleTrillScreen from '../../src/screens/exercises/Agility/RapidScal
 import VocalRunAccuracyTaskScreen from '../../src/screens/exercises/Agility/VocalRunAccuracyTaskScreen';
 
 export default function AgilityRoute() {
-  const { mode, templateId } = useLocalSearchParams<{
+  const { templateId } = useLocalSearchParams<{
       templateId?: string;
-      mode?: string;
     }>();
 
   switch (templateId) {
