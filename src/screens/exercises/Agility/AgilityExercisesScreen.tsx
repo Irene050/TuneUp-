@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    Image,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+	Image,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -128,32 +128,6 @@ export default function AgilityExercisesScreen() {
 						</Pressable>
 					))}
 				</View>
-
-				<Pressable
-					style={({ pressed }) => [
-						styles.freeMode,
-						pressed && styles.freeModePressed,
-					]}
-					onPress={() => router.push('/exercises/agility?mode=free' as any)}
-				>
-					<View style={styles.freeModeIcon}>
-						<Ionicons
-							name="musical-notes"
-							size={20}
-							color={BROWN}
-						/>
-					</View>
-
-					<View style={styles.freeModeText}>
-						<Text style={styles.freeModeTitle}>Free Mode</Text>
-
-						<Text style={styles.freeModeDescription}>
-							Flow through vocal movement without a set pattern.
-						</Text>
-					</View>
-
-					<Ionicons name="chevron-forward" size={18} color={BROWN} />
-				</Pressable>
 			</ScrollView>
 		</View>
 	);
@@ -324,41 +298,5 @@ const styles = StyleSheet.create({
 		backgroundColor: PINK,
 		alignItems: 'center',
 		justifyContent: 'center',
-	},
-	freeMode: {
-		marginTop: 24,
-		flexDirection: 'row',
-		alignItems: 'center',
-		backgroundColor: '#FFF4F6',
-		borderRadius: 18,
-		borderWidth: 1,
-		borderColor: '#F2C9D5',
-		padding: 14,
-	},
-	freeModePressed: {
-		opacity: 0.9,
-	},
-	freeModeIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: 12,
-		backgroundColor: PINK,
-		alignItems: 'center',
-		justifyContent: 'center',
-		marginRight: 12,
-	},
-	freeModeText: {
-		flex: 1,
-	},
-	freeModeTitle: {
-		fontFamily: 'FredokaSemiBold',
-		fontSize: 15,
-		color: BROWN,
-	},
-	freeModeDescription: {
-		fontFamily: 'FredokaRegular',
-		fontSize: 11,
-		color: MUTED,
-		marginTop: 2,
 	},
 });
