@@ -12,12 +12,7 @@ export interface LivePitchData {
   clarity: number;
 }
 
-/*
- * pitchy requires the input array passed to findPitch()
- * to have exactly the same length as the detector.
- *
- * Therefore, always use 2048 samples per pitch-analysis frame.
- */
+
 const PITCH_FRAME_SIZE = 2048;
 
 const detector =
@@ -25,17 +20,6 @@ const detector =
     PITCH_FRAME_SIZE
   );
 
-// ============================================================
-// LIVE NOTE NAME
-// ============================================================
-
-/**
- * Converts a frequency in Hz to a musical note name.
- *
- * Example:
- * 440 Hz -> A4
- * 261.63 Hz -> C4
- */
 export function frequencyToNote(
   frequency: number
 ): string {
@@ -79,20 +63,6 @@ export function frequencyToNote(
   return `${noteNames[noteIndex]}${octave}`;
 }
 
-// ============================================================
-// LIVE PITCH FRAME
-// ============================================================
-
-/**
- * Analyzes one live microphone frame.
- *
- * This function ONLY handles pitch-related analysis.
- *
- * Volume is handled separately by useAudioRecorder.
- * Tone is handled by spectral DSP.
- * Breath control is handled by airflow DSP.
- * Agility is handled by agility DSP.
- */
 export function analyzePitchFrame(
   samples: Float32Array,
   sampleRate: number
@@ -108,9 +78,6 @@ export function analyzePitchFrame(
     };
   }
 
-  /*
-   * Use exactly the most recent 2048 samples.
-   */
   const frame =
     samples.subarray(
       samples.length -
@@ -122,10 +89,7 @@ export function analyzePitchFrame(
       frequency,
       clarity,
     ] =
-      detector.findPitch(
-        frame,
-        sampleRate
-      );
+      detector.findPitch(frame, sampleRate);
 
     if (
       !Number.isFinite(frequency) ||
@@ -155,10 +119,6 @@ export function analyzePitchFrame(
   }
 }
 
-// ============================================================
-// CLARITY FILTER
-// ============================================================
-
 export function filterByClarity(
   frames: PitchFrame[],
   clarityThreshold = 0.8
@@ -187,20 +147,6 @@ export function trackPitchOverTime(
     return [];
   }
 
-  /*
-   * frameSizeMs controls how frequently
-   * we analyze the recording.
-   *
-   * Example:
-   *
-   * 30 ms at 44.1 kHz ≈ 1323 samples.
-   *
-   * BUT pitchy cannot receive 1323 samples.
-   *
-   * So:
-   * - analysis window = 2048 samples
-   * - frame spacing = approximately 30 ms
-   */
   const hopSize =
     Math.max(
       1,
@@ -218,9 +164,6 @@ export function trackPitchOverTime(
       samples.length;
     i += hopSize
   ) {
-    /*
-     * Always give pitchy exactly 2048 samples.
-     */
     const chunk =
       samples.subarray(
         i,
@@ -244,19 +187,12 @@ export function trackPitchOverTime(
           i / sampleRate,
       });
     } catch {
-      /*
-       * Ignore invalid pitch frames.
-       */
       continue;
     }
   }
 
   return frames;
 }
-
-// ============================================================
-// PITCH ACCURACY
-// ============================================================
 
 export function calcPitchAccuracy(
   detectedFreq: number,
@@ -288,10 +224,6 @@ export function calcPitchAccuracy(
       deviation * 100
   );
 }
-
-// ============================================================
-// LIVE PITCH STABILITY
-// ============================================================
 
 export function calcLiveStability(
   frequencies: number[]
@@ -326,9 +258,6 @@ export function calcLiveStability(
     return 0;
   }
 
-  /*
-   * Average absolute frequency deviation.
-   */
   const averageDeviation =
     validPitches.reduce(
       (sum, value) =>
@@ -340,9 +269,6 @@ export function calcLiveStability(
     ) /
     validPitches.length;
 
-  /*
-   * Convert to relative variation.
-   */
   const relativeVariation =
     averageDeviation /
     mean;
@@ -357,10 +283,6 @@ export function calcLiveStability(
     )
   );
 }
-
-// ============================================================
-// INTERVAL RATIO
-// ============================================================
 
 export function calcIntervalRatio(
   freq1: number,
@@ -377,10 +299,6 @@ export function calcIntervalRatio(
 
   return freq2 / freq1;
 }
-
-// ============================================================
-// AUDIO SEGMENTATION
-// ============================================================
 
 export function segmentAudioByPause(
   samples: Float32Array,
@@ -455,10 +373,6 @@ export function segmentAudioByPause(
   ];
 }
 
-// ============================================================
-// NOTE SEGMENTATION
-// ============================================================
-
 export function segmentIntoNotes(
   samples: Float32Array,
   noteCount: number,
@@ -472,10 +386,6 @@ export function segmentIntoNotes(
     return [];
   }
 
-  /*
-   * Simplified equal-split segmentation
-   * for the first working version.
-   */
   const segments:
     Float32Array[] = [];
 
@@ -511,10 +421,6 @@ export function segmentIntoNotes(
 
   return segments;
 }
-
-// ============================================================
-// TRANSITION SMOOTHNESS
-// ============================================================
 
 export function calcTransitionSmoothness(
   detectedFreqs: number[]
@@ -585,10 +491,6 @@ export function calcTransitionSmoothness(
   );
 }
 
-// ============================================================
-// BATCH NOTE ACCURACY
-// ============================================================
-
 export function calcNoteAccuracyBatch(
   detectedFreqs: number[],
   targetFreqs: number[]
@@ -640,10 +542,6 @@ export function calcNoteAccuracyBatch(
   100;
 }
 
-// ============================================================
-// RHYTHM ACCURACY
-// ============================================================
-
 export function calcRhythmAccuracy(
   noteTimestamps: number[],
   targetTimestamps: number[]
@@ -682,9 +580,6 @@ export function calcRhythmAccuracy(
       );
   }
 
-  /*
-   * Deviation is measured in seconds.
-   */
   const averageDeviation =
     totalDeviation /
     count;

@@ -1,21 +1,23 @@
+
+import {
+  extractAgilityNotes,
+  extractAgilityPitchFrames,
+  frequencyToMidi,
+} from '@/utils/dsp/agility';
+
 export type RapidScaleTrillMeasurement = {
   detectedPitches: number[];
   detectedNotes: number[];
   targetNotes: number[];
-
   pitchAccuracy: number;
   sequenceAccuracy: number;
   transitionAccuracy: number;
-
   noteCount: number;
   correctNoteCount: number;
-
   transitionCount: number;
   correctTransitionCount: number;
-
   transitionTimesMs: number[];
   averageTransitionTimeMs: number;
-
   durationMs: number;
   notesPerSecond: number;
 };
@@ -27,110 +29,42 @@ const MIN_RMS = 0.008;
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 
-const NOTE_TOLERANCE_SEMITONES = 1;
+// Two consecutive frames help reject brief pitch fluctuations.
+// At 44.1 kHz with a 1024-sample hop, this is roughly 23 ms
+// between frames, though confirmation also depends on pitch validity.
+const NOTE_CONFIRMATION_FRAMES = 2;
 
-function frequencyToMidi(
-  frequency: number,
-): number {
-  return (
-    69 +
-    12 * Math.log2(frequency / 440)
-  );
-}
+const MIN_CORRELATION = 0.3;
+const NOTE_TOLERANCE_SEMITONES = 1;
 
 function clamp(
   value: number,
   min: number,
   max: number,
 ): number {
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
+  return Math.max(min, Math.min(max, value));
 }
 
-function detectPitch(
-  frame: Float32Array,
-  sampleRate: number,
-): number | null {
-  let energy = 0;
-
-  for (let i = 0; i < frame.length; i++) {
-    const value = frame[i] ?? 0;
-    energy += value * value;
-  }
-
-  const frameRms = Math.sqrt(
-    energy / frame.length,
-  );
-
-  if (frameRms < MIN_RMS) {
-    return null;
-  }
-
-  const minLag = Math.floor(
-    sampleRate / MAX_FREQUENCY,
-  );
-
-  const maxLag = Math.floor(
-    sampleRate / MIN_FREQUENCY,
-  );
-
-  let bestLag = -1;
-  let bestCorrelation = 0;
-
-  for (
-    let lag = minLag;
-    lag <= maxLag &&
-    lag < frame.length;
-    lag++
-  ) {
-    let correlation = 0;
-    let energyA = 0;
-    let energyB = 0;
-
-    for (
-      let i = 0;
-      i < frame.length - lag;
-      i++
-    ) {
-      const a = frame[i];
-      const b = frame[i + lag];
-
-      correlation += a * b;
-      energyA += a * a;
-      energyB += b * b;
-    }
-
-    const denominator = Math.sqrt(
-      energyA * energyB,
-    );
-
-    if (denominator === 0) {
-      continue;
-    }
-
-    const normalizedCorrelation =
-      correlation / denominator;
-
-    if (
-      normalizedCorrelation >
-      bestCorrelation
-    ) {
-      bestCorrelation =
-        normalizedCorrelation;
-      bestLag = lag;
-    }
-  }
-
-  if (
-    bestLag <= 0 ||
-    bestCorrelation < 0.3
-  ) {
-    return null;
-  }
-
-  return sampleRate / bestLag;
+function createEmptyMeasurement(
+  targetNotes: number[],
+  durationMs: number,
+): RapidScaleTrillMeasurement {
+  return {
+    detectedPitches: [],
+    detectedNotes: [],
+    targetNotes,
+    pitchAccuracy: 0,
+    sequenceAccuracy: 0,
+    transitionAccuracy: 0,
+    noteCount: 0,
+    correctNoteCount: 0,
+    transitionCount: 0,
+    correctTransitionCount: 0,
+    transitionTimesMs: [],
+    averageTransitionTimeMs: 0,
+    durationMs,
+    notesPerSecond: 0,
+  };
 }
 
 export function measureRapidScaleTrill(
@@ -138,86 +72,75 @@ export function measureRapidScaleTrill(
   sampleRate: number,
   targetFrequencies: number[],
 ): RapidScaleTrillMeasurement {
-  const detectedPitches: number[] = [];
-  const detectedNotes: number[] = [];
-  const detectionTimesMs: number[] = [];
+  const durationMs =
+    sampleRate > 0
+      ? (samples.length / sampleRate) * 1000
+      : 0;
+
+  const targetNotes = targetFrequencies
+    .filter(
+      (frequency) =>
+        Number.isFinite(frequency) && frequency > 0,
+    )
+    .map((frequency) =>
+      Math.round(frequencyToMidi(frequency)),
+    );
 
   if (
-    samples.length === 0 ||
-    targetFrequencies.length === 0
+    samples.length < FRAME_SIZE ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0 ||
+    targetNotes.length === 0
   ) {
+    return createEmptyMeasurement(
+      targetNotes,
+      durationMs,
+    );
+  }
+
+  const pitchFrames = extractAgilityPitchFrames(
+    samples,
+    sampleRate,
+    FRAME_SIZE,
+    HOP_SIZE,
+    {
+      minFrequency: MIN_FREQUENCY,
+      maxFrequency: MAX_FREQUENCY,
+      minRms: MIN_RMS,
+      minCorrelation: MIN_CORRELATION,
+    },
+  );
+
+  const detectedPitches = pitchFrames.map(
+    (frame) => frame.frequency,
+  );
+
+  const detectedNotesWithTiming = extractAgilityNotes(
+    pitchFrames,
+    NOTE_CONFIRMATION_FRAMES,
+  );
+
+  const detectedNotes = detectedNotesWithTiming.map(
+    (note) => note.midi,
+  );
+
+  const detectionTimesMs = detectedNotesWithTiming.map(
+    (note) => note.timestampMs,
+  );
+
+  if (detectedNotes.length === 0) {
     return {
-      detectedPitches: [],
-      detectedNotes: [],
-      targetNotes: [],
-      pitchAccuracy: 0,
-      sequenceAccuracy: 0,
-      transitionAccuracy: 0,
-      noteCount: 0,
-      correctNoteCount: 0,
-      transitionCount: 0,
-      correctTransitionCount: 0,
-      transitionTimesMs: [],
-      averageTransitionTimeMs: 0,
-      durationMs: 0,
-      notesPerSecond: 0,
+      ...createEmptyMeasurement(
+        targetNotes,
+        durationMs,
+      ),
+      detectedPitches,
     };
   }
 
-  for (
-    let start = 0;
-    start + FRAME_SIZE <= samples.length;
-    start += HOP_SIZE
-  ) {
-    const frame = samples.slice(
-      start,
-      start + FRAME_SIZE,
-    );
-
-    const frequency = detectPitch(
-      frame,
-      sampleRate,
-    );
-
-    if (frequency === null) {
-      continue;
-    }
-
-    const midi = frequencyToMidi(
-      frequency,
-    );
-
-    const roundedMidi = Math.round(midi);
-
-    detectedPitches.push(frequency);
-
-    const previousNote =
-      detectedNotes[
-        detectedNotes.length - 1
-      ];
-
-    if (
-      previousNote === undefined ||
-      previousNote !== roundedMidi
-    ) {
-      detectedNotes.push(
-        roundedMidi,
-      );
-
-      detectionTimesMs.push(
-        (start / sampleRate) * 1000,
-      );
-    }
-  }
-
-  const targetNotes =
-    targetFrequencies.map(
-      (frequency) =>
-        Math.round(
-          frequencyToMidi(frequency),
-        ),
-    );
-
+  // Compare each detected note against the corresponding target.
+  // Missing detected notes reduce sequence accuracy because the
+  // denominator is the full target sequence length.
   const comparedCount = Math.min(
     detectedNotes.length,
     targetNotes.length,
@@ -226,101 +149,74 @@ export function measureRapidScaleTrill(
   let correctNoteCount = 0;
   let totalSemitoneError = 0;
 
-  for (
-    let i = 0;
-    i < comparedCount;
-    i++
-  ) {
-    const detected =
-      detectedNotes[i];
-
-    const target =
-      targetNotes[i];
-
+  for (let i = 0; i < comparedCount; i++) {
     const error = Math.abs(
-      detected - target,
+      detectedNotes[i] - targetNotes[i],
     );
 
     totalSemitoneError += error;
 
-    if (
-      error <=
-      NOTE_TOLERANCE_SEMITONES
-    ) {
+    if (error <= NOTE_TOLERANCE_SEMITONES) {
       correctNoteCount++;
     }
   }
 
   const sequenceAccuracy =
-    comparedCount > 0
-      ? (correctNoteCount /
-          comparedCount) *
-        100
+    targetNotes.length > 0
+      ? (correctNoteCount / targetNotes.length) * 100
       : 0;
 
+  // Keep pitch accuracy separate from sequence completeness.
+  // Extra detected notes cannot increase either score.
   const averageSemitoneError =
     comparedCount > 0
-      ? totalSemitoneError /
-        comparedCount
+      ? totalSemitoneError / comparedCount
       : 12;
 
   const pitchAccuracy = clamp(
-    100 -
-      averageSemitoneError * 50,
+    100 - averageSemitoneError * 50,
     0,
     100,
   );
 
+  // Count actual detected transitions.
+  const transitionCount = Math.max(
+    0,
+    detectedNotes.length - 1,
+  );
+
+  const targetTransitionCount = Math.max(
+    0,
+    targetNotes.length - 1,
+  );
+
   const transitionTimesMs: number[] = [];
 
-  for (
-    let i = 1;
-    i < detectionTimesMs.length;
-    i++
-  ) {
-    const difference =
-      detectionTimesMs[i] -
-      detectionTimesMs[i - 1];
+  for (let i = 1; i < detectionTimesMs.length; i++) {
+    const elapsed =
+      detectionTimesMs[i] - detectionTimesMs[i - 1];
 
-    if (difference > 0) {
-      transitionTimesMs.push(
-        difference,
-      );
+    if (Number.isFinite(elapsed) && elapsed > 0) {
+      transitionTimesMs.push(elapsed);
     }
   }
 
-  const transitionCount =
-    Math.max(
-      0,
-      detectedNotes.length - 1,
-    );
-
-  const comparableTransitions =
-    Math.min(
-      detectedNotes.length - 1,
-      targetNotes.length - 1,
-    );
-
   let correctTransitionCount = 0;
 
-  for (
-    let i = 1;
-    i <= comparableTransitions;
-    i++
-  ) {
+  const comparableTransitions = Math.min(
+    transitionCount,
+    targetTransitionCount,
+  );
+
+  for (let i = 0; i < comparableTransitions; i++) {
     const detectedInterval =
-      detectedNotes[i] -
-      detectedNotes[i - 1];
+      detectedNotes[i + 1] - detectedNotes[i];
 
     const targetInterval =
-      targetNotes[i] -
-      targetNotes[i - 1];
+      targetNotes[i + 1] - targetNotes[i];
 
     if (
-      Math.abs(
-        detectedInterval -
-          targetInterval,
-      ) <=
+      Math.abs(detectedInterval - targetInterval) <=
       NOTE_TOLERANCE_SEMITONES
     ) {
       correctTransitionCount++;
@@ -328,56 +224,40 @@ export function measureRapidScaleTrill(
   }
 
   const transitionAccuracy =
-    comparableTransitions > 0
+    targetTransitionCount > 0
       ? (correctTransitionCount /
-          comparableTransitions) *
+          targetTransitionCount) *
         100
       : 0;
 
   const averageTransitionTimeMs =
     transitionTimesMs.length > 0
       ? transitionTimesMs.reduce(
-          (sum, value) =>
-            sum + value,
+          (sum, time) => sum + time,
           0,
-        ) /
-        transitionTimesMs.length
+        ) / transitionTimesMs.length
       : 0;
 
-  const durationMs =
-    (samples.length /
-      sampleRate) *
-    1000;
-
-  const durationSeconds =
-    durationMs / 1000;
+  const durationSeconds = durationMs / 1000;
 
   const notesPerSecond =
     durationSeconds > 0
-      ? detectedNotes.length /
-        durationSeconds
+      ? detectedNotes.length / durationSeconds
       : 0;
 
   return {
     detectedPitches,
     detectedNotes,
     targetNotes,
-
     pitchAccuracy,
     sequenceAccuracy,
     transitionAccuracy,
-
-    noteCount:
-      detectedNotes.length,
-
+    noteCount: detectedNotes.length,
     correctNoteCount,
-
     transitionCount,
     correctTransitionCount,
-
     transitionTimesMs,
     averageTransitionTimeMs,
-
     durationMs,
     notesPerSecond,
   };

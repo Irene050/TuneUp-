@@ -1,7 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 
 import AgilityExercisesScreen from '../../src/screens/exercises/Agility/AgilityExercisesScreen';
-import AgilityFreeModeScreen from '../../src/screens/exercises/Agility/AgilityFreeModeScreen';
 import ArpeggioSpeedDrillScreen from '../../src/screens/exercises/Agility/ArpeggioSpeedDrillScreen';
 import QuickIntervalJumpScreen from '../../src/screens/exercises/Agility/QuickIntervalJumpScreen';
 import RapidNoteTransitionExerciseScreen from '../../src/screens/exercises/Agility/RapidNoteTransitionExerciseScreen';
@@ -9,14 +8,9 @@ import RapidScaleTrillScreen from '../../src/screens/exercises/Agility/RapidScal
 import VocalRunAccuracyTaskScreen from '../../src/screens/exercises/Agility/VocalRunAccuracyTaskScreen';
 
 export default function AgilityRoute() {
-  const { mode, templateId } = useLocalSearchParams<{
+  const { templateId } = useLocalSearchParams<{
       templateId?: string;
-      mode?: string;
     }>();
-
-  if (mode === 'free') {
-    return <AgilityFreeModeScreen />;
-  }
 
   switch (templateId) {
     case 'arpeggioSpeed':

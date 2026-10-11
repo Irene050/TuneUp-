@@ -11,14 +11,6 @@ export interface NoteMatchingMeasurement {
   frequencies: number[];
 }
 
-/**
- * Calculate the median of a numeric array.
- *
- * Median is used only as a representative detected
- * frequency. Scoring itself evaluates the individual
- * voiced frames so that short correct sections cannot
- * hide incorrect or missing sections.
- */
 function calculateMedian(
   values: number[],
 ): number {

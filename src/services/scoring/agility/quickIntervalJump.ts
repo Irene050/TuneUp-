@@ -1,5 +1,5 @@
 import type {
-    QuickIntervalJumpMeasurement,
+  QuickIntervalJumpMeasurement,
 } from '@/services/measurement/agility/quickIntervalJump';
 
 export type QuickIntervalJumpScore = {
@@ -22,31 +22,32 @@ function clamp(
   );
 }
 
+
 function calculateSpeedScore(
   averageTransitionTimeMs: number,
 ): number {
   if (
-    averageTransitionTimeMs <= 500
-  ) {
-    return 100;
-  }
-
-  if (
-    averageTransitionTimeMs >= 2500
+    !Number.isFinite(averageTransitionTimeMs) ||
+    averageTransitionTimeMs <= 0
   ) {
     return 0;
   }
 
+  if (averageTransitionTimeMs <= 500) {
+    return 100;
+  }
+
+  if (averageTransitionTimeMs >= 2500) {
+    return 0;
+  }
+
   return clamp(
-    100 -
-      ((averageTransitionTimeMs -
-        500) /
-        2000) *
-        100,
+    100 - ((averageTransitionTimeMs - 500) / 2000) * 100,
     0,
     100,
   );
 }
+
 
 export function scoreQuickIntervalJump(
   measurement: QuickIntervalJumpMeasurement,

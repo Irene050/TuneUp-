@@ -1,10 +1,6 @@
-import type {
-  SustainedExhaleParams,
-} from '@/constants/exercises/breathControl';
+import type { SustainedExhaleParams } from '@/constants/exercises/breathControl';
 
-import type {
-  SustainedExhaleMeasurement,
-} from '@/services/measurement/breathControl/sustainedExhale';
+import type { SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
 
 export interface SustainedExhaleScoreResult {
   score: number;
