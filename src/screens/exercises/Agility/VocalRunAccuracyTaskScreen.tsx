@@ -1,4 +1,3 @@
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -26,6 +25,8 @@ import {
   AudioManager,
   AudioRecorder,
 } from 'react-native-audio-api';
+
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 
 import { auth } from '@/services/firebase/config';
 
@@ -81,8 +82,6 @@ const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
-const MAX_RECORDING_SAMPLES =
-  SAMPLE_RATE * MAX_RECORDING_SECONDS;
 
 // ============================================================
 // TYPES
@@ -156,6 +155,71 @@ function getRecentVocalRunScores(
     );
 }
 
+// Returns the target note that should be sung at the elapsed recording time.
+// The highlight follows the exercise's configured note duration and silent gap;
+// it intentionally does not depend on the pitch detected from the microphone.
+function getTimedTargetNoteIndex(
+  elapsedSeconds: number,
+  targetNoteCount: number,
+  noteDurationSec: number,
+  gapSec: number,
+): number | null {
+  if (
+    !Number.isFinite(elapsedSeconds) ||
+    elapsedSeconds < 0 ||
+    targetNoteCount <= 0 ||
+    !Number.isFinite(noteDurationSec) ||
+    noteDurationSec <= 0
+  ) {
+    return null;
+  }
+
+  const safeGapSec = Number.isFinite(gapSec)
+    ? Math.max(0, gapSec)
+    : 0;
+  const noteCycleSec = noteDurationSec + safeGapSec;
+
+  if (noteCycleSec <= 0) {
+    return null;
+  }
+
+  const noteIndex = Math.floor(elapsedSeconds / noteCycleSec);
+
+  // Stop highlighting after the final target note.
+  if (noteIndex >= targetNoteCount) {
+    return null;
+  }
+
+  const timeWithinCycle = elapsedSeconds - noteIndex * noteCycleSec;
+
+  // During the silent gap, no target chip is highlighted.
+  return timeWithinCycle < noteDurationSec ? noteIndex : null;
+}
+
+// Duration of one complete user singing attempt: every note plus only
+// the gaps between notes (there is no extra gap after the final note).
+function getVocalRunSequenceDurationSeconds(
+  targetNoteCount: number,
+  noteDurationSec: number,
+  gapSec: number,
+): number {
+  if (
+    !Number.isFinite(targetNoteCount) ||
+    targetNoteCount <= 0 ||
+    !Number.isFinite(noteDurationSec) ||
+    noteDurationSec <= 0
+  ) {
+    return 0.1;
+  }
+
+  const safeGapSec = Number.isFinite(gapSec)
+    ? Math.max(0, gapSec)
+    : 0;
+
+  return (targetNoteCount * noteDurationSec) +
+    (Math.max(0, targetNoteCount - 1) * safeGapSec);
+}
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -209,12 +273,17 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const [isPlayingReference, setIsPlayingReference] =
     useState(false);
+  const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
+    useState<number | null>(null);
 
   // ==========================================================
   // REFS
   // ==========================================================
 
   const mountedRef = useRef(true);
+
+  const recentScoresRef = useRef<number[]>([]);
+  const vocalRangeRef = useRef<{ lowHz: number; highHz: number } | null>(null);
 
   const phaseRef = useRef<Phase>('instructions');
 
@@ -313,6 +382,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
     if (mountedRef.current) {
       setIsPlayingReference(false);
+      setActiveReferenceNoteIndex(null);
     }
   }, []);
 
@@ -414,63 +484,86 @@ export default function VocalRunAccuracyTaskScreen() {
     const loadAdaptiveParameters = async () => {
       setIsLoadingAdaptiveParams(true);
 
-      const currentBaseParams =
-        RAPID_VOCAL_RUN_PARAMS[tier];
-
-      setAdaptiveConfig(currentBaseParams);
-
+      let recentScores: number[] = [];
+      let vocalRange: { lowHz: number; highHz: number } | null = null;
       const user = auth.currentUser;
 
-      if (!user) {
-        if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
+      if (user) {
+        try {
+          const records = await fetchExerciseRecords(user.uid, 'agility');
+          recentScores = getRecentVocalRunScores(records, tier);
+        } catch (error) {
+          console.warn(
+            'Failed to load Vocal Run Accuracy score history:',
+            error,
+          );
         }
 
-        return;
+        if (cancelled) return;
+
+        try {
+          const assessment = await getLatestAssessment();
+          const lowHz =
+            assessment?.vocalRange?.lowHz ?? assessment?.vocalRangeLowHz;
+          const highHz =
+            assessment?.vocalRange?.highHz ?? assessment?.vocalRangeHighHz;
+
+          if (
+            typeof lowHz === 'number' &&
+            Number.isFinite(lowHz) &&
+            lowHz > 0 &&
+            typeof highHz === 'number' &&
+            Number.isFinite(highHz) &&
+            highHz > lowHz
+          ) {
+            vocalRange = { lowHz, highHz };
+          } else {
+            console.info(
+              'No valid vocal range was found in the latest assessment; using the tier pitch window.',
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to load the latest assessment vocal range:',
+            error,
+          );
+        }
       }
 
-      try {
-        const records = await fetchExerciseRecords(
-          user.uid,
-          'agility',
-        );
+      if (cancelled) return;
 
-        if (cancelled) {
-          return;
-        }
+      recentScoresRef.current = recentScores;
+      vocalRangeRef.current = vocalRange;
 
-        const recentScores = getRecentVocalRunScores(
-          records,
-          tier,
-        );
+      const generatedParams = generateVocalRunAccuracyParams({
+        tier,
+        recentScores,
+        vocalRange,
+      });
 
-        const generatedParams =
-          generateVocalRunAccuracyParams({
-            tier,
-            recentScores,
-          });
-
-        if (!cancelled) {
-          setAdaptiveConfig(generatedParams);
-        }
-      } catch (error) {
-        console.warn(
-          'Failed to load Vocal Run Accuracy adaptive parameters:',
-          error,
-        );
-
-        if (!cancelled) {
-          setAdaptiveConfig(currentBaseParams);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
-        }
+      if (!cancelled) {
+        setAdaptiveConfig(generatedParams);
+        setIsLoadingAdaptiveParams(false);
       }
     };
 
     if (!tierLoading) {
-      void loadAdaptiveParameters();
+      void loadAdaptiveParameters().catch((error) => {
+        console.warn(
+          'Failed to generate Vocal Run Accuracy parameters:',
+          error,
+        );
+        if (!cancelled) {
+          setAdaptiveConfig(
+            generateVocalRunAccuracyParams({
+              tier,
+              recentScores: recentScoresRef.current,
+              vocalRange: vocalRangeRef.current,
+            }),
+          );
+          setIsLoadingAdaptiveParams(false);
+        }
+      });
     }
 
     return () => {
@@ -483,6 +576,32 @@ export default function VocalRunAccuracyTaskScreen() {
   // ==========================================================
 
   const config = adaptiveConfig;
+
+  // Stop recording when this repetition's timed note sequence ends, rather
+  // than leaving the microphone open for the old fixed 10-second limit.
+  // The 10-second ceiling remains only as a safety guard for unexpectedly
+  // long or invalid configurations.
+  const recordingDurationSec = Math.min(
+    MAX_RECORDING_SECONDS,
+    getVocalRunSequenceDurationSeconds(
+      config.frequencies.length,
+      config.noteDurationSec,
+      config.gapSec,
+    ),
+  );
+
+  // Guide the singer by the configured note timing and gap.
+  // This is intentionally independent of livePitch: the highlight shows
+  // which note to sing now, even before the microphone detects a matching note.
+  const activeTargetNoteIndex =
+    phase === 'recording'
+      ? getTimedTargetNoteIndex(
+          recordingTime,
+          config.frequencies.length,
+          config.noteDurationSec,
+          config.gapSec,
+        )
+      : null;
 
   // ==========================================================
   // MICROPHONE PERMISSION
@@ -554,7 +673,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
       await context.resume();
 
-      for (const frequency of config.frequencies) {
+      for (const [index, frequency] of config.frequencies.entries()) {
         if (
           !mountedRef.current ||
           playbackId !== referencePlaybackIdRef.current ||
@@ -562,6 +681,9 @@ export default function VocalRunAccuracyTaskScreen() {
         ) {
           return;
         }
+
+        // Highlight the note only while its reference tone is sounding.
+        setActiveReferenceNoteIndex(index);
 
         const oscillator = context.createOscillator();
         const gain = context.createGain();
@@ -580,6 +702,21 @@ export default function VocalRunAccuracyTaskScreen() {
         );
 
         await sleep(config.noteDurationSec * 1000);
+
+        if (
+          mountedRef.current &&
+          playbackId === referencePlaybackIdRef.current
+        ) {
+          // Leave the sequence unhighlighted during the configured gap.
+          setActiveReferenceNoteIndex(null);
+        }
+
+        if (
+          index < config.frequencies.length - 1 &&
+          config.gapSec > 0
+        ) {
+          await sleep(config.gapSec * 1000);
+        }
       }
     } catch (error) {
       console.warn(
@@ -603,6 +740,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
         if (mountedRef.current) {
           setIsPlayingReference(false);
+          setActiveReferenceNoteIndex(null);
         }
       }
     }
@@ -962,6 +1100,9 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     const runId = exerciseRunIdRef.current;
+    const maxSamplesForThisSequence = Math.ceil(
+      recordingDurationSec * SAMPLE_RATE,
+    );
 
     try {
       samplesRef.current = [];
@@ -999,7 +1140,7 @@ export default function VocalRunAccuracyTaskScreen() {
             // Preserve raw PCM for final measurement.
             // Never exceed the configured recording limit.
             const remainingSamples =
-              MAX_RECORDING_SAMPLES -
+              maxSamplesForThisSequence -
               samplesRef.current.length;
 
             const samplesToCopy = Math.min(
@@ -1105,10 +1246,12 @@ export default function VocalRunAccuracyTaskScreen() {
         const elapsed = (Date.now() - start) / 1000;
 
         setRecordingTime(
-          Math.min(elapsed, MAX_RECORDING_SECONDS),
+          Math.min(elapsed, recordingDurationSec),
         );
 
-        if (elapsed >= MAX_RECORDING_SECONDS) {
+        if (elapsed >= recordingDurationSec) {
+          // Clamp the visible timer to the sequence's exact configured length.
+          setRecordingTime(recordingDurationSec);
           void processRecording();
         }
       }, 100);
@@ -1132,6 +1275,7 @@ export default function VocalRunAccuracyTaskScreen() {
     }
   }, [
     processRecording,
+    recordingDurationSec,
     setExercisePhase,
     stopRecording,
   ]);
@@ -1161,6 +1305,17 @@ const startCountdown = useCallback(async () => {
     setCountdown(value);
     await sleep(1000);
   }
+
+  if (
+    !mountedRef.current ||
+    countdownRunIdRef.current !== runId
+  ) {
+    return;
+  }
+
+  // Show a separate one-second preparation pause after 3–2–1.
+  setCountdown(0);
+  await sleep(1000);
 
   if (
     !mountedRef.current ||
@@ -1223,24 +1378,47 @@ const startCountdown = useCallback(async () => {
   // ==========================================================
 
   const resetExercise = useCallback(() => {
-  countdownRunIdRef.current += 1;
+    countdownRunIdRef.current += 1;
 
-  stopRecording();
+    stopRecording();
 
-  processingRef.current = false;
+    processingRef.current = false;
 
-  samplesRef.current = [];
-  measurementsRef.current = [];
+    samplesRef.current = [];
+    measurementsRef.current = [];
 
-  setResult(null);
-  setCurrentRepetition(1);
-  setRecordingTime(0);
-  setCountdown(COUNTDOWN_SECONDS);
-  setLivePitch(null);
-  setErrorMessage('');
+    // Use the just-finished score when creating the next exercise.
+    let nextRecentScores = recentScoresRef.current;
+    if (
+      result &&
+      Number.isFinite(result.overall) &&
+      result.overall >= 0 &&
+      result.overall <= 100
+    ) {
+      nextRecentScores = [...nextRecentScores, result.overall].slice(-5);
+      recentScoresRef.current = nextRecentScores;
+    }
 
-  setExercisePhase('instructions');
-}, [setExercisePhase, stopRecording]);
+    // Regenerate once per new attempt. The same generated sequence
+    // remains active for all repetitions of that attempt.
+    setAdaptiveConfig(
+      generateVocalRunAccuracyParams({
+        tier,
+        recentScores: nextRecentScores,
+        vocalRange: vocalRangeRef.current,
+        previousFrequencies: adaptiveConfig.frequencies,
+      }),
+    );
+
+    setResult(null);
+    setCurrentRepetition(1);
+    setRecordingTime(0);
+    setCountdown(COUNTDOWN_SECONDS);
+    setLivePitch(null);
+    setErrorMessage('');
+
+    setExercisePhase('instructions');
+  }, [adaptiveConfig.frequencies, result, setExercisePhase, stopRecording, tier]);
 
   // ==========================================================
   // INSTRUCTIONS
@@ -1574,13 +1752,29 @@ const startCountdown = useCallback(async () => {
           {config.frequencies.map((frequency, index) => (
             <View
               key={`${frequency}-${index}`}
-              style={styles.notePill}
+              style={[
+                styles.notePill,
+                activeReferenceNoteIndex === index &&
+                  styles.referenceNotePlaying,
+              ]}
             >
-              <Text style={styles.noteNumber}>
+              <Text
+                style={[
+                  styles.noteNumber,
+                  activeReferenceNoteIndex === index &&
+                    styles.referenceNotePlayingText,
+                ]}
+              >
                 {index + 1}
               </Text>
 
-              <Text style={styles.noteText}>
+              <Text
+                style={[
+                  styles.noteText,
+                  activeReferenceNoteIndex === index &&
+                    styles.referenceNotePlayingText,
+                ]}
+              >
                 {frequencyToNoteName(frequency)}
               </Text>
             </View>
@@ -1666,12 +1860,19 @@ const startCountdown = useCallback(async () => {
         REPETITION {currentRepetition} OF {config.repetitions}
       </Text>
 
-      <Text style={styles.countdownText}>
-        {countdown}
+      <Text
+        style={[
+          styles.countdownText,
+          countdown === 0 && styles.countdownReadyText,
+        ]}
+      >
+        {countdown === 0 ? 'READY' : countdown}
       </Text>
 
       <Text style={styles.phaseSubtitle}>
-        Prepare to sing the vocal run.
+        {countdown === 0
+          ? 'Recording starts in one second. Get ready to sing.'
+          : 'Prepare to sing the vocal run.'}
       </Text>
 
       <Pressable
@@ -1691,7 +1892,7 @@ const startCountdown = useCallback(async () => {
 
   const renderRecording = () => {
     const progress = Math.min(
-      recordingTime / MAX_RECORDING_SECONDS,
+      recordingTime / recordingDurationSec,
       1,
     );
 
@@ -1730,17 +1931,37 @@ const startCountdown = useCallback(async () => {
             TARGET SEQUENCE
           </Text>
 
+          <Text style={styles.referenceLabel}>
+            SING THE PINK NOTE WHEN IT LIGHTS UP
+          </Text>
+
           <View style={styles.liveSequence}>
             {config.frequencies.map((frequency, index) => (
               <View
                 key={`${frequency}-${index}`}
-                style={styles.liveNote}
+                style={[
+                  styles.liveNote,
+                  activeTargetNoteIndex === index &&
+                    styles.referenceNotePlaying,
+                ]}
               >
-                <Text style={styles.liveNoteNumber}>
+                <Text
+                  style={[
+                    styles.liveNoteNumber,
+                    activeTargetNoteIndex === index &&
+                      styles.referenceNotePlayingText,
+                  ]}
+                >
                   {index + 1}
                 </Text>
 
-                <Text style={styles.liveNoteText}>
+                <Text
+                  style={[
+                    styles.liveNoteText,
+                    activeTargetNoteIndex === index &&
+                      styles.referenceNotePlayingText,
+                  ]}
+                >
                   {frequencyToNoteName(frequency)}
                 </Text>
               </View>
@@ -1805,7 +2026,7 @@ const startCountdown = useCallback(async () => {
         </View>
 
         <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s
+          Recording Time: {Math.min(recordingTime, recordingDurationSec).toFixed(1)}s / {recordingDurationSec.toFixed(1)}s
         </Text>
 
         <View style={styles.timerTrack}>
@@ -2466,6 +2687,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  referenceNotePlaying: {
+    backgroundColor: '#E85D83',
+    borderWidth: 1,
+    borderColor: '#C93E68',
+  },
+
+  referenceNotePlayingText: {
+    color: WHITE,
+  },
+
   noteNumber: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
@@ -2511,6 +2742,10 @@ const styles = StyleSheet.create({
     fontSize: 72,
     color: BROWN,
     marginTop: 20,
+  },
+
+  countdownReadyText: {
+    fontSize: 32,
   },
 
   recordingIcon: {

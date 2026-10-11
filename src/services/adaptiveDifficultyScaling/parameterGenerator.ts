@@ -3012,90 +3012,201 @@ export function generateQuickIntervalJumpParams({
 }
 
 // ============================================================
+// ============================================================
 // VOCAL RUN ACCURACY TASK
 // ============================================================
-//
-// Continuous ADS adjusts:
-// - note duration
-//
-// Higher scores:
-// - decrease note duration
-//
-// Lower scores:
-// - increase note duration
-//
-// The following parameters remain fixed at their
-// tier-defined values:
-// - label
-// - frequencies
-// - speedLabel
-// - accuracyThreshold
-//
-// The adaptive note duration is allowed to move within
-// ±20% of the current tier's default value.
+// Continuous ADS adjusts note duration using recent scores.
+// The reference-note sequence is also generated within the
+// latest assessed vocal range when that range is available.
+// Previous frequencies are supplied on retry to avoid repeating
+// the same sequence when another valid sequence is possible.
 // ============================================================
 
 export interface GenerateVocalRunAccuracyParamsInput {
   tier: Tier;
   recentScores: number[];
+  vocalRange?: {
+    lowHz: number;
+    highHz: number;
+  } | null;
+  previousFrequencies?: readonly number[];
+}
+
+function vocalRunFrequencyToMidi(frequencyHz: number): number {
+  return 69 + 12 * Math.log2(frequencyHz / 440);
+}
+
+function vocalRunMidiToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function areVocalRunSequencesEqual(
+  first: readonly number[],
+  second: readonly number[],
+): boolean {
+  return (
+    first.length === second.length &&
+    first.every((note, index) => note === second[index])
+  );
+}
+
+function generateVocalRunFrequencies(
+  baseFrequencies: readonly number[],
+  recentScores: number[],
+  vocalRange?: { lowHz: number; highHz: number } | null,
+  previousFrequencies?: readonly number[],
+): number[] {
+  if (
+    baseFrequencies.length < 2 ||
+    baseFrequencies.some(
+      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
+    )
+  ) {
+    return [...baseFrequencies];
+  }
+
+  const baseMidis = baseFrequencies.map((frequency) =>
+    Math.round(vocalRunFrequencyToMidi(frequency)),
+  );
+  const baseMinMidi = Math.min(...baseMidis);
+  const baseMaxMidi = Math.max(...baseMidis);
+  const baseSpan = baseMaxMidi - baseMinMidi;
+
+  if (baseSpan < 1) {
+    return [...baseFrequencies];
+  }
+
+  const hasValidVocalRange =
+    vocalRange !== undefined &&
+    vocalRange !== null &&
+    Number.isFinite(vocalRange.lowHz) &&
+    Number.isFinite(vocalRange.highHz) &&
+    vocalRange.lowHz > 0 &&
+    vocalRange.highHz > vocalRange.lowHz;
+
+  // Use the assessment's actual range when available. Otherwise,
+  // allow a conservative four-semitone transposition in either direction.
+  const lowMidi = hasValidVocalRange
+    ? Math.ceil(vocalRunFrequencyToMidi(vocalRange.lowHz))
+    : baseMinMidi - 4;
+  const highMidi = hasValidVocalRange
+    ? Math.floor(vocalRunFrequencyToMidi(vocalRange.highHz))
+    : baseMaxMidi + 4;
+  const availableSpan = highMidi - lowMidi;
+
+  if (availableSpan < 1) {
+    return [...baseFrequencies];
+  }
+
+  const validScores = recentScores.filter(
+    (score) => Number.isFinite(score) && score >= 0 && score <= 100,
+  );
+  const averageScore = validScores.length
+    ? validScores.reduce((sum, score) => sum + score, 0) /
+      validScores.length
+    : null;
+
+  // Scores gently adjust the melodic span: lower scores make the run
+  // narrower; high scores make it wider. The tier's base contour remains.
+  const scoreSpanAdjustment =
+    averageScore === null ? 0 : averageScore < 55 ? -1 : averageScore >= 85 ? 1 : 0;
+  const targetSpan = Math.max(
+    1,
+    Math.min(availableSpan, baseSpan + scoreSpanAdjustment),
+  );
+
+  // Normalize the original contour to the target span so every generated
+  // note remains inside the available pitch range.
+  const contourOffsets = baseMidis.map((midi) =>
+    Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
+  );
+  const actualMaxOffset = Math.max(...contourOffsets);
+
+  if (actualMaxOffset < 1 || actualMaxOffset > availableSpan) {
+    return [...baseFrequencies];
+  }
+
+  const candidateSequences: number[][] = [];
+  for (
+    let startMidi = lowMidi;
+    startMidi <= highMidi - actualMaxOffset;
+    startMidi += 1
+  ) {
+    candidateSequences.push(
+      contourOffsets.map((offset) => startMidi + offset),
+    );
+  }
+
+  if (candidateSequences.length === 0) {
+    return [...baseFrequencies];
+  }
+
+  const previousMidis = previousFrequencies?.every(
+    (frequency) => Number.isFinite(frequency) && frequency > 0,
+  )
+    ? previousFrequencies.map((frequency) =>
+        Math.round(vocalRunFrequencyToMidi(frequency)),
+      )
+    : [];
+
+  // Prefer a sequence that differs from both the tier default and the
+  // previous attempt. If the vocal range is too narrow for that, prioritize
+  // avoiding the previous sequence whenever possible.
+  const differentFromPrevious = candidateSequences.filter(
+    (sequence) => !areVocalRunSequencesEqual(sequence, previousMidis),
+  );
+  const differentFromBase = differentFromPrevious.filter(
+    (sequence) => !areVocalRunSequencesEqual(sequence, baseMidis),
+  );
+  const choices =
+    differentFromBase.length > 0
+      ? differentFromBase
+      : differentFromPrevious.length > 0
+        ? differentFromPrevious
+        : candidateSequences;
+
+  const selectedMidis = choices[Math.floor(Math.random() * choices.length)];
+  return selectedMidis.map((midi) =>
+    Number(vocalRunMidiToFrequency(midi).toFixed(3)),
+  );
 }
 
 export function generateVocalRunAccuracyParams({
   tier,
   recentScores,
+  vocalRange,
+  previousFrequencies,
 }: GenerateVocalRunAccuracyParamsInput) {
-  const baseParams =
-    RAPID_VOCAL_RUN_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * NOTE DURATION
-   * ---------------------------------------------------------
-   *
-   * Shorter notes require the singer to execute the
-   * vocal run more quickly and accurately.
-   *
-   * Higher scores -> shorter notes.
-   * Lower scores -> longer notes.
-   *
-   * The adaptive range is ±20% of the current
-   * tier's default note duration.
-   */
+  const baseParams = RAPID_VOCAL_RUN_PARAMS[tier];
 
   const noteDurationRange = {
-    min:
-      baseParams.noteDurationSec * 0.8,
-
-    max:
-      baseParams.noteDurationSec * 1.2,
+    min: baseParams.noteDurationSec * 0.8,
+    max: baseParams.noteDurationSec * 1.2,
   };
 
-  const adjustedNoteDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      noteDurationRange,
-      'lower',
-    );
+  const adjustedNoteDuration = calculateAdjustedParameterBounds(
+    recentScores,
+    noteDurationRange,
+    'lower',
+  );
 
   const generatedNoteDurationSec =
-    (
-      adjustedNoteDuration.min +
-      adjustedNoteDuration.max
-    ) / 2;
+    (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
 
-  /*
-   * ---------------------------------------------------------
-   * RETURN
-   * ---------------------------------------------------------
-   */
+  const frequencies = generateVocalRunFrequencies(
+    baseParams.frequencies,
+    recentScores,
+    vocalRange,
+    previousFrequencies,
+  );
 
   return {
-  ...baseParams,
-  noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
-  label: baseParams.label,
-  frequencies: baseParams.frequencies,
-  speedLabel: baseParams.speedLabel,
-  accuracyThreshold: baseParams.accuracyThreshold,
-  repetitions: baseParams.repetitions,
-};
+    ...baseParams,
+    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
+    label: baseParams.label,
+    frequencies,
+    speedLabel: baseParams.speedLabel,
+    accuracyThreshold: baseParams.accuracyThreshold,
+    repetitions: baseParams.repetitions,
+  };
 }
