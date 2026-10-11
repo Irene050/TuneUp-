@@ -139,28 +139,6 @@ export function midiToFrequency(
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-export function calculateRms(
-  samples: Float32Array,
-  start = 0,
-  end = samples.length,
-): number {
-  const from = Math.max(0, Math.floor(start));
-  const to = Math.min(samples.length, Math.floor(end));
-
-  if (to <= from) {
-    return 0;
-  }
-
-  let sum = 0;
-
-  for (let i = from; i < to; i++) {
-    const value = samples[i] ?? 0;
-    sum += value * value;
-  }
-
-  return Math.sqrt(sum / (to - from));
-}
-
 /**
  * Estimates pitch using FFT-based autocorrelation.
  *
