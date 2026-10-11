@@ -170,6 +170,7 @@ export function calculateRms(
  * The existing frequency, RMS, and correlation thresholds
  * remain configurable through AgilityPitchOptions.
  */
+
 export function detectPitchAutocorrelation(
   frame: Float32Array,
   sampleRate: number,
@@ -177,20 +178,16 @@ export function detectPitchAutocorrelation(
 ): number | null {
   const minFrequency =
     options.minFrequency ?? DEFAULT_MIN_FREQUENCY;
-
   const maxFrequency =
     options.maxFrequency ?? DEFAULT_MAX_FREQUENCY;
-
-  const minRms =
-    options.minRms ?? DEFAULT_MIN_RMS;
-
+  const minRms = options.minRms ?? DEFAULT_MIN_RMS;
   const minCorrelation =
     options.minCorrelation ?? DEFAULT_MIN_CORRELATION;
 
   if (
     !Number.isFinite(sampleRate) ||
     sampleRate <= 0 ||
-    frame.length < 2 ||
+    frame.length < 3 ||
     !Number.isFinite(minFrequency) ||
     !Number.isFinite(maxFrequency) ||
     minFrequency <= 0 ||
@@ -201,40 +198,60 @@ export function detectPitchAutocorrelation(
 
   const length = frame.length;
 
-  // Calculate RMS and cumulative energy in one pass.
-  const prefixEnergy = new Float64Array(length + 1);
-  let totalEnergy = 0;
+  // Reject silence or very weak input before pitch analysis.
+  let mean = 0;
+  let rawEnergy = 0;
 
   for (let i = 0; i < length; i++) {
     const value = frame[i] ?? 0;
-    totalEnergy += value * value;
-    prefixEnergy[i + 1] = totalEnergy;
+    mean += value;
+    rawEnergy += value * value;
   }
 
-  const rms = Math.sqrt(totalEnergy / length);
+  const rms = Math.sqrt(rawEnergy / length);
 
   if (rms < minRms) {
     return null;
   }
 
+  mean /= length;
+
+  // Remove DC offset and apply a Hann window to reduce
+  // edge discontinuities and improve autocorrelation peaks.
+  const processed = new Float64Array(length);
+  const prefixEnergy = new Float64Array(length + 1);
+  let totalEnergy = 0;
+
+  for (let i = 0; i < length; i++) {
+    const centered = (frame[i] ?? 0) - mean;
+    const window =
+      0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1));
+    const value = centered * window;
+
+    processed[i] = value;
+    totalEnergy += value * value;
+    prefixEnergy[i + 1] = totalEnergy;
+  }
+
+  if (totalEnergy <= 0) {
+    return null;
+  }
+
   const minLag = Math.max(
-    1,
+    2,
     Math.floor(sampleRate / maxFrequency),
   );
-
   const maxLag = Math.min(
-    length - 1,
-    Math.floor(sampleRate / minFrequency),
+    length - 2,
+    Math.ceil(sampleRate / minFrequency),
   );
 
   if (minLag > maxLag) {
     return null;
   }
 
-  // Pad to a power of two that can hold the linear
-  // autocorrelation without circular wraparound.
+  // Pad the FFT to avoid circular wraparound in autocorrelation.
   let fftSize = 1;
-
   while (fftSize < length * 2 - 1) {
     fftSize <<= 1;
   }
@@ -242,14 +259,11 @@ export function detectPitchAutocorrelation(
   const real = new Float64Array(fftSize);
   const imag = new Float64Array(fftSize);
 
-  for (let i = 0; i < length; i++) {
-    real[i] = frame[i] ?? 0;
-  }
+  real.set(processed);
 
-  // Forward FFT.
   fft(real, imag);
 
-  // Power spectrum: X * conjugate(X).
+  // Power spectrum: X multiplied by its complex conjugate.
   for (let i = 0; i < fftSize; i++) {
     const re = real[i];
     const im = imag[i];
@@ -258,43 +272,87 @@ export function detectPitchAutocorrelation(
     imag[i] = 0;
   }
 
-  // Inverse FFT produces the autocorrelation.
   fft(real, imag, true);
 
+  // Normalize correlations and identify the strongest peak.
+  const correlations = new Float64Array(maxLag + 2);
   let bestLag = -1;
   let bestCorrelation = -Infinity;
 
   for (let lag = minLag; lag <= maxLag; lag++) {
     const overlapLength = length - lag;
-
     const energyA = prefixEnergy[overlapLength];
-    const energyB =
-      totalEnergy - prefixEnergy[lag];
-
+    const energyB = totalEnergy - prefixEnergy[lag];
     const denominator = Math.sqrt(energyA * energyB);
 
     if (denominator <= 0) {
       continue;
     }
 
-    const correlation = real[lag];
-    const normalizedCorrelation =
-      correlation / denominator;
+    const correlation = real[lag] / denominator;
+    correlations[lag] = correlation;
 
-    if (normalizedCorrelation > bestCorrelation) {
-      bestCorrelation = normalizedCorrelation;
+    if (correlation > bestCorrelation) {
+      bestCorrelation = correlation;
       bestLag = lag;
     }
   }
 
   if (
-    bestLag <= 0 ||
+    bestLag < 0 ||
     bestCorrelation < minCorrelation
   ) {
     return null;
   }
 
-  const frequency = sampleRate / bestLag;
+  // Prefer the earliest credible local peak. If a longer
+  // period wins only slightly, this helps avoid octave-low
+  // readings caused by selecting a multiple of the true period.
+  const credibleThreshold = Math.max(
+    minCorrelation,
+    bestCorrelation * 0.9,
+  );
+
+  let selectedLag = bestLag;
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const current = correlations[lag];
+
+    if (
+      current >= credibleThreshold &&
+      current >= correlations[lag - 1] &&
+      current >= correlations[lag + 1]
+    ) {
+      selectedLag = lag;
+      break;
+    }
+  }
+
+  // Parabolic interpolation provides a more precise period
+  // estimate than rounding directly to an integer lag.
+  const left = correlations[selectedLag - 1];
+  const center = correlations[selectedLag];
+  const right = correlations[selectedLag + 1];
+  const curvature = left - 2 * center + right;
+
+  let refinedLag = selectedLag;
+
+  if (
+    Number.isFinite(curvature) &&
+    Math.abs(curvature) > 1e-12
+  ) {
+    const offset = 0.5 * (left - right) / curvature;
+
+    if (Number.isFinite(offset) && Math.abs(offset) <= 1) {
+      refinedLag += offset;
+    }
+  }
+
+  if (refinedLag <= 0) {
+    return null;
+  }
+
+  const frequency = sampleRate / refinedLag;
 
   return Number.isFinite(frequency) &&
     frequency >= minFrequency &&
@@ -353,12 +411,13 @@ export function extractAgilityPitchFrames(
   return frames;
 }
 
+
 export function extractAgilityNotes(
   frames: AgilityPitchFrame[],
   confirmationFrames = 1,
 ): AgilityNote[] {
   const requiredFrames = Math.max(
-    1,
+    3,
     Math.floor(confirmationFrames),
   );
 
@@ -368,8 +427,32 @@ export function extractAgilityNotes(
   let candidateCount = 0;
   let candidateTimestampMs = 0;
   let currentMidi: number | null = null;
+  let previousTimestampMs: number | null = null;
 
   for (const frame of frames) {
+    if (
+      !Number.isFinite(frame.frequency) ||
+      frame.frequency <= 0 ||
+      !Number.isFinite(frame.timestamp)
+    ) {
+      candidateMidi = null;
+      candidateCount = 0;
+      previousTimestampMs = null;
+      continue;
+    }
+
+    // Reset an unconfirmed transition if voiced frames are
+    // separated by a long gap.
+    if (
+      previousTimestampMs !== null &&
+      frame.timestamp - previousTimestampMs > 120
+    ) {
+      candidateMidi = null;
+      candidateCount = 0;
+    }
+
+    previousTimestampMs = frame.timestamp;
+
     const midiFloat = frequencyToMidi(frame.frequency);
 
     if (!Number.isFinite(midiFloat)) {
@@ -380,7 +463,13 @@ export function extractAgilityNotes(
 
     const midi = Math.round(midiFloat);
 
-    if (midi === currentMidi) {
+    // Ignore one-semitone fluctuations around the current note.
+    // This helps prevent vibrato and small pitch-estimation errors
+    // from being counted as new notes.
+    if (
+      currentMidi !== null &&
+      Math.abs(midi - currentMidi) <= 1
+    ) {
       candidateMidi = null;
       candidateCount = 0;
       continue;
@@ -390,11 +479,22 @@ export function extractAgilityNotes(
       candidateMidi = midi;
       candidateCount = 1;
       candidateTimestampMs = frame.timestamp;
-    } else {
-      candidateCount++;
+      continue;
     }
 
-    if (candidateCount >= requiredFrames) {
+    candidateCount++;
+
+    // Octave jumps need stronger confirmation because octave
+    // errors are common in autocorrelation-based pitch detection.
+    const isOctaveJump =
+      currentMidi !== null &&
+      Math.abs(Math.abs(midi - currentMidi) - 12) <= 1;
+
+    const confirmationRequired = isOctaveJump
+      ? Math.max(requiredFrames, 5)
+      : requiredFrames;
+
+    if (candidateCount >= confirmationRequired) {
       notes.push({
         midi,
         timestampMs: candidateTimestampMs,
@@ -408,6 +508,7 @@ export function extractAgilityNotes(
 
   return notes;
 }
+
 
 // Existing helpers — preserved for existing callers.
 

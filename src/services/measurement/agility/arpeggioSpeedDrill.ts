@@ -16,6 +16,7 @@ export type ArpeggioSpeedMeasurement = {
   durationMs: number;
   notesPerSecond: number;
   averageNoteDurationMs: number;
+  targetNotesPerSecond: number;
 };
 
 const MIN_FREQUENCY = 70;
@@ -24,130 +25,198 @@ const MIN_RMS = 0.008;
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const DEFAULT_PITCH_TOLERANCE_PERCENT = 7;
+const DEFAULT_EXPECTED_NOTE_INTERVAL_SEC = 0.73;
 const NOTE_CONFIRMATION_FRAMES = 2;
 
-function clamp(
-  value: number,
-  min = 0,
-  max = 100,
-): number {
+function clamp(value: number, min = 0, max = 100): number {
+  if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
 }
 
+function midiToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+type PitchAlignment = {
+  accuracy: number;
+  correctCount: number;
+};
+
+/**
+ * Align detected notes to the target notes using dynamic programming.
+ *
+ * Missing and extra notes are penalized. A missed or extra note will
+ * not automatically shift every subsequent note onto the wrong target.
+ */
 function calculatePitchAccuracy(
   detectedNotes: number[],
   targetFrequencies: number[],
   tolerancePercent: number,
-): {
-  accuracy: number;
-  correctCount: number;
-} {
+): PitchAlignment {
   if (!detectedNotes.length || !targetFrequencies.length) {
-    return {
-      accuracy: 0,
-      correctCount: 0,
-    };
+    return { accuracy: 0, correctCount: 0 };
   }
 
-  const compareLength = Math.min(
-    detectedNotes.length,
-    targetFrequencies.length,
+  const detectedFrequencies = detectedNotes.map(midiToFrequency);
+  const detectedCount = detectedFrequencies.length;
+  const targetCount = targetFrequencies.length;
+  const tolerance = Math.max(tolerancePercent, 0.1);
+
+  // dp[i][j] is the minimum alignment cost for the first i
+  // detected notes and the first j target notes.
+  const dp: number[][] = Array.from(
+    { length: detectedCount + 1 },
+    () => Array(targetCount + 1).fill(0),
   );
 
-  if (compareLength === 0) {
-    return {
-      accuracy: 0,
-      correctCount: 0,
-    };
+  const action: ('match' | 'extra' | 'missing')[][] = Array.from(
+    { length: detectedCount + 1 },
+    () => Array(targetCount + 1).fill('match'),
+  );
+
+  for (let i = 1; i <= detectedCount; i++) {
+    dp[i][0] = i;
+    action[i][0] = 'extra';
   }
 
+  for (let j = 1; j <= targetCount; j++) {
+    dp[0][j] = j;
+    action[0][j] = 'missing';
+  }
+
+  for (let i = 1; i <= detectedCount; i++) {
+    for (let j = 1; j <= targetCount; j++) {
+      const detectedFrequency = detectedFrequencies[i - 1];
+      const targetFrequency = targetFrequencies[j - 1];
+
+      const errorPercent =
+        Number.isFinite(detectedFrequency) &&
+        Number.isFinite(targetFrequency) &&
+        targetFrequency > 0
+          ? (Math.abs(detectedFrequency - targetFrequency) /
+              targetFrequency) *
+            100
+          : 100;
+
+      // A pitch error within tolerance has a proportionally smaller cost.
+      // Errors at or beyond tolerance cost as much as a missing/extra note.
+      const matchCost = clamp(errorPercent / tolerance, 0, 1);
+
+      const match = dp[i - 1][j - 1] + matchCost;
+      const extra = dp[i - 1][j] + 1;
+      const missing = dp[i][j - 1] + 1;
+
+      // Prefer matching on ties to preserve valid note correspondences.
+      if (match <= extra && match <= missing) {
+        dp[i][j] = match;
+        action[i][j] = 'match';
+      } else if (extra <= missing) {
+        dp[i][j] = extra;
+        action[i][j] = 'extra';
+      } else {
+        dp[i][j] = missing;
+        action[i][j] = 'missing';
+      }
+    }
+  }
+
+  // Trace the best alignment to score the matched note pairs.
+  let i = detectedCount;
+  let j = targetCount;
+  let totalScore = 0;
   let correctCount = 0;
-  let totalErrorPercent = 0;
 
-  for (let i = 0; i < compareLength; i++) {
-    const detectedFrequency =
-      440 * Math.pow(2, (detectedNotes[i] - 69) / 12);
+  while (i > 0 || j > 0) {
+    const currentAction = action[i][j];
 
-    const targetFrequency = targetFrequencies[i];
+    if (i > 0 && j > 0 && currentAction === 'match') {
+      const detectedFrequency = detectedFrequencies[i - 1];
+      const targetFrequency = targetFrequencies[j - 1];
 
-    if (
-      !Number.isFinite(detectedFrequency) ||
-      !Number.isFinite(targetFrequency) ||
-      targetFrequency <= 0
-    ) {
-      continue;
-    }
+      if (
+        Number.isFinite(detectedFrequency) &&
+        Number.isFinite(targetFrequency) &&
+        targetFrequency > 0
+      ) {
+        const errorPercent =
+          (Math.abs(detectedFrequency - targetFrequency) /
+            targetFrequency) *
+          100;
 
-    const errorPercent =
-      (Math.abs(detectedFrequency - targetFrequency) /
-        targetFrequency) *
-      100;
+        totalScore += clamp(
+          100 - (errorPercent / tolerance) * 100,
+        );
 
-    totalErrorPercent += errorPercent;
+        if (errorPercent <= tolerance) {
+          correctCount++;
+        }
+      }
 
-    if (errorPercent <= tolerancePercent) {
-      correctCount++;
+      i--;
+      j--;
+    } else if (i > 0 && (j === 0 || currentAction === 'extra')) {
+      // Extra detected note: contributes zero to the final average.
+      i--;
+    } else if (j > 0) {
+      // Missing target note: contributes zero to the final average.
+      j--;
+    } else {
+      break;
     }
   }
 
-  // Preserve the original denominator behavior.
-  const averageErrorPercent = totalErrorPercent / compareLength;
-
-  const accuracy = clamp(
-    100 -
-      (averageErrorPercent / Math.max(tolerancePercent, 0.001)) *
-        100,
-  );
+  // Missing and extra notes both count against pitch accuracy.
+  const denominator = Math.max(detectedCount, targetCount);
 
   return {
-    accuracy: Math.round(accuracy),
+    accuracy: Math.round(clamp(totalScore / denominator)),
     correctCount,
   };
 }
 
+/**
+ * Measures whether the detected notes follow the target order.
+ * Notes within one semitone of a target are accepted as a sequence match.
+ */
 function calculateSequenceAccuracy(
   detectedNotes: number[],
   targetFrequencies: number[],
-): {
-  accuracy: number;
-  correctCount: number;
-} {
-  if (!detectedNotes.length || !targetFrequencies.length) {
-    return {
-      accuracy: 0,
-      correctCount: 0,
-    };
-  }
-
+): { accuracy: number; correctCount: number } {
   const targetMidi = targetFrequencies.map((frequency) =>
     Math.round(frequencyToMidi(frequency)),
   );
 
-  const compareLength = Math.min(
-    detectedNotes.length,
-    targetMidi.length,
+  if (!detectedNotes.length || !targetMidi.length) {
+    return { accuracy: 0, correctCount: 0 };
+  }
+
+  const rows = detectedNotes.length + 1;
+  const columns = targetMidi.length + 1;
+
+  const dp: number[][] = Array.from(
+    { length: rows },
+    () => Array(columns).fill(0),
   );
 
-  let correctCount = 0;
-
-  for (let i = 0; i < compareLength; i++) {
-    if (Math.abs(detectedNotes[i] - targetMidi[i]) <= 1) {
-      correctCount++;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < columns; j++) {
+      if (
+        Math.abs(detectedNotes[i - 1] - targetMidi[j - 1]) <= 1
+      ) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
     }
   }
 
-  const sequenceLength = Math.max(
-    detectedNotes.length,
-    targetMidi.length,
-  );
-
-  const accuracy =
-    sequenceLength > 0
-      ? (correctCount / sequenceLength) * 100
-      : 0;
+  const correctCount = dp[rows - 1][columns - 1];
+  const denominator = Math.max(detectedNotes.length, targetMidi.length);
 
   return {
-    accuracy: Math.round(clamp(accuracy)),
+    accuracy: Math.round(
+      clamp((correctCount / denominator) * 100),
+    ),
     correctCount,
   };
 }
@@ -157,31 +226,40 @@ export function measureArpeggioSpeed(
   sampleRate: number,
   targetFrequencies: number[],
   pitchTolerancePercent = DEFAULT_PITCH_TOLERANCE_PERCENT,
+  expectedNoteIntervalSec = DEFAULT_EXPECTED_NOTE_INTERVAL_SEC,
 ): ArpeggioSpeedMeasurement {
   const durationMs =
-    sampleRate > 0
-      ? (samples.length / sampleRate) * 1000
-      : 0;
+    sampleRate > 0 ? (samples.length / sampleRate) * 1000 : 0;
 
   const targetNotes = targetFrequencies.map(frequencyToMidi);
 
+  const targetNotesPerSecond =
+    Number.isFinite(expectedNoteIntervalSec) &&
+    expectedNoteIntervalSec > 0
+      ? 1 / expectedNoteIntervalSec
+      : 1 / DEFAULT_EXPECTED_NOTE_INTERVAL_SEC;
+
+  const emptyResult: ArpeggioSpeedMeasurement = {
+    detectedPitches: [],
+    detectedNotes: [],
+    targetNotes,
+    pitchAccuracy: 0,
+    sequenceAccuracy: 0,
+    noteCount: 0,
+    correctNoteCount: 0,
+    durationMs,
+    notesPerSecond: 0,
+    averageNoteDurationMs: 0,
+    targetNotesPerSecond,
+  };
+
   if (
-    samples.length === 0 ||
+    samples.length < FRAME_SIZE ||
+    !Number.isFinite(sampleRate) ||
     sampleRate <= 0 ||
     targetFrequencies.length === 0
   ) {
-    return {
-      detectedPitches: [],
-      detectedNotes: [],
-      targetNotes,
-      pitchAccuracy: 0,
-      sequenceAccuracy: 0,
-      noteCount: 0,
-      correctNoteCount: 0,
-      durationMs,
-      notesPerSecond: 0,
-      averageNoteDurationMs: 0,
-    };
+    return emptyResult;
   }
 
   const pitchFrames = extractAgilityPitchFrames(
@@ -193,7 +271,7 @@ export function measureArpeggioSpeed(
       minFrequency: MIN_FREQUENCY,
       maxFrequency: MAX_FREQUENCY,
       minRms: MIN_RMS,
-      minCorrelation: 0,
+      minCorrelation: 0.3,
     },
   );
 
@@ -201,24 +279,15 @@ export function measureArpeggioSpeed(
     (frame) => frame.frequency,
   );
 
-  const detectedNotes = extractAgilityNotes(
+  const extractedNotes = extractAgilityNotes(
     pitchFrames,
     NOTE_CONFIRMATION_FRAMES,
-  ).map((note) => note.midi);
+  );
 
-  if (detectedNotes.length === 0) {
-    return {
-      detectedPitches,
-      detectedNotes,
-      targetNotes,
-      pitchAccuracy: 0,
-      sequenceAccuracy: 0,
-      noteCount: 0,
-      correctNoteCount: 0,
-      durationMs,
-      notesPerSecond: 0,
-      averageNoteDurationMs: 0,
-    };
+  const detectedNotes = extractedNotes.map((note) => note.midi);
+
+  if (!detectedNotes.length) {
+    return { ...emptyResult, detectedPitches };
   }
 
   const pitchResult = calculatePitchAccuracy(
@@ -232,14 +301,22 @@ export function measureArpeggioSpeed(
     targetFrequencies,
   );
 
+  const firstTimestamp = extractedNotes[0].timestampMs;
+  const lastTimestamp =
+    extractedNotes[extractedNotes.length - 1].timestampMs;
+
+  const activeSpanMs = lastTimestamp - firstTimestamp;
+
   const notesPerSecond =
-    durationMs > 0
-      ? detectedNotes.length / (durationMs / 1000)
+    detectedNotes.length > 1 && activeSpanMs > 0
+      ? (detectedNotes.length - 1) / (activeSpanMs / 1000)
       : 0;
 
+  // Retained for compatibility with the existing result type.
+  // This currently represents the average interval between note onsets.
   const averageNoteDurationMs =
-    detectedNotes.length > 0
-      ? durationMs / detectedNotes.length
+    detectedNotes.length > 1
+      ? activeSpanMs / (detectedNotes.length - 1)
       : 0;
 
   return {
@@ -253,5 +330,6 @@ export function measureArpeggioSpeed(
     durationMs,
     notesPerSecond,
     averageNoteDurationMs,
+    targetNotesPerSecond,
   };
 }
