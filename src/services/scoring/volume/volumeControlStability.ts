@@ -20,11 +20,6 @@ export interface VolumeControlStabilityScore {
    ========================================================= */
 
 const DEFAULT_TARGET_STABILITY = 70;
-
-/*
- * Minimum amount of detected voice required before
- * the exercise can be considered valid.
- */
 const MIN_VOICED_COVERAGE = 20;
 
 /* =========================================================
@@ -62,107 +57,76 @@ export function scoreVolumeControlStability(
   measurement: VolumeControlStabilityMeasurement,
   options: VolumeControlStabilityScoreOptions = {},
 ): VolumeControlStabilityScore {
-  /* =======================================================
-     TARGET
-     ======================================================= */
+  const targetStability = clamp(
+    options.passingScore ?? DEFAULT_TARGET_STABILITY,
+  );
 
-  const targetStability =
-    clamp(
-      options.passingScore ??
-        DEFAULT_TARGET_STABILITY,
-    );
+  const stabilityScore = clamp(
+    measurement.stability,
+  );
 
-  /* =======================================================
-     MEASURED VALUES
-     ======================================================= */
+  const durationScore = clamp(
+    measurement.durationScore,
+  );
 
-  const stabilityScore =
-    clamp(
-      measurement.stability,
-    );
+  const voicedCoverage = clamp(
+    measurement.voicedCoveragePercent,
+  );
 
-  const durationScore =
-    clamp(
-      measurement.durationScore,
-    );
-
-  const voicedCoverage =
-    clamp(
-      measurement.voicedCoveragePercent,
-    );
-
-  /* =======================================================
+  /* -------------------------------------------------------
      AUDIO VALIDATION
-     ======================================================= */
+     ------------------------------------------------------- */
 
-  /*
-   * The recording must contain an actual usable
-   * vocal signal.
-   *
-   * This prevents silence/background noise from
-   * receiving a passing result.
-   */
+  const averageDb = measurement.averageDb;
 
   const hasAudio =
-    Number.isFinite(
-      measurement.averageDb,
-    ) &&
-    measurement.averageDb > 0 &&
+    Number.isFinite(averageDb) &&
+    averageDb >= -60 &&
+    averageDb <= 0 &&
     voicedCoverage > 0;
 
-  /* =======================================================
+  /* -------------------------------------------------------
      OVERALL SCORE
-     
-     Score =
-     (stability × 0.7)
-     +
-     (duration score × 0.3)
-     ======================================================= */
+     ------------------------------------------------------- */
 
-  const overallScore =
-    clamp(
-      stabilityScore * 0.7 +
-        durationScore * 0.3,
-    );
+  const overallScore = clamp(
+    stabilityScore * 0.7 +
+    durationScore * 0.3,
+  );
 
-  /* =======================================================
+  /* -------------------------------------------------------
      PASS CONDITION
-     ======================================================= */
+     ------------------------------------------------------- */
 
   const passed =
     hasAudio &&
-    voicedCoverage >=
-      MIN_VOICED_COVERAGE &&
-    overallScore >=
-      targetStability;
+    voicedCoverage >= MIN_VOICED_COVERAGE &&
+    overallScore >= targetStability;
 
-  /* =======================================================
+  /* -------------------------------------------------------
      FEEDBACK
-     ======================================================= */
+     ------------------------------------------------------- */
 
   let feedback: string;
 
   if (!hasAudio) {
     feedback =
-      'A consistent vocal signal was not detected. Try singing C4 steadily and holding the same volume.';
+      'No usable vocal signal was detected. Check your microphone and try singing C4 steadily at a comfortable volume.';
   } else if (
-    overallScore >= 85
+    voicedCoverage < MIN_VOICED_COVERAGE
   ) {
     feedback =
+      'Not enough vocal audio was detected throughout the exercise. Try maintaining your voice for the full recording.';
+  } else if (overallScore >= 85) {
+    feedback =
       'Excellent volume control. Your vocal volume remained very stable.';
-  } else if (
-    overallScore >= targetStability
-  ) {
+  } else if (overallScore >= targetStability) {
     feedback =
       'Good volume control. Continue practicing a steady vocal output.';
   } else {
     feedback =
       'Your volume fluctuated during the exercise. Focus on consistent breath support and vocal output.';
   }
-
-  /* =======================================================
-     RETURN RESULT
-     ======================================================= */
 
   return {
     overallScore,

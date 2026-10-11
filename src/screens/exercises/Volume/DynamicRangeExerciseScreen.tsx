@@ -1,12 +1,32 @@
+
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+
 import {
   DYNAMIC_RANGE_PARAMS,
   type DynamicRangeParams,
   type Tier,
 } from '@/constants/exercises/volume';
 import {
-  LiveAudioFrame,
+  type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+import ExerciseScreen, {
+  ExerciseListeningScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
 import {
   generateDynamicRangeParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -35,1768 +55,855 @@ import {
 import {
   createMusicalNote,
 } from '@/utils/music/notes';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+
 const BROWN = '#4E2F1F';
-const DARK = '#5A343D';
 const PINK = '#FCD6DD';
 const LIGHT = '#FFF8FA';
-const PALE = '#FFF0F3';
-const BORDER = '#F1DCE2';
-const ACCENT = '#D86C89';
-const MUTED = '#9A817D';
 const WHITE = '#FFFFFF';
+const MUTED = '#8E7770';
+const BORDER = '#F2DDE5';
+const ACCENT = '#D86C89';
+
 const BAR_COUNT = 32;
 const DBFS_MIN = -60;
 const DBFS_MAX = -10;
 const PHASES_PER_REPETITION = 3;
 const WINDOW_MS = 50;
+
 const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
-type Phase =
-  | 'directions'
-  | 'exercise'
-  | 'results';
+
+type Phase = 'directions' | 'exercise' | 'results';
+
 interface DynamicRangeExerciseProps {
   tier?: Tier;
 }
-function normalizeVolume(value: number) {
+
+function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
+
   return Math.max(
     0,
     Math.min(
       1,
-      (value - DBFS_MIN) /
-        (DBFS_MAX - DBFS_MIN),
+      (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
     ),
   );
 }
-/*
- * Soft → Loud → Soft
- */
-function referenceHeight(index: number) {
-  const middle =
-    (BAR_COUNT - 1) / 2;
-  const distance =
-    Math.abs(index - middle) /
-    middle;
+
+function referenceHeight(index: number): number {
+  const middle = (BAR_COUNT - 1) / 2;
+  const distance = Math.abs(index - middle) / middle;
+
   return 0.18 + (1 - distance) * 0.72;
 }
-/*
- * ========================================================
- * VOLUME VISUALIZER
- * ========================================================
- */
-function VolumeVisualizer({
+
+/* =========================================================
+   DYNAMIC RANGE VISUALIZER
+   ========================================================= */
+
+function DynamicRangeVisualizer({
   liveHistory,
 }: {
   liveHistory: number[];
 }) {
-  /*
-   * IMPORTANT:
-   * The live history is displayed LEFT → RIGHT.
-   *
-   * Oldest data = left
-   * Newest data = right
-   */
   const actualBars = Array.from(
-    {
-      length: BAR_COUNT,
-    },
-    (_, index) => {
-      if (
-        index < liveHistory.length
-      ) {
-        return liveHistory[index];
-      }
-      return 0;
-    },
+    { length: BAR_COUNT },
+    (_, index) => liveHistory[index] ?? 0,
   );
+
   return (
     <View style={styles.visualizer}>
-      {/* Target area */}
-      <View
-        style={styles.targetBand}
-      />
-      {/* Actual voice */}
-      <View
-        style={styles.actualBars}
-      >
-        {actualBars.map(
-          (height, index) => (
-            <View
-              key={`actual-${index}`}
-              style={[
-                styles.actualBar,
-                {
-                  height:
-                    height > 0
-                      ? `${Math.max(
-                          5,
-                          height * 82,
-                        )}%`
-                      : '0%',
-                },
-              ]}
-            />
-          ),
-        )}
+      <View style={styles.targetBand} />
+
+      <View style={styles.referenceBars}>
+        {Array.from({ length: BAR_COUNT }, (_, index) => (
+          <View
+            key={`reference-${index}`}
+            style={[
+              styles.referenceBar,
+              {
+                height: `${referenceHeight(index) * 80}%`,
+              },
+            ]}
+          />
+        ))}
       </View>
-      {/* Center line */}
-      <View
-        style={styles.centerLine}
-      />
-      {/* Target marker */}
-      <View
-        style={styles.targetMarker}
-      >
-        <Text
-          style={
-            styles.targetMarkerText
-          }
-        >
+
+      <View style={styles.actualBars}>
+        {actualBars.map((height, index) => (
+          <View
+            key={`actual-${index}`}
+            style={[
+              styles.actualBar,
+              {
+                height:
+                  height > 0
+                    ? `${Math.max(5, height * 82)}%`
+                    : '0%',
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.centerLine} />
+
+      <View style={styles.targetMarker}>
+        <Text style={styles.targetMarkerText}>
           TARGET
         </Text>
       </View>
     </View>
   );
 }
-/*
- * ========================================================
- * MAIN
- * ========================================================
- */
+
+/* =========================================================
+   MAIN SCREEN
+   ========================================================= */
+
 export default function DynamicRangeExercise({
   tier,
 }: DynamicRangeExerciseProps) {
-  const initialTier =
-    tier ?? 'beginner';
+  const initialTier = tier ?? 'beginner';
+
   const [resolvedTier, setResolvedTier] =
     useState<Tier>(initialTier);
+
   const [params, setParams] =
     useState<DynamicRangeParams>(
-      DYNAMIC_RANGE_PARAMS[
-        initialTier
-      ],
+      DYNAMIC_RANGE_PARAMS[initialTier],
     );
-  const [phase, setPhase] =
-    useState<Phase>('directions');
-  const [rep, setRep] =
-    useState(1);
-  const [seconds, setSeconds] =
-    useState(0);
+
+  const [phase, setPhase] = useState<Phase>('directions');
+  const [rep, setRep] = useState(1);
+  const [seconds, setSeconds] = useState(0);
+
   const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(
-      null,
-    );
+    useState<LiveAudioFrame | null>(null);
+
   const [liveHistory, setLiveHistory] =
     useState<number[]>([]);
-  const [score, setScore] =
-    useState(0);
-  const [rangeAccuracy, setRangeAccuracy] =
-    useState(0);
-  const [rampConsistency, setRampConsistency] =
-    useState(0);
-  const [passed, setPassed] =
-    useState(false);
-  /*
-   * Prevents incomplete/manual recordings
-   * from being scored or saved.
-   *
-   * This becomes true ONLY when the exercise
-   * naturally reaches its final repetition.
-   */
-  const shouldSaveResultRef =
-    useRef(false);
-  /*
-   * Prevents multiple natural-finish calls.
-   */
-  const finishingRef =
-    useRef(false);
-  /*
-   * ========================================================
-   * RESOLVED ADAPTIVE PARAMETERS
-   * ========================================================
-   */
-  const targetMin =
-    params.targetDbRange[0];
-  const targetMax =
-    params.targetDbRange[1];
-  const rampSeconds =
-    params.durationSec;
-  const repetitions =
-    params.repetitions;
-  /*
-   * ========================================================
-   * LOAD ADS PARAMETERS
-   * ========================================================
-   */
+
+  const [score, setScore] = useState(0);
+  const [rangeAccuracy, setRangeAccuracy] = useState(0);
+  const [rampConsistency, setRampConsistency] = useState(0);
+  const [passed, setPassed] = useState(false);
+
+  const shouldSaveResultRef = useRef(false);
+  const finishingRef = useRef(false);
+
+  const targetMin = params.targetDbRange[0];
+  const targetMax = params.targetDbRange[1];
+  const rampSeconds = Math.max(1, params.durationSec);
+  const repetitions = Math.max(1, params.repetitions);
+  const totalSeconds = rampSeconds * PHASES_PER_REPETITION;
+
+  /* =======================================================
+     ADAPTIVE DIFFICULTY SCALING
+     ======================================================= */
+
   useEffect(() => {
     let cancelled = false;
-    const initializeAdaptiveParams =
-      async () => {
-        try {
-          const user =
-            auth.currentUser;
-          let currentTier: Tier =
-            tier ?? 'beginner';
-          let referenceScores: number[] =
-            [];
+
+    async function initializeAdaptiveParams() {
+      try {
+        let currentTier: Tier = tier ?? 'beginner';
+        let referenceScores: number[] = [];
+
+        const user = auth.currentUser;
+
+        if (!tier && user) {
+          const componentProgress =
+            await fetchComponentProgress(user.uid, 'volume');
+
+          if (
+            componentProgress?.currentTier === 'beginner' ||
+            componentProgress?.currentTier === 'intermediate' ||
+            componentProgress?.currentTier === 'advanced'
+          ) {
+            currentTier = componentProgress.currentTier;
+          }
+
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'volume',
+          );
+
+          const recentRecords = records
+            .filter(
+              (record) =>
+                record.templateId === 'dynamicRange' &&
+                record.tier === currentTier,
+            )
+            .sort(
+              (a, b) =>
+                Number(a.timestamp ?? 0) -
+                Number(b.timestamp ?? 0),
+            );
+
+          referenceScores = recentRecords
+            .slice(-5)
+            .map((record) => Number(record.scorePct ?? 0));
+
           /*
-           * ------------------------------------------------
-           * EXPLICIT TIER
-           * ------------------------------------------------
-           *
-           * When the route supplies a tier, that tier is
-           * authoritative.
+           * Assessment is a cold-start fallback.
+           * Do not mix it into an existing exercise history.
            */
-          if (!tier && user) {
-            /*
-             * ------------------------------------------------
-             * CURRENT COMPONENT TIER
-             * ------------------------------------------------
-             */
-            const componentProgress =
-              await fetchComponentProgress(
-                user.uid,
-                'volume',
-              );
-            if (
-              componentProgress?.currentTier ===
-                'beginner' ||
-              componentProgress?.currentTier ===
-                'intermediate' ||
-              componentProgress?.currentTier ===
-                'advanced'
-            ) {
-              currentTier =
-                componentProgress.currentTier;
-            }
-            /*
-             * ------------------------------------------------
-             * EXERCISE HISTORY
-             * ------------------------------------------------
-             *
-             * Only Dynamic Range records from the
-             * currently resolved tier are used for
-             * continuous ADS.
-             */
-            const records =
-              await fetchExerciseRecords(
-                user.uid,
-                'volume',
-              );
-            const recentRecords =
-              records
-                .filter(
-                  record =>
-                    record.templateId ===
-                      'dynamicRange' &&
-                    record.tier ===
-                      currentTier,
-                )
-                .sort(
-                  (a, b) =>
-                    Number(
-                      a.timestamp ?? 0,
-                    ) -
-                    Number(
-                      b.timestamp ?? 0,
-                    ),
-                );
-            referenceScores =
-              recentRecords
-                .slice(-5)
-                .map(
-                  record =>
-                    Number(
-                      record.scorePct ?? 0,
-                    ),
-                );
-            /*
-             * ------------------------------------------------
-             * INITIAL ASSESSMENT FALLBACK
-             * ------------------------------------------------
-             *
-             * Assessment is used only when there is
-             * no completed Dynamic Range exercise
-             * history for this tier.
-             */
-            if (
-              referenceScores.length === 0
-            ) {
-              const latestAssessment =
-                await getLatestAssessment();
-              const assessmentScore =
-                latestAssessment?.scores.find(
-                  score =>
-                    score.componentId ===
-                    'volume',
-                )?.scorePct;
-              if (
-                typeof assessmentScore ===
-                'number'
-              ) {
-                referenceScores = [
-                  assessmentScore,
-                ];
-              }
+          if (referenceScores.length === 0) {
+            const latestAssessment =
+              await getLatestAssessment();
+
+            const assessmentScore =
+              latestAssessment?.scores.find(
+                (item) => item.componentId === 'volume',
+              )?.scorePct;
+
+            if (typeof assessmentScore === 'number') {
+              referenceScores = [assessmentScore];
             }
           }
-          /*
-           * ------------------------------------------------
-           * GENERATE PARAMETERS
-           * ------------------------------------------------
-           */
-          const generatedParams =
-            generateDynamicRangeParams({
-              tier: currentTier,
-              recentScores:
-                referenceScores,
-            });
-          if (cancelled) {
-            return;
-          }
-          setResolvedTier(
-            currentTier,
-          );
-          setParams(
-            generatedParams,
-          );
-        } catch (error) {
-          console.error(
-            'Unable to initialize Dynamic Range adaptive parameters:',
-            error,
-          );
-          if (cancelled) {
-            return;
-          }
-          const fallbackTier =
-            tier ?? 'beginner';
-          setResolvedTier(
-            fallbackTier,
-          );
-          setParams(
-            generateDynamicRangeParams({
-              tier: fallbackTier,
-              recentScores: [],
-            }),
-          );
         }
-      };
-    initializeAdaptiveParams();
+
+        const generatedParams = generateDynamicRangeParams({
+          tier: currentTier,
+          recentScores: referenceScores,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedTier(currentTier);
+        setParams(generatedParams);
+      } catch (error) {
+        console.error(
+          'Unable to initialize Dynamic Range adaptive parameters:',
+          error,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const fallbackTier = tier ?? 'beginner';
+
+        setResolvedTier(fallbackTier);
+        setParams(
+          generateDynamicRangeParams({
+            tier: fallbackTier,
+            recentScores: [],
+          }),
+        );
+      }
+    }
+
+    void initializeAdaptiveParams();
+
     return () => {
       cancelled = true;
     };
   }, [tier]);
-  /*
-   * ========================================================
-   * REFERENCE NOTE
-   * ========================================================
-   *
-   * Uses the shared TuneUp! note player.
-   *
-   * The note itself comes from the shared musical-note
-   * utility. The audio service is responsible only for
-   * playback.
-   */
-  const playReferenceNote =
-    async () => {
-      try {
-        await playSingleNote(
-          REFERENCE_NOTE.frequency,
-          REFERENCE_NOTE_DURATION_SEC,
-        );
-      } catch (error) {
-        console.error(
-          'Unable to play reference note:',
-          error,
-        );
-      }
-    };
-  useEffect(() => {
-    if (
-      phase !== 'directions'
-    ) {
-      return;
+
+  /* =======================================================
+     REFERENCE NOTE
+     ======================================================= */
+
+  const playReferenceNote = useCallback(async () => {
+    try {
+      await playSingleNote(
+        REFERENCE_NOTE.frequency,
+        REFERENCE_NOTE_DURATION_SEC,
+      );
+    } catch (error) {
+      console.error('Unable to play reference note:', error);
     }
-    void playReferenceNote();
-  }, [phase]);
-  /*
-   * ========================================================
-   * AUDIO RECORDER
-   * ========================================================
-   */
+  }, []);
+
+  /* =======================================================
+     AUDIO RECORDER
+     ======================================================= */
+
   const {
     startRecording,
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame: frame => {
-      if (
-        phase !== 'exercise'
-      ) {
+    onFrame: (frame) => {
+      if (phase !== 'exercise') {
         return;
       }
+
       setLiveFrame(frame);
-      const normalized =
-        normalizeVolume(
-          frame.volume,
-        );
-      setLiveHistory(
-        previous => {
-          const next = [
-            ...previous,
-            normalized,
-          ];
-          if (
-            next.length >
-            BAR_COUNT
-          ) {
-            return next.slice(
-              next.length -
-                BAR_COUNT,
-            );
-          }
-          return next;
-        },
-      );
+
+      const normalized = normalizeVolume(frame.volume);
+
+      setLiveHistory((previous) => {
+        const next = [...previous, normalized];
+
+        return next.length > BAR_COUNT
+          ? next.slice(-BAR_COUNT)
+          : next;
+      });
     },
-    onStop: (
-      samples,
-      sampleRate,
-    ) => {
+
+    onStop: (samples, sampleRate) => {
       /*
-       * ----------------------------------------------------
-       * MANUAL / INCOMPLETE STOP
-       * ----------------------------------------------------
-       *
-       * Back navigation and Stop Exercise both call
-       * stopRecording(), but they must NOT create an
-       * exercise record.
+       * Manual cancellation must never save an exercise.
        */
-      if (
-        !shouldSaveResultRef.current
-      ) {
+      if (!shouldSaveResultRef.current) {
         setSeconds(0);
         setRep(1);
         setLiveFrame(null);
         setLiveHistory([]);
-        finishingRef.current =
-          false;
+        finishingRef.current = false;
         return;
       }
+
       /*
-       * The completed recording has now reached the
-       * natural end of the final repetition.
+       * Clear this before processing to prevent duplicate saves.
        */
-      shouldSaveResultRef.current =
-        false;
-      const measurement =
-        measureDynamicRange(
+      shouldSaveResultRef.current = false;
+
+      try {
+        const measurement = measureDynamicRange(
           samples,
           sampleRate,
           {
-            windowMs:
-              WINDOW_MS,
-            targetRange: [
-              targetMin,
-              targetMax,
-            ],
-            /*
-             * Each repetition consists of:
-             *
-             * soft → loud → soft
-             *
-             * Therefore the full expected duration is
-             * 3 ramp phases × number of repetitions.
-             */
+            windowMs: WINDOW_MS,
+            targetRange: [targetMin, targetMax],
             expectedDurationSeconds:
               rampSeconds *
               PHASES_PER_REPETITION *
               repetitions,
           },
         );
-      const result =
-        scoreDynamicRange(
-          measurement,
+
+        console.log(
+          'DYNAMIC RANGE MEASUREMENT:',
+          JSON.stringify(measurement, null, 2),
         );
-      setRangeAccuracy(
-        result.rangeAccuracy,
-      );
-      setRampConsistency(
-        result.rampConsistency,
-      );
-      setScore(
-        result.overallScore,
-      );
-      setPassed(
-        result.passed,
-      );
-      /*
-       * Save ONLY naturally completed exercises.
-       */
-      void saveCompletedExercise(
-        'volume',
-        'dynamicRange',
-        resolvedTier,
-        result.overallScore,
-      );
-      setPhase('results');
-      setSeconds(0);
-      setRep(1);
-      setLiveFrame(null);
-      setLiveHistory([]);
-      finishingRef.current =
-        false;
+
+        const result = scoreDynamicRange(measurement);
+
+        console.log(
+          'DYNAMIC RANGE SCORE:',
+          JSON.stringify(result, null, 2),
+        );
+
+        setRangeAccuracy(result.rangeAccuracy);
+        setRampConsistency(result.rampConsistency);
+        setScore(Math.round(result.overallScore));
+        setPassed(result.passed);
+
+        /*
+         * Only a naturally completed recording reaches this branch.
+         */
+        void saveCompletedExercise(
+          'volume',
+          'dynamicRange',
+          resolvedTier,
+          Math.round(result.overallScore),
+        );
+
+        setPhase('results');
+      } catch (error) {
+        console.error(
+          'Unable to measure Dynamic Range:',
+          error,
+        );
+
+        /*
+         * Do not save a failed measurement as a valid exercise.
+         * Return to the directions screen so the user can retry.
+         */
+        setPhase('directions');
+      } finally {
+        setSeconds(0);
+        setRep(1);
+        setLiveFrame(null);
+        setLiveHistory([]);
+        finishingRef.current = false;
+      }
     },
   });
-  /*
-   * ========================================================
-   * EXERCISE TIMER
-   * ========================================================
-   */
+
+  /* =======================================================
+     EXERCISE TIMER
+     ======================================================= */
+
   useEffect(() => {
-    if (
-      phase !== 'exercise'
-    ) {
+    if (phase !== 'exercise' || !isRecording) {
       return;
     }
-    /*
-     * One repetition consists of:
-     *
-     * rampSeconds
-     * + rampSeconds
-     * + rampSeconds
-     */
-    const totalSeconds =
-      rampSeconds *
-      PHASES_PER_REPETITION;
-    const interval =
-      setInterval(() => {
-        setSeconds(
-          previous => {
-            if (
-              previous >=
-              totalSeconds - 1
-            ) {
-              /*
-               * Move to the next repetition.
-               */
-              if (
-                rep <
-                repetitions
-              ) {
-                setRep(
-                  current =>
-                    current + 1,
-                );
-                setLiveHistory(
-                  [],
-                );
-                return 0;
-              }
-              /*
-               * Final repetition completed.
-               *
-               * Mark the recording as a valid completed
-               * attempt BEFORE stopping the recorder so
-               * onStop knows this is a natural completion.
-               */
-              if (
-                !finishingRef.current
-              ) {
-                finishingRef.current =
-                  true;
-                shouldSaveResultRef.current =
-                  true;
-                stopRecording().catch(
-                  error => {
-                    console.error(
-                      'Unable to finish recording:',
-                      error,
-                    );
-                    finishingRef.current =
-                      false;
-                    shouldSaveResultRef.current =
-                      false;
-                  },
-                );
-              }
-              return previous;
-            }
-            return previous + 1;
-          },
-        );
-      }, 1000);
-    return () =>
-      clearInterval(interval);
+
+    const interval = setInterval(() => {
+      setSeconds((previous) => {
+        if (previous >= totalSeconds - 1) {
+          /*
+           * Advance to the next repetition.
+           */
+          if (rep < repetitions) {
+            setRep((current) => current + 1);
+            setLiveHistory([]);
+            return 0;
+          }
+
+          /*
+           * Mark completion before stopping the recorder.
+           */
+          if (!finishingRef.current) {
+            finishingRef.current = true;
+            shouldSaveResultRef.current = true;
+
+            void stopRecording().catch((error) => {
+              console.error(
+                'Unable to finish Dynamic Range recording:',
+                error,
+              );
+
+              finishingRef.current = false;
+              shouldSaveResultRef.current = false;
+              setPhase('directions');
+            });
+          }
+
+          return previous;
+        }
+
+        return previous + 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [
     phase,
+    isRecording,
     rep,
     repetitions,
-    rampSeconds,
+    totalSeconds,
     stopRecording,
   ]);
-  /*
-   * ========================================================
-   * CURRENT INSTRUCTION
-   * ========================================================
-   */
-  const instruction =
-    useMemo(() => {
-      if (
-        seconds <
-        rampSeconds
-      ) {
-        return {
-          title:
-            'SOFT → LOUD',
-          subtitle:
-            'Gradually increase your volume',
-        };
-      }
-      if (
-        seconds <
-        rampSeconds * 2
-      ) {
-        return {
-          title:
-            'LOUD',
-          subtitle:
-            'Reach your loud target',
-        };
-      }
-      return {
-        title:
-          'LOUD → SOFT',
-        subtitle:
-          'Gradually decrease your volume',
-      };
-    }, [
-      seconds,
-      rampSeconds,
-    ]);
 
-  // Count down the remaining time in the current phase.
-  // This uses the existing ramp duration, so timing and scoring stay unchanged.
+  /* =======================================================
+     CURRENT INSTRUCTION
+     ======================================================= */
+
+  let instructionTitle = 'SOFT → LOUD';
+  let instructionPrompt = 'Gradually increase your volume.';
+
+  if (seconds >= rampSeconds * 2) {
+    instructionTitle = 'LOUD → SOFT';
+    instructionPrompt = 'Gradually decrease your volume.';
+  } else if (seconds >= rampSeconds) {
+    instructionTitle = 'LOUD';
+    instructionPrompt = 'Reach and maintain your loud target.';
+  }
+
   const secondsUntilChange =
     rampSeconds - (seconds % rampSeconds);
 
-  /*
-   * ========================================================
-   * START EXERCISE
-   * ========================================================
-   */
-  const startExercise =
-    async () => {
-      setRep(1);
-      setSeconds(0);
-      setScore(0);
-      setRangeAccuracy(0);
-      setRampConsistency(0);
-      setPassed(false);
-      finishingRef.current =
-        false;
-      shouldSaveResultRef.current =
-        false;
-      setLiveFrame(null);
-      setLiveHistory([]);
-      setPhase('exercise');
-      try {
-        await startRecording();
-      } catch (error) {
-        console.error(
-          'Unable to start recording:',
-          error,
-        );
-        setPhase(
-          'directions',
-        );
-      }
-    };
-  /*
-   * ========================================================
-   * TRY AGAIN
-   * ========================================================
-   */
-  const tryAgain = () => {
+  /* =======================================================
+     START / RETRY / CANCEL
+     ======================================================= */
+
+  const resetExercise = () => {
     setRep(1);
     setSeconds(0);
     setScore(0);
     setRangeAccuracy(0);
     setRampConsistency(0);
     setPassed(false);
-    finishingRef.current =
-      false;
-    shouldSaveResultRef.current =
-      false;
     setLiveFrame(null);
     setLiveHistory([]);
-    setPhase('exercise');
-    startRecording().catch(
-      error => {
-        console.error(
-          'Unable to restart recording:',
-          error,
-        );
-        setPhase(
-          'directions',
-        );
-      },
-    );
+    finishingRef.current = false;
+    shouldSaveResultRef.current = false;
   };
-  /*
-   * ========================================================
-   * DIRECTIONS
-   * ========================================================
-   */
-  if (
-    phase === 'directions'
-  ) {
+
+  const startExercise = async () => {
+    resetExercise();
+    setPhase('exercise');
+
+    try {
+      await startRecording();
+    } catch (error) {
+      console.error(
+        'Unable to start Dynamic Range recording:',
+        error,
+      );
+
+      setPhase('directions');
+    }
+  };
+
+  const tryAgain = () => {
+    void startExercise();
+  };
+
+const acceptFramesRef = useRef(false);
+
+const stopIncompleteExercise = async (
+  navigateBack = false,
+) => {
+  // Immediately ignore any new live frames.
+  acceptFramesRef.current = false;
+
+  // Prevent this attempt from being saved.
+  shouldSaveResultRef.current = false;
+  finishingRef.current = false;
+
+  try {
+    await stopRecording();
+  } catch (error) {
+    console.error(
+      'Unable to stop Dynamic Range recording:',
+      error,
+    );
+  } finally {
+    setSeconds(0);
+    setRep(1);
+    setLiveFrame(null);
+    setLiveHistory([]);
+
+    if (navigateBack) {
+      router.back();
+    } else {
+      setPhase('directions');
+    }
+  }
+};
+
+  /* =======================================================
+     DIRECTIONS
+     ======================================================= */
+
+  if (phase === 'directions') {
     return (
-      <SafeAreaView
-        style={styles.screen}
+      <ExerciseScreen
+        title="Dynamic Range"
+        category="VOLUME CONTROL"
+        icon="volume-high-outline"
+        instructions="Practice changing your vocal volume smoothly while singing the same reference note."
+        preparationSteps={[
+          {
+            icon: 'ear-outline',
+            text: `Listen to the reference note (${REFERENCE_NOTE.name}) before starting.`,
+          },
+          {
+            icon: 'volume-low-outline',
+            text: 'Begin softly, then gradually increase your volume.',
+          },
+          {
+            icon: 'volume-high-outline',
+            text: 'Reach the loud target, then gradually return to a soft voice.',
+          },
+        ]}
+        summary={[
+          {
+            label: 'TARGET RANGE',
+            value: `${targetMin}–${targetMax} dB`,
+            hint: 'relative microphone level',
+          },
+          {
+            label: 'RAMP DURATION',
+            value: `${rampSeconds}s`,
+            hint: 'per phase',
+          },
+          {
+            label: 'REPETITIONS',
+            value: String(repetitions),
+            hint: 'complete patterns',
+          },
+        ]}
+        tip="Keep the same note throughout the exercise. Change your vocal volume gradually instead of changing pitch."
+        tier={resolvedTier}
+        onBack={() => router.back()}
+        onStart={startExercise}
       >
-        <View
-          style={styles.topBar}
-        >
-          <Pressable
-            style={styles.back}
-            onPress={() =>
-              router.back()
-            }
-          >
+        <View style={styles.referenceCard}>
+          <View style={styles.referenceHeader}>
             <Ionicons
-              name="arrow-back"
-              size={20}
+              name="musical-note"
+              size={21}
               color={BROWN}
             />
-          </Pressable>
-          <Text
-            style={styles.topTitle}
-          >
-            Dynamic Range
-          </Text>
-          <View
-            style={styles.back}
-          />
-        </View>
-        <View
-          style={
-            styles.directionsBody
-          }
-        >
-          <View
-            style={
-              styles.exerciseIcon
-            }
-          >
-            <Ionicons
-              name="volume-high-outline"
-              size={31}
-              color={BROWN}
-            />
-          </View>
-          <Text
-            style={
-              styles.componentText
-            }
-          >
-            VOLUME CONTROL
-          </Text>
-          <Text
-            style={
-              styles.mainTitle
-            }
-          >
-            Dynamic Range
-          </Text>
-          <Text
-            style={
-              styles.mainSubtitle
-            }
-          >
-            Practice changing your
-            volume smoothly.
-          </Text>
-          {/* DIRECTIONS */}
-          <View
-            style={
-              styles.instructions
-            }
-          >
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              Exercise Instructions
-            </Text>
-            <Text
-              style={
-                styles.instructionLine
-              }
-            >
-              <Text
-                style={
-                  styles.bold
-                }
-              >
-                1.{' '}
+
+            <View style={styles.referenceText}>
+              <Text style={styles.referenceLabel}>
+                REFERENCE NOTE
               </Text>
-              Start with a soft voice.
-            </Text>
-            <Text
-              style={
-                styles.instructionLine
-              }
-            >
-              <Text
-                style={
-                  styles.bold
-                }
-              >
-                2.{' '}
-              </Text>
-              Gradually become louder.
-            </Text>
-            <Text
-              style={
-                styles.instructionLine
-              }
-            >
-              <Text
-                style={
-                  styles.bold
-                }
-              >
-                3.{' '}
-              </Text>
-              Reach the loud target.
-            </Text>
-            <Text
-              style={
-                styles.instructionLine
-              }
-            >
-              <Text
-                style={
-                  styles.bold
-                }
-              >
-                4.{' '}
-              </Text>
-              Gradually return to soft.
-            </Text>
-          </View>
-          {/* REFERENCE NOTE */}
-          <View
-            style={
-              styles.referenceNoteCard
-            }
-          >
-            <View
-              style={
-                styles.referenceNoteHeader
-              }
-            >
-              <View
-                style={
-                  styles.referenceNoteIcon
-                }
-              >
-                <Ionicons
-                  name="musical-note"
-                  size={17}
-                  color={BROWN}
-                />
-              </View>
-              <View
-                style={
-                  styles.referenceNoteText
-                }
-              >
-                <Text
-                  style={
-                    styles.referenceNoteLabel
-                  }
-                >
-                  Before You Begin
-                </Text>
-                <Text
-                  style={
-                    styles.referenceNoteValue
-                  }
-                >
-                  {REFERENCE_NOTE.name}
-                </Text>
-              </View>
-            </View>
-            <Text
-              style={
-                styles.referenceNoteDescription
-              }
-            >
-              Listen to the note first. During the exercise,
-              sing the same note while following the
-              Soft → Loud → Soft pattern.
-            </Text>
-            <TouchableOpacity
-              style={
-                styles.referenceNoteButton
-              }
-              onPress={
-                playReferenceNote
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="play"
-                size={15}
-                color={WHITE}
-              />
-              <Text
-                style={
-                  styles.referenceNoteButtonText
-                }
-              >
-                Play Reference Note
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {/* REFERENCE PREVIEW */}
-          <View
-            style={
-              styles.previewCard
-            }
-          >
-            <Text
-              style={
-                styles.previewTitle
-              }
-            >
-              Follow this pattern
-            </Text>
-            <View
-              style={
-                styles.previewVisualizer
-              }
-            >
-              {Array.from(
-                {
-                  length:
-                    BAR_COUNT,
-                },
-                (_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.previewBar,
-                      {
-                        height: `${
-                          referenceHeight(
-                            index,
-                          ) * 80
-                        }%`,
-                      },
-                    ]}
-                  />
-                ),
-              )}
-            </View>
-            <View
-              style={
-                styles.previewLabels
-              }
-            >
-              <Text
-                style={
-                  styles.previewLabel
-                }
-              >
-                Soft
-              </Text>
-              <Text
-                style={
-                  styles.previewLabel
-                }
-              >
-                Loud
-              </Text>
-              <Text
-                style={
-                  styles.previewLabel
-                }
-              >
-                Soft
+
+              <Text style={styles.referenceNote}>
+                {REFERENCE_NOTE.name}
               </Text>
             </View>
           </View>
-          {/* TARGET */}
-          <View
-            style={
-              styles.targetSimple
-            }
-          >
-            <Text
-              style={
-                styles.targetSimpleLabel
-              }
-            >
-              Exercise Details
-            </Text>
-            <Text
-              style={
-                styles.targetSimpleValue
-              }
-            >
-              {targetMin}–{targetMax} dB
-            </Text>
-            <Text
-              style={
-                styles.targetSimpleSub
-              }
-            >
-              {rampSeconds}s ramp •{' '}
-              {repetitions} repetitions
-            </Text>
-          </View>
+
           <TouchableOpacity
-            style={
-              styles.startButton
-            }
-            onPress={
-              startExercise
-            }
+            style={styles.referenceButton}
+            onPress={playReferenceNote}
             activeOpacity={0.85}
           >
             <Ionicons
               name="play"
-              size={18}
+              size={16}
               color={WHITE}
             />
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Start Exercise
+
+            <Text style={styles.referenceButtonText}>
+              Play Reference Note
             </Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+
+        <View style={styles.previewCard}>
+          <Text style={styles.previewTitle}>
+            Follow this pattern
+          </Text>
+
+          <View style={styles.previewVisualizer}>
+            {Array.from({ length: BAR_COUNT }, (_, index) => (
+              <View
+                key={`preview-${index}`}
+                style={[
+                  styles.previewBar,
+                  {
+                    height: `${referenceHeight(index) * 80}%`,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          <View style={styles.previewLabels}>
+            <Text style={styles.previewLabel}>Soft</Text>
+            <Text style={styles.previewLabel}>Loud</Text>
+            <Text style={styles.previewLabel}>Soft</Text>
+          </View>
+        </View>
+      </ExerciseScreen>
     );
   }
-  /*
-   * ========================================================
-   * ACTUAL EXERCISE
-   * ========================================================
-   */
-  if (
-    phase === 'exercise'
-  ) {
-    const progress =
-      Math.min(
-        seconds /
-          (
-            rampSeconds *
-            PHASES_PER_REPETITION
-          ),
-        1,
-      );
-    return (
-      <SafeAreaView
-        style={styles.screen}
-      >
-        <View
-          style={styles.topBar}
-        >
-          <Pressable
-            style={styles.back}
-            onPress={async () => {
-              /*
-               * Explicitly mark this as an incomplete
-               * recording before stopping.
-               */
-              shouldSaveResultRef.current =
-                false;
-              finishingRef.current =
-                false;
-              if (isRecording) {
-                await stopRecording();
-              }
-              router.back();
-            }}
-          >
+
+  /* =======================================================
+     LIVE EXERCISE
+     ======================================================= */
+
+  if (phase === 'exercise') {
+    const progress = Math.min(
+      100,
+      (seconds / totalSeconds) * 100,
+    );
+
+    const liveContent = (
+      <View style={styles.liveContent}>
+        <View style={styles.visualizerHeader}>
+          <View>
+            <Text style={styles.visualizerTitle}>
+              Your Performance
+            </Text>
+
+            <Text style={styles.visualizerSubtitle}>
+              Follow the reference pattern
+            </Text>
+          </View>
+
+          <View style={styles.micCircle}>
             <Ionicons
-              name="arrow-back"
+              name="mic"
               size={20}
               color={BROWN}
             />
-          </Pressable>
-          <Text
-            style={styles.topTitle}
-          >
-            Dynamic Range
+          </View>
+        </View>
+
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={styles.referenceDot} />
+            <Text style={styles.legendText}>Reference</Text>
+          </View>
+
+          <View style={styles.legendItem}>
+            <View style={styles.actualDot} />
+            <Text style={styles.legendText}>Your voice</Text>
+          </View>
+        </View>
+
+        <DynamicRangeVisualizer
+          liveHistory={liveHistory}
+        />
+
+        <View style={styles.visualizerLabels}>
+          <Text style={styles.visualizerLabel}>SOFT</Text>
+          <Text style={styles.visualizerLabel}>LOUD</Text>
+          <Text style={styles.visualizerLabel}>SOFT</Text>
+        </View>
+
+        <View style={styles.voiceRow}>
+          <View style={styles.voiceLeft}>
+            <Ionicons
+              name="mic-outline"
+              size={20}
+              color={BROWN}
+            />
+
+            <Text style={styles.voiceLabel}>
+              {liveFrame ? 'Voice signal' : 'Listening...'}
+            </Text>
+          </View>
+
+          <Text style={styles.voiceValue}>
+            {liveFrame &&
+            Number.isFinite(liveFrame.volume)
+              ? liveFrame.volume.toFixed(1)
+              : '--'}
+            <Text style={styles.voiceUnit}> dBFS</Text>
           </Text>
-          <View
-            style={
-              styles.liveStatus
-            }
-          >
-            <View
-              style={
-                styles.liveCircle
-              }
-            />
-            <Text
-              style={styles.liveText}
-            >
-              LIVE
+        </View>
+
+        <View style={styles.targetRow}>
+          <View>
+            <Text style={styles.targetLabel}>TARGET RANGE</Text>
+            <Text style={styles.targetValue}>
+              {targetMin}–{targetMax} dB
+            </Text>
+          </View>
+
+          <Text style={styles.pattern}>
+            Soft → Loud → Soft
+          </Text>
+        </View>
+
+        <View style={styles.sessionRow}>
+          <View style={styles.sessionPart}>
+            <Text style={styles.sessionLabel}>
+              REPETITION
+            </Text>
+
+            <Text style={styles.sessionValue}>
+              {rep} / {repetitions}
+            </Text>
+          </View>
+
+          <View style={styles.sessionDivider} />
+
+          <View style={styles.sessionPart}>
+            <Text style={styles.sessionLabel}>
+              ELAPSED
+            </Text>
+
+            <Text style={styles.sessionValue}>
+              {Math.floor(seconds / 60)}:
+              {String(seconds % 60).padStart(2, '0')}
             </Text>
           </View>
         </View>
-        <View
-          style={
-            styles.actualBody
-          }
+
+        <View style={styles.liveProgressTrack}>
+          <View
+            style={[
+              styles.liveProgressFill,
+              { width: `${progress}%` },
+            ]}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={styles.stopButton}
+          onPress={() => {
+            void stopIncompleteExercise(false);
+          }}
+          activeOpacity={0.85}
         >
-          {/* REFERENCE NOTE */}
-          <View
-            style={
-              styles.exerciseReference
-            }
-          >
-            <Ionicons
-              name="musical-note-outline"
-              size={14}
-              color={BROWN}
-            />
-            <Text
-              style={
-                styles.exerciseReferenceText
-              }
-            >
-              Sing {REFERENCE_NOTE.name} while following the
-              volume pattern
-            </Text>
-            <TouchableOpacity
-              style={
-                styles.exerciseReferenceButton
-              }
-              onPress={
-                playReferenceNote
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="play"
-                size={12}
-                color={BROWN}
-              />
-              <Text
-                style={
-                  styles.exerciseReferenceButtonText
-                }
-              >
-                Replay
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {/* CURRENT ACTION */}
-          <View
-            style={
-              styles.actionArea
-            }
-          >
-            <Text
-              style={
-                styles.actionTitle
-              }
-            >
-              {instruction.title}
-            </Text>
-            <Text
-              style={
-                styles.actionSubtitle
-              }
-            >
-              {instruction.subtitle}
-            </Text>
-            <View style={styles.phaseCountdown}>
-              <Ionicons
-                name="timer-outline"
-                size={13}
-                color={BROWN}
-              />
-              <Text style={styles.phaseCountdownText}>
-                NEXT CHANGE IN {String(secondsUntilChange).padStart(2, '0')}s
-              </Text>
-            </View>
-          </View>
-          {/* MAIN VISUALIZER */}
-          <View
-            style={
-              styles.mainVisualizerCard
-            }
-          >
-            <View
-              style={
-                styles.visualizerHeader
-              }
-            >
-              <View>
-                <Text
-                  style={
-                    styles.visualizerTitle
-                  }
-                >
-                  Your Performance
-                </Text>
-                <Text
-                  style={
-                    styles.visualizerSub
-                  }
-                >
-                  Follow the reference
-                </Text>
-              </View>
-              <View
-                style={
-                  styles.micCircle
-                }
-              >
-                <Ionicons
-                  name="mic"
-                  size={18}
-                  color={BROWN}
-                />
-              </View>
-            </View>
-            {/* LEGEND */}
-            <View
-              style={
-                styles.legend
-              }
-            >
-              <View
-                style={
-                  styles.legendItem
-                }
-              >
-                <View
-                  style={
-                    styles.referenceDot
-                  }
-                />
-                <Text
-                  style={
-                    styles.legendText
-                  }
-                >
-                  Reference
-                </Text>
-              </View>
-              <View
-                style={
-                  styles.legendItem
-                }
-              >
-                <View
-                  style={
-                    styles.actualDot
-                  }
-                />
-                <Text
-                  style={
-                    styles.legendText
-                  }
-                >
-                  Your voice
-                </Text>
-              </View>
-            </View>
-            <VolumeVisualizer
-              liveHistory={
-                liveHistory
-              }
-            />
-            <View
-              style={
-                styles.visualizerLabels
-              }
-            >
-              <Text
-                style={
-                  styles.visualizerLabel
-                }
-              >
-                SOFT
-              </Text>
-              <Text
-                style={
-                  styles.visualizerLabel
-                }
-              >
-                LOUD
-              </Text>
-              <Text
-                style={
-                  styles.visualizerLabel
-                }
-              >
-                SOFT
-              </Text>
-            </View>
-          </View>
-          {/* VOICE */}
-          <View
-            style={
-              styles.voiceRow
-            }
-          >
-            <View
-              style={
-                styles.voiceLeft
-              }
-            >
-              <View
-                style={
-                  styles.smallMic
-                }
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={18}
-                  color={BROWN}
-                />
-              </View>
-              <View>
-                <Text
-                  style={
-                    styles.voiceTitle
-                  }
-                >
-                  Your voice
-                </Text>
-                <Text
-                  style={
-                    styles.voiceSub
-                  }
-                >
-                  {liveFrame
-                    ? 'Voice detected'
-                    : 'Listening...'}
-                </Text>
-              </View>
-            </View>
-            <Text
-              style={
-                styles.voiceValue
-              }
-            >
-              {liveFrame
-                ? liveFrame.volume.toFixed(
-                    1,
-                  )
-                : '--'}
-              <Text
-                style={
-                  styles.voiceUnit
-                }
-              >
-                {' '}
-                dBFS
-              </Text>
-            </Text>
-          </View>
-          {/* TARGET */}
-          <View
-            style={
-              styles.targetRow
-            }
-          >
-            <View>
-              <Text
-                style={
-                  styles.targetRowLabel
-                }
-              >
-                TARGET
-              </Text>
-              <Text
-                style={
-                  styles.targetRowValue
-                }
-              >
-                {targetMin}–
-                {targetMax} dB
-              </Text>
-            </View>
-            <Text
-              style={
-                styles.pattern
-              }
-            >
-              Soft → Loud → Soft
-            </Text>
-          </View>
-          {/* SESSION */}
-          <View
-            style={
-              styles.sessionRow
-            }
-          >
-            <View
-              style={
-                styles.sessionPart
-              }
-            >
-              <Text
-                style={
-                  styles.sessionLabel
-                }
-              >
-                REPETITION
-              </Text>
-              <Text
-                style={
-                  styles.sessionValue
-                }
-              >
-                {rep} / {repetitions}
-              </Text>
-            </View>
-            <View
-              style={
-                styles.sessionDivider
-              }
-            />
-            <View
-              style={
-                styles.sessionPart
-              }
-            >
-              <Text
-                style={
-                  styles.sessionLabel
-                }
-              >
-                TIME
-              </Text>
-              <Text
-                style={
-                  styles.sessionValue
-                }
-              >
-                0:
-                {String(
-                  seconds,
-                ).padStart(2, '0')}
-              </Text>
-            </View>
-          </View>
-          {/* PROGRESS */}
-          <View
-            style={
-              styles.progressTrack
-            }
-          >
-            <View
-              style={[
-                styles.progressValue,
-                {
-                  width: `${progress * 100}%`,
-                },
-              ]}
-            />
-          </View>
-          {/* STOP */}
-          <TouchableOpacity
-            style={
-              styles.stopButton
-            }
-            onPress={async () => {
-              /*
-               * Manual stop must NEVER be saved.
-               */
-              shouldSaveResultRef.current =
-                false;
-              finishingRef.current =
-                false;
-              if (isRecording) {
-                await stopRecording();
-              }
-              setPhase(
-                'directions',
-              );
-              setSeconds(0);
-              setRep(1);
-              setLiveFrame(null);
-              setLiveHistory([]);
-            }}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="stop"
-              size={15}
-              color={BROWN}
-            />
-            <Text
-              style={
-                styles.stopText
-              }
-            >
-              Stop Exercise
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+          <Ionicons
+            name="stop"
+            size={16}
+            color={BROWN}
+          />
+
+          <Text style={styles.stopButtonText}>
+            Stop Exercise
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+
+    return (
+      <ExerciseListeningScreen
+        icon="volume-high-outline"
+        title="Dynamic Range"
+        currentRep={rep}
+        repetitions={repetitions}
+        elapsed={seconds}
+        targetDuration={totalSeconds}
+        promptTitle={instructionTitle}
+        prompt={`${instructionPrompt} Sing ${REFERENCE_NOTE.name} throughout the pattern.`}
+        liveContent={liveContent}
+        progress={progress}
+        onBack={() => {
+          void stopIncompleteExercise(true);
+        }}
+      />
     );
   }
-  /*
-   * ========================================================
-   * RESULTS
-   * ========================================================
-   */
+
+  /* =======================================================
+     RESULTS
+     ======================================================= */
+
   return (
-    <SafeAreaView
-      style={styles.screen}
+    <ExerciseResultsScreen
+      title={passed ? 'Exercise Passed' : 'Needs More Practice'}
+      subtitle={
+        passed
+          ? 'Great job! You controlled your vocal volume.'
+          : 'Keep practicing smooth and controlled volume changes.'
+      }
+      score={score}
+      resultIcon={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
+      scoreMessage={
+        passed
+          ? 'You met the passing requirements.'
+          : 'Try to follow the soft-to-loud-to-soft pattern more consistently.'
+      }
+      onRetry={tryAgain}
+      onExit={() => router.replace('/exercises/volume')}
     >
-      <View
-        style={styles.topBar}
-      >
-        <Pressable
-          style={styles.back}
-          onPress={() =>
-            router.back()
+      <View style={styles.resultsDetails}>
+        <ResultRow
+          label="Range Accuracy"
+          value={`${rangeAccuracy}%`}
+        />
+
+        <ResultRow
+          label="Ramp Consistency"
+          value={`${rampConsistency}%`}
+        />
+
+        <ResultRow
+          label="Target Range"
+          value={`${targetMin}–${targetMax} dB`}
+        />
+
+        <ResultRow
+          label="Difficulty"
+          value={
+            resolvedTier.charAt(0).toUpperCase() +
+            resolvedTier.slice(1)
           }
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={BROWN}
-          />
-        </Pressable>
-        <Text
-          style={styles.topTitle}
-        >
-          Results
-        </Text>
-        <View
-          style={styles.back}
         />
       </View>
-      <View
-        style={
-          styles.resultsBody
-        }
-      >
-        <View
-          style={[
-            styles.resultIcon,
-            passed
-              ? styles.resultIconPassed
-              : styles.resultIconNeedsPractice,
-          ]}
-        >
-          <Ionicons
-            name={
-              passed
-                ? 'checkmark-outline'
-                : 'refresh-outline'
-            }
-            size={30}
-            color={BROWN}
-          />
-        </View>
-        <Text
-          style={
-            styles.resultSmall
-          }
-        >
-          DYNAMIC RANGE
-        </Text>
-        <Text
-          style={
-            styles.resultTitle
-          }
-        >
-          {passed
-            ? 'Exercise Passed'
-            : 'Needs More Practice'}
-        </Text>
-        <Text
-          style={
-            styles.resultSub
-          }
-        >
-          {passed
-            ? 'Great job! You can move on to the next exercise.'
-            : 'Keep practicing to improve your volume control.'}
-        </Text>
-        <View
-          style={
-            styles.scoreCard
-          }
-        >
-          <Text
-            style={
-              styles.scoreLabel
-            }
-          >
-            OVERALL SCORE
-          </Text>
-          <Text
-            style={styles.score}
-          >
-            {score}%
-          </Text>
-          <View
-            style={
-              styles.scoreTrack
-            }
-          >
-            <View
-              style={[
-                styles.scoreFill,
-                {
-                  width: `${score}%`,
-                },
-              ]}
-            />
-          </View>
-        </View>
-        <View
-          style={
-            styles.resultDetails
-          }
-        >
-          <ResultItem
-            label="Range Accuracy"
-            value={`${rangeAccuracy}%`}
-          />
-          <ResultItem
-            label="Ramp Consistency"
-            value={`${rampConsistency}%`}
-          />
-          <ResultItem
-            label="Target Range"
-            value={`${targetMin}–${targetMax} dB`}
-          />
-        </View>
-        {passed ? (
-          <>
-            <TouchableOpacity
-              style={
-                styles.startButton
-              }
-              onPress={() =>
-                router.replace(
-                  '/exercises/volume',
-                )
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={WHITE}
-              />
-              <Text
-                style={
-                  styles.startButtonText
-                }
-              >
-                Next Exercise
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={
-                styles.secondaryButton
-              }
-              onPress={tryAgain}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="refresh"
-                size={16}
-                color={BROWN}
-              />
-              <Text
-                style={
-                  styles.secondaryButtonText
-                }
-              >
-                Try Again
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <TouchableOpacity
-              style={
-                styles.startButton
-              }
-              onPress={tryAgain}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="refresh"
-                size={17}
-                color={WHITE}
-              />
-              <Text
-                style={
-                  styles.startButtonText
-                }
-              >
-                Try Again
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={
-                styles.secondaryButton
-              }
-              onPress={() =>
-                router.replace(
-                  '/exercises/volume',
-                )
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="arrow-back"
-                size={16}
-                color={BROWN}
-              />
-              <Text
-                style={
-                  styles.secondaryButtonText
-                }
-              >
-                Back to Exercises
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </SafeAreaView>
+    </ExerciseResultsScreen>
   );
 }
-function ResultItem({
+
+/* =========================================================
+   RESULT ROW
+   ========================================================= */
+
+function ResultRow({
   label,
   value,
 }: {
@@ -1804,127 +911,72 @@ function ResultItem({
   value: string;
 }) {
   return (
-    <View
-      style={
-        styles.resultItem
-      }
-    >
-      <Text
-        style={
-          styles.resultItemLabel
-        }
-      >
-        {label}
-      </Text>
-      <Text
-        style={
-          styles.resultItemValue
-        }
-      >
-        {value}
-      </Text>
+    <View style={styles.resultRow}>
+      <Text style={styles.resultLabel}>{label}</Text>
+      <Text style={styles.resultValue}>{value}</Text>
     </View>
   );
 }
-/*
- * ========================================================
- * STYLES
- * ========================================================
- */
+
+/* =========================================================
+   SCREEN-SPECIFIC STYLES
+   ========================================================= */
+
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
+  referenceCard: {
     backgroundColor: WHITE,
-  },
-  topBar: {
-    height: 56,
-    paddingHorizontal: 17,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  back: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: LIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: BROWN,
-  },
-  liveStatus: {
-    height: 30,
-    paddingHorizontal: 9,
     borderRadius: 16,
-    backgroundColor: LIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  liveCircle: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: ACCENT,
-  },
-  liveText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    color: BROWN,
-  },
-  /*
-   * DIRECTIONS
-   */
-  directionsBody: {
-    flex: 1,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  exerciseIcon: {
-    width: 65,
-    height: 65,
-    borderRadius: 33,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 7,
-  },
-  componentText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: ACCENT,
-    marginTop: 10,
-  },
-  mainTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: BROWN,
-    marginTop: 2,
-  },
-  mainSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  previewCard: {
-    width: '100%',
-    backgroundColor: LIGHT,
-    borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
     padding: 14,
+    marginTop: 18,
+  },
+  referenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  referenceText: {
+    flex: 1,
+  },
+  referenceLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    color: MUTED,
+    letterSpacing: 0.8,
+  },
+  referenceNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    marginTop: 2,
+  },
+  referenceButton: {
+    height: 42,
+    borderRadius: 22,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginTop: 12,
+  },
+  referenceButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 13,
+    color: WHITE,
+  },
+  previewCard: {
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 14,
+    marginTop: 12,
   },
   previewTitle: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
+    fontSize: 13,
     color: BROWN,
   },
   previewVisualizer: {
@@ -1932,7 +984,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    marginTop: 7,
+    marginTop: 8,
     overflow: 'hidden',
   },
   previewBar: {
@@ -1944,280 +996,74 @@ const styles = StyleSheet.create({
   previewLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 3,
+    marginTop: 4,
   },
   previewLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: MUTED,
-  },
-  referenceNoteCard: {
-    width: '100%',
-    backgroundColor: WHITE,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 12,
-    marginTop: 10,
-  },
-  referenceNoteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  referenceNoteIcon: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 9,
-  },
-  referenceNoteText: {
-    flex: 1,
-  },
-  referenceNoteLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 7,
-    letterSpacing: 1,
-    color: ACCENT,
-  },
-  referenceNoteValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-    marginTop: 1,
-  },
-  referenceNoteDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    lineHeight: 15,
-    color: MUTED,
-    marginTop: 8,
-  },
-  referenceNoteButton: {
-    height: 38,
-    borderRadius: 20,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 9,
-  },
-  referenceNoteButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: WHITE,
-  },
-  instructions: {
-    width: '100%',
-    marginTop: 12,
-    paddingHorizontal: 2,
-  },
-  sectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
-    marginBottom: 7,
-  },
-  instructionLine: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: BROWN,
-    lineHeight: 20,
-  },
-  bold: {
-    fontFamily: 'FredokaBold',
-  },
-  targetSimple: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 15,
-    padding: 11,
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  targetSimpleLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    letterSpacing: 1,
-    color: ACCENT,
-  },
-  targetSimpleValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: BROWN,
-    marginLeft: 7,
-  },
-  targetSimpleSub: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: MUTED,
-    marginLeft: 'auto',
-  },
-  startButton: {
-    width: '100%',
-    height: 52,
-    borderRadius: 27,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 12,
-  },
-  startButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: WHITE,
-  },
-  /*
-   * ACTUAL EXERCISE
-   */
-  actualBody: {
-    flex: 1,
-    paddingHorizontal: 15,
-    paddingTop: 2,
-    paddingBottom: 13,
-  },
-  exerciseReference: {
-    minHeight: 38,
-    borderRadius: 13,
-    backgroundColor: LIGHT,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  exerciseReferenceText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: BROWN,
-    marginLeft: 6,
-  },
-  exerciseReferenceButton: {
-    height: 27,
-    paddingHorizontal: 9,
-    borderRadius: 14,
-    backgroundColor: PINK,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  exerciseReferenceButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    color: BROWN,
-  },
-  actionArea: {
-    alignItems: 'center',
-    paddingVertical: 5,
-  },
-  actionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: BROWN,
-  },
-  actionSubtitle: {
-    fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
-    marginTop: 1,
   },
-  phaseCountdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    backgroundColor: PINK,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginTop: 6,
-  },
-  phaseCountdownText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: BROWN,
-    letterSpacing: 0.3,
-  },
-  /*
-   * MAIN VISUALIZER
-   */
-  mainVisualizerCard: {
+  liveContent: {
     width: '100%',
-    flex: 1,
-    minHeight: 275,
-    maxHeight: 315,
-    backgroundColor: WHITE,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
-    marginTop: 8,
   },
   visualizerHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   visualizerTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 16,
+    fontSize: 17,
     color: BROWN,
   },
-  visualizerSub: {
+  visualizerSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 9,
+    fontSize: 11,
     color: MUTED,
-    marginTop: 2,
+    marginTop: 3,
   },
   micCircle: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
   legend: {
     flexDirection: 'row',
-    gap: 14,
-    marginTop: 7,
+    gap: 16,
+    marginTop: 12,
+    marginBottom: 8,
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   referenceDot: {
-    width: 16,
-    height: 3,
+    width: 15,
+    height: 4,
     borderRadius: 2,
     backgroundColor: '#EAA5B6',
   },
   actualDot: {
-    width: 16,
-    height: 3,
+    width: 15,
+    height: 4,
     borderRadius: 2,
     backgroundColor: BROWN,
   },
   legendText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
+    fontSize: 10,
     color: MUTED,
   },
   visualizer: {
-    flex: 1,
-    marginTop: 8,
+    height: 155,
     borderRadius: 15,
     backgroundColor: '#FFFAFB',
     borderWidth: 1,
-    borderColor: '#F4E5E9',
+    borderColor: BORDER,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center',
@@ -2228,16 +1074,15 @@ const styles = StyleSheet.create({
     right: 0,
     top: '19%',
     height: '27%',
-    backgroundColor:
-      'rgba(252, 214, 221, 0.32)',
+    backgroundColor: 'rgba(252, 214, 221, 0.32)',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#F3D3DA',
   },
   referenceBars: {
     position: 'absolute',
-    left: 10,
-    right: 10,
+    left: 8,
+    right: 8,
     top: 0,
     bottom: 0,
     flexDirection: 'row',
@@ -2252,8 +1097,8 @@ const styles = StyleSheet.create({
   },
   actualBars: {
     position: 'absolute',
-    left: 10,
-    right: 10,
+    left: 8,
+    right: 8,
     top: 0,
     bottom: 0,
     flexDirection: 'row',
@@ -2279,13 +1124,13 @@ const styles = StyleSheet.create({
     right: 7,
     top: '18%',
     backgroundColor: WHITE,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   targetMarkerText: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 6,
+    fontSize: 8,
     color: ACCENT,
   },
   visualizerLabels: {
@@ -2295,16 +1140,13 @@ const styles = StyleSheet.create({
   },
   visualizerLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
+    fontSize: 9,
     color: MUTED,
   },
-  /*
-   * VOICE
-   */
   voiceRow: {
-    height: 52,
-    marginTop: 8,
-    borderRadius: 16,
+    minHeight: 46,
+    marginTop: 12,
+    borderRadius: 13,
     backgroundColor: LIGHT,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -2314,26 +1156,12 @@ const styles = StyleSheet.create({
   voiceLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
-  smallMic: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  voiceTitle: {
+  voiceLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+    fontSize: 12,
     color: BROWN,
-  },
-  voiceSub: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: MUTED,
-    marginTop: 1,
   },
   voiceValue: {
     fontFamily: 'FredokaBold',
@@ -2342,46 +1170,40 @@ const styles = StyleSheet.create({
   },
   voiceUnit: {
     fontFamily: 'FredokaRegular',
-    fontSize: 7,
+    fontSize: 9,
     color: MUTED,
   },
-  /*
-   * TARGET
-   */
   targetRow: {
-    height: 47,
-    marginTop: 7,
-    paddingHorizontal: 13,
-    borderRadius: 15,
+    minHeight: 48,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    borderRadius: 13,
     backgroundColor: PINK,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  targetRowLabel: {
+  targetLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 7,
-    letterSpacing: 1,
+    fontSize: 9,
+    letterSpacing: 0.5,
     color: ACCENT,
   },
-  targetRowValue: {
+  targetValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 14,
     color: BROWN,
-    marginTop: 1,
+    marginTop: 2,
   },
   pattern: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
+    fontSize: 10,
     color: MUTED,
   },
-  /*
-   * SESSION
-   */
   sessionRow: {
-    height: 51,
-    marginTop: 7,
-    borderRadius: 15,
+    minHeight: 48,
+    marginTop: 8,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: BORDER,
     flexDirection: 'row',
@@ -2393,12 +1215,12 @@ const styles = StyleSheet.create({
   },
   sessionLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 7,
+    fontSize: 9,
     color: MUTED,
   },
   sessionValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 14,
     color: BROWN,
     marginTop: 2,
   },
@@ -2407,150 +1229,56 @@ const styles = StyleSheet.create({
     height: 30,
     backgroundColor: BORDER,
   },
-  progressTrack: {
-    height: 5,
-    marginTop: 7,
+  liveProgressTrack: {
+    height: 6,
+    marginTop: 10,
     backgroundColor: '#F3E4E8',
     borderRadius: 3,
     overflow: 'hidden',
   },
-  progressValue: {
+  liveProgressFill: {
     height: '100%',
     backgroundColor: ACCENT,
     borderRadius: 3,
   },
   stopButton: {
-    height: 45,
-    marginTop: 8,
-    borderRadius: 23,
+    height: 44,
+    marginTop: 12,
+    borderRadius: 22,
     backgroundColor: PINK,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 7,
   },
-  stopText: {
+  stopButtonText: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+    fontSize: 12,
     color: BROWN,
   },
-  /*
-   * RESULTS
-   */
-  resultsBody: {
-    flex: 1,
-    paddingHorizontal: 21,
-    alignItems: 'center',
-  },
-  resultIcon: {
-    width: 65,
-    height: 65,
-    borderRadius: 33,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 15,
-  },
-  resultIconPassed: {
-    backgroundColor: '#FCD6DD',
-  },
-  resultIconNeedsPractice: {
-    backgroundColor: '#FFF0F3',
-  },
-  resultSmall: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: ACCENT,
-    marginTop: 10,
-  },
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    marginTop: 2,
-  },
-  resultSub: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-    marginTop: 3,
-  },
-  scoreCard: {
-    width: '100%',
-    backgroundColor: LIGHT,
-    borderRadius: 19,
+  resultsDetails: {
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 18,
-    alignItems: 'center',
-    marginTop: 18,
+    paddingHorizontal: 14,
+    marginTop: 4,
   },
-  scoreLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    letterSpacing: 1,
-    color: MUTED,
-  },
-  score: {
-    fontFamily: 'FredokaBold',
-    fontSize: 43,
-    color: BROWN,
-    marginTop: 1,
-  },
-  scoreTrack: {
-    width: '100%',
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F1D6DC',
-    overflow: 'hidden',
-    marginTop: 7,
-  },
-  scoreFill: {
-    height: '100%',
-    backgroundColor: BROWN,
-    borderRadius: 3,
-  },
-  resultDetails: {
-    width: '100%',
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 15,
-    marginTop: 10,
-  },
-  resultItem: {
-    height: 42,
+  resultRow: {
+    minHeight: 43,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#F5E9EC',
   },
-  resultItemLabel: {
+  resultLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
+    fontSize: 12,
     color: MUTED,
   },
-  resultItemValue: {
+  resultValue: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: BROWN,
-  },
-  secondaryButton: {
-    width: '100%',
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: PINK,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+    fontSize: 12,
     color: BROWN,
   },
 });

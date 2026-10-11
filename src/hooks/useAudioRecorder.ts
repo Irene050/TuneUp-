@@ -421,13 +421,13 @@ export function useAudioRecorder(
             when,
           }) => {
             console.log("🎧 ACTUAL AUDIO BUFFER:", {
-  requestedSampleRate: DEFAULT_SAMPLE_RATE,
-  actualBufferSampleRate: buffer.sampleRate,
-  bufferLength: buffer.length,
-  bufferDuration: buffer.duration,
-  channelCount: buffer.numberOfChannels,
-  numFrames,
-});
+          requestedSampleRate: DEFAULT_SAMPLE_RATE,
+          actualBufferSampleRate: buffer.sampleRate,
+          bufferLength: buffer.length,
+          bufferDuration: buffer.duration,
+          channelCount: buffer.numberOfChannels,
+          numFrames,
+        });
             try {
               // ==================================================
               // GET CHANNEL DATA
