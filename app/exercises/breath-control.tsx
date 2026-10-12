@@ -1,12 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import BreathControlExercisesScreen from '../../src/screens/exercises/BreathControl/BreathControlExercisesScreen';
 import BreathControlFreeModeScreen from '../../src/screens/exercises/BreathControl/BreathControlFreeModeScreen';
 import ControlledBreathReleaseScreen from '../../src/screens/exercises/BreathControl/ControlledBreathReleaseScreen';
 import DiaphragmaticBreathingScreen from '../../src/screens/exercises/BreathControl/DiaphragmaticBreathingScreen';
 import SteadyAirflowMaintenanceScreen from '../../src/screens/exercises/BreathControl/SteadyAirflowMaintenanceScreen';
 import SustainedExhaleScreen from '../../src/screens/exercises/BreathControl/SustainedExhaleScreen';
 import SustainedSSSSScreen from '../../src/screens/exercises/BreathControl/SustainedSSSSScreen';
+import ExerciseListScreen from '../../src/screens/exercises/ExerciseListScreen';
 
 export default function BreathControlRoute() {
   const { mode, templateId } = useLocalSearchParams<{
@@ -30,6 +30,6 @@ export default function BreathControlRoute() {
     case 'controlledBreathRelease':
       return <ControlledBreathReleaseScreen />;
     default:
-      return <BreathControlExercisesScreen />;
+      return <ExerciseListScreen component="breath-control" />;
   }
 }

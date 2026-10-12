@@ -1,7 +1,12 @@
 
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Text,
+  View,
+} from 'react-native';
 
 import {
   CONTROLLED_BREATH_RELEASE_PARAMS,
@@ -825,6 +830,40 @@ export default function ControlledBreathReleaseScreen({
     returnToInstructions();
   };
 
+  
+  // =====================================================
+  // ADS PARAMETER LOADING SCREEN
+  // =====================================================
+
+  if (!paramsReady || !tier) {
+    return (
+      <View style={styles.centerScreen}>
+        <View style={styles.largeIconCircle}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.processingTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.processingSubtitle}>
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
   // =====================================================
   // INSTRUCTIONS
   // =====================================================
@@ -1195,6 +1234,42 @@ function Metric({
 // =====================================================
 
 const styles = {
+    centerScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 30,
+  },
+
+  largeIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 22,
+  },
+
+  processingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center' as const,
+  },
+
+  processingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center' as const,
+    marginTop: 6,
+  },
+
+  spinner: {
+    marginTop: 28,
+  },
   pulseGuideCard: {
     backgroundColor: WHITE,
     borderRadius: 18,

@@ -1,9 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
 
+import ExerciseListScreen from '../../src/screens/exercises/ExerciseListScreen';
 import FrequencyZoneStabilityScreen from '../../src/screens/exercises/Tone/FrequencyZoneStabilityScreen';
 import SteadyToneHoldingScreen from '../../src/screens/exercises/Tone/SteadyToneHoldingScreen';
 import ToneConsistencyExerciseScreen from '../../src/screens/exercises/Tone/ToneConsistencyExerciseScreen';
-import ToneExercisesScreen from '../../src/screens/exercises/Tone/ToneExercisesScreen';
 import VowelConsistencyExerciseScreen from '../../src/screens/exercises/Tone/VowelConsistencyExerciseScreen';
 import WaveformSmoothnessDrillScreen from '../../src/screens/exercises/Tone/WaveformSmoothnessDrillScreen';
 
@@ -24,6 +24,6 @@ export default function ToneRoute() {
     case 'steadyToneHolding':
       return <SteadyToneHoldingScreen />;
     default:
-      return <ToneExercisesScreen />;;
+      return <ExerciseListScreen component="tone" />;
   }
 }

@@ -1,11 +1,11 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import AgilityExercisesScreen from '../../src/screens/exercises/Agility/AgilityExercisesScreen';
 import ArpeggioSpeedDrillScreen from '../../src/screens/exercises/Agility/ArpeggioSpeedDrillScreen';
 import QuickIntervalJumpScreen from '../../src/screens/exercises/Agility/QuickIntervalJumpScreen';
 import RapidNoteTransitionExerciseScreen from '../../src/screens/exercises/Agility/RapidNoteTransitionExerciseScreen';
 import RapidScaleTrillScreen from '../../src/screens/exercises/Agility/RapidScaleTrillScreen';
 import VocalRunAccuracyTaskScreen from '../../src/screens/exercises/Agility/VocalRunAccuracyTaskScreen';
+import ExerciseListScreen from '../../src/screens/exercises/ExerciseListScreen';
 
 export default function AgilityRoute() {
   const { templateId } = useLocalSearchParams<{
@@ -24,6 +24,6 @@ export default function AgilityRoute() {
     case 'vocalRunAccuracy':
       return <VocalRunAccuracyTaskScreen/>
     default:
-      return <AgilityExercisesScreen />;;
+      return <ExerciseListScreen component="agility" />;
   }
 }

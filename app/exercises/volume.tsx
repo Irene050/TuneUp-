@@ -5,8 +5,8 @@ import ControlledDecrescendoDrill from '@/screens/exercises/Volume/ControlledDec
 import DynamicRangeExercise from '@/screens/exercises/Volume/DynamicRangeExerciseScreen';
 import VolumeBandTargeting from '@/screens/exercises/Volume/VolumeBandTargetingScreen';
 import VolumeControlStabilityScreen from '@/screens/exercises/Volume/VolumeControlStabilityScreen';
-import VolumeExercisesScreen from '@/screens/exercises/Volume/VolumeExercisesScreen';
 import VolumeFreeModeScreen from '@/screens/exercises/Volume/VolumeFreeModeScreen';
+import ExerciseListScreen from '../../src/screens/exercises/ExerciseListScreen';
 
 export default function VolumeRoute() {
   const { mode, templateId } = useLocalSearchParams<{
@@ -30,6 +30,6 @@ export default function VolumeRoute() {
     case 'volume-control-stability':
       return <VolumeControlStabilityScreen />;
     default:
-      return <VolumeExercisesScreen />;
+      return <ExerciseListScreen component="volume" />;
   }
 }
