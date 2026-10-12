@@ -2640,30 +2640,93 @@ export function generateRapidNoteTransitionParams({
 // Continuous ADS adjusts:
 // - note duration
 //
+// The reference frequencies are transposed into the user's
+// assessed vocal range when a valid range is supplied.
+//
 // Higher scores:
 // - decrease note duration
 //
 // Lower scores:
 // - increase note duration
 //
-// The following parameters remain fixed at their
-// tier-defined values:
-// - label
-// - frequencies
-// - speedLabel
-//
 // The adaptive note duration is allowed to move
 // within ±20% of the current tier's default value.
 // ============================================================
 
+type RapidScaleTrillVocalRange = {
+  lowHz: number;
+  highHz: number;
+};
+
+function rapidScaleTrillHzToMidi(frequencyHz: number): number {
+  return 69 + 12 * Math.log2(frequencyHz / 440);
+}
+
+function rapidScaleTrillMidiToHz(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function generateRapidScaleTrillFrequencies(
+  baseFrequencies: readonly number[],
+  vocalRange?: RapidScaleTrillVocalRange | null,
+): number[] {
+  if (
+    !vocalRange ||
+    !Number.isFinite(vocalRange.lowHz) ||
+    !Number.isFinite(vocalRange.highHz) ||
+    vocalRange.lowHz <= 0 ||
+    vocalRange.highHz <= vocalRange.lowHz ||
+    baseFrequencies.length === 0 ||
+    baseFrequencies.some(
+      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
+    )
+  ) {
+    return [...baseFrequencies];
+  }
+
+  const baseMidis = baseFrequencies.map((frequency) =>
+    Math.round(rapidScaleTrillHzToMidi(frequency)),
+  );
+  const baseMinMidi = Math.min(...baseMidis);
+  const baseMaxMidi = Math.max(...baseMidis);
+
+  const rangeMinMidi = Math.ceil(
+    rapidScaleTrillHzToMidi(vocalRange.lowHz),
+  );
+  const rangeMaxMidi = Math.floor(
+    rapidScaleTrillHzToMidi(vocalRange.highHz),
+  );
+
+  // Preserve the configured scale intervals by transposing the
+  // complete sequence rather than changing individual notes.
+  const lowestAllowedShift = rangeMinMidi - baseMinMidi;
+  const highestAllowedShift = rangeMaxMidi - baseMaxMidi;
+
+  if (lowestAllowedShift > highestAllowedShift) {
+    // If the assessed range cannot fit the entire scale pattern,
+    // keep the configured pattern rather than distort its intervals.
+    return [...baseFrequencies];
+  }
+
+  const shiftRange = highestAllowedShift - lowestAllowedShift + 1;
+  const semitoneShift =
+    lowestAllowedShift + Math.floor(Math.random() * shiftRange);
+
+  return baseMidis.map((midi) =>
+    rapidScaleTrillMidiToHz(midi + semitoneShift),
+  );
+}
+
 export interface GenerateRapidScaleTrillParamsInput {
   tier: Tier;
   recentScores: number[];
+  vocalRange?: RapidScaleTrillVocalRange | null;
 }
 
 export function generateRapidScaleTrillParams({
   tier,
   recentScores,
+  vocalRange,
 }: GenerateRapidScaleTrillParamsInput) {
   const baseParams =
     RAPID_SCALE_TRILL_PARAMS[tier];
@@ -2718,14 +2781,16 @@ export function generateRapidScaleTrillParams({
         generatedNoteDurationSec.toFixed(2),
       ),
 
-    // Retained at the tier-defined values because
-    // these define the musical material and displayed
-    // difficulty of the exercise.
     label:
       baseParams.label,
 
+    // These retain the configured scale pattern, transposed
+    // to fit the user's assessed vocal range when available.
     frequencies:
-      baseParams.frequencies,
+      generateRapidScaleTrillFrequencies(
+        baseParams.frequencies,
+        vocalRange,
+      ),
 
     speedLabel:
       baseParams.speedLabel,
@@ -2888,25 +2953,140 @@ export function generateArpeggioSpeedDrillParams({
 // - increase note duration
 // - increase gap duration
 //
-// The following parameters remain fixed at their
-// tier-defined values:
-// - label
-// - frequencies
-// - speedLabel
-// - accuracyThreshold
+// Label, speed label, and accuracy threshold remain tier-defined.
+// Absolute reference pitches are generated from the latest assessed
+// vocal range when it is available; the tier's interval contour is kept.
 //
 // The adaptive timing parameters use the same
 // ±20% range applied by the other exercise generators.
 // ============================================================
 
+function quickIntervalFrequencyToMidi(frequencyHz: number): number {
+  return 69 + 12 * Math.log2(frequencyHz / 440);
+}
+
+function quickIntervalMidiToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function sequencesMatch(
+  first: readonly number[],
+  second: readonly number[],
+): boolean {
+  return (
+    first.length === second.length &&
+    first.every((note, index) => note === second[index])
+  );
+}
+
+/**
+ * Reuses the tier's interval contour but generates absolute pitches
+ * inside the vocal range from the user's latest assessment. When the
+ * range is wide enough, exact semitone intervals are preserved; if the
+ * range is narrower, the contour is proportionally fitted to that range.
+ */
+function generateQuickIntervalJumpFrequencies(
+  baseFrequencies: readonly number[],
+  vocalRange?: { lowHz: number; highHz: number } | null,
+): number[] {
+  if (
+    baseFrequencies.length < 2 ||
+    baseFrequencies.some(
+      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
+    )
+  ) {
+    return [...baseFrequencies];
+  }
+
+  const hasValidVocalRange =
+    vocalRange !== undefined &&
+    vocalRange !== null &&
+    Number.isFinite(vocalRange.lowHz) &&
+    Number.isFinite(vocalRange.highHz) &&
+    vocalRange.lowHz > 0 &&
+    vocalRange.highHz > vocalRange.lowHz;
+
+  // Keep the configured sequence only if there is no usable assessment range.
+  if (!hasValidVocalRange) {
+    return [...baseFrequencies];
+  }
+
+  const lowMidi = Math.ceil(
+    quickIntervalFrequencyToMidi(vocalRange.lowHz),
+  );
+  const highMidi = Math.floor(
+    quickIntervalFrequencyToMidi(vocalRange.highHz),
+  );
+
+  if (highMidi < lowMidi) {
+    // A valid but very narrow measured range may not contain a full
+    // semitone. Use the closest MIDI pitch to its center for every note.
+    const centerMidi = Math.round(
+      quickIntervalFrequencyToMidi(
+        Math.sqrt(vocalRange.lowHz * vocalRange.highHz),
+      ),
+    );
+    const centerHz = Number(
+      quickIntervalMidiToFrequency(centerMidi).toFixed(3),
+    );
+    return baseFrequencies.map(() => centerHz);
+  }
+
+  const baseMidis = baseFrequencies.map((frequency) =>
+    Math.round(quickIntervalFrequencyToMidi(frequency)),
+  );
+  const baseMinMidi = Math.min(...baseMidis);
+  const baseMaxMidi = Math.max(...baseMidis);
+  const baseSpan = Math.max(1, baseMaxMidi - baseMinMidi);
+  const availableSpan = highMidi - lowMidi;
+  const targetSpan = Math.min(baseSpan, availableSpan);
+
+  // Preserve the tier's interval pattern where possible. For a narrower
+  // assessed range, fit that pattern into the available semitones.
+  const offsets = baseMidis.map((midi) =>
+    Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
+  );
+  const actualSpan = Math.max(...offsets) - Math.min(...offsets);
+  const minOffset = Math.min(...offsets);
+  const maxOffset = Math.max(...offsets);
+
+  const candidateSequences: number[][] = [];
+  for (
+    let startMidi = lowMidi - minOffset;
+    startMidi + maxOffset <= highMidi;
+    startMidi += 1
+  ) {
+    candidateSequences.push(offsets.map((offset) => startMidi + offset));
+  }
+
+  if (candidateSequences.length === 0) {
+    return [...baseFrequencies];
+  }
+
+  // Prefer a sequence that does not simply reproduce the original absolute
+  // pitches, so the reference notes are not fixed to one register.
+  const differentFromBase = candidateSequences.filter(
+    (sequence) => !sequencesMatch(sequence, baseMidis),
+  );
+  const candidates =
+    differentFromBase.length > 0 ? differentFromBase : candidateSequences;
+  const selected = candidates[Math.floor(Math.random() * candidates.length)];
+
+  return selected.map((midi) =>
+    Number(quickIntervalMidiToFrequency(midi).toFixed(3)),
+  );
+}
+
 export interface GenerateQuickIntervalJumpParamsInput {
   tier: Tier;
   recentScores: number[];
+  vocalRange?: { lowHz: number; highHz: number } | null;
 }
 
 export function generateQuickIntervalJumpParams({
   tier,
   recentScores,
+  vocalRange,
 }: GenerateQuickIntervalJumpParamsInput) {
   const baseParams =
     QUICK_INTERVAL_JUMP_PARAMS[tier];
@@ -2981,6 +3161,11 @@ export function generateQuickIntervalJumpParams({
       adjustedGap.max
     ) / 2;
 
+  const frequencies = generateQuickIntervalJumpFrequencies(
+    baseParams.frequencies,
+    vocalRange,
+  );
+
   return {
     ...baseParams,
 
@@ -3000,8 +3185,7 @@ export function generateQuickIntervalJumpParams({
     label:
       baseParams.label,
 
-    frequencies:
-      baseParams.frequencies,
+    frequencies,
 
     speedLabel:
       baseParams.speedLabel,

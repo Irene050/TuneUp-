@@ -71,20 +71,31 @@ export function measureRapidScaleTrill(
   samples: Float32Array,
   sampleRate: number,
   targetFrequencies: number[],
+  repetitions = 1,
 ): RapidScaleTrillMeasurement {
   const durationMs =
     sampleRate > 0
       ? (samples.length / sampleRate) * 1000
       : 0;
 
-  const targetNotes = targetFrequencies
-    .filter(
-      (frequency) =>
-        Number.isFinite(frequency) && frequency > 0,
-    )
-    .map((frequency) =>
-      Math.round(frequencyToMidi(frequency)),
-    );
+  const baseTargetNotes = targetFrequencies
+  .filter(
+    (frequency) =>
+      Number.isFinite(frequency) && frequency > 0,
+  )
+  .map((frequency) =>
+    Math.round(frequencyToMidi(frequency)),
+  );
+
+  const repetitionCount = Number.isFinite(repetitions)
+    ? Math.max(1, Math.floor(repetitions))
+    : 1;
+
+  const targetNotes: number[] = [];
+
+  for (let repetition = 0; repetition < repetitionCount; repetition++) {
+    targetNotes.push(...baseTargetNotes);
+  }
 
   if (
     samples.length < FRAME_SIZE ||

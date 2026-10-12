@@ -184,7 +184,8 @@ export const RAPID_NOTE_TRANSITION_PARAMS: Record<
  * Rapid Scale Trill
  *
  * Defines the repeating scale/trill pattern,
- * playback speed, and accuracy requirement.
+ * playback speed, repetitions, and accuracy
+ * requirement for each difficulty tier.
  */
 export const RAPID_SCALE_TRILL_PARAMS: Record<
   Tier,
@@ -194,6 +195,7 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
     speedLabel: string;
     accuracyThreshold: number;
     noteDurationSec: number;
+    repetitions: number;
   }
 > = {
   beginner: {
@@ -211,6 +213,7 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
     speedLabel: 'Slow',
     accuracyThreshold: 60,
     noteDurationSec: 0.32,
+    repetitions: 3,
   },
 
   intermediate: {
@@ -230,6 +233,7 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
     speedLabel: 'Moderate',
     accuracyThreshold: 70,
     noteDurationSec: 0.24,
+    repetitions: 4,
   },
 
   advanced: {
@@ -255,71 +259,6 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
     speedLabel: 'Fast',
     accuracyThreshold: 80,
     noteDurationSec: 0.18,
-  },
-};
-
-/**
- * Vocal Run Accuracy
- *
- * Defines the target vocal run sequence,
- * playback speed, and accuracy requirement.
- */
-export const RAPID_VOCAL_RUN_PARAMS: Record<
-  Tier,
-  {
-    label: string;
-    frequencies: number[];
-    speedLabel: string;
-    accuracyThreshold: number;
-    noteDurationSec: number;
-    repetitions: number;
-  }
-> = {
-  beginner: {
-    label: 'Beginner',
-    frequencies: [
-      261.63,
-      293.66,
-      329.63,
-      349.23,
-      392.0,
-    ],
-    speedLabel: 'Slow',
-    accuracyThreshold: 70,
-    noteDurationSec: 0.35,
-    repetitions: 3,
-  },
-
-  intermediate: {
-    label: 'Intermediate',
-    frequencies: [
-      293.66,
-      329.63,
-      369.99,
-      415.3,
-      466.16,
-      523.25,
-    ],
-    speedLabel: 'Moderate',
-    accuracyThreshold: 85,
-    noteDurationSec: 0.35,
-    repetitions: 4,
-  },
-
-  advanced: {
-    label: 'Advanced',
-    frequencies: [
-      392.0,
-      440.0,
-      493.88,
-      554.37,
-      622.25,
-      698.46,
-      783.99,
-    ],
-    speedLabel: 'Fast',
-    accuracyThreshold: 95,
-    noteDurationSec: 0.35,
     repetitions: 5,
   },
 };
