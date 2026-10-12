@@ -165,10 +165,10 @@ const noteAccuracy =
     ),
   );
 
-  const passed =
-    noteAccuracy >=
-      params.scaleAccuracyThreshold &&
-    measurement.voicedNotes > 0;
+const passed =
+  noteAccuracy >= params.scaleAccuracyThreshold &&
+  correctNotes / totalNotes >= 0.5 &&
+  measurement.voicedNotes / totalNotes >= 0.7;
 
   return {
     score,

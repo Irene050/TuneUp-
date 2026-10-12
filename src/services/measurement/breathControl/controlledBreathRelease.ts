@@ -19,6 +19,13 @@ export function measureControlledBreathRelease(
   targetIntervalSec: number,
   sampleRate: number,
 ): ControlledBreathReleaseMeasurement {
+
+  console.log('🔎 MEASUREMENT STARTED:', {
+  sampleCount: samples.length,
+  sampleRate,
+  durationSec: samples.length / sampleRate,
+});
+
   const rmsLevel = calcRMS(samples);
 
   const peaks = detectPulses(
@@ -26,6 +33,11 @@ export function measureControlledBreathRelease(
     rmsLevel,
     sampleRate,
   );
+
+  console.log('🔎 MEASUREMENT RESULT:', {
+  detectedPulses: peaks.length,
+  sampleCount: samples.length,
+});
 
   const intervalsSec: number[] = [];
 

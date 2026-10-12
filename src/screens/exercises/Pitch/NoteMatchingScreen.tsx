@@ -114,7 +114,6 @@ type LivePitchState = {
   pitch: number;
   note: string;
   clarity: number;
-  volume: number;
   stability: number;
 };
 
@@ -214,16 +213,6 @@ function formatCents(
   }${Math.round(cents)} cents`;
 }
 
-function formatVolume(
-  volume: number,
-): string {
-  if (!Number.isFinite(volume)) {
-    return '--';
-  }
-
-  return `${Math.round(volume)} dB`;
-}
-
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -269,7 +258,6 @@ export default function NoteMatchingScreen({
       pitch: 0,
       note: '--',
       clarity: 0,
-      volume: -100,
       stability: 0,
     });
 
@@ -534,7 +522,6 @@ const target = useMemo(
           pitch: number;
           note: string;
           clarity: number;
-          volume: number;
         }) => {
         if (
           !mountedRef.current
@@ -565,8 +552,6 @@ const target = useMemo(
               frame.note || '--',
             clarity:
               frame.clarity,
-            volume:
-              frame.volume,
             stability,
           });
 
@@ -578,7 +563,6 @@ const target = useMemo(
           pitch: 0,
           note: '--',
           clarity: frame.clarity,
-          volume: frame.volume,
         }));
       },
       [],
@@ -604,7 +588,6 @@ const target = useMemo(
         pitch: 0,
         note: '--',
         clarity: 0,
-        volume: -100,
         stability: 0,
       });
 
@@ -753,7 +736,6 @@ const target = useMemo(
                 pitch: 0,
                 note: '--',
                 clarity: 0,
-                volume: -100,
                 stability: 0,
               });
 
@@ -974,7 +956,6 @@ const target = useMemo(
         pitch: 0,
         note: '--',
         clarity: 0,
-        volume: -100,
         stability: 0,
       });
 
@@ -1125,7 +1106,6 @@ const target = useMemo(
         pitch: 0,
         note: '--',
         clarity: 0,
-        volume: -100,
         stability: 0,
       });
 
@@ -1567,13 +1547,6 @@ if (
                     )}%`
                   : '--'
               }
-            />
-
-            <MetricCard
-              label="VOLUME"
-              value={formatVolume(
-                livePitch.volume,
-              )}
             />
           </View>
 

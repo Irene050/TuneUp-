@@ -32,17 +32,8 @@ export function detectPulses(
     peak: number;
   }[] = [];
 
-  // Divide the recording into short windows.
-  for (
-    let start = 0;
-    start < samples.length;
-    start += windowSize
-  ) {
-    const end = Math.min(
-      start + windowSize,
-      samples.length
-    );
-
+  for (let start = 0; start < samples.length; start += windowSize) {
+    const end = Math.min(start + windowSize, samples.length);
     const window = samples.subarray(start, end);
     let peak = 0;
 
@@ -61,82 +52,129 @@ export function detectPulses(
     });
   }
 
-  if (windows.length < 2) {
-    return [];
-  }
+  if (windows.length < 2) return [];
 
-  // Estimate background from the quieter 20% of windows.
   const sortedRms = windows
     .map(window => window.rms)
     .sort((a, b) => a - b);
 
-  const quietIndex = Math.floor(
-    (sortedRms.length - 1) * 0.2
-  );
+  const noiseFloor =
+    sortedRms[Math.floor((sortedRms.length - 1) * 0.2)];
 
-  const noiseFloor = sortedRms[quietIndex];
   const maxRms = sortedRms[sortedRms.length - 1];
+
+  console.log('🫁 REP 3 DETECTOR DEBUG:', {
+  durationSec: samples.length / sampleRate,
+  windowCount: windows.length,
+  noiseFloor,
+  maxRms,
+  detectionRatio: noiseFloor > 0 ? maxRms / noiseFloor : null,
+});
 
   if (
     !Number.isFinite(maxRms) ||
-    maxRms <= 0
-  ) {
-    return [];
-  }
-
-  // Reject nearly uniform audio; it has no clear pulse contrast.
-  if (
-    noiseFloor > 0 &&
+    maxRms <= 0 ||
     maxRms <= noiseFloor * 1.25
   ) {
     return [];
   }
 
-  // Detect windows above the estimated background level.
-  const threshold =
-    noiseFloor + (maxRms - noiseFloor) * 0.35;
+  const signalRange = maxRms - noiseFloor;
 
-  const refractorySamples = Math.floor(
-    (100 / 1000) * sampleRate
-  );
+  const startThreshold =
+    noiseFloor + signalRange * 0.35;
+
+  const endThreshold =
+    noiseFloor + signalRange * 0.20;
+
+  const minPulseWindows = 3;
+  const minSeparationSamples = Math.floor(0.25 * sampleRate);
+
+    console.log('🫁 PULSE THRESHOLD DEBUG:', {
+  startThreshold,
+  endThreshold,
+  minPulseWindows: 3,
+  minSeparationSamples,
+});
 
   const peaks: Peak[] = [];
-  let inPeak = false;
-  let lastPeakEnd = -Infinity;
+
+  let active = false;
+  let startIndex = 0;
+  let activeWindows = 0;
+  let belowThresholdWindows = 0;
+  let strongestAmplitude = 0;
+  let lastAcceptedIndex = -Infinity;
+
+  const finishPulse = () => {
+    // Capture the current event before resetting detector state.
+    const pulseStart = startIndex;
+    const pulseAmplitude = strongestAmplitude;
+    const validPulse =
+      active && activeWindows >= minPulseWindows;
+
+    // Always reset, including when the event is too short.
+    active = false;
+    activeWindows = 0;
+    belowThresholdWindows = 0;
+    strongestAmplitude = 0;
+
+    if (!validPulse) return;
+
+    if (
+      pulseStart - lastAcceptedIndex <
+      minSeparationSamples
+    ) {
+      return;
+    }
+
+    peaks.push({
+      index: pulseStart,
+      amplitude: pulseAmplitude,
+      timestamp: pulseStart / sampleRate,
+    });
+
+    lastAcceptedIndex = pulseStart;
+  };
 
   for (const window of windows) {
-    const active = window.rms >= threshold;
-
     if (!active) {
-      if (inPeak) {
-        lastPeakEnd = window.index;
-      }
+      if (window.rms < startThreshold) continue;
 
-      inPeak = false;
+      active = true;
+      startIndex = window.index;
+      activeWindows = 1;
+      belowThresholdWindows = 0;
+      strongestAmplitude = window.peak;
       continue;
     }
 
-    if (
-      !inPeak &&
-      window.index >= lastPeakEnd + refractorySamples
-    ) {
-      inPeak = true;
+    if (window.rms >= endThreshold) {
+      activeWindows++;
+      belowThresholdWindows = 0;
 
-      peaks.push({
-        index: window.index,
-        amplitude: window.peak,
-        timestamp: window.index / sampleRate,
-      });
+      if (window.peak > strongestAmplitude) {
+        strongestAmplitude = window.peak;
+      }
+    } else {
+      belowThresholdWindows++;
+
+      if (belowThresholdWindows >= 3) {
+        finishPulse();
+      }
     }
   }
 
+  if (active) {
+    finishPulse();
+  }
+
   console.log("🫁 BREATH PULSE DETECTION:", {
-    sampleCount: samples.length,
     durationSec: samples.length / sampleRate,
-    windowCount: windows.length,
     noiseFloor,
     maxWindowRms: maxRms,
-    threshold,
+    startThreshold,
+    endThreshold,
     detectedPulseCount: peaks.length,
   });
 
@@ -167,7 +205,7 @@ export function calcPulseConsistency(
 
   return Math.max(
     0,
-    100 - relativeVar * 100
+    100 - relativeVar * 115
   );
 }
 

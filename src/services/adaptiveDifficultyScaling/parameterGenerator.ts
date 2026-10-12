@@ -548,14 +548,7 @@ export function generateScaleAccuracyParams({
         generatedMinClarity.toFixed(2),
       ),
 
-    noteCount:
-      Math.min(
-        8,
-        Math.max(
-          1,
-          generatedNoteCount,
-        ),
-      ),
+    noteCount: baseParams.noteCount,
 
     scaleAccuracyThreshold:
       Number(

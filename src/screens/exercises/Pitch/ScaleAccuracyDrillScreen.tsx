@@ -56,7 +56,6 @@ import {
   generateScaleAccuracyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
-
 import {
   calcLiveStability,
   calcPitchAccuracy,
@@ -68,9 +67,7 @@ import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 
-import {
-  auth,
-} from '@/services/firebase/config';
+import { auth } from '@/services/firebase/config';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -107,6 +104,11 @@ type Phase =
   | 'processing'
   | 'results';
 
+interface SavedRecording {
+  samples: Float32Array;
+  sampleRate: number;
+}
+
 // ============================================================
 // SCALE GENERATION
 // ============================================================
@@ -116,15 +118,14 @@ function generateScale(
   currentTier: Tier,
   vocalRange: VocalRange | null,
 ) {
+  const noteCount = Math.min(
+    Math.max(1, Math.round(params.noteCount)),
+    8,
+  );
+
   return getRandomScale(
     currentTier,
-    Math.min(
-      Math.max(
-        1,
-        Math.round(params.noteCount),
-      ),
-      8,
-    ),
+    noteCount,
     vocalRange,
   );
 }
@@ -134,17 +135,15 @@ function generateScale(
 // ============================================================
 
 function average(values: number[]): number {
-  const finiteValues = values.filter(Number.isFinite);
+  const validValues = values.filter(Number.isFinite);
 
-  if (finiteValues.length === 0) {
+  if (validValues.length === 0) {
     return 0;
   }
 
   return (
-    finiteValues.reduce(
-      (sum, value) => sum + value,
-      0,
-    ) / finiteValues.length
+    validValues.reduce((sum, value) => sum + value, 0) /
+    validValues.length
   );
 }
 
@@ -153,127 +152,85 @@ function aggregateScaleResults(
   targetFreqs: number[],
 ): ScaleAccuracyScoreResult {
   if (results.length === 0) {
+    return {
+      score: 0,
+      passed: false,
+      noteAccuracy: 0,
+      transitionSmoothness: 0,
+      correctNotes: 0,
+      totalNotes: targetFreqs.length,
+      detectedFreqs: targetFreqs.map(() => 0),
+      targetFreqs,
+      noteScores: targetFreqs.map(() => 0),
+      noteDeviations: targetFreqs.map(() => 100),
+      averageClarity: 0,
+      voicedNotes: 0,
+    };
+  }
+
   return {
-    score: 0,
-    passed: false,
-    noteAccuracy: 0,
-    transitionSmoothness: 0,
-    correctNotes: 0,
-    totalNotes: targetFreqs.length,
-    detectedFreqs: Array(targetFreqs.length).fill(0),
-    targetFreqs,
-    noteScores: Array(targetFreqs.length).fill(0),
-    noteDeviations: Array(targetFreqs.length,).fill(100),
-    averageClarity: 0,
-    voicedNotes: 0,
-  };
-}
-
-  const score = Math.round(
-    average(results.map((item) => item.score)),
-  );
-
-  const passed = results.every(
-    (item) => item.passed,
-  );
-
-  const correctNotes = results.reduce(
-    (sum, item) =>
-      sum + item.correctNotes,
-    0,
-  );
-
-  const totalNotes = results.reduce(
-    (sum, item) =>
-      sum + item.totalNotes,
-    0,
-  );
-
-  const noteAccuracy = average(
-    results.map(
-      (item) => item.noteAccuracy,
+    score: Math.round(
+      average(results.map(item => item.score)),
     ),
-  );
 
-  const transitionSmoothness = average(
-    results.map(
-      (item) =>
-        item.transitionSmoothness,
+    passed: results.every(item => item.passed),
+
+    noteAccuracy: average(
+      results.map(item => item.noteAccuracy),
     ),
-  );
 
-  const averageClarity = average(
-    results.map(
-      (item) => item.averageClarity,
+    transitionSmoothness: average(
+      results.map(item => item.transitionSmoothness),
     ),
-  );
 
-  const voicedNotes = results.reduce(
-    (sum, item) =>
-      sum + item.voicedNotes,
-    0,
-  );
+    correctNotes: results.reduce(
+      (sum, item) => sum + item.correctNotes,
+      0,
+    ),
 
-  const detectedFreqs = targetFreqs.map(
-    (_, index) =>
+    totalNotes: results.reduce(
+      (sum, item) => sum + item.totalNotes,
+      0,
+    ),
+
+    detectedFreqs: targetFreqs.map((_, index) =>
       average(
         results
-          .map(
-            (item) =>
-              item.detectedFreqs[index],
-          )
+          .map(item => item.detectedFreqs[index])
           .filter(
-            (
-              value,
-            ): value is number =>
-              Number.isFinite(value) &&
-              value > 0,
+            (value): value is number =>
+              Number.isFinite(value) && value > 0,
           ),
       ),
-  );
+    ),
 
-  const noteScores = targetFreqs.map(
-    (_, index) =>
+    targetFreqs,
+
+    noteScores: targetFreqs.map((_, index) =>
       average(
-        results.map(
-          (item) =>
-            item.noteScores[index] ?? 0,
-        ),
+        results.map(item => item.noteScores[index] ?? 0),
       ),
-  );
+    ),
 
-  const noteDeviations =
-    targetFreqs.map((_, index) => {
+    noteDeviations: targetFreqs.map((_, index) => {
       const values = results
-        .map(
-          (item) =>
-            item.noteDeviations[index],
-        )
+        .map(item => item.noteDeviations[index])
         .filter(
-          (
-            value,
-          ): value is number =>
+          (value): value is number =>
             Number.isFinite(value),
         );
 
-      return values.length > 0
-        ? average(values)
-        : 100;
-    });
+      return values.length > 0 ? average(values) : 100;
+    }),
 
-  return {
-    score,
-    passed,
-    noteAccuracy,
-    transitionSmoothness,
-    correctNotes,
-    totalNotes,
-    detectedFreqs,
-    targetFreqs,
-    noteScores,
-    noteDeviations,
-    averageClarity,
-    voicedNotes,
+    averageClarity: average(
+      results.map(item => item.averageClarity),
+    ),
+
+    voicedNotes: results.reduce(
+      (sum, item) => sum + item.voicedNotes,
+      0,
+    ),
   };
 }
 
@@ -288,65 +245,48 @@ export default function ScaleAccuracyDrillScreen({
   // ADAPTIVE PARAMETERS
   // ==========================================================
 
-  const [currentTier, setCurrentTier] =
-    useState<Tier>(
-      tier ?? 'beginner',
-    );
+  const [currentTier, setCurrentTier] = useState<Tier>(
+    tier ?? 'beginner',
+  );
 
-  const [params, setParams] =
-    useState<ScaleAccuracyParams>(
-      SCALE_ACCURACY_PARAMS[
-        tier ?? 'beginner'
-      ],
-    );
+  const [params, setParams] = useState<ScaleAccuracyParams>(
+    SCALE_ACCURACY_PARAMS[tier ?? 'beginner'],
+  );
 
-  const [
-    isLoadingAdaptiveParams,
-    setIsLoadingAdaptiveParams,
-  ] = useState(true);
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+    useState(true);
 
   // ==========================================================
   // STATE
   // ==========================================================
 
-  const [phase, setPhase] =
-    useState<Phase>('instructions');
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const [countdown, setCountdown] = useState(3);
+  const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
+  const [currentRep, setCurrentRep] = useState(1);
 
-  const [countdown, setCountdown] =
-    useState(3);
+  // Declare vocalRange before generating targetNotes.
+  const [vocalRange, setVocalRange] =
+    useState<VocalRange | null>(null);
 
-  const [
-    currentNoteIndex,
-    setCurrentNoteIndex,
-  ] = useState(-1);
+  const [targetNotes, setTargetNotes] = useState(() =>
+    generateScale(
+      SCALE_ACCURACY_PARAMS[tier ?? 'beginner'],
+      tier ?? 'beginner',
+      null,
+    ),
+  );
 
-  const [currentRep, setCurrentRep] =
-    useState(1);
-
-  const [targetNotes, setTargetNotes] =
-    useState(() =>
-      generateScale(
-        params,
-        currentTier,
-        vocalRange,
-      ),
-    );
+  const targetNotesRef = useRef(targetNotes);
 
   const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(
-      null,
-    );
+    useState<LiveAudioFrame | null>(null);
 
   const [liveFrequencies, setLiveFrequencies] =
     useState<number[]>([]);
 
   const [result, setResult] =
-    useState<ScaleAccuracyScoreResult | null>(
-      null,
-    );
-
-  const [vocalRange, setVocalRange] =
-    useState<VocalRange | null>(null);
+    useState<ScaleAccuracyScoreResult | null>(null);
 
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
@@ -355,46 +295,32 @@ export default function ScaleAccuracyDrillScreen({
   // REFS
   // ==========================================================
 
-  const mountedRef =
-    useRef(true);
+  const mountedRef = useRef(true);
 
   const countdownTimerRef =
-    useRef<
-      ReturnType<typeof setInterval> | null
-    >(null);
+    useRef<ReturnType<typeof setInterval> | null>(null);
 
   const recordingTimerRef =
-    useRef<
-      ReturnType<typeof setInterval> | null
-    >(null);
+    useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stopRequestedRef =
-    useRef(false);
+  // Allows the next repetition to start after the previous
+  // native recording has had time to finish stopping.
+  const transitionTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const processingRef =
-    useRef(false);
+  const recordingsRef = useRef<SavedRecording[]>([]);
 
-  const recordingRef =
-    useRef(false);
-
-  const pitchHistoryRef =
-    useRef<number[]>([]);
-
-  const recordingElapsedRef =
-    useRef(0);
+  const currentRepRef = useRef(1);
+  const recordingRef = useRef(false);
+  const startingRecordingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const pitchHistoryRef = useRef<number[]>([]);
+  const recordingElapsedRef = useRef(0);
 
   const stopRecordingRef =
-    useRef<
-      (() => Promise<void>) | null
-    >(null);
+    useRef<(() => Promise<void>) | null>(null);
 
-  const repResultsRef =
-    useRef<ScaleAccuracyScoreResult[]>(
-      [],
-    );
-
-  const currentRepRef =
-    useRef(1);
+  const beginRepCountdownRef = useRef<() => void>(() => {});
 
   // ==========================================================
   // LOAD ADAPTIVE PARAMETERS
@@ -403,147 +329,111 @@ export default function ScaleAccuracyDrillScreen({
   useEffect(() => {
     let cancelled = false;
 
-    const loadAdaptiveParams =
-      async () => {
-        setIsLoadingAdaptiveParams(
-          true,
-        );
+    async function loadAdaptiveParams() {
+      setIsLoadingAdaptiveParams(true);
 
-        try {
-          const user =
-            auth.currentUser;
+      try {
+        const user = auth.currentUser;
 
-          let resolvedTier: Tier =
-            tier ?? 'beginner';
+        let resolvedTier: Tier = tier ?? 'beginner';
 
-          if (!tier && user) {
-            const progress =
-              await fetchComponentProgress(
-                user.uid,
-                'pitch',
-              );
+        if (!tier && user) {
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'pitch',
+          );
 
-            resolvedTier =
-              progress?.currentTier ??
-              'beginner';
-          }
+          resolvedTier = progress?.currentTier ?? 'beginner';
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentTier(resolvedTier);
+
+        let recentScores: number[] = [];
+
+        if (user) {
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'pitch',
+          );
 
           if (cancelled) {
             return;
           }
 
-          setCurrentTier(
-            resolvedTier,
-          );
+          recentScores = records
+            .filter(
+              record =>
+                record.tier === resolvedTier &&
+                record.templateId === 'scaleAccuracyDrill',
+            )
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .slice(-5)
+            .map(record => record.scorePct);
+        }
 
-          let recentScores: number[] =
-            [];
-
-          if (user) {
-            const records =
-              await fetchExerciseRecords(
-                user.uid,
-                'pitch',
-              );
-
-            if (cancelled) {
-              return;
-            }
-
-            const currentTierRecords =
-              records
-                .filter(
-                  record =>
-                    record.tier ===
-                      resolvedTier &&
-                    record.templateId ===
-                      'scaleAccuracyDrill',
-                )
-                .sort(
-                  (a, b) =>
-                    a.timestamp -
-                    b.timestamp,
-                );
-
-            recentScores =
-              currentTierRecords
-                .slice(-5)
-                .map(
-                  record =>
-                    record.scorePct,
-                );
-          }
-
-          if (
-            recentScores.length === 0 &&
-            user
-          ) {
-            const assessment =
-              await getLatestAssessment();
-            
-            setVocalRange(
-              assessment?.vocalRange ?? null,
-            );
-            
-            if (cancelled) {
-              return;
-            }
-
-            const pitchScore =
-              assessment?.scores.find(
-                score =>
-                  score.componentId ===
-                  'pitch',
-              );
-
-            if (pitchScore) {
-              recentScores = [
-                pitchScore.scorePct,
-              ];
-            }
-          }
-
-          const generatedParams =
-            generateScaleAccuracyParams({
-              tier: resolvedTier,
-              recentScores,
-            });
+        // Use assessment as a fallback when no exercise history
+        // exists for this exercise and tier.
+        if (user && recentScores.length === 0) {
+          const assessment = await getLatestAssessment();
 
           if (cancelled) {
             return;
           }
 
-          setParams(
-            generatedParams,
-          );
-        } catch (error) {
-          console.error(
-            '❌ FAILED TO LOAD SCALE ACCURACY ADS PARAMETERS:',
-            error,
+          setVocalRange(assessment?.vocalRange ?? null);
+
+          const pitchScore = assessment?.scores.find(
+            score => score.componentId === 'pitch',
           );
 
-          if (!cancelled) {
-            const fallbackTier =
-              tier ?? 'beginner';
-
-            setCurrentTier(
-              fallbackTier,
-            );
-
-            setParams(
-              SCALE_ACCURACY_PARAMS[
-                fallbackTier
-              ],
-            );
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoadingAdaptiveParams(
-              false,
-            );
+          if (pitchScore) {
+            recentScores = [pitchScore.scorePct];
           }
         }
-      };
+
+        const generatedParams = generateScaleAccuracyParams({
+          tier: resolvedTier,
+          recentScores,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setParams(generatedParams);
+
+        // Generate the scale using the resolved parameters.
+        const newScale = generateScale(
+          generatedParams,
+          resolvedTier,
+          vocalRange,
+        );
+
+        targetNotesRef.current = newScale;
+        setTargetNotes(newScale);
+      } catch (error) {
+        console.error(
+          '❌ FAILED TO LOAD SCALE ACCURACY PARAMETERS:',
+          error,
+        );
+
+        if (!cancelled) {
+          const fallbackTier = tier ?? 'beginner';
+          const fallbackParams = SCALE_ACCURACY_PARAMS[fallbackTier];
+
+          setCurrentTier(fallbackTier);
+          setParams(fallbackParams);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
+      }
+    }
 
     loadAdaptiveParams();
 
@@ -552,789 +442,649 @@ export default function ScaleAccuracyDrillScreen({
     };
   }, [tier]);
 
-  // ============================================================
+  // ==========================================================
   // TIMER CLEANUP
-  // ============================================================
+  // ==========================================================
 
-  const clearTimers =
-    useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
+  const clearTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
 
-        countdownTimerRef.current =
-          null;
-      }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
 
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
+  }, []);
 
-        recordingTimerRef.current =
-          null;
-      }
-    }, []);
-
-  // ============================================================
+  // ==========================================================
   // GO BACK
-  // ============================================================
+  // ==========================================================
 
-  const goBack =
-    useCallback(() => {
-      clearTimers();
+  const goBack = useCallback(() => {
+    clearTimers();
 
-      stopRequestedRef.current =
-        true;
+    stopRequestedRef.current = true;
 
-      if (recordingRef.current) {
-        stopRecordingRef.current?.();
-      }
+    if (recordingRef.current) {
+      void stopRecordingRef.current?.();
+    }
 
-      disposeNotePlayer()
-        .catch(() => {});
+    void disposeNotePlayer().catch(() => {});
 
-      router.replace(
-        '/dashboard?tab=exercises',
-      );
-    }, [clearTimers]);
+    router.replace('/dashboard?tab=exercises');
+  }, [clearTimers]);
 
-  // ============================================================
+  // ==========================================================
   // CLEANUP
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
-      mountedRef.current =
-        false;
+      mountedRef.current = false;
 
       clearTimers();
 
       if (recordingRef.current) {
-        stopRecordingRef.current?.();
+        void stopRecordingRef.current?.();
       }
 
-      disposeNotePlayer()
-        .catch(() => {});
+      void disposeNotePlayer().catch(() => {});
     };
   }, [clearTimers]);
 
-  // ============================================================
-  // LIVE FRAME
-  // ============================================================
+  // ==========================================================
+  // LIVE AUDIO FRAME
+  // ==========================================================
 
-  const handleLiveFrame =
-    useCallback(
-      (frame: LiveAudioFrame) => {
-        if (
-          !mountedRef.current
-        ) {
-          return;
-        }
+  const handleLiveFrame = useCallback(
+    (frame: LiveAudioFrame) => {
+      if (!mountedRef.current) {
+        return;
+      }
 
-        setLiveFrame(frame);
+      setLiveFrame(frame);
 
-        if (
-          Number.isFinite(
-            frame.pitch,
-          ) &&
-          frame.pitch > 0
-        ) {
-          pitchHistoryRef.current = [
-            ...pitchHistoryRef.current,
-            frame.pitch,
-          ].slice(-30);
+      if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
+        pitchHistoryRef.current = [
+          ...pitchHistoryRef.current,
+          frame.pitch,
+        ].slice(-30);
 
-          setLiveFrequencies(
-            pitchHistoryRef.current,
-          );
-        }
-      },
-      [],
-    );
+        setLiveFrequencies(pitchHistoryRef.current);
+      }
+    },
+    [],
+  );
+
+  // ==========================================================
+  // AUDIO STOP / PROCESS ALL REPETITIONS
+  // ==========================================================
+
 
   // ============================================================
-  // AUDIO STOP / PROCESSING
+  // AUDIO STOP / PROCESS ALL REPETITIONS
   // ============================================================
 
-  const handleRecordingStop =
-    useCallback(
-      async (
-        samples: Float32Array,
-        sampleRate: number,
-      ) => {
-        if (
-          !mountedRef.current ||
-          processingRef.current
-        ) {
-          return;
+  const handleRecordingStop = useCallback(
+    async (samples: Float32Array, sampleRate: number) => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      recordingRef.current = false;
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      console.log(
+        `Scale rep ${currentRepRef.current} stopped. Samples: ${samples.length}`,
+      );
+
+      // Keep a copy because the recorder may reuse its buffer.
+      recordingsRef.current.push({
+        samples: new Float32Array(samples),
+        sampleRate,
+      });
+
+      const isLastRep =
+        currentRepRef.current >= params.repetitions;
+
+      // --------------------------------------------------------
+      // PREPARE THE NEXT REPETITION
+      // --------------------------------------------------------
+
+      if (!isLastRep) {
+        const nextRep = currentRepRef.current + 1;
+
+        currentRepRef.current = nextRep;
+        setCurrentRep(nextRep);
+
+        pitchHistoryRef.current = [];
+        recordingElapsedRef.current = 0;
+
+        setCurrentNoteIndex(-1);
+        setLiveFrame(null);
+        setLiveFrequencies([]);
+
+        stopRequestedRef.current = false;
+
+        console.log(`Preparing scale rep ${nextRep}`);
+
+        if (transitionTimerRef.current) {
+          clearTimeout(transitionTimerRef.current);
         }
 
-        processingRef.current =
-          true;
+        transitionTimerRef.current = setTimeout(() => {
+          transitionTimerRef.current = null;
 
-        recordingRef.current =
-          false;
+          if (mountedRef.current) {
+            setTimeout(() => {
+              if (mountedRef.current) {
+                beginRepCountdownRef.current();
+              }
+            }, 400);
+          }
+        }, 500);
 
-        if (
-          recordingTimerRef.current
+        return;
+      }
+
+      // --------------------------------------------------------
+      // PROCESS ALL COMPLETED REPETITIONS
+      // --------------------------------------------------------
+
+      console.log('🔍 SCALE ANALYSIS STARTING', {
+        savedRecordings: recordingsRef.current.length,
+        expectedRepetitions: params.repetitions,
+      });
+
+      // Request the processing screen first.
+      setPhase('processing');
+
+      // Yield to the React Native event loop so the screen can
+      // render before the synchronous DSP functions execute.
+      await new Promise<void>(resolve => {
+        setTimeout(resolve, 150);
+      });
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      try {
+        const targetFreqs = targetNotesRef.current.map(
+          note => note.frequency,
+        );
+
+        const scores: ScaleAccuracyScoreResult[] = [];
+
+        for (
+          let index = 0;
+          index < recordingsRef.current.length;
+          index++
         ) {
-          clearInterval(
-            recordingTimerRef.current,
-          );
-
-          recordingTimerRef.current =
-            null;
-        }
-
-        setPhase('processing');
-
-        try {
-          const targetFreqs =
-            targetNotes.map(
-              note =>
-                note.frequency,
-            );
-
-          const segments =
-            segmentIntoNotes(
-              samples,
-              targetFreqs.length,
-              0.01,
-              sampleRate,
-            );
-
-          const measurement =
-            measureScaleAccuracyDrill(
-              segments,
-              targetFreqs,
-              sampleRate,
-              params.minClarity,
-            );
-
-          const score =
-            scoreScaleAccuracyDrill(
-              measurement,
-              params,
-            );
-
-          const updatedResults = [
-            ...repResultsRef.current,
-            score,
-          ];
-
-          repResultsRef.current =
-            updatedResults;
-
-          const isLastRepetition =
-            currentRepRef.current >=
-            params.repetitions;
-
-          if (
-            !isLastRepetition
-          ) {
-            const nextRep =
-              currentRepRef.current +
-              1;
-
-            currentRepRef.current =
-              nextRep;
-
-            if (
-              !mountedRef.current
-            ) {
-              return;
-            }
-
-            setCurrentRep(
-              nextRep,
-            );
-
-            stopRequestedRef.current =
-              false;
-
-            processingRef.current =
-              false;
-
-            recordingRef.current =
-              false;
-
-            pitchHistoryRef.current =
-              [];
-
-            recordingElapsedRef.current =
-              0;
-
-            setCurrentNoteIndex(
-              -1,
-            );
-
-            setLiveFrame(null);
-            setLiveFrequencies([]);
-
-            setPhase('listening');
-
-            await playNoteSequence(
-              targetNotes.map(
-                note => ({
-                  frequencyHz:
-                    note.frequency,
-                  durationSec:
-                    0.8,
-                }),
-              ),
-            );
-
-            if (
-              !mountedRef.current
-            ) {
-              return;
-            }
-
-            await beginRecording();
-
+          if (!mountedRef.current) {
             return;
           }
 
-          const finalResult = aggregateScaleResults(
-            repResultsRef.current,
+          const recording = recordingsRef.current[index];
+
+          console.log(
+            `🎼 Processing repetition ${index + 1} of ${recordingsRef.current.length}`,
+          );
+
+          const segments = segmentIntoNotes(
+            recording.samples,
+            targetFreqs.length,
+            0.01,
+            recording.sampleRate,
+          );
+
+          const measurement = measureScaleAccuracyDrill(
+            segments,
             targetFreqs,
+            recording.sampleRate,
+            params.minClarity,
           );
 
-          await saveCompletedExercise(
-            'pitch',
-            'scaleAccuracyDrill',
-            currentTier,
-            finalResult.score,
+          const score = scoreScaleAccuracyDrill(
+            measurement,
+            params,
           );
 
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
-
-          setResult(
-            finalResult,
-          );
-
-          setPhase('results');
-        } catch (error) {
-          console.error(
-            '❌ SCALE PROCESSING ERROR:',
-            error,
-          );
-
-          if (
-            mountedRef.current
-          ) {
-            setErrorMessage(
-              'We could not analyze your recording. Please try again.',
-            );
-
-            setPhase(
-              'instructions',
-            );
-          }
-        } finally {
-          processingRef.current =
-            false;
-
-          stopRequestedRef.current =
-            false;
+          scores.push(score);
         }
-      },
-      [
-        currentTier,
-        params,
-        targetNotes,
-      ],
-    );
 
-  // ============================================================
+        if (!mountedRef.current) {
+          return;
+        }
+
+        const finalResult = aggregateScaleResults(
+          scores,
+          targetFreqs,
+        );
+
+        console.log('✅ SCALE ANALYSIS COMPLETE', {
+          repetitionsProcessed: scores.length,
+          finalScore: finalResult.score,
+        });
+
+        await saveCompletedExercise(
+          'pitch',
+          'scaleAccuracyDrill',
+          currentTier,
+          finalResult.score,
+        );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setResult(finalResult);
+        setPhase('results');
+      } catch (error) {
+        console.error(
+          '❌ SCALE PROCESSING ERROR:',
+          error,
+        );
+
+        if (mountedRef.current) {
+          setErrorMessage(
+            'We could not analyze your recordings. Please try again.',
+          );
+
+          setPhase('instructions');
+        }
+      } finally {
+        stopRequestedRef.current = false;
+      }
+    },
+    [currentTier, params],
+  );
+
+  // ==========================================================
   // AUDIO RECORDER
-  // ============================================================
+  // ==========================================================
 
   const {
     startRecording,
     stopRecording,
     isRecording,
-  } =
-    useAudioRecorder({
-      onFrame:
-        handleLiveFrame,
+  } = useAudioRecorder({
+    onFrame: handleLiveFrame,
+    onStop: handleRecordingStop,
+  });
 
-      onStop:
-        handleRecordingStop,
-    });
-
-  // ============================================================
+  // ==========================================================
   // STOP FUNCTION REF
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
-    stopRecordingRef.current =
-      stopRecording;
+    stopRecordingRef.current = stopRecording;
 
     return () => {
-      stopRecordingRef.current =
-        null;
+      stopRecordingRef.current = null;
     };
   }, [stopRecording]);
 
-  // ============================================================
-  // START RECORDING
-  // ============================================================
+  // ==========================================================
+  // START ONE RECORDING
+  // ==========================================================
 
-  const beginRecording =
-    useCallback(
-      async () => {
-        if (
-          !mountedRef.current ||
-          recordingRef.current
-        ) {
-          return;
-        }
+  const beginRecording = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      recordingRef.current ||
+      startingRecordingRef.current
+    ) {
+      return;
+    }
 
-        try {
-          pitchHistoryRef.current =
-            [];
+    startingRecordingRef.current = true;
 
-          recordingElapsedRef.current =
-            0;
+    try {
+      pitchHistoryRef.current = [];
+      recordingElapsedRef.current = 0;
 
-          setLiveFrequencies(
-            [],
-          );
+      setLiveFrequencies([]);
+      setLiveFrame(null);
+      setCurrentNoteIndex(0);
+      setPhase('recording');
 
-          setLiveFrame(null);
+      stopRequestedRef.current = false;
 
-          stopRequestedRef.current =
-            false;
+      await startRecording();
 
-          processingRef.current =
-            false;
-
-          setCurrentNoteIndex(0);
-          setPhase('recording');
-
-          await startRecording();
-
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
-
-          recordingRef.current =
-            true;
-
-          const recordingDuration =
-            Math.max(
-              5,
-              targetNotes.length *
-                1250,
-            );
-
-          const noteDuration =
-            recordingDuration /
-            targetNotes.length;
-
-          recordingTimerRef.current =
-            setInterval(
-              async () => {
-                if (
-                  !mountedRef.current ||
-                  !recordingRef.current ||
-                  stopRequestedRef.current
-                ) {
-                  return;
-                }
-
-                recordingElapsedRef.current +=
-                  100;
-
-                const elapsedMs =
-                  recordingElapsedRef.current;
-
-                const nextNoteIndex =
-                  Math.min(
-                    Math.floor(
-                      elapsedMs /
-                        noteDuration,
-                    ),
-                    targetNotes.length -
-                      1,
-                  );
-
-                setCurrentNoteIndex(
-                  nextNoteIndex,
-                );
-
-                if (
-                  elapsedMs >=
-                  recordingDuration
-                ) {
-                  if (
-                    recordingTimerRef.current
-                  ) {
-                    clearInterval(
-                      recordingTimerRef.current,
-                    );
-
-                    recordingTimerRef.current =
-                      null;
-                  }
-
-                  if (
-                    stopRequestedRef.current
-                  ) {
-                    return;
-                  }
-
-                  stopRequestedRef.current =
-                    true;
-
-                  try {
-                    await stopRecording();
-                  } catch (error) {
-                    console.error(
-                      '❌ FAILED TO STOP SCALE RECORDING:',
-                      error,
-                    );
-
-                    recordingRef.current =
-                      false;
-
-                    stopRequestedRef.current =
-                      false;
-
-                    if (
-                      mountedRef.current
-                    ) {
-                      setErrorMessage(
-                        'We could not finish the recording. Please try again.',
-                      );
-
-                      setPhase(
-                        'instructions',
-                      );
-                    }
-                  }
-                }
-              },
-              100,
-            );
-        } catch (error) {
-          console.error(
-            '❌ FAILED TO START SCALE RECORDING:',
-            error,
-          );
-
-          recordingRef.current =
-            false;
-
-          stopRequestedRef.current =
-            false;
-
-          if (
-            mountedRef.current
-          ) {
-            setPhase(
-              'instructions',
-            );
-
-            Alert.alert(
-              'Microphone Error',
-              'Unable to start the microphone. Please check your microphone permission and try again.',
-            );
-          }
-        }
-      },
-      [
-        startRecording,
-        stopRecording,
-        targetNotes.length,
-      ],
-    );
-
-  // ============================================================
-  // PLAY SCALE THEN RECORD
-  // ============================================================
-
-  const playScaleAndRecord =
-    useCallback(
-      async () => {
-        if (
-          !mountedRef.current
-        ) {
-          return;
-        }
-
-        try {
-          setPhase('listening');
-
-          setCurrentNoteIndex(0);
-
-          const sequence =
-            targetNotes.map(
-              note => ({
-                frequencyHz:
-                  note.frequency,
-                durationSec:
-                  0.8,
-              }),
-            );
-
-          await playNoteSequence(
-            sequence,
-          );
-
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
-
-          await beginRecording();
-        } catch (error) {
-          console.error(
-            '❌ FAILED TO PLAY SCALE:',
-            error,
-          );
-
-          if (
-            mountedRef.current
-          ) {
-            setPhase(
-              'instructions',
-            );
-
-            Alert.alert(
-              'Audio Error',
-              'Unable to play the target scale. Please try again.',
-            );
-          }
-        }
-      },
-      [
-        beginRecording,
-        targetNotes,
-      ],
-    );
-
-  // ============================================================
-  // COUNTDOWN
-  // ============================================================
-
-  const startCountdown =
-    useCallback(() => {
-      if (
-        isLoadingAdaptiveParams
-      ) {
+      if (!mountedRef.current) {
         return;
       }
 
-      const newScale =
-        generateScale(
-          params,
-          currentTier,
-          vocalRange,
-        );
+      recordingRef.current = true;
 
-      setTargetNotes(
-        newScale,
+      console.log(
+        `Scale rep ${currentRepRef.current} recording started`,
       );
 
-      setResult(null);
-      setErrorMessage(null);
-      setLiveFrame(null);
-      setLiveFrequencies([]);
+      const noteCount = Math.max(
+        1,
+        targetNotesRef.current.length,
+      );
 
-      pitchHistoryRef.current =
-        [];
+      const recordingDuration = Math.max(
+        5000,
+        noteCount * 1250,
+      );
 
-      recordingElapsedRef.current =
-        0;
+      const noteDuration = recordingDuration / noteCount;
 
-      stopRequestedRef.current =
-        false;
+      recordingTimerRef.current = setInterval(() => {
+        if (
+          !mountedRef.current ||
+          !recordingRef.current ||
+          stopRequestedRef.current
+        ) {
+          return;
+        }
 
-      processingRef.current =
-        false;
+        recordingElapsedRef.current += 100;
 
-      recordingRef.current =
-        false;
+        const elapsedMs = recordingElapsedRef.current;
 
-      repResultsRef.current =
-        [];
+        const nextNoteIndex = Math.min(
+          Math.floor(elapsedMs / noteDuration),
+          noteCount - 1,
+        );
 
-      currentRepRef.current =
-        1;
+        setCurrentNoteIndex(nextNoteIndex);
 
-      setCurrentRep(1);
-      setCurrentNoteIndex(-1);
-      setCountdown(3);
-      setPhase('countdown');
+        if (elapsedMs < recordingDuration) {
+          return;
+        }
 
-      let value = 3;
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
 
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
+        if (stopRequestedRef.current) {
+          return;
+        }
+
+        stopRequestedRef.current = true;
+
+        void stopRecording().catch(error => {
+          console.error(
+            '❌ FAILED TO STOP SCALE RECORDING:',
+            error,
+          );
+
+          recordingRef.current = false;
+          stopRequestedRef.current = false;
+
+          if (mountedRef.current) {
+            setErrorMessage(
+              'We could not finish the recording. Please try again.',
+            );
+
+            setPhase('instructions');
+          }
+        });
+      }, 100);
+    } catch (error) {
+      console.error(
+        '❌ FAILED TO START SCALE RECORDING:',
+        error,
+      );
+
+      recordingRef.current = false;
+      stopRequestedRef.current = false;
+
+      if (mountedRef.current) {
+        setPhase('instructions');
+
+        Alert.alert(
+          'Microphone Error',
+          'Unable to start the microphone. Please check your microphone permission and try again.',
         );
       }
+    } finally {
+      startingRecordingRef.current = false;
+    }
+  }, [startRecording, stopRecording]);
 
-      countdownTimerRef.current =
-        setInterval(() => {
-          value--;
+  // ==========================================================
+  // PLAY TARGET SCALE THEN RECORD
+  // ==========================================================
 
-          if (value <= 0) {
-            if (
-              countdownTimerRef.current
-            ) {
-              clearInterval(
-                countdownTimerRef.current,
-              );
-            }
+  const playScaleAndRecord = useCallback(async () => {
+    if (!mountedRef.current) {
+      return;
+    }
 
-            countdownTimerRef.current =
-              null;
+    try {
+      setPhase('listening');
+      setCurrentNoteIndex(0);
 
-            playScaleAndRecord();
+      const sequence = targetNotesRef.current.map(note => ({
+        frequencyHz: note.frequency,
+        durationSec: 0.8,
+      }));
 
-            return;
-          }
+      console.log(
+        `Playing target scale for rep ${currentRepRef.current}`,
+      );
 
-          setCountdown(value);
-        }, 1000);
-    }, [
-      isLoadingAdaptiveParams,
+      await playNoteSequence(sequence);
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      await beginRecording();
+    } catch (error) {
+      console.error(
+        '❌ FAILED TO PLAY SCALE OR START RECORDING:',
+        error,
+      );
+
+      if (mountedRef.current) {
+        setErrorMessage(
+          'Unable to play the target scale or start recording. Please try again.',
+        );
+
+        setPhase('instructions');
+
+        Alert.alert(
+          'Audio Error',
+          'Unable to play the target scale. Please try again.',
+        );
+      }
+    }
+  }, [beginRecording]);
+
+  // ==========================================================
+  // COUNTDOWN BEFORE EACH REP
+  // ==========================================================
+
+  const beginRepCountdown = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    setCountdown(3);
+    setCurrentNoteIndex(-1);
+    setLiveFrame(null);
+    setLiveFrequencies([]);
+    setPhase('countdown');
+
+    let value = 3;
+
+    countdownTimerRef.current = setInterval(() => {
+      value--;
+
+      if (value <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+
+        if (mountedRef.current) {
+          void playScaleAndRecord();
+        }
+
+        return;
+      }
+
+      setCountdown(value);
+    }, 1000);
+  }, [playScaleAndRecord]);
+
+  // Keep the latest callback available to handleRecordingStop.
+  beginRepCountdownRef.current = beginRepCountdown;
+
+  // ==========================================================
+  // START EXERCISE
+  // ==========================================================
+
+  const startCountdown = useCallback(() => {
+    if (isLoadingAdaptiveParams) {
+      return;
+    }
+
+    clearTimers();
+
+    const newScale = generateScale(
       params,
-      playScaleAndRecord,
-    ]);
+      currentTier,
+      vocalRange,
+    );
 
-  // ============================================================
+    targetNotesRef.current = newScale;
+    setTargetNotes(newScale);
+
+    recordingsRef.current = [];
+
+    currentRepRef.current = 1;
+    setCurrentRep(1);
+
+    recordingRef.current = false;
+    startingRecordingRef.current = false;
+    stopRequestedRef.current = false;
+
+    pitchHistoryRef.current = [];
+    recordingElapsedRef.current = 0;
+
+    setResult(null);
+    setErrorMessage(null);
+    setLiveFrame(null);
+    setLiveFrequencies([]);
+    setCurrentNoteIndex(-1);
+
+    beginRepCountdown();
+  }, [
+    beginRepCountdown,
+    clearTimers,
+    currentTier,
+    isLoadingAdaptiveParams,
+    params,
+    vocalRange,
+  ]);
+
+  // ==========================================================
   // RETRY
-  // ============================================================
+  // ==========================================================
 
-  const retry =
-    useCallback(() => {
-      clearTimers();
+  const retry = useCallback(() => {
+    clearTimers();
 
-      setResult(null);
-      setLiveFrame(null);
-      setLiveFrequencies([]);
+    recordingsRef.current = [];
 
-      pitchHistoryRef.current =
-        [];
+    currentRepRef.current = 1;
+    setCurrentRep(1);
 
-      recordingElapsedRef.current =
-        0;
+    recordingRef.current = false;
+    startingRecordingRef.current = false;
+    stopRequestedRef.current = false;
 
-      processingRef.current =
-        false;
+    pitchHistoryRef.current = [];
+    recordingElapsedRef.current = 0;
 
-      stopRequestedRef.current =
-        false;
+    setResult(null);
+    setLiveFrame(null);
+    setLiveFrequencies([]);
+    setCurrentNoteIndex(-1);
+    setErrorMessage(null);
+    setPhase('instructions');
+  }, [clearTimers]);
 
-      recordingRef.current =
-        false;
-
-      repResultsRef.current =
-        [];
-
-      currentRepRef.current =
-        1;
-
-      setCurrentRep(1);
-      setCurrentNoteIndex(-1);
-      setErrorMessage(null);
-      setPhase('instructions');
-    }, [clearTimers]);
-
-  // ============================================================
+  // ==========================================================
   // CURRENT TARGET
-  // ============================================================
+  // ==========================================================
 
   const currentTarget =
     currentNoteIndex >= 0 &&
-    currentNoteIndex <
-      targetNotes.length
-      ? targetNotes[
-          currentNoteIndex
-        ]
+    currentNoteIndex < targetNotes.length
+      ? targetNotes[currentNoteIndex]
       : null;
 
-  // ============================================================
-  // LIVE ACCURACY
-  // ============================================================
-
   const liveAccuracy =
-    liveFrame &&
-    currentTarget &&
-    liveFrame.pitch > 0
+    liveFrame && currentTarget && liveFrame.pitch > 0
       ? calcPitchAccuracy(
           liveFrame.pitch,
           currentTarget.frequency,
         )
       : 0;
 
-  const liveStability =
-    calcLiveStability(
-      liveFrequencies,
-    );
+  const liveStability = calcLiveStability(liveFrequencies);
 
-  // ============================================================
+  // ==========================================================
   // INSTRUCTIONS
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'instructions'
-  ) {
+  if (phase === 'instructions') {
     return (
       <ExerciseScreen
         title="Scale Accuracy Drill"
         category="Pitch"
         icon="stats-chart-outline"
         tier={currentTier}
-        instructions={
-          'Listen to the target scale first. After the scale finishes, sing the notes back one at a time in the same order. Try to land accurately on every note and make each transition smooth.'
-        }
+        instructions="Listen to the target scale first. After the scale finishes, sing the notes back one at a time in the same order. Try to land accurately on every note and make each transition smooth."
         preparationSteps={[
           {
             icon: 'volume-mute-outline',
-            text:
-              'Find a quiet room or area with minimal background noise.',
+            text: 'Find a quiet room or area with minimal background noise.',
           },
           {
             icon: 'body-outline',
-            text:
-              'Sit upright or stand with your back straight and your shoulders relaxed.',
+            text: 'Sit upright or stand with your back straight and your shoulders relaxed.',
           },
           {
             icon: 'mic-outline',
-            text:
-              'If available, an external microphone or audio recording equipment is recommended.',
+            text: 'If available, an external microphone or audio recording equipment is recommended.',
           },
         ]}
-        targetValue={`${targetNotes.length} notes`}
+        targetValue={`${params.noteCount} notes`}
         tip="Sing each note clearly before moving to the next one."
         onBack={goBack}
         onStart={startCountdown}
         error={errorMessage}
-        startDisabled={
-          isLoadingAdaptiveParams
-        }
+        startDisabled={isLoadingAdaptiveParams}
         startLabel={
           isLoadingAdaptiveParams
             ? 'Preparing Exercise...'
@@ -1344,13 +1094,11 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // COUNTDOWN
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'countdown'
-  ) {
+  if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
         icon="musical-notes-outline"
@@ -1365,13 +1113,11 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // LISTENING
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'listening'
-  ) {
+  if (phase === 'listening') {
     return (
       <ExerciseListeningScreen
         icon="volume-high-outline"
@@ -1400,190 +1146,98 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // RECORDING
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'recording'
-  ) {
+  if (phase === 'recording') {
     return (
-      <View
-        style={
-          styles.recordingScreen
-        }
-      >
-        <View
-          style={
-            styles.recordingIcon
-          }
-        >
-          <Ionicons
-            name="mic"
-            size={34}
-            color={BROWN}
-          />
+      <View style={styles.recordingScreen}>
+        <View style={styles.recordingIcon}>
+          <Ionicons name="mic" size={34} color={BROWN} />
         </View>
 
-        <Text
-          style={
-            styles.recordingTitle
-          }
-        >
+        <Text style={styles.recordingTitle}>
           Sing the Scale
         </Text>
 
-        <Text
-          style={
-            styles.recordingSubtitle
-          }
-        >
-          Repetition {currentRep} of{' '}
-          {params.repetitions}
+        <Text style={styles.recordingSubtitle}>
+          Repetition {currentRep} of {params.repetitions}
         </Text>
 
-        <View
-          style={styles.liveCard}
-        >
-          <Text
-            style={styles.liveLabel}
-          >
-            Current Target
-          </Text>
+        <View style={styles.liveCard}>
+          <Text style={styles.liveLabel}>Current Target</Text>
 
-          <Text
-            style={styles.liveTarget}
-          >
+          <Text style={styles.liveTarget}>
             {currentTarget?.name ?? '--'}
           </Text>
 
-          <View
-            style={styles.liveDivider}
-          />
+          <View style={styles.liveDivider} />
 
-          <Text
-            style={styles.liveLabel}
-          >
-            Your Note
-          </Text>
+          <Text style={styles.liveLabel}>Your Note</Text>
 
-          <Text
-            style={styles.liveNote}
-          >
+          <Text style={styles.liveNote}>
             {liveFrame?.note ?? '--'}
           </Text>
 
-          <Text
-            style={styles.liveFrequency}
-          >
-            {liveFrame &&
-            liveFrame.pitch > 0
-              ? `${Math.round(
-                  liveFrame.pitch,
-                )} Hz`
+          <Text style={styles.liveFrequency}>
+            {liveFrame && liveFrame.pitch > 0
+              ? `${Math.round(liveFrame.pitch)} Hz`
               : '--'}
           </Text>
 
-          <View
-            style={styles.liveStats}
-          >
-            <View
-              style={styles.liveStat}
-            >
-              <Text
-                style={
-                  styles.liveStatLabel
-                }
-              >
+          <View style={styles.liveStats}>
+            <View style={styles.liveStat}>
+              <Text style={styles.liveStatLabel}>
                 Accuracy
               </Text>
 
-              <Text
-                style={
-                  styles.liveStatValue
-                }
-              >
-                {Math.round(
-                  liveAccuracy,
-                )}
-                %
+              <Text style={styles.liveStatValue}>
+                {Math.round(liveAccuracy)}%
               </Text>
             </View>
 
-            <View
-              style={styles.liveStat}
-            >
-              <Text
-                style={
-                  styles.liveStatLabel
-                }
-              >
+            <View style={styles.liveStat}>
+              <Text style={styles.liveStatLabel}>
                 Stability
               </Text>
 
-              <Text
-                style={
-                  styles.liveStatValue
-                }
-              >
-                {Math.round(
-                  liveStability,
-                )}
-                %
+              <Text style={styles.liveStatValue}>
+                {Math.round(liveStability)}%
               </Text>
             </View>
           </View>
         </View>
 
-        <View
-          style={styles.scalePreview}
-        >
-          {targetNotes.map(
-            (note, index) => {
-              const active =
-                index ===
-                currentNoteIndex;
+        <View style={styles.scalePreview}>
+          {targetNotes.map((note, index) => {
+            const active = index === currentNoteIndex;
 
-              return (
-                <View
-                  key={`${note.name}-${index}`}
+            return (
+              <View
+                key={`${note.name}-${index}`}
+                style={[
+                  styles.previewNote,
+                  active && styles.previewNoteActive,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.previewNote,
-                    active &&
-                      styles.previewNoteActive,
+                    styles.previewNoteText,
+                    active && styles.previewNoteTextActive,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.previewNoteText,
-                      active &&
-                        styles.previewNoteTextActive,
-                    ]}
-                  >
-                    {note.name}
-                  </Text>
-                </View>
-              );
-            },
-          )}
+                  {note.name}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
-        <View
-          style={
-            styles.recordingIndicator
-          }
-        >
-          <View
-            style={
-              styles.recordingDot
-            }
-          />
+        <View style={styles.recordingIndicator}>
+          <View style={styles.recordingDot} />
 
-          <Text
-            style={
-              styles.recordingText
-            }
-          >
+          <Text style={styles.recordingText}>
             {isRecording
               ? 'Recording...'
               : 'Preparing microphone...'}
@@ -1593,275 +1247,141 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // PROCESSING
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'processing'
-  ) {
+  if (phase === 'processing') {
     return (
       <ExerciseProcessingScreen
         icon="analytics-outline"
         title="Analyzing Your Singing"
-        message={
-          currentRep <
-          params.repetitions
-            ? `Checking repetition ${currentRep} of ${params.repetitions}.`
-            : 'Calculating your final Scale Accuracy result.'
-        }
+        message={`Analyzing all ${params.repetitions} repetitions and calculating your final score...`}
       />
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // RESULTS
-  // ============================================================
+  // ==========================================================
 
-  if (
-    phase === 'results' &&
-    result
-  ) {
+  if (phase === 'results' && result) {
     return (
       <ExerciseResultsScreen
-        title={
-          result.passed
-            ? 'Great Job!'
-            : 'Keep Practicing!'
-        }
+        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
         subtitle={`Scale Accuracy Result • ${params.repetitions} repetitions`}
         score={result.score}
-        resultIcon={
-          result.passed
-            ? 'checkmark'
-            : 'refresh'
-        }
+        resultIcon={result.passed ? 'checkmark' : 'refresh'}
         scoreSuffix="%"
-        scoreMessage={`${result.correctNotes} of ${result.totalNotes} notes matched accurately on average`}
+        scoreMessage={`${result.correctNotes} of ${result.totalNotes} notes matched across all repetitions`}
         onBack={goBack}
         onRetry={retry}
         onExit={goBack}
       >
-        {/* ==================================================
-            SCORE DETAILS
-            ================================================== */}
-
-        <View
-          style={styles.resultCard}
-        >
-          <Text
-            style={
-              styles.resultCardTitle
-            }
-          >
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
             Note Accuracy
           </Text>
 
-          <View
-            style={styles.resultRow}
-          >
-            <Text
-              style={
-                styles.resultRowLabel
-              }
-            >
+          <View style={styles.resultRow}>
+            <Text style={styles.resultRowLabel}>
               Accurate notes
             </Text>
 
-            <Text
-              style={
-                styles.resultRowValue
-              }
-            >
-              {Math.round(
-                result.noteAccuracy,
-              )}
-              %
+            <Text style={styles.resultRowValue}>
+              {Math.round(result.noteAccuracy)}%
             </Text>
           </View>
 
-          <View
-            style={styles.resultRow}
-          >
-            <Text
-              style={
-                styles.resultRowLabel
-              }
-            >
+          <View style={styles.resultRow}>
+            <Text style={styles.resultRowLabel}>
               Transition smoothness
             </Text>
 
-            <Text
-              style={
-                styles.resultRowValue
-              }
-            >
-              {Math.round(
-                result.transitionSmoothness,
-              )}
-              %
+            <Text style={styles.resultRowValue}>
+              {Math.round(result.transitionSmoothness)}%
             </Text>
           </View>
 
-          <View
-            style={styles.resultRow}
-          >
-            <Text
-              style={
-                styles.resultRowLabel
-              }
-            >
+          <View style={styles.resultRow}>
+            <Text style={styles.resultRowLabel}>
               Average clarity
             </Text>
 
-            <Text
-              style={
-                styles.resultRowValue
-              }
-            >
-              {Math.round(
-                result.averageClarity *
-                  100,
-              )}
-              %
+            <Text style={styles.resultRowValue}>
+              {Math.round(result.averageClarity * 100)}%
             </Text>
           </View>
         </View>
 
-        {/* ==================================================
-            NOTE-BY-NOTE RESULTS
-            ================================================== */}
-
-        <View
-          style={styles.resultCard}
-        >
-          <Text
-            style={
-              styles.resultCardTitle
-            }
-          >
+        <View style={styles.resultCard}>
+          <Text style={styles.resultCardTitle}>
             Your Notes
           </Text>
 
-          {targetNotes.map(
-            (target, index) => {
-              const detected =
-                result.detectedFreqs[
-                  index
-                ];
+          {targetNotes.map((target, index) => {
+            const detected = result.detectedFreqs[index];
+            const noteScore = result.noteScores[index] ?? 0;
+            const deviation = result.noteDeviations[index] ?? Infinity;
 
-              const noteScore =
-                result.noteScores[
-                  index
-                ] ?? 0;
+            const noteName =
+              detected && detected > 0
+                ? frequencyToNote(detected)
+                : '--';
 
-              const deviation =
-                result.noteDeviations[
-                  index
-                ] ?? Infinity;
+            const correct =
+              deviation <= params.tolerancePct;
 
-              const noteName =
-                detected &&
-                detected > 0
-                  ? frequencyToNote(
-                      detected,
-                    )
-                  : '--';
-
-              const correct =
-                deviation <=
-                params.tolerancePct;
-
-              return (
-                <View
-                  key={`${target.name}-${index}`}
-                  style={
-                    styles.noteResultRow
-                  }
-                >
-                  <View
-                    style={
-                      styles.noteNumber
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.noteNumberText
-                      }
-                    >
-                      {index + 1}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.noteResultInfo
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.targetNoteText
-                      }
-                    >
-                      Target: {target.name}
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.detectedNoteText
-                      }
-                    >
-                      Detected: {noteName}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.noteStatus,
-                      correct &&
-                        styles.noteStatusCorrect,
-                    ]}
-                  >
-                    <Ionicons
-                      name={
-                        correct
-                          ? 'checkmark'
-                          : 'close'
-                      }
-                      size={15}
-                      color={BROWN}
-                    />
-
-                    <Text
-                      style={
-                        styles.noteStatusText
-                      }
-                    >
-                      {noteScore}%
-                    </Text>
-                  </View>
+            return (
+              <View
+                key={`${target.name}-${index}`}
+                style={styles.noteResultRow}
+              >
+                <View style={styles.noteNumber}>
+                  <Text style={styles.noteNumberText}>
+                    {index + 1}
+                  </Text>
                 </View>
-              );
-            },
-          )}
+
+                <View style={styles.noteResultInfo}>
+                  <Text style={styles.targetNoteText}>
+                    Target: {target.name}
+                  </Text>
+
+                  <Text style={styles.detectedNoteText}>
+                    Detected: {noteName}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.noteStatus,
+                    correct && styles.noteStatusCorrect,
+                  ]}
+                >
+                  <Ionicons
+                    name={correct ? 'checkmark' : 'close'}
+                    size={15}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.noteStatusText}>
+                    {noteScore}%
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
-        {/* ==================================================
-            RESULT TIP
-            ================================================== */}
-
-        <View
-          style={styles.resultTip}
-        >
+        <View style={styles.resultTip}>
           <Ionicons
             name="bulb-outline"
             size={21}
             color={BROWN}
           />
 
-          <Text
-            style={styles.tipText}
-          >
+          <Text style={styles.tipText}>
             {result.passed
               ? 'Your notes were consistently accurate across the repetitions. Continue practicing smooth transitions for even greater consistency.'
               : 'Focus on landing directly on each target note and maintaining accuracy across every repetition.'}
@@ -1879,10 +1399,6 @@ export default function ScaleAccuracyDrillScreen({
 // ============================================================
 
 const styles = StyleSheet.create({
-  // ==========================================================
-  // RECORDING
-  // ==========================================================
-
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2039,10 +1555,6 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  // ==========================================================
-  // LISTENING
-  // ==========================================================
-
   sharedScalePreview: {
     width: '100%',
     flexDirection: 'row',
@@ -2068,10 +1580,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
-
-  // ==========================================================
-  // RESULTS
-  // ==========================================================
 
   resultCard: {
     width: '100%',
