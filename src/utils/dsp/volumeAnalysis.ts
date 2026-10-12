@@ -19,7 +19,6 @@ export function calcRangeAccuracy(dbArray: number[], targetRange: [number, numbe
   return min >= targetRange[0] && max <= targetRange[1];
 }
 
-
 export function calcDerivativeSmoothness(dbArray: number[]): number {
   const values = dbArray.filter(Number.isFinite);
   if (values.length < 2) return 0;
@@ -47,4 +46,84 @@ export function calcVolumeConsistency(dbArray: number[]): number {
 
 export function checkBandCompliance(avgDb: number, targetBand: [number, number]): boolean {
   return avgDb >= targetBand[0] && avgDb <= targetBand[1];
+}
+
+/* =========================================================
+   SHARED VOLUME WINDOW ANALYSIS
+   ========================================================= */
+
+export interface VolumeWindowAnalysis {
+  rmsArray: number[];
+  dbArray: number[];
+  voicedArray: boolean[];
+  windowSize: number;
+}
+
+export function analyzeVolumeWindows(
+  samples: Float32Array,
+  sampleRate: number,
+  windowMs = 50,
+  silenceDbfs = -60,
+): VolumeWindowAnalysis {
+  if (
+    !samples ||
+    samples.length === 0 ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0 ||
+    !Number.isFinite(windowMs) ||
+    windowMs <= 0
+  ) {
+    return {
+      rmsArray: [],
+      dbArray: [],
+      voicedArray: [],
+      windowSize: 0,
+    };
+  }
+
+  const windowSize = Math.max(
+    1,
+    Math.round(sampleRate * (windowMs / 1000)),
+  );
+
+  const minVoicedRms = Math.pow(
+    10,
+    silenceDbfs / 20,
+  );
+
+  const rmsArray: number[] = [];
+  const dbArray: number[] = [];
+  const voicedArray: boolean[] = [];
+
+  // Include the final partial window.
+  for (
+    let start = 0;
+    start < samples.length;
+    start += windowSize
+  ) {
+    const end = Math.min(
+      start + windowSize,
+      samples.length,
+    );
+
+    const rms = calcRMS(
+      samples.subarray(start, end),
+    );
+
+    const db =
+      rms <= 0
+        ? silenceDbfs
+        : rmsToDb(rms);
+
+    rmsArray.push(rms);
+    dbArray.push(db);
+    voicedArray.push(rms >= minVoicedRms);
+  }
+
+  return {
+    rmsArray,
+    dbArray,
+    voicedArray,
+    windowSize,
+  };
 }

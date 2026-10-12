@@ -40,14 +40,14 @@ export function calcRMSConsistency(
 
   if (mean === 0) return 0;
 
-  const variance =
+  const meanAbsoluteDeviation =
     rmsValues.reduce(
       (sum, v) => sum + Math.abs(v - mean),
       0
     ) / rmsValues.length;
 
-  const relativeVariance = variance / mean;
-  return Math.max(0, 100 - relativeVariance * 100);
+  const relativeDeviation = meanAbsoluteDeviation / mean;
+  return Math.max(0, 100 - relativeDeviation * 100);
 }
 
 export function rmsToDb(

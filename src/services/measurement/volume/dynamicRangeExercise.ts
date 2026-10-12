@@ -1,6 +1,6 @@
 import {
-    calcRMSWindows,
-    toDbArray,
+  calcRMSWindows,
+  toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
 
 export interface DynamicRangeMeasurement {
@@ -51,9 +51,7 @@ export function measureDynamicRange(
 
   const rawDbValues = toDbArray(rmsValues);
 
-  const dbValues = rawDbValues
-    .filter(Number.isFinite)
-    .map((db) => Math.abs(db));
+  const dbValues = rawDbValues.filter(Number.isFinite);
 
   if (dbValues.length === 0) {
     return createEmptyMeasurement();
