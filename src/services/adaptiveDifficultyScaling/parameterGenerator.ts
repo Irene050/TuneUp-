@@ -55,7 +55,7 @@ import {
   QUICK_INTERVAL_JUMP_PARAMS,
   RAPID_NOTE_TRANSITION_PARAMS,
   RAPID_SCALE_TRILL_PARAMS,
-  RAPID_VOCAL_RUN_PARAMS,
+  VOCAL_RUN_ACCURACY_PARAMS,
 } from '@/constants/exercises/agility';
 
 import {
@@ -3361,7 +3361,7 @@ export function generateVocalRunAccuracyParams({
   vocalRange,
   previousFrequencies,
 }: GenerateVocalRunAccuracyParamsInput) {
-  const baseParams = RAPID_VOCAL_RUN_PARAMS[tier];
+  const baseParams = VOCAL_RUN_ACCURACY_PARAMS[tier];
 
   const noteDurationRange = {
     min: baseParams.noteDurationSec * 0.8,

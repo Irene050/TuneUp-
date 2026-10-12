@@ -6,29 +6,33 @@ export interface Peak {
   timestamp: number;
 }
 
+
 export function detectPulses(
   samples: Float32Array,
-  meanAmp: number,
+  _meanAmp: number,
   sampleRate = 44100
 ): Peak[] {
-  if (samples.length === 0 || meanAmp <= 0) return [];
+  if (
+    samples.length === 0 ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0
+  ) {
+    return [];
+  }
 
-  const threshold = meanAmp * 1.5;
   const windowMs = 20;
   const windowSize = Math.max(
     1,
     Math.floor((windowMs / 1000) * sampleRate)
   );
 
-  const refractoryMs = 100;
-  const refractorySamples = Math.floor(
-    (refractoryMs / 1000) * sampleRate
-  );
+  const windows: {
+    index: number;
+    rms: number;
+    peak: number;
+  }[] = [];
 
-  const peaks: Peak[] = [];
-  let inPeak = false;
-  let lastPeakEnd = -Infinity;
-
+  // Divide the recording into short windows.
   for (
     let start = 0;
     start < samples.length;
@@ -40,39 +44,102 @@ export function detectPulses(
     );
 
     const window = samples.subarray(start, end);
-    const windowRms = calcRMS(window);
-
-    let peakAmpInWindow = 0;
+    let peak = 0;
 
     for (let i = 0; i < window.length; i++) {
-      const a = Math.abs(window[i]);
+      const value = window[i];
 
-      if (a > peakAmpInWindow) {
-        peakAmpInWindow = a;
+      if (Number.isFinite(value)) {
+        peak = Math.max(peak, Math.abs(value));
       }
     }
 
-    const active = windowRms > threshold;
+    windows.push({
+      index: start,
+      rms: calcRMS(window),
+      peak,
+    });
+  }
+
+  if (windows.length < 2) {
+    return [];
+  }
+
+  // Estimate background from the quieter 20% of windows.
+  const sortedRms = windows
+    .map(window => window.rms)
+    .sort((a, b) => a - b);
+
+  const quietIndex = Math.floor(
+    (sortedRms.length - 1) * 0.2
+  );
+
+  const noiseFloor = sortedRms[quietIndex];
+  const maxRms = sortedRms[sortedRms.length - 1];
+
+  if (
+    !Number.isFinite(maxRms) ||
+    maxRms <= 0
+  ) {
+    return [];
+  }
+
+  // Reject nearly uniform audio; it has no clear pulse contrast.
+  if (
+    noiseFloor > 0 &&
+    maxRms <= noiseFloor * 1.25
+  ) {
+    return [];
+  }
+
+  // Detect windows above the estimated background level.
+  const threshold =
+    noiseFloor + (maxRms - noiseFloor) * 0.35;
+
+  const refractorySamples = Math.floor(
+    (100 / 1000) * sampleRate
+  );
+
+  const peaks: Peak[] = [];
+  let inPeak = false;
+  let lastPeakEnd = -Infinity;
+
+  for (const window of windows) {
+    const active = window.rms >= threshold;
+
+    if (!active) {
+      if (inPeak) {
+        lastPeakEnd = window.index;
+      }
+
+      inPeak = false;
+      continue;
+    }
 
     if (
-      active &&
       !inPeak &&
-      start >= lastPeakEnd + refractorySamples
+      window.index >= lastPeakEnd + refractorySamples
     ) {
       inPeak = true;
 
       peaks.push({
-        index: start,
-        amplitude: peakAmpInWindow,
-        timestamp: start / sampleRate,
+        index: window.index,
+        amplitude: window.peak,
+        timestamp: window.index / sampleRate,
       });
-    } else if (!active) {
-      if (inPeak) {
-        lastPeakEnd = start;
-      }
-      inPeak = false;
     }
   }
+
+  console.log("🫁 BREATH PULSE DETECTION:", {
+    sampleCount: samples.length,
+    durationSec: samples.length / sampleRate,
+    windowCount: windows.length,
+    noiseFloor,
+    maxWindowRms: maxRms,
+    threshold,
+    detectedPulseCount: peaks.length,
+  });
+
   return peaks;
 }
 

@@ -657,15 +657,22 @@ export default function ControlledBreathReleaseScreen({
     startRecording,
     stopRecording,
   } = useAudioRecorder({
-    onFrame: frame => {
-      if (!mountedRef.current) {
-        return;
-      }
+    
+  onFrame: frame => {
+    if (!mountedRef.current) {
+      return;
+    }
 
-      setVolume(
-        frame.volume ?? 0,
-      );
-    },
+    // frame.volume is in decibels, not 0–1.
+    const volumeDb = frame.volume;
+
+    const normalizedVolume = Number.isFinite(volumeDb)
+      ? Math.max(0, Math.min(1, (volumeDb + 45) / 45))
+      : 0;
+
+    setVolume(normalizedVolume);
+  },
+
 
     onStop:
       handleRecordingStop,

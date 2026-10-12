@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 
 import {
-  RAPID_VOCAL_RUN_PARAMS,
+  VOCAL_RUN_ACCURACY_PARAMS,
   type Tier,
 } from '@/constants/exercises/agility';
 
@@ -238,7 +238,7 @@ export default function VocalRunAccuracyTaskScreen() {
   // ==========================================================
 
   const [adaptiveConfig, setAdaptiveConfig] = useState(
-    () => RAPID_VOCAL_RUN_PARAMS.beginner,
+    () => VOCAL_RUN_ACCURACY_PARAMS.beginner,
   );
 
   const [

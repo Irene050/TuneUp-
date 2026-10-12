@@ -262,3 +262,44 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
     repetitions: 5,
   },
 };
+
+export const VOCAL_RUN_ACCURACY_PARAMS: Record<
+  Tier,
+  {
+    label: string;
+    frequencies: number[];
+    speedLabel: string;
+    accuracyThreshold: number;
+    noteDurationSec: number;
+    repetitions: number;
+    gapSec: number;
+  }
+> = {
+  beginner: {
+    label: 'Beginner',
+    frequencies: [261.63, 293.66, 329.63, 293.66, 261.63],
+    speedLabel: 'Slow',
+    accuracyThreshold: 60,
+    noteDurationSec: 0.4,
+    repetitions: 2,
+    gapSec: 0.1,
+  },
+  intermediate: {
+    label: 'Intermediate',
+    frequencies: [293.66, 329.63, 369.99, 415.3, 369.99, 329.63],
+    speedLabel: 'Moderate',
+    accuracyThreshold: 70,
+    noteDurationSec: 0.3,
+    repetitions: 3,
+    gapSec: 0.075,
+  },
+  advanced: {
+    label: 'Advanced',
+    frequencies: [392, 440, 493.88, 554.37, 493.88, 440, 392],
+    speedLabel: 'Fast',
+    accuracyThreshold: 80,
+    noteDurationSec: 0.2,
+    repetitions: 4,
+    gapSec: 0.05,
+  },
+};

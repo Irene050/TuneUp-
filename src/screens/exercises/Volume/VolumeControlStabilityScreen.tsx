@@ -4,284 +4,144 @@ import { Ionicons } from '@expo/vector-icons';
 
 import {
   useCallback,
-
   useEffect,
-
   useMemo,
-
   useRef,
-
   useState,
 } from 'react';
 
 import {
   ActivityIndicator,
-
   Pressable,
-
   ScrollView,
-
   StyleSheet,
-
   Text,
-
   View,
-
   useWindowDimensions,
 } from 'react-native';
 
 import {
   SafeAreaView,
-
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
-
-
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
-
   type Tier,
 } from '@/constants/exercises/volume';
 
-
-
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 
-
-
-import {
-  measureVolumeControlStability,
-} from '@/services/measurement/volume/volumeControlStability';
-
-
-
-import {
-  scoreVolumeControlStability,
-} from '@/services/scoring/volume/volumeControlStability';
-
-
+import { measureVolumeControlStability } from '@/services/measurement/volume/volumeControlStability';
+import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
 
 import {
   generateVolumeControlStabilityParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 
-
-
 import {
   fetchComponentProgress,
-
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
-
 
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 
-
-
 import { auth } from '@/services/firebase/config';
-
-
 
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 
-
-
 import {
   createMusicalNote,
 } from '@/utils/music/notes';
-
-
 
 import {
   playSingleNote,
 } from '@/utils/music/notePlayer';
 
-
-
 /* =========================================================
-
    DEFAULT CONFIGURATION
-
-   ========================================================= */
-
-
+========================================================= */
 
 const CURRENT_TIER: Tier = 'beginner';
 
-
-
 const DEFAULT_VOLUME_CONTROL_STABILITY =
-
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
-
-
 
 const NOTE = 'C4';
 
-
-
 const REFERENCE_NOTE =
-
   createMusicalNote(60);
-
-
-
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
-
-
-
 const COUNTDOWN_SECONDS = 3;
 
-
-
 /* =========================================================
-
    TYPES
-
-   ========================================================= */
-
-
+========================================================= */
 
 type Phase =
-
   | 'directions'
-
   | 'countdown'
-
   | 'exercise'
-
   | 'results';
 
-
-
 interface HistoryPoint {
-
   value: number;
-
   time: number;
-
 }
 
-
-
 type MeasurementResult =
-
   ReturnType<
-
     typeof measureVolumeControlStability
-
   >;
-
-
 
 type ScoreResult =
-
   ReturnType<
-
     typeof scoreVolumeControlStability
-
   >;
 
-
-
 /* =========================================================
-
    COMPONENT
-
-   ========================================================= */
-
-
+========================================================= */
 
 export default function VolumeControlStabilityScreen({
-
   tier,
-
 }: {
-
   tier?: Tier;
-
 }) {
-
   const insets = useSafeAreaInsets();
 
-
-
   const { width, height } =
-
     useWindowDimensions();
 
-
-
   const horizontalPadding =
-
     Math.min(
-
       24,
-
       width * 0.06,
-
     );
-
-
-
-  const isSmallScreen =
-
-    height < 700;
-
-
-
-  /* =======================================================
-
-     STATE
-
-     ======================================================= */
-
-
 
   const [phase, setPhase] =
-
     useState<Phase>(
-
       'directions',
-
     );
-
-
 
   const [countdown, setCountdown] =
-
     useState(
-
       COUNTDOWN_SECONDS,
-
     );
 
-
-
   const [
-
     remainingSeconds,
-
     setRemainingSeconds,
-
   ] = useState(
-
     DEFAULT_VOLUME_CONTROL_STABILITY.durationSec *
-
       DEFAULT_VOLUME_CONTROL_STABILITY.repetitions,
-
   );
 
-
-
   const [liveVolume, setLiveVolume] =
-
     useState(-60);
 
   const [livePitch, setLivePitch] =
@@ -290,722 +150,309 @@ export default function VolumeControlStabilityScreen({
   const [liveNote, setLiveNote] =
     useState('--');
 
-
-
   const [
-
     liveStability,
-
     setLiveStability,
-
   ] = useState(0);
 
-
-
   const [
-
     liveHistory,
-
     setLiveHistory,
-
   ] = useState<HistoryPoint[]>(
-
     [],
-
   );
-
-
 
   const [
-
     measurement,
-
     setMeasurement,
-
   ] = useState<MeasurementResult | null>(
-
     null,
-
   );
-
-
 
   const [score, setScore] =
-
     useState<ScoreResult | null>(
-
       null,
-
     );
 
-
-
   const [
-
     hasPlayedReference,
-
     setHasPlayedReference,
-
   ] = useState(false);
 
-
-
   const [
-
     referencePlaying,
-
     setReferencePlaying,
-
   ] = useState(false);
 
-
-
   const [
-
     referenceError,
-
     setReferenceError,
-
   ] = useState<string | null>(
-
     null,
-
   );
 
-
-
   const [
-
     isStarting,
-
     setIsStarting,
-
   ] = useState(false);
 
-
-
   const [
-
     resolvedTier,
-
     setResolvedTier,
-
   ] = useState<Tier>(
-
     tier ?? CURRENT_TIER,
-
   );
 
-
-
   const [
-
     exerciseParams,
-
     setExerciseParams,
-
   ] = useState(
-
     DEFAULT_VOLUME_CONTROL_STABILITY,
-
   );
 
-
-
   const [
-
     paramsReady,
-
     setParamsReady,
-
   ] = useState(false);
-
-
-
-  /* =======================================================
-
-     DERIVED PARAMETERS
-
-     ======================================================= */
-
-
 
   const durationSeconds =
-
     exerciseParams.durationSec;
 
-
-
   const repetitions =
-
     exerciseParams.repetitions;
 
-
-
   const targetStability =
-
     exerciseParams.stabilityThreshold;
 
-
-
   const amplitudeVariancePercent =
-
     exerciseParams.amplitudeVariancePct;
 
-
-
   const totalExerciseSeconds =
-
     durationSeconds * repetitions;
 
-
-
-  /* =======================================================
-
-     REFS
-
-     ======================================================= */
-
-
-
   const mountedRef =
-
     useRef(true);
 
-
-
   const exerciseStartedAtRef =
-
     useRef<number | null>(
-
       null,
-
     );
 
-
-
   const recordingFinishedRef =
-
     useRef(false);
 
-
-
-  /* =======================================================
-
-     LOAD ADAPTIVE PARAMETERS
-
-     ======================================================= */
-
-
-
   useEffect(() => {
-
     let cancelled = false;
 
-
-
     const loadParameters = async () => {
-
       try {
-
         const user =
-
           auth.currentUser;
 
-
-
         let selectedTier: Tier =
-
           tier ?? CURRENT_TIER;
 
-
-
         let recentScores: number[] =
-
           [];
 
-
-
         if (user) {
-
-          /*
-
-           * If the route does not explicitly provide
-
-           * a tier, use the user's current saved tier.
-
-           */
-
           if (!tier) {
-
             const progress =
-
               await fetchComponentProgress(
-
                 user.uid,
-
                 'volume',
-
               );
-
-
 
             selectedTier =
-
               progress?.currentTier ??
-
               CURRENT_TIER;
-
           }
-
-
-
-          /*
-
-           * Get exercise history for Volume.
-
-           */
 
           const records =
-
             await fetchExerciseRecords(
-
               user.uid,
-
               'volume',
-
             );
 
-
-
-          /*
-
-           * ADS for this exercise uses the latest
-
-           * five scores from the same template
-
-           * and same tier.
-
-           */
-
           const matchingRecords =
-
             records
-
               .filter(
-
                 (record) =>
-
                   record.templateId ===
-
                     'volumeControlStability' &&
-
                   record.tier ===
-
                     selectedTier,
-
               )
-
               .sort(
-
                 (a, b) =>
-
                   a.timestamp -
-
                   b.timestamp,
-
               );
-
-
 
           recentScores =
-
             matchingRecords
-
               .slice(-5)
-
               .map(
-
                 (record) =>
-
                   record.scorePct,
-
               );
 
-
-
-          /*
-
-           * Cold-start behavior:
-
-           *
-
-           * If there is no exercise history for this
-
-           * exercise/tier, use the latest assessment's
-
-           * Volume score as the initial ADS reference.
-
-           */
-
           if (
-
             recentScores.length === 0
-
           ) {
-
             const latestAssessment =
-
               await getLatestAssessment();
 
-
-
             const assessmentScore =
-
               latestAssessment?.scores.find(
-
                 (score) =>
-
                   score.componentId ===
-
                   'volume',
-
               )?.scorePct;
 
-
-
             if (
-
               Number.isFinite(
-
                 assessmentScore,
-
               )
-
             ) {
-
               recentScores = [
-
                 assessmentScore!,
-
               ];
-
             }
-
           }
-
         }
-
-
-
-        /*
-
-         * Generate the actual exercise parameters.
-
-         *
-
-         * The generator starts from
-
-         * VOLUME_CONTROL_STABILITY_PARAMS[selectedTier]
-
-         * and applies ADS when a reference score exists.
-
-         */
 
         const generatedParams =
-
           generateVolumeControlStabilityParams({
-
             tier: selectedTier,
-
             recentScores,
-
           });
 
-
-
         if (cancelled) {
-
           return;
-
         }
-
-
 
         setResolvedTier(
-
           selectedTier,
-
         );
-
-
 
         setExerciseParams(
-
           generatedParams,
-
         );
-
-
 
         setParamsReady(true);
-
       } catch (error) {
-
         console.error(
-
           'Failed to load Volume Control Stability parameters:',
-
           error,
-
         );
 
-
-
         if (!cancelled) {
-
           setResolvedTier(
-
             tier ?? CURRENT_TIER,
-
           );
-
-
 
           setExerciseParams(
-
             DEFAULT_VOLUME_CONTROL_STABILITY,
-
           );
 
-
-
           setParamsReady(true);
-
         }
-
       }
-
     };
-
-
-
     void loadParameters();
 
-
-
     return () => {
-
       cancelled = true;
-
     };
 
   }, [tier]);
 
-
-
-  /* =======================================================
-
-     CLEANUP
-
-     ======================================================= */
-
-
-
   useEffect(() => {
-
     return () => {
-
       mountedRef.current = false;
-
     };
-
   }, []);
 
-
-
-  /* =======================================================
-
-     PLAY C4 REFERENCE
-
-     ======================================================= */
-
-
-
   const playReferenceNote =
-
     useCallback(async () => {
-
       if (referencePlaying) {
-
         return;
-
       }
-
-
-
       setReferenceError(null);
-
       setReferencePlaying(true);
 
-
-
       try {
-
         await playSingleNote(
-
           REFERENCE_NOTE.frequency,
-
           REFERENCE_NOTE_DURATION_SEC,
-
         );
 
-
-
         if (
-
           mountedRef.current
-
         ) {
-
           setHasPlayedReference(true);
-
         }
-
       } catch (error) {
-
         console.error(
-
           'C4 reference playback error:',
-
           error,
-
         );
 
-
-
         if (
-
           mountedRef.current
-
         ) {
-
           setHasPlayedReference(false);
 
-
-
           setReferenceError(
-
             'Unable to play the C4 reference note.',
-
           );
-
         }
-
       } finally {
 
         if (
-
           mountedRef.current
-
         ) {
-
           setReferencePlaying(false);
-
         }
-
       }
-
     }, [referencePlaying]);
 
-
-
-  /* =======================================================
-
-     AUDIO RECORDER
-
-     ======================================================= */
-
-
-
   const {
-
     startRecording,
-
     stopRecording,
-
   } = useAudioRecorder({
 
     onFrame: (frame) => {
-
       if (
-
         !mountedRef.current ||
-
         phase !== 'exercise'
-
       ) {
-
         return;
-
       }
 
 
-
-      /*
-
-       * Live digital volume.
-
-       */
-
       const db =
-
         Number.isFinite(
-
           frame.volume,
-
         ) &&
-
         frame.volume > -100
-
           ? frame.volume
-
           : -60;
-
-
-
+      
       setLiveVolume(db);
 
-
-
-      /*
-
-       * Voice presence.
-
-       */
-
       const isVoiced =
-
         Number.isFinite(
-
           frame.pitch,
-
         ) &&
-
         frame.pitch > 0 &&
-
         Number.isFinite(
-
           frame.clarity,
-
         ) &&
-
         frame.clarity >= 0.45 &&
-
         typeof frame.note ===
-
           'string' &&
-
         frame.note !== '--';
 
       setLivePitch(isVoiced ? frame.pitch : null);
@@ -1020,676 +467,298 @@ export default function VolumeControlStabilityScreen({
         return;
       }
 
-
-
       const now =
-
         Date.now();
 
-
-
       setLiveHistory(
-
         (previous) => {
-
           const next = [
-
             ...previous,
-
             {
-
               value: db,
-
               time: now,
-
             },
-
           ].slice(-40);
 
-
-
-          /*
-
-           * Convert dB back into amplitude.
-
-           *
-
-           * This mirrors the measurement layer's
-
-           * RMS-based stability concept.
-
-           */
-
           const amplitudes =
-
             next.map(
-
               (item) =>
-
                 Math.pow(
-
                   10,
-
                   item.value / 20,
-
                 ),
-
             );
 
-
-
           if (
-
             amplitudes.length < 2
-
           ) {
-
             setLiveStability(0);
 
-
-
             return next;
-
           }
-
-
 
           const mean =
-
             amplitudes.reduce(
-
               (
-
                 sum,
-
                 value,
-
               ) =>
-
                 sum + value,
-
               0,
-
             ) /
-
             amplitudes.length;
-
-
 
           if (
-
             mean <= 0 ||
-
             !Number.isFinite(
-
               mean,
-
             )
-
           ) {
-
             setLiveStability(0);
-
-
-
             return next;
-
           }
 
-
-
           const variance =
-
             amplitudes.reduce(
-
               (
-
                 sum,
-
                 value,
-
               ) =>
-
                 sum +
-
                 Math.pow(
-
                   value - mean,
-
                   2,
-
                 ),
-
               0,
-
             ) /
 
             amplitudes.length;
 
-
-
           const standardDeviation =
-
             Math.sqrt(
-
               variance,
-
             );
 
-
-
           const stability =
-
             100 -
-
             (standardDeviation /
-
               mean) *
-
               100;
 
-
-
           setLiveStability(
-
             Math.max(
-
               0,
-
               Math.min(
-
                 100,
-
                 stability,
-
               ),
-
             ),
-
           );
 
-
-
           return next;
-
         },
-
       );
-
     },
 
-
-
     onStop: (
-
       samples,
-
       sampleRate,
-
     ) => {
-
       if (
-
         !mountedRef.current ||
-
         recordingFinishedRef.current
-
       ) {
-
         return;
-
       }
 
-
-
       recordingFinishedRef.current =
-
         true;
 
-
-
-      /*
-
-       * Measurement layer.
-
-       *
-
-       * Use the actual dynamically generated
-
-       * duration and repetition count.
-
-       */
-
       const measured =
-
         measureVolumeControlStability(
-
           samples,
-
           sampleRate,
-
           durationSeconds,
-
           repetitions,
-
         );
-
-
-
-      /*
-
-       * Scoring layer.
-
-       *
-
-       * The passing score comes from the
-
-       * current generated parameter set.
-
-       */
 
       const scored =
-
         scoreVolumeControlStability(
-
           measured,
-
           {
-
             passingScore:
-
               targetStability,
-
           },
-
         );
 
-
-
       setMeasurement(
-
         measured,
-
       );
-
-
 
       setScore(
-
         scored,
-
       );
-
-
 
       setPhase('results');
 
-
-
-      /*
-
-       * Save the completed exercise.
-
-       *
-
-       * Save the actual tier used to generate
-
-       * the exercise parameters.
-
-       */
-
       void saveCompletedExercise(
-
         'volume',
-
         'volumeControlStability',
-
         resolvedTier,
-
         scored.overallScore,
-
       );
-
     },
-
   });
 
 
-
-  /* =======================================================
-
-     BEGIN RECORDING
-
-     ======================================================= */
-
-
-
   const beginRecording =
-
     useCallback(async () => {
-
       try {
-
         recordingFinishedRef.current =
-
           false;
-
-
 
         await startRecording();
 
-
-
         if (
-
           !mountedRef.current
-
         ) {
-
           return;
-
         }
 
-
-
         exerciseStartedAtRef.current =
-
           Date.now();
 
-
-
         setLiveVolume(-60);
-
-
-
         setLiveStability(0);
-
-
-
         setLiveHistory([]);
-
         setLivePitch(null);
         setLiveNote('--');
 
-
-
         setRemainingSeconds(
-
           totalExerciseSeconds,
-
         );
-
-
 
         setPhase(
-
           'exercise',
-
         );
-
       } catch (error) {
-
         console.error(
-
           'Unable to start recording:',
-
           error,
-
         );
-
-
 
         if (
-
           mountedRef.current
-
         ) {
-
           setPhase(
-
             'directions',
-
           );
-
-
 
           setReferenceError(
-
             'Microphone could not be started. Please check microphone permission.',
-
           );
-
         }
-
       }
-
     }, [
-
       startRecording,
-
       totalExerciseSeconds,
-
     ]);
 
-
-
-  /* =======================================================
-
-     COUNTDOWN
-
-     ======================================================= */
-
-
-
   useEffect(() => {
-
     if (
-
       phase !== 'countdown'
-
     ) {
-
       return;
-
     }
 
-
-
     setCountdown(
-
       COUNTDOWN_SECONDS,
-
     );
 
-
-
     const interval =
-
       setInterval(() => {
-
         setCountdown(
-
           (value) => {
-
             if (value <= 1) {
-
               clearInterval(
-
                 interval,
-
               );
-
-
 
               void beginRecording();
 
-
-
               return 0;
-
             }
-
-
-
             return value - 1;
-
           },
-
         );
-
       }, 1000);
 
-
-
     return () => {
-
       clearInterval(
-
         interval,
-
       );
-
     };
-
   }, [
-
     phase,
-
     beginRecording,
-
   ]);
-
-
-
-  /* =======================================================
-
-     EXERCISE TIMER
-
-     ======================================================= */
-
-
 
   useEffect(() => {
-
     if (
-
       phase !== 'exercise'
-
     ) {
-
       return;
-
     }
 
-
-
     const interval =
-
       setInterval(() => {
-
         const startedAt =
-
           exerciseStartedAtRef.current;
 
-
-
         if (!startedAt) {
-
           return;
-
         }
-
-
 
         const elapsed =
-
           (Date.now() -
-
             startedAt) /
-
           1000;
 
-
-
         const remaining =
-
           Math.max(
-
             0,
-
             Math.ceil(
-
               totalExerciseSeconds -
-
                 elapsed,
-
             ),
-
           );
-
-
 
         setRemainingSeconds(
-
           remaining,
-
         );
 
-
-
         if (
-
           elapsed >=
-
           totalExerciseSeconds
-
         ) {
-
           clearInterval(
-
             interval,
-
           );
 
-
-
           void stopRecording();
-
         }
-
       }, 100);
 
-
-
     return () => {
-
       clearInterval(
-
         interval,
-
       );
-
     };
-
   }, [
-
     phase,
-
     stopRecording,
-
     totalExerciseSeconds,
-
   ]);
-
-
-
-  /* =======================================================
-
-     START EXERCISE
-
-     ======================================================= */
-
-
 
   const startExercise =
 
@@ -4081,1010 +3150,491 @@ export default function VolumeControlStabilityScreen({
             <Ionicons name="arrow-back" size={17} color="#D9578E" />
             <Text style={styles.backToListButtonText}>Back to Exercise List</Text>
           </Pressable>
-
         </View>
-
       </View>
-
     </SafeAreaView>
-
   );
 
 }
-
-
-
-/* =========================================================
-
-   PARAMETER ITEM
-
-   ========================================================= */
-
-
 
 function ParameterItem({
-
   icon,
-
   value,
-
   label,
-
 }: {
-
   icon: keyof typeof Ionicons.glyphMap;
-
   value: string;
-
   label: string;
-
 }) {
-
   return (
-
     <View
-
       style={
-
         styles.parameterItem
-
       }
-
     >
-
       <Ionicons
-
         name={icon}
-
         size={19}
-
         color="#EC5A93"
-
       />
 
-
-
       <Text
-
         style={
-
           styles.parameterValue
-
         }
-
       >
-
         {value}
-
       </Text>
-
-
 
       <Text
-
         style={
-
           styles.parameterLabel
-
         }
-
       >
-
         {label}
-
       </Text>
-
     </View>
-
   );
-
 }
-
-
-
-/* =========================================================
-
-   DIRECTION ROW
-
-   ========================================================= */
-
-
 
 function DirectionRow({
-
   number,
-
   text,
-
 }: {
-
   number: string;
-
   text: string;
-
 }) {
-
   return (
-
     <View
-
       style={
-
         styles.directionRow
-
       }
-
     >
-
       <View
-
         style={
-
           styles.directionNumber
-
         }
-
       >
-
         <Text
-
           style={
-
             styles.directionNumberText
-
           }
-
         >
-
           {number}
-
         </Text>
-
       </View>
-
-
-
       <Text
-
         style={
-
           styles.directionText
-
         }
-
       >
-
         {text}
-
       </Text>
-
     </View>
-
   );
-
 }
-
-
-
-/* =========================================================
-
-   COMPACT RESULT ROW
-
-   ========================================================= */
-
-
 
 function CompactResultRow({
-
   label,
-
   value,
-
   isLast = false,
-
 }: {
-
   label: string;
-
   value: string;
-
   isLast?: boolean;
-
 }) {
-
   return (
-
     <View
-
       style={[
-
         styles.compactResultRow,
-
         !isLast &&
-
           styles.compactResultRowBorder,
-
       ]}
-
     >
-
       <Text
-
         style={
-
           styles.compactResultLabel
-
         }
-
       >
-
         {label}
-
       </Text>
-
-
-
       <Text
-
         style={
-
           styles.compactResultValue
-
         }
-
       >
-
         {value}
-
       </Text>
-
     </View>
-
   );
-
 }
 
-
-
-/* =========================================================
-
-   STYLES
-
-   ========================================================= */
-
-
-
 const styles = StyleSheet.create({
-
+  
   safeArea: {
-
     flex: 1,
-
     backgroundColor: '#FFF8FB',
-
   },
-
-
 
   /* HEADER */
 
-
-
   header: {
-
     minHeight: 54,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   headerSide: {
-
     width: 40,
-
     height: 40,
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
   },
-
-
 
   headerCenter: {
-
     flex: 1,
-
     alignItems: 'center',
-
   },
-
-
 
   headerTitle: {
-
     fontSize: 15,
-
     fontWeight: '800',
-
     color: '#242124',
-
   },
-
-
 
   headerSubtitle: {
-
     marginTop: 1,
-
     fontSize: 10,
-
     color: '#8C8589',
-
   },
-
-
 
   /* SCROLL */
 
-
-
   scrollContent: {
-
     paddingTop: 8,
-
     gap: 12,
-
   },
-
-
 
   /* HERO */
 
-
-
   heroIcon: {
-
     width: 58,
-
     height: 58,
-
     borderRadius: 29,
-
     backgroundColor: '#FFE5EF',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
     alignSelf: 'center',
-
   },
-
-
 
   screenTitle: {
-
     fontSize: 23,
-
     lineHeight: 28,
-
     fontWeight: '900',
-
     color: '#2E272B',
-
     textAlign: 'center',
-
   },
-
-
 
   screenDescription: {
-
     fontSize: 13,
-
     lineHeight: 19,
-
     color: '#777176',
-
     textAlign: 'center',
-
     paddingHorizontal: 8,
-
   },
-
-
 
   /* REFERENCE */
 
-
-
   referenceCard: {
-
     backgroundColor: '#FFFFFF',
-
     borderRadius: 18,
-
     padding: 16,
-
     elevation: 2,
-
   },
-
-
 
   referenceTopRow: {
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   referenceLabel: {
-
     fontSize: 10,
-
     fontWeight: '800',
-
     letterSpacing: 1,
-
     color: '#999197',
-
   },
-
-
 
   referenceNote: {
-
     marginTop: 1,
-
     fontSize: 31,
-
     fontWeight: '900',
-
     color: '#EC5A93',
-
   },
-
-
 
   noteIconCircle: {
-
     width: 46,
-
     height: 46,
-
     borderRadius: 23,
-
     backgroundColor: '#FFF0F6',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
   },
-
-
 
   referenceInstruction: {
-
     marginTop: 8,
-
     fontSize: 12,
-
     lineHeight: 17,
-
     color: '#6F686D',
-
   },
-
-
 
   referenceButton: {
-
     marginTop: 12,
-
     minHeight: 47,
-
     borderRadius: 14,
-
     backgroundColor: '#EC5A93',
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
     gap: 7,
-
   },
-
-
 
   referenceButtonDisabled: {
-
     opacity: 0.7,
-
   },
-
-
 
   referenceButtonText: {
-
     color: '#FFFFFF',
-
     fontSize: 13,
-
     fontWeight: '800',
-
   },
-
-
 
   referenceReadyRow: {
-
     marginTop: 9,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 6,
-
   },
-
-
 
   referenceReadyText: {
-
     flex: 1,
-
     fontSize: 11,
-
     color: '#2E9B62',
-
     fontWeight: '600',
-
   },
-
-
 
   errorText: {
-
     marginTop: 8,
-
     fontSize: 11,
-
     lineHeight: 16,
-
     color: '#C54545',
-
   },
-
-
 
   /* PARAMETERS */
 
-
-
   parameterCard: {
-
     backgroundColor: '#FFFFFF',
-
     borderRadius: 18,
-
     padding: 16,
-
     elevation: 2,
-
   },
-
-
 
   sectionLabel: {
-
     fontSize: 10,
-
     letterSpacing: 1,
-
     fontWeight: '800',
-
     color: '#999197',
-
   },
-
-
 
   parameterGrid: {
-
     marginTop: 10,
-
     flexDirection: 'row',
-
     flexWrap: 'wrap',
-
     gap: 9,
-
   },
-
-
 
   parameterItem: {
-
     width: '48%',
-
     minHeight: 72,
-
     borderRadius: 14,
-
     backgroundColor: '#FFF5F9',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
   },
-
-
 
   parameterValue: {
-
     marginTop: 3,
-
     fontSize: 16,
-
     fontWeight: '800',
-
     color: '#302A2E',
-
   },
-
-
 
   parameterLabel: {
-
     marginTop: 1,
-
     fontSize: 10,
-
     color: '#8D858A',
-
     textAlign: 'center',
-
   },
-
-
 
   /* DIRECTIONS */
 
-
-
   directionsCard: {
-
     backgroundColor: '#FFFFFF',
-
     borderRadius: 18,
-
     padding: 16,
-
     elevation: 2,
-
   },
-
-
 
   directionRow: {
-
     marginTop: 10,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
   },
-
-
 
   directionNumber: {
-
     width: 28,
-
     height: 28,
-
     borderRadius: 14,
-
     backgroundColor: '#FFE5EF',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
     marginRight: 10,
-
   },
-
-
 
   directionNumberText: {
-
     fontSize: 12,
-
     fontWeight: '800',
-
     color: '#EC5A93',
-
   },
-
-
 
   directionText: {
-
     flex: 1,
-
     fontSize: 12,
-
     lineHeight: 17,
-
     color: '#4D474B',
-
   },
-
-
 
   tipCard: {
-
     minHeight: 48,
-
     borderRadius: 15,
-
     paddingHorizontal: 13,
-
     backgroundColor: '#FFF0F6',
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 9,
-
   },
-
-
 
   tipText: {
-
     flex: 1,
-
     fontSize: 11,
-
     lineHeight: 16,
-
     color: '#655D62',
-
   },
-
-
 
   varianceText: {
-
     fontSize: 10,
-
     color: '#8E878B',
-
     textAlign: 'center',
-
   },
-
-
 
   helperText: {
-
     marginTop: -4,
-
     textAlign: 'center',
-
     fontSize: 10,
-
     color: '#A0989D',
-
   },
-
-
 
   /* BUTTON */
 
-
-
   primaryButton: {
-
     minHeight: 50,
-
     borderRadius: 16,
-
     backgroundColor: '#EC5A93',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
     flexDirection: 'row',
-
     gap: 8,
-
   },
-
-
 
   primaryButtonDisabled: {
-
     backgroundColor: '#D9B4C2',
-
   },
-
-
 
   primaryButtonText: {
-
     fontSize: 14,
-
     fontWeight: '800',
-
     color: '#FFFFFF',
-
   },
-
-
 
   /* COUNTDOWN */
 
-
-
   countdownScreen: {
-
     flex: 1,
-
     justifyContent: 'space-between',
-
     alignItems: 'center',
-
     paddingTop: 35,
-
   },
-
-
 
   countdownTop: {
-
     alignItems: 'center',
-
   },
-
-
 
   countdownTitle: {
-
     fontSize: 27,
-
     fontWeight: '900',
-
     color: '#2E272B',
-
   },
-
-
 
   countdownInstruction: {
-
     marginTop: 6,
-
     fontSize: 13,
-
     color: '#7C7479',
-
     textAlign: 'center',
-
   },
-
-
 
   countdownCircle: {
-
     width: 180,
-
     height: 180,
-
     borderRadius: 90,
-
     backgroundColor: '#FFE5EF',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
   },
-
-
 
   countdownNumber: {
-
     fontSize: 72,
-
     fontWeight: '900',
-
     color: '#EC5A93',
-
   },
-
-
 
   countdownBottom: {
-
     alignItems: 'center',
-
   },
-
-
 
   readyNoteBadge: {
-
     minHeight: 37,
-
     paddingHorizontal: 14,
-
     borderRadius: 19,
-
     backgroundColor: '#FFF0F6',
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 6,
-
   },
-
-
 
   readyNoteText: {
-
     fontSize: 12,
-
     fontWeight: '700',
-
     color: '#5F575C',
-
   },
-
-
 
   countdownHint: {
-
     marginTop: 8,
-
     fontSize: 11,
-
     color: '#8A8287',
-
   },
 
-
-
   /* EXERCISE */
-
-
 
   exerciseContainer: {
     flexGrow: 1,
@@ -5095,16 +3645,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF8FB',
   },
 
-
-
   exerciseTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-
-
 
   exerciseLabel: {
     fontSize: 9,
@@ -5460,15 +4006,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-
-
   stabilityTitle: {
     fontSize: 13,
     fontWeight: '900',
     color: '#332D31',
   },
-
-
 
   stabilitySubtitle: {
     marginTop: 3,
@@ -5476,15 +4018,11 @@ const styles = StyleSheet.create({
     color: '#8F878C',
   },
 
-
-
   stabilityValue: {
     fontSize: 25,
     fontWeight: '900',
     color: '#EC5A93',
   },
-
-
 
   progressTrack: {
     marginTop: 12,
@@ -5495,15 +4033,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-
-
   progressFill: {
     height: '100%',
     borderRadius: 6,
     backgroundColor: '#EC5A93',
   },
-
-
 
   progressLabels: {
     marginTop: 6,
@@ -5511,17 +4045,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
-
-
   progressLabel: {
     fontSize: 9,
     fontWeight: '600',
     color: '#A0989D',
   },
-
-
-
-  /* POLISHED LIVE VOCAL TRAINER */
 
   exerciseHeadingCopy: {
     flex: 1,
@@ -5851,584 +4379,291 @@ const styles = StyleSheet.create({
     backgroundColor: '#5A343D',
   },
 
-  /* GRAPH */
-
-
-
   graphCard: {
-
     backgroundColor: '#FFFFFF',
-
     borderRadius: 18,
-
     padding: 12,
-
     elevation: 2,
-
   },
-
-
 
   graphHeader: {
-
     marginBottom: 7,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   graphTitle: {
-
     fontSize: 12,
-
     fontWeight: '800',
-
     color: '#332D31',
-
   },
-
-
 
   graphUnit: {
-
     fontSize: 9,
-
     color: '#A0989D',
-
   },
-
-
 
   graph: {
-
     height: 72,
-
     borderRadius: 11,
-
     backgroundColor: '#FFF7FA',
-
     overflow: 'hidden',
-
     paddingHorizontal: 4,
-
     paddingBottom: 4,
-
     flexDirection: 'row',
-
     alignItems: 'flex-end',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   graphSmall: {
-
     height: 57,
-
   },
-
-
 
   graphCenterLine: {
-
     position: 'absolute',
-
     left: 0,
-
     right: 0,
-
     top: '50%',
-
     height: 1,
-
     backgroundColor: '#F2DDE5',
-
   },
-
-
 
   graphBar: {
-
     width: 4,
-
     minHeight: 4,
-
     borderRadius: 2,
-
     backgroundColor: '#EC5A93',
-
   },
-
-
 
   graphPlaceholder: {
-
     position: 'absolute',
-
     left: 0,
-
     right: 0,
-
     top: '35%',
-
     textAlign: 'center',
-
     fontSize: 9,
-
     color: '#AAA1A7',
-
   },
-
-
 
   exerciseHintCard: {
-
     minHeight: 43,
-
     borderRadius: 14,
-
     paddingHorizontal: 12,
-
     backgroundColor: '#FFF0F6',
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 8,
-
   },
-
-
 
   exerciseHintText: {
-
     flex: 1,
-
     fontSize: 10,
-
     lineHeight: 15,
-
     color: '#71696E',
-
   },
-
-
-
-  /* RESULTS */
-
-
 
   resultsScreen: {
-
     flex: 1,
-
     backgroundColor: '#FFF8FB',
-
   },
-
-
 
   resultsHeader: {
-
     minHeight: 54,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   resultsHeaderCenter: {
-
     flex: 1,
-
-    alignItems: 'center',
-
+    alignItems: 'center'
   },
-
-
 
   resultsScroll: {
-
     flex: 1,
-
   },
-
-
 
   resultsScrollContent: {
-
     paddingTop: 7,
-
     paddingBottom: 10,
-
   },
-
-
 
   resultStatusBadge: {
-
     alignSelf: 'center',
-
     minHeight: 25,
-
     paddingHorizontal: 10,
-
     borderRadius: 13,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 4,
-
   },
-
-
 
   resultStatusPassed: {
-
     backgroundColor: '#2E9B62',
-
   },
-
-
 
   resultStatusPractice: {
-
     backgroundColor: '#EC5A93',
-
   },
-
-
 
   resultStatusText: {
-
     color: '#FFFFFF',
-
     fontSize: 8,
-
     fontWeight: '800',
-
     letterSpacing: 0.7,
-
   },
-
-
 
   resultTitle: {
-
     marginTop: 8,
-
     fontSize: 21,
-
     lineHeight: 25,
-
     fontWeight: '900',
-
     color: '#3A3035',
-
     textAlign: 'center',
-
   },
-
-
 
   resultDescription: {
-
     marginTop: 4,
-
     fontSize: 10,
-
     lineHeight: 15,
-
     color: '#81777D',
-
     textAlign: 'center',
-
     paddingHorizontal: 8,
-
   },
-
-
 
   resultScoreSection: {
-
     marginTop: 9,
-
     alignItems: 'center',
-
   },
-
-
 
   resultScoreCircle: {
-
     width: 96,
-
     height: 96,
-
     borderRadius: 48,
-
     backgroundColor: '#F9D5E1',
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
   },
-
-
 
   resultScoreNumber: {
-
     fontSize: 31,
-
     lineHeight: 35,
-
     fontWeight: '900',
-
     color: '#2F252A',
-
   },
-
-
 
   resultScoreOutOf: {
-
     fontSize: 8,
-
     color: '#81777D',
-
   },
-
-
 
   resultScoreLabel: {
-
     marginTop: 3,
-
     fontSize: 8.5,
-
     fontWeight: '700',
-
     color: '#EC5A93',
-
   },
-
-
 
   compactResultsCard: {
-
     marginTop: 9,
-
     borderRadius: 16,
-
     borderWidth: 1,
-
     borderColor: '#F0D9E2',
-
     backgroundColor: '#FFFFFF',
-
     overflow: 'hidden',
-
   },
-
-
 
   compactResultRow: {
-
     minHeight: 27,
-
     paddingHorizontal: 11,
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-between',
-
   },
-
-
 
   compactResultRowBorder: {
-
     borderBottomWidth:
-
       StyleSheet.hairlineWidth,
-
     borderBottomColor: '#EDE3E7',
-
   },
-
-
 
   compactResultLabel: {
-
     fontSize: 9,
-
     color: '#81777D',
-
   },
-
-
 
   compactResultValue: {
-
     fontSize: 9.5,
-
     fontWeight: '800',
-
     color: '#3A3035',
-
   },
-
-
 
   formulaCard: {
-
     marginTop: 7,
-
     borderRadius: 14,
-
     backgroundColor: '#FFF0F6',
-
     paddingHorizontal: 11,
-
     paddingVertical: 8,
-
   },
-
-
 
   formulaTitle: {
-
     fontSize: 8,
-
     fontWeight: '800',
-
     color: '#534950',
-
   },
-
-
 
   formulaMain: {
-
     marginTop: 2,
-
     fontSize: 9.5,
-
     fontWeight: '800',
-
     color: '#EC5A93',
-
   },
-
-
 
   formulaDescription: {
-
     marginTop: 1,
-
     fontSize: 7.5,
-
     lineHeight: 11,
-
     color: '#81777D',
-
   },
-
-
 
   targetCompactCard: {
-
     marginTop: 7,
-
     minHeight: 47,
-
     borderRadius: 14,
-
     backgroundColor: '#FFFFFF',
-
     flexDirection: 'row',
-
     alignItems: 'center',
-
     justifyContent: 'space-around',
-
     elevation: 1,
-
   },
-
-
 
   targetCompactItem: {
-
     flex: 1,
-
     alignItems: 'center',
-
   },
-
-
 
   targetCompactLabel: {
-
     fontSize: 7.5,
-
     color: '#968D92',
-
   },
-
-
 
   targetCompactValue: {
-
     marginTop: 2,
-
     fontSize: 10,
-
     fontWeight: '800',
-
     color: '#3A3035',
-
   },
-
-
 
   targetCompactDivider: {
-
     width: StyleSheet.hairlineWidth,
-
     height: 25,
-
     backgroundColor: '#E8DEE2',
-
   },
 
-
-
   resultsFooter: {
-
     paddingTop: 7,
-
     backgroundColor: '#FFF8FB',
-
   },
 
   backToListButton: {
