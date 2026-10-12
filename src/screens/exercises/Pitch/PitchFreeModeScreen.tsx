@@ -24,7 +24,7 @@ import {
 
 import {
   measurePitchFreeModeFrame,
-} from '@/services/measurement/freeMode/pitch';
+} from '@/services/measurement/freemode/pitch';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
