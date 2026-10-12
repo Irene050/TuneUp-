@@ -111,6 +111,12 @@ function targetHeight(index: number): number {
   return 0.18 + progress * 0.65;
 }
 
+function guideCrescendoHeight(index: number): number {
+  const progress = index / (BAR_COUNT - 1);
+  // Make the rise from soft to loud much easier to recognize.
+  return 0.08 + Math.pow(progress, 0.75) * 0.92;
+}
+
 function calculateLiveSmoothness(values: number[]): number {
   if (values.length < 3) {
     return 0;
@@ -190,6 +196,69 @@ function VolumeVisualizer({
   );
 }
 
+function TargetCrescendoGuide({
+  seconds,
+  durationSeconds,
+}: {
+  seconds: number;
+  durationSeconds: number;
+}) {
+  const progress = clamp(
+    durationSeconds > 0 ? seconds / durationSeconds : 0,
+    0,
+    1,
+  );
+  const activeBarPosition = progress * (BAR_COUNT - 1);
+  const activeBarIndex = Math.floor(activeBarPosition);
+  const indicatorLeft = Math.min(progress * 100, 98.5);
+
+  return (
+    <View style={styles.guideCard}>
+      <Text style={styles.guideTitle}>Follow this pattern</Text>
+      <Text style={styles.guideSubtitle}>
+        Start softly, then gradually get louder until the guide reaches Loud.
+      </Text>
+
+      <View style={styles.guideBars}>
+        {Array.from({ length: BAR_COUNT }, (_, index) => (
+          <View
+            key={`guide-${index}`}
+            style={[
+              styles.guideBar,
+              {
+                height: `${guideCrescendoHeight(index) * 100}%`,
+                backgroundColor:
+                  index === activeBarIndex
+                    ? ACCENT
+                    : index < activeBarPosition
+                      ? '#EAA5B6'
+                      : '#F7DCE3',
+              },
+            ]}
+          />
+        ))}
+        <View
+          pointerEvents="none"
+          style={[styles.guideIndicator, { left: `${indicatorLeft}%` }]}
+        />
+      </View>
+
+      <View style={styles.guideLabels}>
+        <Text style={styles.guideLabel}>SOFT</Text>
+        <Text style={styles.guideLabel}>LOUD</Text>
+      </View>
+      <View style={styles.guideProgressTrack}>
+        <View
+          style={[
+            styles.guideProgressFill,
+            { width: `${progress * 100}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
 function ResultItem({ label, value }: ResultItemProps) {
   return (
     <View style={styles.resultItem}>
@@ -203,7 +272,7 @@ export default function ControlledCrescendoExercise({
   tier,
 }: ControlledCrescendoExerciseProps) {
   const [phase, setPhase] = useState<
-    'directions' | 'exercise' | 'results'
+    'directions' | 'exercise' | 'countdown' | 'results'
   >('directions');
 
   const [resolvedTier, setResolvedTier] = useState<Tier>(
@@ -217,8 +286,11 @@ export default function ControlledCrescendoExercise({
 
   const [rep, setRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
+  const [countdown, setCountdown] = useState(3);
+  const [countdownReady, setCountdownReady] = useState(false);
+  const [guideElapsed, setGuideElapsed] = useState(0);
 
-  const [liveFrame, setLiveFrame] =
+  const [, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
 
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
@@ -235,6 +307,8 @@ export default function ControlledCrescendoExercise({
   const finishingRef = useRef(false);
   const completedNaturallyRef = useRef(false);
   const phaseRef = useRef(phase);
+  const interRepStopRef = useRef(false);
+  const repetitionSamplesRef = useRef<Float32Array[]>([]);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -245,6 +319,23 @@ export default function ControlledCrescendoExercise({
   const rampSeconds = params.durationSec;
   const repetitions = params.repetitions;
   const smoothnessTarget = params.smoothnessThreshold;
+
+  useEffect(() => {
+    if (phase !== 'exercise') {
+      setGuideElapsed(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setGuideElapsed(0);
+    const interval = setInterval(() => {
+      setGuideElapsed(
+        Math.min((Date.now() - startedAt) / 1000, rampSeconds),
+      );
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [phase, rep, rampSeconds]);
 
   /*
    * Adaptive difficulty initialization:
@@ -428,19 +519,46 @@ export default function ControlledCrescendoExercise({
     },
 
     onStop: (samples, sampleRate) => {
+      // Save this repetition's raw samples, then exclude the upcoming countdown
+      // from the final measurement by combining only recorded segments.
+      if (interRepStopRef.current) {
+        interRepStopRef.current = false;
+        if (samples.length > 0) {
+          repetitionSamplesRef.current.push(samples);
+        }
+        return;
+      }
+
       /*
        * A manual stop or navigation cancels the attempt.
        * Only a naturally completed recording is scored and saved.
        */
       if (!completedNaturallyRef.current) {
+        repetitionSamplesRef.current = [];
         finishingRef.current = false;
         clearLiveState();
         return;
       }
 
       try {
-        const measurement = measureControlledCrescendo(
+        const recordedSegments = [
+          ...repetitionSamplesRef.current,
           samples,
+        ];
+        const totalSampleCount = recordedSegments.reduce(
+          (total, segment) => total + segment.length,
+          0,
+        );
+        const completeSamples = new Float32Array(totalSampleCount);
+        let sampleOffset = 0;
+        for (const segment of recordedSegments) {
+          completeSamples.set(segment, sampleOffset);
+          sampleOffset += segment.length;
+        }
+        repetitionSamplesRef.current = [];
+
+        const measurement = measureControlledCrescendo(
+          completeSamples,
           sampleRate,
           {
             windowMs: WINDOW_MS,
@@ -519,55 +637,127 @@ export default function ControlledCrescendoExercise({
     },
   });
 
-  /*
-   * Run one countdown for each repetition.
-   * Stop recording only after the final repetition finishes.
-   */
+  // The visible guide and timer run only during an active repetition.
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
     }
 
     const interval = setInterval(() => {
-      setSeconds((previousSeconds) => {
-        if (previousSeconds + 1 < rampSeconds) {
-          return previousSeconds + 1;
-        }
-
-        if (rep < repetitions) {
-          setRep((previousRep) => previousRep + 1);
-          setLiveHistory([]);
-          return 0;
-        }
-
-        if (
-          !finishingRef.current &&
-          !completedNaturallyRef.current
-        ) {
-          finishingRef.current = true;
-          completedNaturallyRef.current = true;
-
-          void stopRecording().catch((stopError) => {
-            console.error(
-              'Unable to finish Controlled Crescendo recording:',
-              stopError,
-            );
-
-            finishingRef.current = false;
-            completedNaturallyRef.current = false;
-            setErrorMessage(
-              'The recording could not be completed. Please try again.',
-            );
-            setPhase('directions');
-          });
-        }
-
-        return rampSeconds;
-      });
+      setSeconds((previousSeconds) =>
+        Math.min(previousSeconds + 1, rampSeconds),
+      );
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [phase, rep, rampSeconds, repetitions, stopRecording]);
+  }, [phase, rampSeconds]);
+
+  // Stop between repetitions, collect that segment, then show a 3-second
+  // preparation countdown. The recording pause is excluded from scoring.
+  useEffect(() => {
+    if (phase !== 'exercise' || seconds < rampSeconds) {
+      return;
+    }
+
+    if (rep < repetitions) {
+      if (finishingRef.current) {
+        return;
+      }
+
+      finishingRef.current = true;
+      interRepStopRef.current = true;
+      phaseRef.current = 'countdown';
+      setPhase('countdown');
+      setRep((previousRep) => previousRep + 1);
+      setSeconds(0);
+      setCountdown(3);
+      setCountdownReady(false);
+      setLiveFrame(null);
+      setLiveHistory([]);
+
+      void stopRecording()
+        .then(() => {
+          finishingRef.current = false;
+          setCountdownReady(true);
+        })
+        .catch((stopError) => {
+          console.error(
+            'Unable to pause before the next Controlled Crescendo repetition:',
+            stopError,
+          );
+          interRepStopRef.current = false;
+          repetitionSamplesRef.current = [];
+          finishingRef.current = false;
+          setErrorMessage('The recording could not continue. Please try again.');
+          phaseRef.current = 'directions';
+          setPhase('directions');
+        });
+      return;
+    }
+
+    if (
+      !finishingRef.current &&
+      !completedNaturallyRef.current
+    ) {
+      finishingRef.current = true;
+      completedNaturallyRef.current = true;
+
+      void stopRecording().catch((stopError) => {
+        console.error(
+          'Unable to finish Controlled Crescendo recording:',
+          stopError,
+        );
+
+        finishingRef.current = false;
+        completedNaturallyRef.current = false;
+        repetitionSamplesRef.current = [];
+        setErrorMessage(
+          'The recording could not be completed. Please try again.',
+        );
+        phaseRef.current = 'directions';
+        setPhase('directions');
+      });
+    }
+  }, [phase, seconds, rep, rampSeconds, repetitions, stopRecording]);
+
+  // Countdown runs only after the previous recording segment has fully stopped.
+  useEffect(() => {
+    if (phase !== 'countdown' || !countdownReady) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (countdown > 1) {
+        setCountdown((value) => value - 1);
+        return;
+      }
+
+      setCountdownReady(false);
+      setSeconds(0);
+      setLiveFrame(null);
+      setLiveHistory([]);
+      phaseRef.current = 'exercise';
+
+      void startRecording()
+        .then(() => {
+          setPhase('exercise');
+        })
+        .catch((recordingError) => {
+          console.error(
+            'Unable to restart Controlled Crescendo recording:',
+            recordingError,
+          );
+          repetitionSamplesRef.current = [];
+          phaseRef.current = 'directions';
+          setErrorMessage(
+            'Microphone recording could not restart. Please try again.',
+          );
+          setPhase('directions');
+        });
+    }, 1000);
+
+    return () => clearTimeout(timeout);
+  }, [phase, countdown, countdownReady, startRecording]);
 
   const startExercise = useCallback(async () => {
     setErrorMessage(undefined);
@@ -585,11 +775,21 @@ export default function ControlledCrescendoExercise({
 
     finishingRef.current = false;
     completedNaturallyRef.current = false;
+    interRepStopRef.current = false;
+    repetitionSamplesRef.current = [];
+    setCountdown(3);
+    setCountdownReady(false);
+
+    // Accept live audio frames as soon as the recorder starts emitting them.
+    phaseRef.current = 'exercise';
 
     try {
       await startRecording();
       setPhase('exercise');
     } catch (recordingError) {
+      phaseRef.current = 'directions';
+      repetitionSamplesRef.current = [];
+      interRepStopRef.current = false;
       console.error(
         'Unable to start Controlled Crescendo recording:',
         recordingError,
@@ -605,7 +805,10 @@ export default function ControlledCrescendoExercise({
 
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
+    interRepStopRef.current = false;
+    repetitionSamplesRef.current = [];
     finishingRef.current = true;
+    phaseRef.current = 'directions';
 
     try {
       if (isRecording) {
@@ -619,13 +822,17 @@ export default function ControlledCrescendoExercise({
     } finally {
       finishingRef.current = false;
       clearLiveState();
+      phaseRef.current = 'directions';
       setPhase('directions');
     }
   }, [clearLiveState, isRecording, stopRecording]);
 
   const handleBackFromExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
+    interRepStopRef.current = false;
+    repetitionSamplesRef.current = [];
     finishingRef.current = true;
+    phaseRef.current = 'directions';
 
     try {
       if (isRecording) {
@@ -638,6 +845,7 @@ export default function ControlledCrescendoExercise({
       );
     } finally {
       finishingRef.current = false;
+      phaseRef.current = 'directions';
       router.back();
     }
   }, [isRecording, stopRecording]);
@@ -780,6 +988,38 @@ export default function ControlledCrescendoExercise({
     );
   }
 
+  if (phase === 'countdown') {
+    return (
+      <ExerciseListeningScreen
+        icon="volume-high-outline"
+        title="Controlled Crescendo"
+        currentRep={rep}
+        repetitions={repetitions}
+        elapsed={0}
+        targetDuration={rampSeconds}
+        promptTitle={`Get ready for repetition ${rep}`}
+        prompt="Take a breath. Begin softly when the countdown ends."
+        progress={0}
+        onBack={handleBackFromExercise}
+        liveContent={
+          <View style={styles.countdownContent}>
+            <Text style={styles.countdownEyebrow}>NEXT REPETITION STARTS IN</Text>
+            <View style={styles.countdownCircle}>
+              <Text style={styles.countdownNumber}>{countdown}</Text>
+            </View>
+            <Text style={styles.countdownSubtitle}>
+              Get ready to start softly, then build toward Loud.
+            </Text>
+            <TargetCrescendoGuide
+              seconds={0}
+              durationSeconds={rampSeconds}
+            />
+          </View>
+        }
+      />
+    );
+  }
+
   if (phase === 'exercise') {
     const progress = clamp(seconds / rampSeconds, 0, 1);
 
@@ -825,6 +1065,11 @@ export default function ControlledCrescendoExercise({
               </TouchableOpacity>
             </View>
 
+            <TargetCrescendoGuide
+              seconds={guideElapsed}
+              durationSeconds={rampSeconds}
+            />
+
             <View style={styles.visualizerCard}>
               <View style={styles.visualizerHeader}>
                 <View>
@@ -864,38 +1109,6 @@ export default function ControlledCrescendoExercise({
                   LOUD
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.voiceRow}>
-              <View style={styles.voiceLeft}>
-                <View style={styles.smallMic}>
-                  <Ionicons
-                    name="mic-outline"
-                    size={17}
-                    color={BROWN}
-                  />
-                </View>
-
-                <View>
-                  <Text style={styles.voiceTitle}>
-                    Your voice
-                  </Text>
-
-                  <Text style={styles.voiceSubtitle}>
-                    {liveFrame
-                      ? 'Microphone receiving audio'
-                      : 'Listening for your voice…'}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.voiceValue}>
-                {liveFrame &&
-                Number.isFinite(liveFrame.volume)
-                  ? liveFrame.volume.toFixed(1)
-                  : '--'}
-                <Text style={styles.voiceUnit}> dBFS</Text>
-              </Text>
             </View>
 
             <View style={styles.targetRow}>
@@ -1182,6 +1395,103 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 8,
     color: BROWN,
+  },
+  guideCard: {
+    width: '100%',
+    backgroundColor: LIGHT,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  guideTitle: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 11,
+    color: BROWN,
+  },
+  guideSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 8,
+    color: MUTED,
+    marginTop: 2,
+  },
+  guideBars: {
+    height: 54,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  guideBar: {
+    flex: 1,
+    minWidth: 1,
+    borderRadius: 3,
+  },
+  guideIndicator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: ACCENT,
+    opacity: 0.95,
+  },
+  guideLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  guideLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 7,
+    color: MUTED,
+  },
+  guideProgressTrack: {
+    height: 3,
+    marginTop: 5,
+    borderRadius: 2,
+    backgroundColor: '#F3E4E8',
+    overflow: 'hidden',
+  },
+  guideProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: ACCENT,
+  },
+  countdownContent: {
+    width: '100%',
+    gap: 12,
+    alignItems: 'center',
+  },
+  countdownEyebrow: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: ACCENT,
+    textAlign: 'center',
+  },
+  countdownCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownNumber: {
+    fontFamily: 'FredokaBold',
+    fontSize: 44,
+    color: BROWN,
+  },
+  countdownSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginBottom: 2,
   },
   visualizerCard: {
     width: '100%',

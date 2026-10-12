@@ -59,11 +59,14 @@ export function measureDynamicRange(
 
   const validWindowCount = dbValues.length;
 
-  const inTargetWindowCount = dbValues.filter(
-    (value) =>
-      value >= targetRange[0] &&
-      value <= targetRange[1]
-  ).length;
+  const inTargetWindowCount = dbValues.filter((value) => {
+  const targetLevel = Math.abs(value);
+
+  return (
+    targetLevel >= targetRange[0] &&
+    targetLevel <= targetRange[1]
+  );
+}).length;
 
   const rangeAccuracy =
     (inTargetWindowCount / validWindowCount) * 100;

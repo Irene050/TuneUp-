@@ -16,7 +16,7 @@ import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-import { measureBreathControlFreeModeFrame } from '@/services/measurement/freemode/breathControl';
+import { measureBreathControlFreeModeFrame } from '@/services/measurement/freeMode/breathControl';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
