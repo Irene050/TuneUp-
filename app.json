@@ -41,7 +41,18 @@
       "@react-native-community/datetimepicker",
       "expo-audio",
       "expo-asset",
+      [
       "react-native-audio-api",
+     {
+      "iosMicrophonePermission": "TuneUp needs microphone access for vocal training.",
+      "androidPermissions": [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+      "android.permission.FOREGROUND_SERVICE",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+          ]
+      }
+     ],
       "expo-image",
       "expo-web-browser"
     ],
