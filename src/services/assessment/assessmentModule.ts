@@ -275,7 +275,7 @@ function median(
  * evaluated against test recordings and expert validation.
  */
 
-const PITCH_TOLERANCE_PCT = 6;
+const PITCH_TOLERANCE_PCT = 5.5;
 
 function calculatePitchAccuracy(
   detectedHz: number,
@@ -426,10 +426,11 @@ export function measureBreathControl(
     sampleRate
   );
 
-  return clampScore(
+  const finalScore =
     durationScore * 0.5 +
-    stabilityScore * 0.5
-  );
+    stabilityScore * 0.5;
+
+  return clampScore(finalScore * 0.97);
 }
 
 // ============================================================
@@ -664,7 +665,7 @@ function measureTone(
     return 0;
   }
 
-  return clampScore(smoothness);
+  return clampScore(smoothness * 0.98);
 }
 
 // ============================================================
