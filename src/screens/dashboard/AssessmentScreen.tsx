@@ -102,6 +102,26 @@ const NOTE_GUIDED_STEPS: AssessmentStep[] = [
 // HELPERS
 // ============================================================
 
+function getLiveTitle(step: AssessmentStep): string {
+  switch (step) {
+    case 'breathControl':
+      return 'Breath Control Monitor';
+    case 'pitch':
+      return 'Pitch Accuracy Monitor';
+    case 'tone':
+      return 'Tone Monitor';
+    case 'volume':
+      return 'Volume Control Monitor';
+    case 'agility':
+      return 'Note Transition Monitor';
+    case 'lowHum':
+    case 'highHum':
+      return 'Vocal Range Monitor';
+    default:
+      return 'Live Monitor';
+  }
+}
+
 function getStepTitle(
   step: AssessmentStep
 ): string {
@@ -1986,154 +2006,213 @@ useEffect(() => {
           </Text>
         </View>
 
-        {/* LIVE AUDIO */}
+        
+    {/* COMPONENT-SPECIFIC LIVE AUDIO */}
 
-        {isRecordingSection && (
-          <View
-            style={
-              styles.liveCard
-            }
-          >
-            <Text
-              style={
-                styles.liveTitle
-              }
-            >
-              Live Audio
+    {isRecordingSection && (
+      <View style={styles.liveCard}>
+        <Text style={styles.liveTitle}>
+          {getLiveTitle(step)}
+        </Text>
+
+        {step === 'breathControl' && (
+          <>
+            <Text style={styles.metricCaption}>
+              Current sound level
             </Text>
 
-            <View
-              style={
-                styles.liveGrid
-              }
-            >
-              <View
-                style={
-                  styles.liveItem
-                }
-              >
-                <Text
-                  style={
-                    styles.liveLabel
-                  }
-                >
-                  Pitch
-                </Text>
+            <Text style={styles.heroMetric}>
+              {liveAudio
+                ? `${liveAudio.volume.toFixed(1)} dBFS`
+                : '--'}
+            </Text>
 
-                <Text
-                  style={
-                    styles.liveValue
-                  }
-                >
-                  {liveAudio &&
-                  liveAudio.pitch > 0
-                    ? `${liveAudio.pitch.toFixed(
-                        1
-                      )} Hz`
-                    : '--'}
-                </Text>
-              </View>
+            <Text style={styles.metricHint}>
+              Keep your “sss” sound as steady as possible.
+              This is a relative audio-level indicator,
+              not a direct airflow measurement.
+            </Text>
+          </>
+        )}
 
-              <View
-                style={
-                  styles.liveItem
-                }
-              >
-                <Text
-                  style={
-                    styles.liveLabel
-                  }
-                >
-                  Note
-                </Text>
+        {step === 'pitch' && (
+          <>
+            <Text style={styles.metricCaption}>
+              Target note
+            </Text>
 
-                <Text
-                  style={
-                    styles.liveValue
-                  }
-                >
-                  {liveAudio?.note ??
-                    '--'}
-                </Text>
-              </View>
+            <Text style={styles.heroMetric}>
+              {targetNoteLabel ?? '--'}
+            </Text>
 
-              <View
-                style={
-                  styles.liveItem
-                }
-              >
-                <Text
-                  style={
-                    styles.liveLabel
-                  }
-                >
-                  Clarity
-                </Text>
+            <View style={styles.metricDivider} />
 
-                <Text
-                  style={
-                    styles.liveValue
-                  }
-                >
-                  {liveAudio
-                    ? `${(
-                        liveAudio.clarity *
-                        100
-                      ).toFixed(0)}%`
-                    : '--'}
-                </Text>
-              </View>
+            <Text style={styles.metricCaption}>
+              Detected note
+            </Text>
 
-              <View
-                style={
-                  styles.liveItem
-                }
-              >
-                <Text
-                  style={
-                    styles.liveLabel
-                  }
-                >
-                  Volume
-                </Text>
+            <Text style={styles.heroMetric}>
+              {liveAudio && liveAudio.pitch > 0
+                ? `${liveAudio.note ?? '--'}`
+                : '--'}
+            </Text>
 
-                <Text
-                  style={
-                    styles.liveValue
-                  }
-                >
-                  {liveAudio
-                    ? `${liveAudio.volume.toFixed(
-                        1
-                      )} dB`
-                    : '--'}
+            <Text style={styles.metricHint}>
+              {liveAudio && liveAudio.pitch > 0
+                ? `${liveAudio.pitch.toFixed(1)} Hz`
+                : 'Sing the target note steadily.'}
+            </Text>
+          </>
+        )}
+
+        {step === 'tone' && (
+          <>
+            <Text style={styles.metricCaption}>
+              Vowel exercise
+            </Text>
+
+            <Text style={styles.heroMetric}>
+              “AH”
+            </Text>
+
+            <View style={styles.metricDivider} />
+
+            <Text style={styles.metricCaption}>
+              Detected frequency
+            </Text>
+
+            <Text style={styles.heroMetric}>
+              {liveAudio && liveAudio.pitch > 0
+                ? `${liveAudio.pitch.toFixed(1)} Hz`
+                : '--'}
+            </Text>
+
+            <Text style={styles.metricHint}>
+              Hold the vowel smoothly. The displayed
+              frequency is your detected pitch, not
+              the spectral centroid.
+            </Text>
+          </>
+        )}
+
+        {step === 'volume' && (
+          <>
+            <Text style={styles.metricCaption}>
+              Current relative sound level
+            </Text>
+
+            <Text style={styles.heroMetric}>
+              {liveAudio
+                ? `${liveAudio.volume.toFixed(1)} dBFS`
+                : '--'}
+            </Text>
+
+            <View style={styles.volumeGuide}>
+              <View style={styles.volumeGuideItem}>
+                <Ionicons
+                  name="volume-low"
+                  size={22}
+                  color={BROWN}
+                />
+                <Text style={styles.volumeGuideText}>
+                  Soft
                 </Text>
               </View>
 
-              <View
-                style={
-                  styles.liveItem
-                }
-              >
-                <Text
-                  style={
-                    styles.liveLabel
-                  }
-                >
-                  Stability
-                </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={MUTED}
+              />
 
-                <Text
-                  style={
-                    styles.liveValue
-                  }
-                >
-                  --
+              <View style={styles.volumeGuideItem}>
+                <Ionicons
+                  name="volume-high"
+                  size={22}
+                  color={BROWN}
+                />
+                <Text style={styles.volumeGuideText}>
+                  Loud
+                </Text>
+              </View>
+
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={MUTED}
+              />
+
+              <View style={styles.volumeGuideItem}>
+                <Ionicons
+                  name="volume-low"
+                  size={22}
+                  color={BROWN}
+                />
+                <Text style={styles.volumeGuideText}>
+                  Soft
                 </Text>
               </View>
             </View>
-          </View>
+
+            <Text style={styles.metricHint}>
+              Follow the soft–loud–soft pattern.
+              Your recording level depends on microphone
+              distance and device settings.
+            </Text>
+          </>
         )}
+
+        {step === 'agility' && (
+          <>
+            <Text style={styles.metricCaption}>
+              Target note sequence
+            </Text>
+
+            <Text style={styles.sequenceText}>
+              {targetNoteLabel ?? '--'}
+            </Text>
+
+            <View style={styles.metricDivider} />
+
+            <Text style={styles.metricCaption}>
+              Currently detected note
+            </Text>
+
+            <Text style={styles.heroMetric}>
+              {liveAudio && liveAudio.pitch > 0
+                ? liveAudio.note ?? '--'
+                : '--'}
+            </Text>
+
+            <Text style={styles.metricHint}>
+              Sing each note in order, clearly and
+              without unnecessary pauses.
+            </Text>
+          </>
+        )}
+
+        {(step === 'lowHum' || step === 'highHum') && (
+          <>
+            <Text style={styles.metricCaption}>
+              Detected note
+            </Text>
+
+            <Text style={styles.heroMetric}>
+              {liveAudio && liveAudio.pitch > 0
+                ? liveAudio.note ?? '--'
+                : '--'}
+            </Text>
+
+            <Text style={styles.metricHint}>
+              {liveAudio && liveAudio.pitch > 0
+                ? `${liveAudio.pitch.toFixed(1)} Hz`
+                : 'Hum one comfortable note steadily.'}
+            </Text>
+          </>
+        )}
+      </View>
+    )}
+
 
         {/* RECORD BUTTON */}
 
@@ -2230,6 +2309,68 @@ useEffect(() => {
 // ============================================================
 
 const styles = StyleSheet.create({
+  
+  metricCaption: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+
+  heroMetric: {
+    fontFamily: 'FredokaBold',
+    fontSize: 32,
+    color: BROWN,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+
+  metricHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  metricDivider: {
+    height: 1,
+    backgroundColor: '#F2DDE5',
+    marginVertical: 14,
+  },
+
+  sequenceText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+    textAlign: 'center',
+    lineHeight: 30,
+  },
+
+  volumeGuide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    backgroundColor: WHITE,
+    borderRadius: 14,
+  },
+
+  volumeGuideItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  volumeGuideText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    color: BROWN,
+  },
+
   screen: {
     flex: 1,
     backgroundColor:
