@@ -43,30 +43,6 @@ export function calcCentroidStdSmoothness(centroidArray: number[]): number {
   return Math.max(0, 100 - relativeStdDev * 100);
 }
 
-export function trackDominantFrequency(
-  samples: Float32Array,
-  frameSizeMs: number,
-  sampleRate: number,
-  fftFn: (frame: Float32Array) => Float32Array
-): number[] {
-  const frameSize = Math.floor((frameSizeMs / 1000) * sampleRate);
-  const frequencies: number[] = [];
-  for (let i = 0; i + frameSize <= samples.length; i += frameSize) {
-    const frame = samples.subarray(i, i + frameSize);
-    const magnitudes = fftFn(frame);
-    let peakBin = 0;
-    let peakMag = 0;
-    for (let bin = 0; bin < magnitudes.length; bin++) {
-      if (magnitudes[bin] > peakMag) {
-        peakMag = magnitudes[bin];
-        peakBin = bin;
-      }
-    }
-    frequencies.push((peakBin * sampleRate) / frameSize);
-  }
-  return frequencies;
-}
-
 export type FrequencyZone = 'low' | 'mid' | 'high';
 
 export function classifyFrequencyZone(
