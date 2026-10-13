@@ -7,7 +7,7 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-import ExerciseScreen, {
+import {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
   ExerciseResultsScreen,
@@ -31,6 +31,7 @@ import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -847,69 +848,128 @@ export default function VolumeBandTargeting({
      DIRECTIONS
      ========================================================= */
   if (phase === 'directions') {
+    const startDisabled =
+      !parametersReady || referencePlaying || isRecording;
+
     return (
       <SafeAreaView style={styles.container}>
-        <ExerciseScreen
-          title="Volume Band Targeting"
-          category="VOLUME CONTROL"
-          icon="options-outline"
-          instructions={`Listen to the ${REFERENCE_NOTE.name} reference note, sing the same note on “Ah,” and keep your voice inside the target band.`}
-          preparationSteps={[
-            {
-              icon: 'musical-note-outline',
-              text: `Listen to the ${REFERENCE_NOTE.name} reference note using the play button.`,
-            },
-            {
-              icon: 'mic-outline',
-              text: `Sing the same ${REFERENCE_NOTE.name} note on “Ah.”`,
-            },
-            {
-              icon: 'options-outline',
-              text: `Keep your volume inside the ${targetRangeText} target band.`,
-            },
-            {
-              icon: 'timer-outline',
-              text: `Hold for ${exerciseDurationSec} seconds per repetition.`,
-            },
-          ]}
-          summary={[
-            {
-              label: 'Duration',
-              value: `${exerciseDurationSec} sec`,
-              hint: 'per repetition',
-            },
-            {
-              label: 'Repetitions',
-              value: String(params.repetitions),
-            },
-            {
-              label: 'Consistency target',
-              value: `${params.consistencyThreshold}%`,
-            },
-          ]}
-          targetValue={targetRangeText}
-          targetHint="Relative microphone level; not calibrated acoustic dB SPL."
-          repetitions={params.repetitions}
-          tip="Don't chase the number. Find a comfortable loudness first, then make small adjustments to stay inside the band."
-          tier={resolvedTier}
-          onBack={cancelAndLeave}
-          onStart={startExercise}
-          startDisabled={
-            !parametersReady || referencePlaying || isRecording
-          }
-          startLabel={
-            parametersReady ? 'Start Exercise' : 'Loading Exercise...'
-          }
-          error={recordingNotice}
+        <View style={styles.directionHeader}>
+          <Pressable
+            onPress={cancelAndLeave}
+            hitSlop={12}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons
+              name="arrow-back"
+              size={23}
+              color={BROWN}
+            />
+          </Pressable>
+
+          <Text style={styles.directionHeaderText}>
+            VOLUME CONTROL
+          </Text>
+
+          <View style={styles.backButtonPlaceholder} />
+        </View>
+
+        <ScrollView
+          style={styles.directionsScroll}
+          contentContainerStyle={styles.directionsScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.directionIntro}>
+            <View style={styles.directionIcon}>
+              <Ionicons
+                name="options-outline"
+                size={30}
+                color={BROWN}
+              />
+            </View>
+
+            <Text style={styles.directionTitle}>
+              Volume Band Targeting
+            </Text>
+
+            <Text style={styles.directionSubtitle}>
+              Practice keeping your voice within a target volume
+              range while singing a reference note.
+            </Text>
+
+            <View style={styles.tierPill}>
+              <Text style={styles.tierPillText}>
+                {resolvedTier.toUpperCase()} LEVEL
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.directionCard}>
+            <Text style={styles.directionCardTitle}>
+              How to do the exercise
+            </Text>
+
+            {[
+              {
+                icon: 'musical-note-outline' as const,
+                title: 'Listen to the reference note',
+                description: `Play ${REFERENCE_NOTE.name} using the button below.`,
+              },
+              {
+                icon: 'mic-outline' as const,
+                title: 'Sing on “Ah”',
+                description: `Match the ${REFERENCE_NOTE.name} note comfortably.`,
+              },
+              {
+                icon: 'options-outline' as const,
+                title: 'Control your volume',
+                description: `Adjust your voice to stay inside the ${targetRangeText} target band.`,
+              },
+              {
+                icon: 'timer-outline' as const,
+                title: 'Hold your volume steady',
+                description: `Continue for ${exerciseDurationSec} seconds per repetition.`,
+              },
+            ].map((step, index) => (
+              <View
+                key={step.title}
+                style={styles.directionStep}
+              >
+                <View style={styles.directionStepIcon}>
+                  <Ionicons
+                    name={step.icon}
+                    size={20}
+                    color={ACCENT}
+                  />
+                </View>
+
+                <View style={styles.directionStepContent}>
+                  <Text style={styles.directionStepTitle}>
+                    {index + 1}. {step.title}
+                  </Text>
+
+                  <Text style={styles.directionStepText}>
+                    {step.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
           <View style={styles.referenceCard}>
             <View style={styles.referenceTopRow}>
               <View>
-                <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
+                <Text style={styles.eyebrow}>
+                  REFERENCE NOTE
+                </Text>
+
                 <Text style={styles.referenceNote}>
                   {REFERENCE_NOTE.name}
                 </Text>
               </View>
+
               <View style={styles.referenceIconCircle}>
                 <Ionicons
                   name="musical-note"
@@ -918,21 +978,128 @@ export default function VolumeBandTargeting({
                 />
               </View>
             </View>
+
             <Text style={styles.referenceInstruction}>
               Play the note when needed, then sing it on “Ah” while
               controlling your volume.
             </Text>
+
             <ReferenceNoteButton
               playing={referencePlaying}
               label={`Play ${REFERENCE_NOTE.name}`}
               onPress={() => void playReferenceNote()}
             />
           </View>
+
           <TargetBandMeter
             liveDb={0}
             targetRange={params.targetDbRange}
           />
-        </ExerciseScreen>
+
+          <View style={styles.directionSummary}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>
+                {exerciseDurationSec}s
+              </Text>
+              <Text style={styles.summaryLabel}>
+                Per repetition
+              </Text>
+            </View>
+
+            <View style={styles.summaryDivider} />
+
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>
+                {params.repetitions}
+              </Text>
+              <Text style={styles.summaryLabel}>
+                Repetitions
+              </Text>
+            </View>
+
+            <View style={styles.summaryDivider} />
+
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>
+                {params.consistencyThreshold}%
+              </Text>
+              <Text style={styles.summaryLabel}>
+                Target score
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.directionTip}>
+            Tip: Don't chase the number. Find a comfortable
+            loudness first, then make small adjustments to stay
+            inside the band.
+          </Text>
+
+          <Text style={styles.directionDisclaimer}>
+            The displayed volume is a relative microphone-level
+            indicator. It is not calibrated acoustic dB SPL.
+          </Text>
+
+          {recordingNotice && (
+            <View style={styles.directionError}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={19}
+                color="#A05D6C"
+              />
+              <Text style={styles.directionErrorText}>
+                {recordingNotice}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <View style={styles.directionFooter}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.startExerciseButton,
+              pressed && !startDisabled
+                ? styles.startExercisePressed
+                : null,
+              startDisabled
+                ? styles.startExerciseDisabled
+                : null,
+            ]}
+            disabled={startDisabled}
+            onPress={() => {
+              console.log(
+                '[VolumeBandTargeting] Start Exercise pressed',
+              );
+              startExercise();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Start Exercise"
+            accessibilityState={{
+              disabled: startDisabled,
+            }}
+          >
+            {startDisabled ? (
+              <ActivityIndicator
+                size="small"
+                color={BROWN}
+              />
+            ) : (
+              <Ionicons
+                name="play"
+                size={19}
+                color={WHITE}
+              />
+            )}
+
+            <Text style={styles.startExerciseText}>
+              {startDisabled
+                ? referencePlaying
+                  ? 'Reference Note Playing...'
+                  : 'Preparing Exercise...'
+                : 'Start Exercise'}
+            </Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -1146,6 +1313,222 @@ export default function VolumeBandTargeting({
    STYLES
    ========================================================= */
 const styles = StyleSheet.create({
+    directionHeader: {
+    minHeight: 54,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  directionHeaderText: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+    letterSpacing: 0.8,
+  },
+  directionsScroll: {
+    flex: 1,
+  },
+  directionsScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 20,
+  },
+  directionIntro: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  directionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  directionTitle: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    textAlign: 'center',
+  },
+  directionSubtitle: {
+    marginTop: 6,
+    maxWidth: 320,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  tierPill: {
+    marginTop: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  tierPillText: {
+    color: ACCENT,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+  },
+  directionCard: {
+    marginTop: 12,
+    padding: 15,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  directionCardTitle: {
+    marginBottom: 12,
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 16,
+  },
+  directionStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 10,
+    gap: 11,
+  },
+  directionStepIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: LIGHT_PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  directionStepContent: {
+    flex: 1,
+    paddingTop: 2,
+  },
+  directionStepTitle: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 13,
+  },
+  directionStepText: {
+    marginTop: 3,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  directionSummary: {
+    marginTop: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 17,
+    backgroundColor: LIGHT_PINK,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryValue: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 17,
+  },
+  summaryLabel: {
+    marginTop: 3,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  summaryDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: BORDER,
+  },
+  directionTip: {
+    marginTop: 14,
+    color: SOFT_TEXT,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  directionDisclaimer: {
+    marginTop: 10,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  directionError: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: LIGHT_PINK,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  directionErrorText: {
+    flex: 1,
+    color: '#A05D6C',
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  directionFooter: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 12,
+    backgroundColor: WHITE,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  startExerciseButton: {
+    minHeight: 54,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    backgroundColor: ACCENT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+  startExercisePressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.99 }],
+  },
+  startExerciseDisabled: {
+    backgroundColor: PINK,
+    opacity: 0.75,
+  },
+  startExerciseText: {
+    color: WHITE,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 16,
+  },
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
