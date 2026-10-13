@@ -276,7 +276,9 @@ export default function DashboardScreen() {
             }
             style={styles.exerciseCard}
           >
-            <View style={styles.exerciseImage} />
+            <View style={styles.exerciseImage}>
+              <Ionicons name="leaf-outline" size={76} color={BROWN} />
+            </View>
 
             <View style={styles.exerciseBottom}>
               <View style={styles.exerciseText}>
@@ -307,7 +309,9 @@ export default function DashboardScreen() {
             }
             style={styles.exerciseCard}
           >
-            <View style={styles.exerciseImage} />
+            <View style={styles.exerciseImage}>
+              <Ionicons name="musical-note-outline" size={76} color={BROWN} />
+            </View>
 
             <View style={styles.exerciseBottom}>
               <View style={styles.exerciseText}>
@@ -337,7 +341,9 @@ export default function DashboardScreen() {
             }
             style={styles.exerciseCard}
           >
-            <View style={styles.exerciseImage} />
+            <View style={styles.exerciseImage}>
+              <Ionicons name="radio-outline" size={76} color={BROWN} />
+            </View>
 
             <View style={styles.exerciseBottom}>
               <View style={styles.exerciseText}>
@@ -367,7 +373,9 @@ export default function DashboardScreen() {
             }
             style={styles.exerciseCard}
           >
-            <View style={styles.exerciseImage} />
+            <View style={styles.exerciseImage}>
+              <Ionicons name="volume-high-outline" size={76} color={BROWN} />
+            </View>
 
             <View style={styles.exerciseBottom}>
               <View style={styles.exerciseText}>
@@ -397,7 +405,9 @@ export default function DashboardScreen() {
             }
             style={styles.exerciseCard}
           >
-            <View style={styles.exerciseImage} />
+            <View style={styles.exerciseImage}>
+              <Ionicons name="flash-outline" size={76} color={BROWN} />
+            </View>
 
             <View style={styles.exerciseBottom}>
               <View style={styles.exerciseText}>
@@ -598,7 +608,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 190,
+    paddingBottom: 150,
   },
 
   userSection: {
@@ -800,6 +810,8 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     borderRadius: 18,
     marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   exerciseBottom: {
