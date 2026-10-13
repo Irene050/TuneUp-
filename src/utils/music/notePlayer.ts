@@ -49,7 +49,7 @@ export async function playSingleNote(
   console.log('   duration:', durationSec);
   console.log('   context:', context.state);
   console.log('   sampleRate:', context.sampleRate);
-  
+
   const oscillator = context.createOscillator();
   const gain = context.createGain();
 
@@ -61,16 +61,8 @@ export async function playSingleNote(
 
   const startTime = context.currentTime + 0.01;
   const endTime = startTime + durationSec;
-
-  const attackEnd = Math.min(
-    startTime + ATTACK_SEC,
-    endTime,
-  );
-
-  const releaseStart = Math.max(
-    attackEnd,
-    endTime - RELEASE_SEC,
-  );
+  const attackEnd = Math.min(startTime + ATTACK_SEC, endTime);
+  const releaseStart = Math.max(attackEnd, endTime - RELEASE_SEC);
 
   gain.gain.setValueAtTime(0, startTime);
   gain.gain.linearRampToValueAtTime(PEAK_GAIN, attackEnd);
@@ -80,37 +72,45 @@ export async function playSingleNote(
   oscillator.start(startTime);
   oscillator.stop(endTime);
 
+  console.log('✅ Note playback started');
+
   await new Promise<void>(resolve => {
     setTimeout(resolve, durationSec * 1000 + 100);
   });
+
+  console.log('⏹️ Note playback finished');
 }
 
-/**
- * Plays a note sequence with a configurable pause between notes.
- * Existing callers retain the original 0.12-second default gap.
- */
 export async function playNoteSequence(
   notes: NoteToPlay[],
   gapSec = GAP_SEC,
 ): Promise<void> {
-  if (!notes.length) return;
+  if (notes.length === 0) return;
 
   if (!Number.isFinite(gapSec) || gapSec < 0) {
     throw new Error(`Invalid note gap: ${gapSec}`);
   }
 
-  for (let index = 0; index < notes.length; index += 1) {
+  console.log('🎼 NOTE SEQUENCE STARTED', {
+    noteCount: notes.length,
+    gapSec,
+  });
+
+  for (let index = 0; index < notes.length; index++) {
     const note = notes[index];
+
+    console.log(`🎵 Playing note ${index + 1}/${notes.length}`);
 
     await playSingleNote(note.frequencyHz, note.durationSec);
 
-    // No need to wait for a gap after the final note.
     if (index < notes.length - 1 && gapSec > 0) {
       await new Promise<void>(resolve => {
         setTimeout(resolve, gapSec * 1000);
       });
     }
   }
+
+  console.log('✅ NOTE SEQUENCE FINISHED');
 }
 
 export async function disposeNotePlayer(): Promise<void> {
@@ -118,6 +118,7 @@ export async function disposeNotePlayer(): Promise<void> {
 
   try {
     await audioContext.close();
+    console.log('🔇 Note player AudioContext closed');
   } catch (error) {
     console.warn('Failed to close note audio context:', error);
   } finally {
