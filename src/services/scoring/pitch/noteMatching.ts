@@ -197,75 +197,53 @@ export function scoreNoteMatching(
         measurement.averageClarity,
     };
   }
+
   
   // ----------------------------------------------------------
-  // Strict pitch accuracy
+  // Strict match consistency
   // ----------------------------------------------------------
+  // Incorrect voiced frames remain in the denominator.
+  // A high average accuracy cannot hide frequent wrong notes.
 
   const matchRate =
     matchingFrames / validVoicedFrames;
 
-  let totalDeviationPct = 0;
+  const averageMatchingAccuracy =
+    totalAccuracy / matchingFrames;
 
-  for (const frequency of measurement.frequencies) {
-    if (
-      !Number.isFinite(frequency) ||
-      frequency <= 0
-    ) {
-      continue;
-    }
+  const sustainedAccuracy =
+    averageMatchingAccuracy * matchRate;
 
-    totalDeviationPct +=
-      (Math.abs(frequency - targetFrequency) /
-        targetFrequency) * 100;
-  }
-
-  const averageDeviationPct =
-    totalDeviationPct / validVoicedFrames;
-
-  // Stricter curve:
-  // 0% deviation = 100
-  // 1% deviation = 60
-  // 2% deviation = 20
-  // 2.5% or more = 0
-  const deviationScore = Math.max(
-    0,
-    Math.min(100, 100 - averageDeviationPct * 40),
-  );
-
-  // Penalize frames that do not match the target.
   const safeAccuracy =
-    deviationScore * matchRate;
+    Number.isFinite(sustainedAccuracy)
+      ? Math.max(0, Math.min(100, sustainedAccuracy))
+      : 0;
+
+  // ----------------------------------------------------------
+  // Overall representative deviation
+  // ----------------------------------------------------------
 
   const deviationPct =
     (Math.abs(
       measurement.detectedFrequency - targetFrequency,
     ) / targetFrequency) * 100;
 
-  const score = Math.round(
-    Math.max(0, Math.min(100, safeAccuracy)),
-  );
+  // ----------------------------------------------------------
+  // Strict pass requirement
+  // ----------------------------------------------------------
+  // At least 90% of valid voiced frames must match.
+  // The resulting score must also be at least 85.
 
   const passed =
     matchRate >= 0.90 &&
-    averageDeviationPct <= 0.5 &&
-    score >= 85;
-
-  console.log('🎵 NOTE MATCHING SCORE DEBUG:', {
-    targetFrequency,
-    detectedFrequency: measurement.detectedFrequency,
-    averageDeviationPct,
-    matchRate,
-    deviationScore,
-    finalScore: score,
-    passed,
-  });
+    safeAccuracy >= 85;
 
   return {
-    score,
+    score: Math.round(safeAccuracy),
     passed,
     deviationPct,
     detectedFrequency: measurement.detectedFrequency,
     averageClarity: measurement.averageClarity,
   };
+
 }

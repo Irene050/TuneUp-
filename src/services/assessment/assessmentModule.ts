@@ -275,7 +275,7 @@ function median(
  * evaluated against test recordings and expert validation.
  */
 
-const PITCH_TOLERANCE_PCT = 5.5;
+const PITCH_TOLERANCE_PCT = 5.0;
 
 function calculatePitchAccuracy(
   detectedHz: number,
@@ -403,34 +403,79 @@ export function measureBreathControl(
     return 0;
   }
 
-  const { onsetIndex, offsetIndex, durationSeconds } =
-    detectOnsetOffset(samples, 0.005, sampleRate);
+  const {
+    onsetIndex,
+    offsetIndex,
+    durationSeconds,
+  } = detectOnsetOffset(
+    samples,
+    0.005,
+    sampleRate
+  );
 
-  if (durationSeconds <= 0 || offsetIndex < onsetIndex) {
+  if (
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds <= 0 ||
+    offsetIndex < onsetIndex
+  ) {
     return 0;
   }
 
-  const durationScore = Math.min(
-    durationSeconds / targetDurationSec,
-    1
-  ) * 100;
+  // Duration reaches 100 only when the target is reached.
+  const durationScore = clampScore(
+    Math.min(
+      durationSeconds / targetDurationSec,
+      1
+    ) * 100
+  );
 
   const exhaleSamples = samples.subarray(
     onsetIndex,
     offsetIndex + 1
   );
 
-  const stabilityScore = calcRMSConsistency(
+  const rawConsistency = calcRMSConsistency(
     exhaleSamples,
     50,
     sampleRate
   );
 
-  const finalScore =
-    durationScore * 0.5 +
-    stabilityScore * 0.5;
+  const consistencyScore = Number.isFinite(
+    rawConsistency
+  )
+    ? Math.max(0, Math.min(100, rawConsistency))
+    : 0;
 
-  return clampScore(finalScore * 0.97);
+  // Stronger penalty for inconsistent sound.
+  const strictConsistencyScore = Math.max(
+    0,
+    Math.min(
+      100,
+      ((consistencyScore - 40) / 60) * 100
+    )
+  );
+
+  // Consistency is more important than duration.
+  const finalScore =
+    durationScore * 0.4 +
+    strictConsistencyScore * 0.6;
+
+  const score = clampScore(finalScore);
+
+  console.log('🌬️ BREATH CONTROL ASSESSMENT:', {
+    durationSeconds: Number(
+      durationSeconds.toFixed(2)
+    ),
+    targetDurationSec,
+    durationScore,
+    rawConsistency: consistencyScore,
+    strictConsistencyScore: Math.round(
+      strictConsistencyScore
+    ),
+    finalScore: score,
+  });
+
+  return score;
 }
 
 // ============================================================
@@ -465,14 +510,10 @@ function measurePitch(
       '❌ Pitch tracking failed:',
       error
     );
-
     return 0;
   }
 
-  if (
-    !Array.isArray(frames) ||
-    frames.length === 0
-  ) {
+  if (!Array.isArray(frames) || frames.length === 0) {
     return 0;
   }
 
@@ -481,23 +522,25 @@ function measurePitch(
     0.8
   );
 
-  if (
-    !Array.isArray(voicedFrames) ||
-    voicedFrames.length === 0
-  ) {
+  if (!Array.isArray(voicedFrames)) {
     return 0;
   }
 
   const validFrames = voicedFrames.filter(
     frame =>
-      isValidFrequency(frame.frequency)
+      isValidFrequency(frame.frequency) &&
+      Number.isFinite(frame.clarity)
   );
 
-  if (validFrames.length === 0) {
+  // Reject recordings with insufficient voiced evidence.
+  if (validFrames.length < 5) {
+    console.warn(
+      '⚠️ Pitch assessment: insufficient valid frames.',
+      { validFrameCount: validFrames.length }
+    );
     return 0;
   }
 
-  // FIX: score pitch deviation as a percentage.
   const accuracyValues = validFrames.map(
     frame =>
       calculatePitchAccuracy(
@@ -516,33 +559,49 @@ function measurePitch(
     frame => frame.frequency
   );
 
-  const stability = calcLiveStability(
-    frequencies
+  const stability = clampScore(
+    calcLiveStability(frequencies)
   );
 
-  const clarityValues = validFrames
-    .map(frame => frame.clarity)
-    .filter(value => Number.isFinite(value));
-
-  if (clarityValues.length === 0) {
-    return 0;
-  }
-
   const clarity =
-    clarityValues.reduce(
-      (sum, value) => sum + value,
+    validFrames.reduce(
+      (sum, frame) => sum + frame.clarity,
       0
-    ) / clarityValues.length;
+    ) / validFrames.length;
 
   const clarityScore = clampScore(
     clarity * 100
   );
 
-  return clampScore(
-    accuracy * 0.60 +
-    stability * 0.20 +
-    clarityScore * 0.20
-  );
+  // Pitch accuracy has the greatest influence.
+  const finalScore =
+    accuracy * 0.75 +
+    stability * 0.15 +
+    clarityScore * 0.10;
+
+  const score = clampScore(finalScore);
+
+  console.log('🎵 PITCH ASSESSMENT BREAKDOWN:', {
+    targetFrequency: Number(
+      targetFrequency.toFixed(2)
+    ),
+    validFrames: validFrames.length,
+    averageAccuracy: Math.round(accuracy),
+    stability,
+    clarityScore,
+    weightedAccuracy: Math.round(
+      accuracy * 0.75
+    ),
+    weightedStability: Math.round(
+      stability * 0.15
+    ),
+    weightedClarity: Math.round(
+      clarityScore * 0.10
+    ),
+    finalScore: score,
+  });
+
+  return score;
 }
 
 // ============================================================
