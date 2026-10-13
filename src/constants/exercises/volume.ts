@@ -26,7 +26,7 @@ export const DYNAMIC_RANGE_PARAMS: Record<
   beginner: {
     durationSec: 8,
     repetitions: 2,
-    targetDbRange: [35, 45],
+    targetDbRange: [3, 10],
     rangeAccuracyThreshold: 65,
     rampConsistencyThreshold: 55,
   },
@@ -34,7 +34,7 @@ export const DYNAMIC_RANGE_PARAMS: Record<
   intermediate: {
     durationSec: 10,
     repetitions: 2,
-    targetDbRange: [38, 50],
+    targetDbRange: [5, 12],
     rangeAccuracyThreshold: 75,
     rampConsistencyThreshold: 70,
   },
@@ -42,7 +42,7 @@ export const DYNAMIC_RANGE_PARAMS: Record<
   advanced: {
     durationSec: 12,
     repetitions: 3,
-    targetDbRange: [40, 55],
+    targetDbRange: [8, 15],
     rangeAccuracyThreshold: 85,
     rampConsistencyThreshold: 80,
   },
@@ -67,7 +67,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   beginner: {
     durationSec: 4,
     repetitions: 2,
-    targetDbRange: [35, 45],
+    targetDbRange: [-45, -35],
     smoothnessThreshold: 60,
     volumeIncreaseThreshold: 10,
   },
@@ -75,7 +75,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   intermediate: {
     durationSec: 5,
     repetitions: 2,
-    targetDbRange: [40, 50],
+    targetDbRange: [-50, -40],
     smoothnessThreshold: 75,
     volumeIncreaseThreshold: 12,
   },
@@ -83,7 +83,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   advanced: {
     durationSec: 6,
     repetitions: 3,
-    targetDbRange: [40, 55],
+    targetDbRange: [-55, -40],
     smoothnessThreshold: 88,
     volumeIncreaseThreshold: 15,
   },

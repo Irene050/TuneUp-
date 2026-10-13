@@ -8,7 +8,6 @@ export interface DynamicRangeMeasurement {
   rangeMin: number;
   rangeMax: number;
   validWindowCount: number;
-  inTargetWindowCount: number;
   rangeAccuracy: number;
   firstPhaseAverage: number;
   middlePhaseAverage: number;
@@ -23,125 +22,239 @@ interface MeasureOptions {
   windowMs?: number;
   targetRange?: [number, number];
   expectedDurationSeconds?: number;
+  repetitionDurationSeconds?: number;
 }
 
 export function measureDynamicRange(
   samples: Float32Array,
   sampleRate = 44100,
-  options: MeasureOptions = {}
+  options: MeasureOptions = {},
 ): DynamicRangeMeasurement {
   const windowMs = options.windowMs ?? 50;
   const targetRange = options.targetRange ?? [40, 55];
   const expectedDurationSeconds =
     options.expectedDurationSeconds ?? 9;
+  const repetitionDurationSeconds =
+    options.repetitionDurationSeconds ??
+    expectedDurationSeconds;
 
-  if (samples.length === 0 || sampleRate <= 0) {
+  if (
+    samples.length === 0 ||
+    sampleRate <= 0 ||
+    windowMs <= 0 ||
+    expectedDurationSeconds <= 0 ||
+    repetitionDurationSeconds <= 0
+  ) {
     return createEmptyMeasurement();
   }
 
-  const rmsValues = calcRMSWindows(
-    samples,
-    windowMs,
-    sampleRate
+  const rmsValues = calcRMSWindows(samples, windowMs, sampleRate);
+  const allDbValues = toDbArray(rmsValues);
+
+  if (allDbValues.length < 3) {
+    return createEmptyMeasurement();
+  }
+
+  // Preserve the original time positions, including quiet windows.
+  const expectedWindowCount = Math.floor(
+    (expectedDurationSeconds * 1000) / windowMs,
   );
 
-  if (rmsValues.length === 0) {
+  const dbValues = allDbValues
+    .slice(0, expectedWindowCount)
+    .map((value) =>
+      Number.isFinite(value) ? value : -100,
+    );
+
+  if (dbValues.length < 3) {
     return createEmptyMeasurement();
   }
 
-  const rawDbValues = toDbArray(rmsValues);
+  // Ignore silence and near-silence when evaluating the user's
+// vocal volume. Keep all windows for phase timing and analysis.
+  const ACTIVE_VOICE_FLOOR_DBFS = -45;
 
-  const dbValues = rawDbValues.filter(Number.isFinite);
-
-  if (dbValues.length === 0) {
-    return createEmptyMeasurement();
-  }
-
-  const validWindowCount = dbValues.length;
-
-  const inTargetWindowCount = dbValues.filter((value) => {
-  const targetLevel = Math.abs(value);
-
-  return (
-    targetLevel >= targetRange[0] &&
-    targetLevel <= targetRange[1]
+  const activeDbValues = dbValues.filter(
+    (value) => value > ACTIVE_VOICE_FLOOR_DBFS,
   );
-}).length;
 
-  const rangeAccuracy =
-    (inTargetWindowCount / validWindowCount) * 100;
-
-  const expectedWindowCount = Math.max(
+  const windowsPerPhase = Math.max(
     1,
     Math.floor(
-      (expectedDurationSeconds * 1000) / windowMs
-    )
+      (repetitionDurationSeconds * 1000) / (3 * windowMs),
+    ),
   );
 
-  const effectiveWindowCount = Math.min(
-    dbValues.length,
-    expectedWindowCount
-  );
-
-  const phaseWindowCount = Math.max(
+  const repetitionCount = Math.max(
     1,
-    Math.floor(effectiveWindowCount / 3)
+    Math.ceil(expectedDurationSeconds / repetitionDurationSeconds),
   );
 
-  const firstPhase = dbValues.slice(
-    0,
-    phaseWindowCount
-  );
+  const firstValues: number[] = [];
+  const middleValues: number[] = [];
+  const finalValues: number[] = [];
 
-  const middlePhase = dbValues.slice(
-    phaseWindowCount,
-    phaseWindowCount * 2
-  );
+  const risingConsistencies: number[] = [];
+  const fallingConsistencies: number[] = [];
+  const risingSlopes: number[] = [];
+  const fallingSlopes: number[] = [];
+  const peakAccuracies: number[] = [];
 
-  const finalPhase = dbValues.slice(
-    phaseWindowCount * 2,
-    effectiveWindowCount
-  );
+  for (let repetition = 0; repetition < repetitionCount; repetition++) {
+    const repetitionStart = Math.round(
+      (repetition * repetitionDurationSeconds * 1000) / windowMs,
+    );
 
-  const firstPhaseAverage = average(firstPhase);
-  const middlePhaseAverage = average(middlePhase);
-  const finalPhaseAverage = average(finalPhase);
+    const firstStart = repetitionStart;
+    const middleStart = firstStart + windowsPerPhase;
+    const finalStart = middleStart + windowsPerPhase;
+    const repetitionEnd = Math.min(
+      dbValues.length,
+      Math.round(
+        ((repetition + 1) * repetitionDurationSeconds * 1000) /
+          windowMs,
+      ),
+    );
 
-  const risingSlope = calculateSlope(firstPhase);
-  const fallingSlope = calculateSlope(finalPhase);
+    const first = dbValues.slice(
+      firstStart,
+      Math.min(middleStart, repetitionEnd),
+    );
 
-  const risingConsistency =
-    calculateIncreasingConsistency(firstPhase);
+    const middle = dbValues.slice(
+      middleStart,
+      Math.min(finalStart, repetitionEnd),
+    );
 
-  const fallingConsistency =
-    calculateDecreasingConsistency(finalPhase);
+    const final = dbValues.slice(finalStart, repetitionEnd);
 
-  const peakAccuracy = calculatePeakAccuracy(
-    firstPhaseAverage,
-    middlePhaseAverage,
-    finalPhaseAverage
-  );
+    if (!first.length || !middle.length || !final.length) {
+      continue;
+    }
+
+    firstValues.push(average(first));
+    middleValues.push(average(middle));
+    finalValues.push(average(final));
+
+    risingConsistencies.push(
+      calculateDirectionalConsistency(first, 'increasing'),
+    );
+
+    fallingConsistencies.push(
+      calculateDirectionalConsistency(final, 'decreasing'),
+    );
+
+    risingSlopes.push(calculateSlope(first));
+    fallingSlopes.push(calculateSlope(final));
+
+    peakAccuracies.push(
+      calculatePeakAccuracy(
+        average(first),
+        average(middle),
+        average(final),
+      ),
+    );
+  }
+
+  if (!firstValues.length) {
+    return createEmptyMeasurement();
+  }
+
+  
+const firstPhaseAverage = average(firstValues);
+const middlePhaseAverage = average(middleValues);
+const finalPhaseAverage = average(finalValues);
+
+// Dynamic Range should become louder in the middle
+// and quieter again in the final phase.
+const repetitionContrasts = firstValues.map(
+  (first, index) => {
+    const middle = middleValues[index];
+    const final = finalValues[index];
+
+    // A positive contrast means the middle phase is
+    // louder than the average of the two soft phases.
+    const contrast =
+      middle - (first + final) / 2;
+
+    // Do not award range accuracy if either soft phase
+    // is as loud as, or louder than, the middle phase.
+    if (middle <= first || middle <= final) {
+      return 0;
+    }
+
+    return contrast;
+  },
+);
+
+const targetMin = targetRange[0];
+const targetMax = targetRange[1];
+
+const repetitionScores = repetitionContrasts.map(
+  (contrast) => {
+    if (contrast <= 0) return 0;
+
+    if (contrast < targetMin) {
+      return (contrast / targetMin) * 100;
+    }
+
+    if (contrast <= targetMax) {
+      return 100;
+    }
+
+    // Give a reduced score for contrast beyond the
+    // intended target rather than rewarding it endlessly.
+    return clamp(
+      (targetMax / contrast) * 100,
+      0,
+      100,
+    );
+  },
+);
+
+const rangeAccuracy =
+  repetitionScores.length > 0
+    ? average(repetitionScores)
+    : 0;
+
+const inTargetWindowCount =
+  repetitionContrasts.filter(
+    (contrast) =>
+      contrast >= targetMin &&
+      contrast <= targetMax,
+  ).length;
+
+const risingSlope = average(risingSlopes);
+const fallingSlope = average(fallingSlopes);
+
+const risingConsistency = average(risingConsistencies);
+const fallingConsistency = average(fallingConsistencies);
+const peakAccuracy = average(peakAccuracies);
+
 
   const rampConsistency = clamp(
     risingConsistency * 0.4 +
       fallingConsistency * 0.4 +
       peakAccuracy * 0.2,
     0,
-    100
+    100,
   );
 
   const overallMeasurementQuality = clamp(
-    (validWindowCount / expectedWindowCount) * 100,
+    (dbValues.length / expectedWindowCount) * 100,
     0,
-    100
+    100,
   );
 
   return {
     dbValues,
-    rangeMin: Math.min(...dbValues),
-    rangeMax: Math.max(...dbValues),
-    validWindowCount,
-    inTargetWindowCount,
+    rangeMin: activeDbValues.length
+      ? Math.min(...activeDbValues)
+      : 0,
+    rangeMax: activeDbValues.length
+      ? Math.max(...activeDbValues)
+      : 0,
+    validWindowCount: activeDbValues.length,
     rangeAccuracy,
     firstPhaseAverage,
     middlePhaseAverage,
@@ -154,23 +267,16 @@ export function measureDynamicRange(
 }
 
 function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
+  if (!values.length) return 0;
 
-  return (
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length
-  );
+  return values.reduce((sum, value) => sum + value, 0) /
+    values.length;
 }
 
 function calculateSlope(values: number[]): number {
-  if (values.length < 2) {
-    return 0;
-  }
+  if (values.length < 2) return 0;
 
   const n = values.length;
-
   let sumX = 0;
   let sumY = 0;
   let sumXY = 0;
@@ -186,120 +292,62 @@ function calculateSlope(values: number[]): number {
     sumXX += x * x;
   }
 
-  const denominator =
-    n * sumXX - sumX * sumX;
+  const denominator = n * sumXX - sumX * sumX;
 
-  if (denominator === 0) {
-    return 0;
-  }
+  if (denominator === 0) return 0;
 
-  return (
-    (n * sumXY - sumX * sumY) /
-    denominator
-  );
+  return (n * sumXY - sumX * sumY) / denominator;
 }
 
-function calculateIncreasingConsistency(
-  values: number[]
+function calculateDirectionalConsistency(
+  values: number[],
+  direction: 'increasing' | 'decreasing',
 ): number {
-  if (values.length < 2) {
-    return 0;
-  }
+  if (values.length < 2) return 0;
 
   let totalChange = 0;
-  let positiveChange = 0;
+  let desiredChange = 0;
 
   for (let i = 1; i < values.length; i++) {
-    const difference =
-      values[i] - values[i - 1];
+    const difference = values[i] - values[i - 1];
 
     totalChange += Math.abs(difference);
 
-    if (difference > 0) {
-      positiveChange += difference;
+    if (
+      (direction === 'increasing' && difference > 0) ||
+      (direction === 'decreasing' && difference < 0)
+    ) {
+      desiredChange += Math.abs(difference);
     }
   }
 
-  if (totalChange === 0) {
-    return 0;
-  }
+  if (totalChange === 0) return 0;
 
-  return clamp(
-    (positiveChange / totalChange) * 100,
-    0,
-    100
-  );
-}
-
-function calculateDecreasingConsistency(
-  values: number[]
-): number {
-  if (values.length < 2) {
-    return 0;
-  }
-
-  let totalChange = 0;
-  let negativeChange = 0;
-
-  for (let i = 1; i < values.length; i++) {
-    const difference =
-      values[i] - values[i - 1];
-
-    totalChange += Math.abs(difference);
-
-    if (difference < 0) {
-      negativeChange += Math.abs(difference);
-    }
-  }
-
-  if (totalChange === 0) {
-    return 0;
-  }
-
-  return clamp(
-    (negativeChange / totalChange) * 100,
-    0,
-    100
-  );
+  return clamp((desiredChange / totalChange) * 100, 0, 100);
 }
 
 function calculatePeakAccuracy(
   first: number,
   middle: number,
-  final: number
+  final: number,
 ): number {
-  const firstToMiddle = first - middle;
-  const finalToMiddle = final - middle;
+  // dBFS values closer to zero represent louder sound.
+  const middleRise = middle - first;
+  const middleFall = middle - final;
 
-  const positiveDifferences = [
-    firstToMiddle,
-    finalToMiddle,
-  ].filter((value) => value > 0);
+  // Both transitions should have a meaningful loudness difference.
+  const riseScore = clamp((middleRise / 10) * 100, 0, 100);
+  const fallScore = clamp((middleFall / 10) * 100, 0, 100);
 
-  if (positiveDifferences.length === 0) {
-    return 0;
-  }
-
-  const averageDifference = average(
-    positiveDifferences
-  );
-
-  return clamp(
-    (averageDifference / 10) * 100,
-    0,
-    100
-  );
+  return (riseScore + fallScore) / 2;
 }
 
 function clamp(
   value: number,
   min: number,
-  max: number
+  max: number,
 ): number {
-  return Math.max(
-    min,
-    Math.min(max, value)
-  );
+  return Math.max(min, Math.min(max, value));
 }
 
 function createEmptyMeasurement(): DynamicRangeMeasurement {
@@ -308,7 +356,6 @@ function createEmptyMeasurement(): DynamicRangeMeasurement {
     rangeMin: 0,
     rangeMax: 0,
     validWindowCount: 0,
-    inTargetWindowCount: 0,
     rangeAccuracy: 0,
     firstPhaseAverage: 0,
     middlePhaseAverage: 0,

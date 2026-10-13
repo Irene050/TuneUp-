@@ -570,6 +570,17 @@ export default function ControlledCrescendoExercise({
           },
         );
 
+        console.log('🎤 CRESCENDO MEASUREMENT:', {
+          validWindowCount: measurement.validWindowCount,
+          durationSeconds: measurement.durationSeconds,
+          startDb: measurement.startDb,
+          endDb: measurement.endDb,
+          meanDerivative: measurement.meanDerivative,
+          smoothness: measurement.smoothness,
+          targetReached: measurement.targetReached,
+          quality: measurement.overallMeasurementQuality,
+        });
+
         const result = scoreControlledCrescendo(
           measurement,
           {
@@ -1118,7 +1129,7 @@ export default function ControlledCrescendoExercise({
                 </Text>
 
                 <Text style={styles.targetValue}>
-                  {targetMin}–{targetMax} dB
+                  {targetMin} → {targetMax} dB
                 </Text>
               </View>
 

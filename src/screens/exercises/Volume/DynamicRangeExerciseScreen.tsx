@@ -304,18 +304,12 @@ export default function DynamicRangeExercise({
        */
       shouldSaveResultRef.current = false;
       try {
-        const measurement = measureDynamicRange(
-          samples,
-          sampleRate,
-          {
-            windowMs: WINDOW_MS,
-            targetRange: [targetMin, targetMax],
-            expectedDurationSeconds:
-              rampSeconds *
-              PHASES_PER_REPETITION *
-              repetitions,
-          },
-        );
+        const measurement = measureDynamicRange(samples, sampleRate, {
+          windowMs: WINDOW_MS,
+          targetRange: [targetMin, targetMax],
+          expectedDurationSeconds: rampSeconds * PHASES_PER_REPETITION * repetitions,
+          repetitionDurationSeconds: rampSeconds * PHASES_PER_REPETITION,
+        });
         console.log(
           'DYNAMIC RANGE MEASUREMENT:',
           JSON.stringify(measurement, null, 2),
@@ -525,7 +519,7 @@ const stopIncompleteExercise = async (
         summary={[
           {
             label: 'TARGET RANGE',
-            value: `${targetMin}–${targetMax} dB`,
+            value: `${targetMin} → ${targetMax} dB`,
             hint: 'relative microphone level',
           },
           {
@@ -775,6 +769,7 @@ const stopIncompleteExercise = async (
   /* =======================================================
      RESULTS
      ======================================================= */
+
   return (
     <ExerciseResultsScreen
       title={passed ? 'Exercise Passed' : 'Needs More Practice'}
@@ -784,39 +779,44 @@ const stopIncompleteExercise = async (
           : 'Keep practicing smooth and controlled volume changes.'
       }
       score={score}
-      resultIcon={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
+      resultIcon={
+        passed
+          ? 'checkmark-circle-outline'
+          : 'refresh-outline'
+      }
       scoreMessage={
         passed
           ? 'You met the passing requirements.'
           : 'Try to follow the soft-to-loud-to-soft pattern more consistently.'
       }
+      scoreDetails={
+      <View style={styles.resultsDetails}>
+        <View style={styles.resultMetric}>
+          <Text style={styles.resultValue}>
+            {rangeAccuracy}%
+          </Text>
+          <Text style={styles.resultLabel}>
+            Range Accuracy
+          </Text>
+        </View>
+
+        <View style={styles.resultMetric}>
+          <Text style={styles.resultValue}>
+            {rampConsistency}%
+          </Text>
+          <Text style={styles.resultLabel}>
+            Ramp Consistency
+          </Text>
+        </View>
+      </View>
+    }
       onRetry={tryAgain}
       onExit={() => router.replace('/exercises/volume')}
-    >
-      <View style={styles.resultsDetails}>
-        <ResultRow
-          label="Range Accuracy"
-          value={`${rangeAccuracy}%`}
-        />
-        <ResultRow
-          label="Ramp Consistency"
-          value={`${rampConsistency}%`}
-        />
-        <ResultRow
-          label="Target Range"
-          value={`${targetMin}–${targetMax} dB`}
-        />
-        <ResultRow
-          label="Difficulty"
-          value={
-            resolvedTier.charAt(0).toUpperCase() +
-            resolvedTier.slice(1)
-          }
-        />
-      </View>
-    </ExerciseResultsScreen>
+      children={null}
+    />
   );
 }
+
 /* =========================================================
    RESULT ROW
    ========================================================= */
@@ -1236,13 +1236,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
-  resultsDetails: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 14,
-    marginTop: 4,
-  },
   resultRow: {
     minHeight: 43,
     flexDirection: 'row',
@@ -1251,14 +1244,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F5E9EC',
   },
+    resultsDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 12,
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  resultMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
   resultLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
+    fontSize: 11,
     color: MUTED,
+    textAlign: 'center',
   },
   resultValue: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
     color: BROWN,
-  },
+},
 });

@@ -552,7 +552,7 @@ type ExerciseResultsScreenProps = {
   onBack?: () => void;
   onRetry: () => void;
   onExit: () => void;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export function ExerciseResultsScreen({
@@ -629,8 +629,6 @@ export function ExerciseResultsScreen({
           </Text>
         ) : null}
       </View>
-
-      {children}
 
       <Pressable
         accessibilityRole="button"
