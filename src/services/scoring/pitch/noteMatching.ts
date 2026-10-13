@@ -197,75 +197,75 @@ export function scoreNoteMatching(
         measurement.averageClarity,
     };
   }
-
+  
   // ----------------------------------------------------------
-  // Match consistency
-  // ----------------------------------------------------------
-  //
-  // Wrong sung notes remain part of the denominator.
-  // This prevents a median or a few correct frames from
-  // hiding incorrect sung notes.
+  // Strict pitch accuracy
   // ----------------------------------------------------------
 
   const matchRate =
-    matchingFrames /
-    validVoicedFrames;
+    matchingFrames / validVoicedFrames;
 
-  const averageMatchingAccuracy =
-    totalAccuracy /
-    matchingFrames;
+  let totalDeviationPct = 0;
 
-  const sustainedAccuracy =
-    averageMatchingAccuracy *
-    matchRate;
+  for (const frequency of measurement.frequencies) {
+    if (
+      !Number.isFinite(frequency) ||
+      frequency <= 0
+    ) {
+      continue;
+    }
 
+    totalDeviationPct +=
+      (Math.abs(frequency - targetFrequency) /
+        targetFrequency) * 100;
+  }
+
+  const averageDeviationPct =
+    totalDeviationPct / validVoicedFrames;
+
+  // Stricter curve:
+  // 0% deviation = 100
+  // 1% deviation = 60
+  // 2% deviation = 20
+  // 2.5% or more = 0
+  const deviationScore = Math.max(
+    0,
+    Math.min(100, 100 - averageDeviationPct * 40),
+  );
+
+  // Penalize frames that do not match the target.
   const safeAccuracy =
-    Number.isFinite(
-      sustainedAccuracy,
-    )
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            sustainedAccuracy,
-          ),
-        )
-      : 0;
-
-  // ----------------------------------------------------------
-  // Overall representative deviation
-  // ----------------------------------------------------------
+    deviationScore * matchRate;
 
   const deviationPct =
-    (
-      Math.abs(
-        measurement.detectedFrequency -
-          targetFrequency,
-      ) /
-      targetFrequency
-    ) * 100;
+    (Math.abs(
+      measurement.detectedFrequency - targetFrequency,
+    ) / targetFrequency) * 100;
 
-  // ----------------------------------------------------------
-  // Pass requirement
-  // ----------------------------------------------------------
-  //
-  // Require the majority of sung frames to match the
-  // target. Silence does not count as a wrong note.
-  // ----------------------------------------------------------
+  const score = Math.round(
+    Math.max(0, Math.min(100, safeAccuracy)),
+  );
 
   const passed =
-    matchRate >= 0.75 &&
-    safeAccuracy >= 75;
+    matchRate >= 0.90 &&
+    averageDeviationPct <= 0.5 &&
+    score >= 85;
+
+  console.log('🎵 NOTE MATCHING SCORE DEBUG:', {
+    targetFrequency,
+    detectedFrequency: measurement.detectedFrequency,
+    averageDeviationPct,
+    matchRate,
+    deviationScore,
+    finalScore: score,
+    passed,
+  });
 
   return {
-    score: Math.round(
-      safeAccuracy,
-    ),
+    score,
     passed,
     deviationPct,
-    detectedFrequency:
-      measurement.detectedFrequency,
-    averageClarity:
-      measurement.averageClarity,
+    detectedFrequency: measurement.detectedFrequency,
+    averageClarity: measurement.averageClarity,
   };
 }
