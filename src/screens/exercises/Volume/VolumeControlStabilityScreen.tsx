@@ -1192,6 +1192,40 @@ export default function VolumeControlStabilityScreen({
 
 
 
+  /* =======================================================
+
+     PREPARING YOUR EXERCISE
+
+     ======================================================= */
+
+  if (!paramsReady) {
+    return (
+      <SafeAreaView style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons
+            name="options-outline"
+            size={32}
+            color="#EC5A93"
+          />
+        </View>
+
+        <Text style={styles.preparingTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your session.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color="#EC5A93"
+          style={styles.preparingSpinner}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (
 
     phase === 'directions'
@@ -3270,6 +3304,45 @@ function CompactResultRow({
 }
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: '#FFF8FB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#FFE5EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  preparingTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2E272B',
+    textAlign: 'center',
+  },
+
+  preparingSubtitle: {
+    marginTop: 6,
+    maxWidth: 285,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#777176',
+    textAlign: 'center',
+  },
+
+  preparingSpinner: {
+    marginTop: 24,
+  },
+
+
   
   safeArea: {
     flex: 1,

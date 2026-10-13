@@ -1,59 +1,75 @@
-
 import {
   DYNAMIC_RANGE_PARAMS,
   type DynamicRangeParams,
   type Tier,
 } from '@/constants/exercises/volume';
+
 import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
 import ExerciseScreen, {
   ExerciseListeningScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
+
 import {
   generateDynamicRangeParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
+
 import {
   auth,
 } from '@/services/firebase/config';
+
 import {
   measureDynamicRange,
 } from '@/services/measurement/volume/dynamicRangeExercise';
+
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
+
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
+
 import {
   scoreDynamicRange,
 } from '@/services/scoring/volume/dynamicRangeExercise';
+
 import {
   playSingleNote,
 } from '@/utils/music/notePlayer';
+
 import {
   createMusicalNote,
 } from '@/utils/music/notes';
+
 import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { router } from 'expo-router';
+
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
+
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT = '#FFF8FA';
@@ -68,10 +84,13 @@ const PHASES_PER_REPETITION = 3;
 const WINDOW_MS = 50;
 const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
+
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
+
 interface DynamicRangeExerciseProps {
   tier?: Tier;
 }
+
 function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
@@ -84,14 +103,17 @@ function normalizeVolume(value: number): number {
     ),
   );
 }
+
 function referenceHeight(index: number): number {
   const middle = (BAR_COUNT - 1) / 2;
   const distance = Math.abs(index - middle) / middle;
   return 0.18 + (1 - distance) * 0.72;
 }
+
 /* =========================================================
    DYNAMIC RANGE VISUALIZER
    ========================================================= */
+
 function DynamicRangeVisualizer({
   liveHistory,
 }: {
@@ -129,9 +151,11 @@ function DynamicRangeVisualizer({
     </View>
   );
 }
+
 /* =========================================================
    MAIN SCREEN
    ========================================================= */
+
 export default function DynamicRangeExercise({
   tier,
 }: DynamicRangeExerciseProps) {
@@ -143,6 +167,7 @@ export default function DynamicRangeExercise({
       DYNAMIC_RANGE_PARAMS[initialTier],
     );
   const [phase, setPhase] = useState<Phase>('directions');
+  const [loadingParams, setLoadingParams] = useState(true);
   const [countdown, setCountdown] = useState(3);
   const countdownRunIdRef = useRef(0);
   const [rep, setRep] = useState(1);
@@ -167,12 +192,14 @@ export default function DynamicRangeExercise({
       countdownRunIdRef.current += 1;
     };
   }, []);
+
   /* =======================================================
      ADAPTIVE DIFFICULTY SCALING
      ======================================================= */
   useEffect(() => {
     let cancelled = false;
     async function initializeAdaptiveParams() {
+      setLoadingParams(true);
       try {
         let currentTier: Tier = tier ?? 'beginner';
         let referenceScores: number[] = [];
@@ -246,6 +273,10 @@ export default function DynamicRangeExercise({
             recentScores: [],
           }),
         );
+      } finally {
+        if (!cancelled) {
+          setLoadingParams(false);
+        }
       }
     }
     void initializeAdaptiveParams();
@@ -253,6 +284,7 @@ export default function DynamicRangeExercise({
       cancelled = true;
     };
   }, [tier]);
+
   /* =======================================================
      REFERENCE NOTE
      ======================================================= */
@@ -266,6 +298,7 @@ export default function DynamicRangeExercise({
       console.error('Unable to play reference note:', error);
     }
   }, []);
+
   /* =======================================================
      AUDIO RECORDER
      ======================================================= */
@@ -352,6 +385,7 @@ export default function DynamicRangeExercise({
       }
     },
   });
+
   /* =======================================================
      EXERCISE TIMER
      ======================================================= */
@@ -400,6 +434,7 @@ export default function DynamicRangeExercise({
     totalSeconds,
     stopRecording,
   ]);
+
   /* =======================================================
      CURRENT INSTRUCTION
      ======================================================= */
@@ -414,6 +449,7 @@ export default function DynamicRangeExercise({
   }
   const secondsUntilChange =
     rampSeconds - (seconds % rampSeconds);
+
   /* =======================================================
      START / RETRY / CANCEL
      ======================================================= */
@@ -434,7 +470,6 @@ export default function DynamicRangeExercise({
     resetExercise();
     setCountdown(3);
     setPhase('countdown');
-
     for (let value = 3; value >= 1; value--) {
       if (runId !== countdownRunIdRef.current) {
         return;
@@ -442,11 +477,9 @@ export default function DynamicRangeExercise({
       setCountdown(value);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
     }
-
     if (runId !== countdownRunIdRef.current) {
       return;
     }
-
     try {
       setPhase('exercise');
       await startRecording();
@@ -463,35 +496,54 @@ export default function DynamicRangeExercise({
   const tryAgain = () => {
     void startExercise();
   };
-const acceptFramesRef = useRef(false);
-const stopIncompleteExercise = async (
-  navigateBack = false,
-) => {
-  countdownRunIdRef.current += 1;
-  // Immediately ignore any new live frames.
-  acceptFramesRef.current = false;
-  // Prevent this attempt from being saved.
-  shouldSaveResultRef.current = false;
-  finishingRef.current = false;
-  try {
-    await stopRecording();
-  } catch (error) {
-    console.error(
-      'Unable to stop Dynamic Range recording:',
-      error,
-    );
-  } finally {
-    setSeconds(0);
-    setRep(1);
-    setLiveFrame(null);
-    setLiveHistory([]);
-    if (navigateBack) {
-      router.back();
-    } else {
-      setPhase('directions');
+  const acceptFramesRef = useRef(false);
+  const stopIncompleteExercise = async (
+    navigateBack = false,
+  ) => {
+    countdownRunIdRef.current += 1;
+    // Immediately ignore any new live frames.
+    acceptFramesRef.current = false;
+    // Prevent this attempt from being saved.
+    shouldSaveResultRef.current = false;
+    finishingRef.current = false;
+    try {
+      await stopRecording();
+    } catch (error) {
+      console.error(
+        'Unable to stop Dynamic Range recording:',
+        error,
+      );
+    } finally {
+      setSeconds(0);
+      setRep(1);
+      setLiveFrame(null);
+      setLiveHistory([]);
+      if (navigateBack) {
+        router.back();
+      } else {
+        setPhase('directions');
+      }
     }
+  };
+  if (loadingParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="options-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
   }
-};
+
   /* =======================================================
      DIRECTIONS
      ======================================================= */
@@ -610,7 +662,6 @@ const stopIncompleteExercise = async (
           <Ionicons name="close" size={22} color={BROWN} />
           <Text style={styles.countdownCancelText}>Cancel</Text>
         </TouchableOpacity>
-
         <View style={styles.countdownContent}>
           <View style={styles.countdownCircle}>
             <Text style={styles.countdownNumber}>{countdown}</Text>
@@ -766,10 +817,10 @@ const stopIncompleteExercise = async (
       />
     );
   }
+
   /* =======================================================
      RESULTS
      ======================================================= */
-
   return (
     <ExerciseResultsScreen
       title={passed ? 'Exercise Passed' : 'Needs More Practice'}
@@ -799,7 +850,6 @@ const stopIncompleteExercise = async (
             Range Accuracy
           </Text>
         </View>
-
         <View style={styles.resultMetric}>
           <Text style={styles.resultValue}>
             {rampConsistency}%
@@ -820,6 +870,7 @@ const stopIncompleteExercise = async (
 /* =========================================================
    RESULT ROW
    ========================================================= */
+
 function ResultRow({
   label,
   value,
@@ -834,10 +885,46 @@ function ResultRow({
     </View>
   );
 }
+
 /* =========================================================
    SCREEN-SPECIFIC STYLES
    ========================================================= */
+
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   countdownScreen: {
     flex: 1,
     width: '100%',
@@ -1244,7 +1331,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F5E9EC',
   },
-    resultsDetails: {
+  resultsDetails: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     gap: 12,
@@ -1268,5 +1355,5 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 20,
     color: BROWN,
-},
+  },
 });

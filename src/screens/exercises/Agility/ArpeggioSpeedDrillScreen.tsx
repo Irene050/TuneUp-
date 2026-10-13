@@ -30,8 +30,8 @@ import { AudioManager, AudioRecorder } from 'react-native-audio-api';
 
 // ============================================================
 // COLORS
-// ============================================================
 
+// ============================================================
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -42,8 +42,8 @@ const BORDER = '#F2DDE5';
 
 // ============================================================
 // CONFIG
-// ============================================================
 
+// ============================================================
 const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
 const MAX_RECORDING_SECONDS = 10;
@@ -53,6 +53,7 @@ const LIVE_ANALYSIS_SIZE = 2048;
 
 // ============================================================
 // TYPES
+
 // ============================================================
 
 type Phase =
@@ -62,6 +63,7 @@ type Phase =
   | 'recording'
   | 'processing'
   | 'results';
+
 type Result = {
   overall: number;
   pitchScore: number;
@@ -78,6 +80,7 @@ type Result = {
 
 // ============================================================
 // HELPERS
+
 // ============================================================
 
 const sleep = (ms: number) =>
@@ -105,6 +108,7 @@ const findClosestTarget = (
  * Lightweight pitch detector for the live display only.
  * Final scoring is calculated by measureArpeggioSpeed().
  */
+
 const estimateLiveFrequency = (
   samples: number[],
   sampleRate: number,
@@ -164,14 +168,13 @@ const estimateLiveFrequency = (
 
 // ============================================================
 // COMPONENT
+
 // ============================================================
 
 export default function ArpeggioSpeedDrillScreen() {
-
   // ----------------------------------------------------------
   // CURRENT USER + TIER
   // ----------------------------------------------------------
-
   const currentUserId = auth.currentUser?.uid ?? null;
   const [tier, setTier] = useState<Tier | null>(null);
   const [tierLoading, setTierLoading] = useState(true);
@@ -208,11 +211,9 @@ export default function ArpeggioSpeedDrillScreen() {
       cancelled = true;
     };
   }, [currentUserId]);
-
   // ----------------------------------------------------------
   // ACTIVE TIER + BASE CONFIG
   // ----------------------------------------------------------
-
   const activeTier: Tier = tier ?? 'beginner';
   // Repetition counts follow the approved Arpeggio Speed Drill template.
   const repetitionCount =
@@ -225,12 +226,11 @@ export default function ArpeggioSpeedDrillScreen() {
     () => ARPEGGIO_SPEED_DRILL_PARAMS[activeTier],
     [activeTier],
   );
-
   // ----------------------------------------------------------
   // STATE
   // ----------------------------------------------------------
-
   const [config, setConfig] = useState(baseConfig);
+  const [paramsReady, setParamsReady] = useState(false);
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -241,11 +241,9 @@ export default function ArpeggioSpeedDrillScreen() {
   const [result, setResult] = useState<Result | null>(null);
   // Holds the score from each completed repetition until the final summary.
   const attemptResultsRef = useRef<Result[]>([]);
-
   // ----------------------------------------------------------
   // REFS
   // ----------------------------------------------------------
-
   const recorderRef = useRef<AudioRecorder | null>(null);
   // All recorded samples are retained for final analysis.
   const samplesRef = useRef<number[]>([]);
@@ -258,18 +256,20 @@ export default function ArpeggioSpeedDrillScreen() {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
-
   // ----------------------------------------------------------
   // ADAPTIVE DIFFICULTY SCALING
   // ----------------------------------------------------------
-
   useEffect(() => {
     let cancelled = false;
     const loadAdaptiveParameters = async () => {
       if (tierLoading || !tier) return;
+      setParamsReady(false);
       const user = auth.currentUser;
       if (!user) {
-        if (!cancelled) setConfig(baseConfig);
+        if (!cancelled) {
+          setConfig(baseConfig);
+          setParamsReady(true);
+        }
         return;
       }
       try {
@@ -301,13 +301,19 @@ export default function ArpeggioSpeedDrillScreen() {
           tier,
           recentScores,
         });
-        if (!cancelled) setConfig(generated);
+        if (!cancelled) {
+          setConfig(generated);
+          setParamsReady(true);
+        }
       } catch (error) {
         console.error(
           'Failed to load Arpeggio Speed Drill adaptive parameters:',
           error,
         );
-        if (!cancelled) setConfig(baseConfig);
+        if (!cancelled) {
+          setConfig(baseConfig);
+          setParamsReady(true);
+        }
       }
     };
     void loadAdaptiveParameters();
@@ -315,11 +321,9 @@ export default function ArpeggioSpeedDrillScreen() {
       cancelled = true;
     };
   }, [tier, tierLoading, baseConfig]);
-
   // ----------------------------------------------------------
   // STOP RECORDING
   // ----------------------------------------------------------
-
   const stopRecording = useCallback(() => {
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
@@ -336,21 +340,17 @@ export default function ArpeggioSpeedDrillScreen() {
     }
     recordingStartRef.current = null;
   }, []);
-
   // ----------------------------------------------------------
   // CLEANUP
   // ----------------------------------------------------------
-
   useEffect(() => {
     return () => {
       stopRecording();
     };
   }, [stopRecording]);
-
   // ----------------------------------------------------------
   // MICROPHONE PERMISSION
   // ----------------------------------------------------------
-
   const requestMicrophonePermission = async (): Promise<boolean> => {
     try {
       const permission = await AudioManager.requestRecordingPermissions();
@@ -360,11 +360,9 @@ export default function ArpeggioSpeedDrillScreen() {
       return false;
     }
   };
-
   // ----------------------------------------------------------
   // REFERENCE PLAYBACK
   // ----------------------------------------------------------
-
   const playReference = async () => {
     if (isPlayingReference || !config.frequencies.length) return;
     setIsPlayingReference(true);
@@ -391,11 +389,9 @@ export default function ArpeggioSpeedDrillScreen() {
       setIsPlayingReference(false);
     }
   };
-
   // ----------------------------------------------------------
   // BEGIN EXERCISE
   // ----------------------------------------------------------
-
   const beginExercise = async () => {
     const permission = await requestMicrophonePermission();
     if (!permission) return;
@@ -408,11 +404,9 @@ export default function ArpeggioSpeedDrillScreen() {
     liveSamplesRef.current = [];
     setPhase('reference');
   };
-
   // ----------------------------------------------------------
   // START COUNTDOWN
   // ----------------------------------------------------------
-
   const startCountdown = async () => {
     if (processingRef.current) return;
     setPhase('countdown');
@@ -422,11 +416,9 @@ export default function ArpeggioSpeedDrillScreen() {
     }
     await startRecording();
   };
-
   // ----------------------------------------------------------
   // START RECORDING
   // ----------------------------------------------------------
-
   const startRecording = async () => {
     try {
       processingRef.current = false;
@@ -508,11 +500,9 @@ export default function ArpeggioSpeedDrillScreen() {
       setPhase('instructions');
     }
   };
-
   // ----------------------------------------------------------
   // PROCESS RECORDING
   // ----------------------------------------------------------
-
   const processRecording = async () => {
     if (processingRef.current) return;
     processingRef.current = true;
@@ -608,11 +598,9 @@ export default function ArpeggioSpeedDrillScreen() {
       setPhase('instructions');
     }
   };
-
   // ----------------------------------------------------------
   // RESET
   // ----------------------------------------------------------
-
   const resetExercise = () => {
     stopRecording();
     processingRef.current = false;
@@ -627,11 +615,9 @@ export default function ArpeggioSpeedDrillScreen() {
     setReferenceNoteIndex(null);
     setPhase('instructions');
   };
-
   // ============================================================
   // INSTRUCTIONS
   // ============================================================
-
   const renderInstructions = () => {
     const difficulty = tier
       ? tier.charAt(0).toUpperCase() + tier.slice(1)
@@ -676,11 +662,9 @@ export default function ArpeggioSpeedDrillScreen() {
       />
     );
   };
-
   // ============================================================
   // REFERENCE
   // ============================================================
-
   const renderReference = () => (
     <View style={styles.content}>
       <View style={styles.iconCircle}>
@@ -755,11 +739,9 @@ export default function ArpeggioSpeedDrillScreen() {
       </Pressable>
     </View>
   );
-
   // ============================================================
   // COUNTDOWN
   // ============================================================
-
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
@@ -773,11 +755,9 @@ export default function ArpeggioSpeedDrillScreen() {
       </Text>
     </View>
   );
-
   // ============================================================
   // RECORDING
   // ============================================================
-
   const renderRecording = () => {
     const progress = Math.min(recordingTime / MAX_RECORDING_SECONDS, 1);
     const liveMatch =
@@ -886,11 +866,9 @@ export default function ArpeggioSpeedDrillScreen() {
       </View>
     );
   };
-
   // ============================================================
   // PROCESSING
   // ============================================================
-
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
@@ -903,11 +881,9 @@ export default function ArpeggioSpeedDrillScreen() {
       </Text>
     </View>
   );
-
   // ============================================================
   // RESULTS
   // ============================================================
-
   const renderResults = () => {
     if (!result) return null;
     return (
@@ -1023,11 +999,27 @@ export default function ArpeggioSpeedDrillScreen() {
       </View>
     );
   };
-
   // ============================================================
   // MAIN RENDER
   // ============================================================
-
+  if (tierLoading || !paramsReady) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="options-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
   return (
     <ScrollView
       style={styles.screen}
@@ -1046,14 +1038,48 @@ export default function ArpeggioSpeedDrillScreen() {
 
 // ============================================================
 // STYLES
+
 // ============================================================
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   screen: {
     flex: 1,
     backgroundColor: WHITE,
   },
-
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1061,7 +1087,6 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
     alignItems: 'center',
   },
-
   resultsContent: {
     flexGrow: 1,
     width: '100%',
@@ -1070,12 +1095,10 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-
   resultsWrapper: {
     flexGrow: 1,
     width: '100%',
   },
-
   centerScreen: {
     flexGrow: 1,
     minHeight: 700,
@@ -1084,7 +1107,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-
   iconCircle: {
     width: 76,
     height: 76,
@@ -1094,7 +1116,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
   },
-
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
@@ -1102,7 +1123,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
-
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1112,7 +1132,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 320,
   },
-
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
@@ -1121,7 +1140,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
   },
-
   paceGuideCard: {
     width: '100%',
     marginTop: 18,
@@ -1131,20 +1149,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   paceGuideHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-
   paceGuideTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   paceGuideDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1153,7 +1168,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   paceGuideStats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1162,19 +1176,16 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     backgroundColor: LIGHT_PINK,
   },
-
   paceGuideStat: {
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 5,
   },
-
   paceGuideDivider: {
     width: 1,
     height: 34,
     backgroundColor: BORDER,
   },
-
   paceGuideLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
@@ -1182,14 +1193,12 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   paceGuideValue: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
     marginTop: 4,
   },
-
   paceGuideHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -1198,7 +1207,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 11,
   },
-
   recordingPaceCard: {
     width: '100%',
     flexDirection: 'row',
@@ -1211,25 +1219,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   recordingPaceTextWrap: {
     flex: 1,
   },
-
   recordingPaceTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: BROWN,
     marginBottom: 3,
   },
-
   recordingPaceText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
     color: MUTED,
   },
-
   referenceCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1239,7 +1243,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     marginTop: 22,
   },
-
   referenceLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -1247,7 +1250,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   referenceHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1256,7 +1258,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
   },
-
   sequenceHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -1264,7 +1265,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   noteSequence: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1272,7 +1272,6 @@ const styles = StyleSheet.create({
     gap: 9,
     marginTop: 16,
   },
-
   notePill: {
     minWidth: 60,
     paddingVertical: 11,
@@ -1281,55 +1280,46 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     alignItems: 'center',
   },
-
   referenceNoteActive: {
     backgroundColor: PINK,
     borderWidth: 1,
     borderColor: '#E88FA2',
   },
-
   notePending: {
     backgroundColor: '#F1EDEB',
   },
-
   noteCorrect: {
     backgroundColor: '#CDEEDB',
     borderWidth: 1,
     borderColor: '#218653',
   },
-
   noteClose: {
     backgroundColor: '#FBE6B8',
     borderWidth: 1,
     borderColor: '#B7791F',
   },
-
   noteIncorrect: {
     backgroundColor: '#F8D3D7',
     borderWidth: 1,
     borderColor: '#C43D4B',
   },
-
   noteNumber: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: MUTED,
     marginBottom: 2,
   },
-
   noteText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   noteStatus: {
     fontFamily: 'FredokaBold',
     fontSize: 9,
     marginTop: 4,
     textAlign: 'center',
   },
-
   tipCard: {
     width: '100%',
     flexDirection: 'row',
@@ -1341,7 +1331,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -1350,7 +1339,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 9,
   },
-
   referenceButton: {
     width: '100%',
     height: 52,
@@ -1362,17 +1350,14 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 22,
   },
-
   referenceButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,
   },
-
   buttonDisabled: {
     opacity: 0.6,
   },
-
   startButton: {
     width: '100%',
     height: 54,
@@ -1384,13 +1369,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 14,
   },
-
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   finishButton: {
     width: '100%',
     height: 53,
@@ -1402,13 +1385,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 18,
   },
-
   finishButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   doneButton: {
     width: '100%',
     height: 54,
@@ -1418,20 +1399,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
-
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
     color: BROWN,
     marginTop: 20,
   },
-
   recordingIcon: {
     width: 76,
     height: 76,
@@ -1441,14 +1419,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 26,
     color: BROWN,
     textAlign: 'center',
   },
-
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -1457,7 +1433,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     maxWidth: 310,
   },
-
   recordingBadge: {
     marginTop: 18,
     flexDirection: 'row',
@@ -1469,7 +1444,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   recordingDot: {
     width: 8,
     height: 8,
@@ -1477,14 +1451,12 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginRight: 7,
   },
-
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.6,
     color: BROWN,
   },
-
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1495,42 +1467,36 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     letterSpacing: 0.8,
     color: MUTED,
   },
-
   liveCurrentNote: {
     fontFamily: 'FredokaBold',
     fontSize: 42,
     color: BROWN,
     marginTop: 4,
   },
-
   liveDivider: {
     width: '100%',
     height: 1,
     backgroundColor: BORDER,
     marginVertical: 15,
   },
-
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     textAlign: 'center',
   },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
     marginTop: 3,
   },
-
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1539,7 +1505,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 7,
   },
-
   timerTrack: {
     width: '100%',
     height: 7,
@@ -1547,12 +1512,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
-
   timerFill: {
     height: '100%',
     backgroundColor: PINK,
   },
-
   resultIcon: {
     width: 82,
     height: 82,
@@ -1561,22 +1524,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   resultIconPassed: {
     backgroundColor: PINK,
   },
-
   resultIconFailed: {
     backgroundColor: LIGHT_GRAY,
   },
-
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     textAlign: 'center',
   },
-
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -1584,7 +1543,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: 22,
   },
-
   scoreCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -1592,20 +1550,17 @@ const styles = StyleSheet.create({
     padding: 22,
     alignItems: 'center',
   },
-
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
   },
-
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
     color: BROWN,
     marginVertical: 3,
   },
-
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1613,7 +1568,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1623,40 +1577,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginBottom: 14,
   },
-
   scoreRow: {
     marginBottom: 14,
   },
-
   scoreRowLast: {
     marginBottom: 0,
   },
-
   scoreRowHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 7,
   },
-
   scoreRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   scoreRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: BROWN,
   },
-
   progressBackground: {
     width: '100%',
     height: 8,
@@ -1664,13 +1611,11 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_GRAY,
     overflow: 'hidden',
   },
-
   progressFill: {
     height: '100%',
     borderRadius: 4,
     backgroundColor: PINK,
   },
-
   metricRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1679,18 +1624,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-
   metricRowLast: {
     borderBottomWidth: 0,
   },
-
   metricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     flex: 1,
   },
-
   metricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,

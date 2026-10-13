@@ -1,58 +1,48 @@
+import {
+  CONTROLLED_CRESCENDO_PARAMS,
+  type Tier,
+} from '@/constants/exercises/volume';
+import {
+  type LiveAudioFrame,
+  useAudioRecorder,
+} from '@/hooks/useAudioRecorder';
+import ExerciseScreen, {
+  ExerciseListeningScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
+import {
+  generateControlledCrescendoParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
+import {
+  measureControlledCrescendo,
+} from '@/services/measurement/volume/controlledCrescendoDrill';
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+import {
+  scoreControlledCrescendo,
+} from '@/services/scoring/volume/controlledCrescendoDrill';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote } from '@/utils/music/notes';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-
-import ExerciseScreen, {
-  ExerciseListeningScreen,
-  ExerciseResultsScreen,
-} from '@/screens/exercises/ExerciseScreen';
-
-import {
-  CONTROLLED_CRESCENDO_PARAMS,
-  type Tier,
-} from '@/constants/exercises/volume';
-
-import {
-  type LiveAudioFrame,
-  useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
-
-import { auth } from '@/services/firebase/config';
-
-import {
-  generateControlledCrescendoParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-
-import {
-  measureControlledCrescendo,
-} from '@/services/measurement/volume/controlledCrescendoDrill';
-
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
-
-import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-
-import {
-  scoreControlledCrescendo,
-} from '@/services/scoring/volume/controlledCrescendoDrill';
-
-import { playSingleNote } from '@/utils/music/notePlayer';
-import { createMusicalNote } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -98,7 +88,6 @@ function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
-
   return clamp(
     (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
     0,
@@ -121,17 +110,13 @@ function calculateLiveSmoothness(values: number[]): number {
   if (values.length < 3) {
     return 0;
   }
-
   const derivatives: number[] = [];
-
   for (let index = 1; index < values.length; index += 1) {
     derivatives.push(values[index] - values[index - 1]);
   }
-
   const meanDerivative =
     derivatives.reduce((sum, value) => sum + value, 0) /
     derivatives.length;
-
   // A crescendo should trend upward. A flat or decreasing
   // signal should not be treated as a smooth crescendo.
   if (
@@ -140,13 +125,11 @@ function calculateLiveSmoothness(values: number[]): number {
   ) {
     return 0;
   }
-
   const derivativeVariance =
     derivatives.reduce(
       (sum, value) => sum + (value - meanDerivative) ** 2,
       0,
     ) / derivatives.length;
-
   return clamp(
     100 - (derivativeVariance / meanDerivative) * 100,
     0,
@@ -158,11 +141,9 @@ function estimateLiveSmoothness(history: number[]): number {
   if (history.length < 4) {
     return 0;
   }
-
   const values = history.map(
     (value) => DBFS_MIN + value * (DBFS_MAX - DBFS_MIN),
   );
-
   return Math.round(calculateLiveSmoothness(values));
 }
 
@@ -173,7 +154,6 @@ function VolumeVisualizer({
     { length: BAR_COUNT },
     (_, index) => liveHistory[index] ?? 0,
   );
-
   return (
     <View style={styles.visualizer}>
       <View style={styles.actualBars}>
@@ -211,14 +191,12 @@ function TargetCrescendoGuide({
   const activeBarPosition = progress * (BAR_COUNT - 1);
   const activeBarIndex = Math.floor(activeBarPosition);
   const indicatorLeft = Math.min(progress * 100, 98.5);
-
   return (
     <View style={styles.guideCard}>
       <Text style={styles.guideTitle}>Follow this pattern</Text>
       <Text style={styles.guideSubtitle}>
         Start softly, then gradually get louder until the guide reaches Loud.
       </Text>
-
       <View style={styles.guideBars}>
         {Array.from({ length: BAR_COUNT }, (_, index) => (
           <View
@@ -242,7 +220,6 @@ function TargetCrescendoGuide({
           style={[styles.guideIndicator, { left: `${indicatorLeft}%` }]}
         />
       </View>
-
       <View style={styles.guideLabels}>
         <Text style={styles.guideLabel}>SOFT</Text>
         <Text style={styles.guideLabel}>LOUD</Text>
@@ -274,58 +251,49 @@ export default function ControlledCrescendoExercise({
   const [phase, setPhase] = useState<
     'directions' | 'exercise' | 'countdown' | 'results'
   >('directions');
-
+  // Show the preparation screen while adaptive exercise parameters load.
+  const [loadingParams, setLoadingParams] = useState(true);
   const [resolvedTier, setResolvedTier] = useState<Tier>(
     tier ?? 'beginner',
   );
-
   const [params, setParams] =
     useState<ControlledCrescendoParams>(
       CONTROLLED_CRESCENDO_PARAMS.beginner,
     );
-
   const [rep, setRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
   const [countdown, setCountdown] = useState(3);
   const [countdownReady, setCountdownReady] = useState(false);
   const [guideElapsed, setGuideElapsed] = useState(0);
-
   const [, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [smoothness, setSmoothness] = useState(0);
   const [repResults, setRepResults] = useState<number[]>([]);
   const [rangeReached, setRangeReached] = useState(false);
-
   const [startDb, setStartDb] = useState(0);
   const [endDb, setEndDb] = useState(0);
   const [minDb, setMinDb] = useState(0);
   const [maxDb, setMaxDb] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-
   const finishingRef = useRef(false);
   const completedNaturallyRef = useRef(false);
   const phaseRef = useRef(phase);
   const interRepStopRef = useRef(false);
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
-
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
-
   const targetMin = params.targetDbRange[0];
   const targetMax = params.targetDbRange[1];
   const rampSeconds = params.durationSec;
   const repetitions = params.repetitions;
   const smoothnessTarget = params.smoothnessThreshold;
-
   useEffect(() => {
     if (phase !== 'exercise') {
       setGuideElapsed(0);
       return;
     }
-
     const startedAt = Date.now();
     setGuideElapsed(0);
     const interval = setInterval(() => {
@@ -333,10 +301,8 @@ export default function ControlledCrescendoExercise({
         Math.min((Date.now() - startedAt) / 1000, rampSeconds),
       );
     }, 50);
-
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds]);
-
   /*
    * Adaptive difficulty initialization:
    * 1. Use the explicitly supplied tier, if present.
@@ -346,38 +312,30 @@ export default function ControlledCrescendoExercise({
    */
   useEffect(() => {
     let cancelled = false;
-
     async function initializeAdaptiveParams() {
+      setLoadingParams(true);
       let currentTier: Tier = tier ?? 'beginner';
-
       try {
         const user = auth.currentUser;
-
         if (user && !tier) {
           const progress = await fetchComponentProgress(
             user.uid,
             'volume',
           );
-
           if (progress?.currentTier) {
             currentTier = progress.currentTier;
           }
         }
-
         if (cancelled) {
           return;
         }
-
         setResolvedTier(currentTier);
-
         let recentScores: number[] = [];
-
         if (user) {
           const records = await fetchExerciseRecords(
             user.uid,
             'volume',
           );
-
           const matchingRecords = records
             .filter(
               (record) =>
@@ -385,35 +343,28 @@ export default function ControlledCrescendoExercise({
                 record.tier === currentTier,
             )
             .sort((a, b) => a.timestamp - b.timestamp);
-
           recentScores = matchingRecords
             .slice(-5)
             .map((record) => record.scorePct);
         }
-
         if (cancelled) {
           return;
         }
-
         if (recentScores.length === 0) {
           try {
             const assessment = await getLatestAssessment();
-
             if (assessment) {
               const scores = assessment.scores as Array<{
                 componentId?: string;
                 score?: number;
                 scorePct?: number;
               }>;
-
               const volumeScore = scores.find(
                 (score) => score.componentId === 'volume',
               );
-
               const assessmentScore = Number(
                 volumeScore?.scorePct ?? volumeScore?.score,
               );
-
               if (Number.isFinite(assessmentScore)) {
                 recentScores = [assessmentScore];
               }
@@ -425,17 +376,14 @@ export default function ControlledCrescendoExercise({
             );
           }
         }
-
         const generatedParams =
           generateControlledCrescendoParams({
             tier: currentTier,
             recentScores,
           });
-
         if (cancelled) {
           return;
         }
-
         setParams(generatedParams);
         setRepResults(
           Array(generatedParams.repetitions).fill(0),
@@ -445,29 +393,27 @@ export default function ControlledCrescendoExercise({
           'Unable to initialize Controlled Crescendo parameters:',
           initializationError,
         );
-
         if (cancelled) {
           return;
         }
-
         const fallbackParams =
           CONTROLLED_CRESCENDO_PARAMS[currentTier];
-
         setResolvedTier(currentTier);
         setParams(fallbackParams);
         setRepResults(
           Array(fallbackParams.repetitions).fill(0),
         );
+      } finally {
+        if (!cancelled) {
+          setLoadingParams(false);
+        }
       }
     }
-
     void initializeAdaptiveParams();
-
     return () => {
       cancelled = true;
     };
   }, [tier]);
-
   const playReferenceNote = useCallback(async () => {
     try {
       await playSingleNote(
@@ -481,20 +427,17 @@ export default function ControlledCrescendoExercise({
       );
     }
   }, []);
-
   useEffect(() => {
-    if (phase === 'directions') {
+    if (phase === 'directions' && !loadingParams) {
       void playReferenceNote();
     }
-  }, [phase, playReferenceNote]);
-
+  }, [phase, playReferenceNote, loadingParams]);
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setRep(1);
     setLiveFrame(null);
     setLiveHistory([]);
   }, []);
-
   const {
     startRecording,
     stopRecording,
@@ -504,20 +447,15 @@ export default function ControlledCrescendoExercise({
       if (phaseRef.current !== 'exercise') {
         return;
       }
-
       setLiveFrame(frame);
-
       const normalized = normalizeVolume(frame.volume);
-
       setLiveHistory((previous) => {
         const next = [...previous, normalized];
-
         return next.length > BAR_COUNT
           ? next.slice(-BAR_COUNT)
           : next;
       });
     },
-
     onStop: (samples, sampleRate) => {
       // Save this repetition's raw samples, then exclude the upcoming countdown
       // from the final measurement by combining only recorded segments.
@@ -528,7 +466,6 @@ export default function ControlledCrescendoExercise({
         }
         return;
       }
-
       /*
        * A manual stop or navigation cancels the attempt.
        * Only a naturally completed recording is scored and saved.
@@ -539,7 +476,6 @@ export default function ControlledCrescendoExercise({
         clearLiveState();
         return;
       }
-
       try {
         const recordedSegments = [
           ...repetitionSamplesRef.current,
@@ -556,7 +492,6 @@ export default function ControlledCrescendoExercise({
           sampleOffset += segment.length;
         }
         repetitionSamplesRef.current = [];
-
         const measurement = measureControlledCrescendo(
           completeSamples,
           sampleRate,
@@ -569,7 +504,6 @@ export default function ControlledCrescendoExercise({
               params.volumeIncreaseThreshold,
           },
         );
-
         console.log('🎤 CRESCENDO MEASUREMENT:', {
           validWindowCount: measurement.validWindowCount,
           durationSeconds: measurement.durationSeconds,
@@ -580,44 +514,33 @@ export default function ControlledCrescendoExercise({
           targetReached: measurement.targetReached,
           quality: measurement.overallMeasurementQuality,
         });
-
         const result = scoreControlledCrescendo(
           measurement,
           {
             passingScore: smoothnessTarget,
           },
         );
-
         const finalScore = Math.round(result.overallScore);
-
         setSmoothness(finalScore);
-
         setRepResults(
           measurement.repetitionSmoothness.map(
             (value) => Math.round(value),
           ),
         );
-
         setRangeReached(result.targetReached);
-
         setStartDb(
           Math.round(measurement.startDb * 10) / 10,
         );
-
         setEndDb(
           Math.round(measurement.endDb * 10) / 10,
         );
-
         setMinDb(
           Math.round(measurement.minDb * 10) / 10,
         );
-
         setMaxDb(
           Math.round(measurement.maxDb * 10) / 10,
         );
-
         setPhase('results');
-
         void saveCompletedExercise(
           'volume',
           'controlledCrescendo',
@@ -634,11 +557,9 @@ export default function ControlledCrescendoExercise({
           'Unable to measure Controlled Crescendo:',
           measurementError,
         );
-
         setErrorMessage(
           'We could not analyze this recording. Please try the exercise again.',
         );
-
         setPhase('directions');
       } finally {
         clearLiveState();
@@ -647,34 +568,28 @@ export default function ControlledCrescendoExercise({
       }
     },
   });
-
   // The visible guide and timer run only during an active repetition.
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
     }
-
     const interval = setInterval(() => {
       setSeconds((previousSeconds) =>
         Math.min(previousSeconds + 1, rampSeconds),
       );
     }, 1000);
-
     return () => clearInterval(interval);
   }, [phase, rampSeconds]);
-
   // Stop between repetitions, collect that segment, then show a 3-second
   // preparation countdown. The recording pause is excluded from scoring.
   useEffect(() => {
     if (phase !== 'exercise' || seconds < rampSeconds) {
       return;
     }
-
     if (rep < repetitions) {
       if (finishingRef.current) {
         return;
       }
-
       finishingRef.current = true;
       interRepStopRef.current = true;
       phaseRef.current = 'countdown';
@@ -685,7 +600,6 @@ export default function ControlledCrescendoExercise({
       setCountdownReady(false);
       setLiveFrame(null);
       setLiveHistory([]);
-
       void stopRecording()
         .then(() => {
           finishingRef.current = false;
@@ -705,20 +619,17 @@ export default function ControlledCrescendoExercise({
         });
       return;
     }
-
     if (
       !finishingRef.current &&
       !completedNaturallyRef.current
     ) {
       finishingRef.current = true;
       completedNaturallyRef.current = true;
-
       void stopRecording().catch((stopError) => {
         console.error(
           'Unable to finish Controlled Crescendo recording:',
           stopError,
         );
-
         finishingRef.current = false;
         completedNaturallyRef.current = false;
         repetitionSamplesRef.current = [];
@@ -730,25 +641,21 @@ export default function ControlledCrescendoExercise({
       });
     }
   }, [phase, seconds, rep, rampSeconds, repetitions, stopRecording]);
-
   // Countdown runs only after the previous recording segment has fully stopped.
   useEffect(() => {
     if (phase !== 'countdown' || !countdownReady) {
       return;
     }
-
     const timeout = setTimeout(() => {
       if (countdown > 1) {
         setCountdown((value) => value - 1);
         return;
       }
-
       setCountdownReady(false);
       setSeconds(0);
       setLiveFrame(null);
       setLiveHistory([]);
       phaseRef.current = 'exercise';
-
       void startRecording()
         .then(() => {
           setPhase('exercise');
@@ -766,10 +673,8 @@ export default function ControlledCrescendoExercise({
           setPhase('directions');
         });
     }, 1000);
-
     return () => clearTimeout(timeout);
   }, [phase, countdown, countdownReady, startRecording]);
-
   const startExercise = useCallback(async () => {
     setErrorMessage(undefined);
     setRep(1);
@@ -783,17 +688,14 @@ export default function ControlledCrescendoExercise({
     setMaxDb(0);
     setLiveFrame(null);
     setLiveHistory([]);
-
     finishingRef.current = false;
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
     setCountdown(3);
     setCountdownReady(false);
-
     // Accept live audio frames as soon as the recorder starts emitting them.
     phaseRef.current = 'exercise';
-
     try {
       await startRecording();
       setPhase('exercise');
@@ -805,22 +707,18 @@ export default function ControlledCrescendoExercise({
         'Unable to start Controlled Crescendo recording:',
         recordingError,
       );
-
       setErrorMessage(
         'Microphone recording could not start. Check microphone permission and try again.',
       );
-
       setPhase('directions');
     }
   }, [repetitions, startRecording]);
-
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
     finishingRef.current = true;
     phaseRef.current = 'directions';
-
     try {
       if (isRecording) {
         await stopRecording();
@@ -837,14 +735,12 @@ export default function ControlledCrescendoExercise({
       setPhase('directions');
     }
   }, [clearLiveState, isRecording, stopRecording]);
-
   const handleBackFromExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
     finishingRef.current = true;
     phaseRef.current = 'directions';
-
     try {
       if (isRecording) {
         await stopRecording();
@@ -860,36 +756,48 @@ export default function ControlledCrescendoExercise({
       router.back();
     }
   }, [isRecording, stopRecording]);
-
   const tryAgain = useCallback(() => {
     void startExercise();
   }, [startExercise]);
-
+  if (loadingParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="options-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
   const liveSmoothness = estimateLiveSmoothness(liveHistory);
-
   const instruction =
     seconds < 1
       ? {
-          title: 'START SOFT',
-          subtitle: 'Begin with a gentle voice',
-        }
+        title: 'START SOFT',
+        subtitle: 'Begin with a gentle voice',
+      }
       : seconds < rampSeconds - 1
         ? {
-            title: 'CRESCENDO',
-            subtitle: 'Gradually increase your volume',
-          }
+          title: 'CRESCENDO',
+          subtitle: 'Gradually increase your volume',
+        }
         : {
-            title: 'REACH TARGET',
-            subtitle: 'Finish at the target loudness',
-          };
-
+          title: 'REACH TARGET',
+          subtitle: 'Finish at the target loudness',
+        };
   const tierLabel =
     resolvedTier.charAt(0).toUpperCase() +
     resolvedTier.slice(1);
-
   const passed =
     smoothness >= smoothnessTarget && rangeReached;
-
   if (phase === 'directions') {
     return (
       <ExerciseScreen
@@ -898,9 +806,13 @@ export default function ControlledCrescendoExercise({
         icon="volume-high-outline"
         tier={resolvedTier}
         instructions={`1. Begin with a soft voice.
+
           2. Gradually increase your volume.
+
           3. Keep the increase smooth and even.
+
           4. Reach the target volume.
+
           5. Repeat the exercise ${repetitions} times.`}
         summary={[
           {
@@ -934,17 +846,14 @@ export default function ControlledCrescendoExercise({
                 color={BROWN}
               />
             </View>
-
             <View style={styles.referenceText}>
               <Text style={styles.referenceLabel}>
                 BEFORE YOU BEGIN
               </Text>
-
               <Text style={styles.referenceNote}>
                 {REFERENCE_NOTE.name}
               </Text>
             </View>
-
             <TouchableOpacity
               style={styles.replayButton}
               onPress={() => void playReferenceNote()}
@@ -955,24 +864,20 @@ export default function ControlledCrescendoExercise({
                 size={13}
                 color={BROWN}
               />
-
               <Text style={styles.replayButtonText}>
                 Play note
               </Text>
             </TouchableOpacity>
           </View>
-
           <Text style={styles.referenceDescription}>
             Listen to the reference note first. During the exercise,
             sing the same note while gradually increasing your volume.
           </Text>
         </View>
-
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>
             Follow this pattern
           </Text>
-
           <View style={styles.previewVisualizer}>
             {Array.from(
               { length: BAR_COUNT },
@@ -989,7 +894,6 @@ export default function ControlledCrescendoExercise({
               ),
             )}
           </View>
-
           <View style={styles.previewLabels}>
             <Text style={styles.previewLabel}>Soft</Text>
             <Text style={styles.previewLabel}>Loud</Text>
@@ -998,7 +902,6 @@ export default function ControlledCrescendoExercise({
       </ExerciseScreen>
     );
   }
-
   if (phase === 'countdown') {
     return (
       <ExerciseListeningScreen
@@ -1030,10 +933,8 @@ export default function ControlledCrescendoExercise({
       />
     );
   }
-
   if (phase === 'exercise') {
     const progress = clamp(seconds / rampSeconds, 0, 1);
-
     return (
       <ExerciseListeningScreen
         icon="volume-high-outline"
@@ -1054,11 +955,9 @@ export default function ControlledCrescendoExercise({
                 size={15}
                 color={BROWN}
               />
-
               <Text style={styles.exerciseReferenceText}>
                 Sing {REFERENCE_NOTE.name} while following the crescendo.
               </Text>
-
               <TouchableOpacity
                 style={styles.exerciseReplayButton}
                 onPress={() => void playReferenceNote()}
@@ -1069,30 +968,25 @@ export default function ControlledCrescendoExercise({
                   size={11}
                   color={BROWN}
                 />
-
                 <Text style={styles.exerciseReplayText}>
                   Replay
                 </Text>
               </TouchableOpacity>
             </View>
-
             <TargetCrescendoGuide
               seconds={guideElapsed}
               durationSeconds={rampSeconds}
             />
-
             <View style={styles.visualizerCard}>
               <View style={styles.visualizerHeader}>
                 <View>
                   <Text style={styles.visualizerTitle}>
                     Your Performance
                   </Text>
-
                   <Text style={styles.visualizerSubtitle}>
                     Match the target crescendo
                   </Text>
                 </View>
-
                 <View style={styles.micCircle}>
                   <Ionicons
                     name="mic"
@@ -1101,79 +995,63 @@ export default function ControlledCrescendoExercise({
                   />
                 </View>
               </View>
-
               <View style={styles.visualizerLegend}>
                 <View style={styles.legendDot} />
                 <Text style={styles.legendText}>
                   Your voice
                 </Text>
               </View>
-
               <VolumeVisualizer liveHistory={liveHistory} />
-
               <View style={styles.visualizerLabels}>
                 <Text style={styles.visualizerLabel}>
                   SOFT
                 </Text>
-
                 <Text style={styles.visualizerLabel}>
                   LOUD
                 </Text>
               </View>
             </View>
-
             <View style={styles.targetRow}>
               <View>
                 <Text style={styles.targetLabel}>
                   TARGET RANGE
                 </Text>
-
                 <Text style={styles.targetValue}>
                   {targetMin} → {targetMax} dB
                 </Text>
               </View>
-
               <Text style={styles.patternText}>
                 Soft → Loud
               </Text>
             </View>
-
             <View style={styles.sessionRow}>
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
                   REPETITION
                 </Text>
-
                 <Text style={styles.sessionValue}>
                   {rep} / {repetitions}
                 </Text>
               </View>
-
               <View style={styles.sessionDivider} />
-
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
                   TIME
                 </Text>
-
                 <Text style={styles.sessionValue}>
                   0:{String(seconds).padStart(2, '0')}
                 </Text>
               </View>
-
               <View style={styles.sessionDivider} />
-
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
                   SMOOTHNESS
                 </Text>
-
                 <Text style={styles.sessionValue}>
                   {liveSmoothness}%
                 </Text>
               </View>
             </View>
-
             <Pressable
               style={styles.stopButton}
               onPress={() => void cancelExercise()}
@@ -1183,7 +1061,6 @@ export default function ControlledCrescendoExercise({
                 size={15}
                 color={BROWN}
               />
-
               <Text style={styles.stopButtonText}>
                 Stop Exercise
               </Text>
@@ -1193,7 +1070,6 @@ export default function ControlledCrescendoExercise({
       />
     );
   }
-
   return (
     <ExerciseResultsScreen
       title="Controlled Crescendo"
@@ -1250,22 +1126,18 @@ export default function ControlledCrescendoExercise({
             value={`${value}%`}
           />
         ))}
-
         <ResultItem
           label="Target reached"
           value={rangeReached ? 'Yes' : 'No'}
         />
-
         <ResultItem
           label="Observed range"
           value={`${minDb}–${maxDb} dB`}
         />
-
         <ResultItem
           label="Start → End"
           value={`${startDb} → ${endDb} dB`}
         />
-
         <ResultItem
           label="Difficulty tier"
           value={tierLabel}
@@ -1276,7 +1148,42 @@ export default function ControlledCrescendoExercise({
 }
 
 const styles = StyleSheet.create({
-  referenceCard: {
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
+  referenceCard:
+  {
     width: '100%',
     backgroundColor: WHITE,
     borderRadius: 17,

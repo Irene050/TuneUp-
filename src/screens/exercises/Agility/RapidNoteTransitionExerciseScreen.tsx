@@ -1874,6 +1874,25 @@ export default function RapidNoteTransitionExerciseScreen({
   // MAIN RENDER
   // ============================================================
 
+  if (isLoadingAdaptiveParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="flash-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       ref={scrollViewRef}
@@ -2099,6 +2118,40 @@ function MetricRow({
 // ============================================================
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   screen: {
     flex: 1,
     backgroundColor: WHITE,
