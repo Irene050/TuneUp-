@@ -7,6 +7,7 @@ import {
   LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import {
   generateControlledDecrescendoParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -39,6 +40,7 @@ import {
   Text,
   View,
 } from 'react-native';
+
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
 const PINK = '#FCD6DD';
@@ -53,14 +55,17 @@ const DISPLAY_MAX_DB = 60;
 const WINDOW_MS = 50;
 const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
+
 type Phase =
   | 'directions'
   | 'exercise'
   | 'countdown'
   | 'results';
+
 interface ControlledDecrescendoDrillProps {
   tier?: Tier;
 }
+
 function clamp(
   value: number,
   min: number,
@@ -71,6 +76,7 @@ function clamp(
     Math.min(max, value),
   );
 }
+
 function formatDb(
   db: number,
 ): string {
@@ -84,6 +90,7 @@ function formatDb(
     Math.round(db),
   );
 }
+
 function formatTimer(
   ms: number,
 ): string {
@@ -96,6 +103,7 @@ function formatTimer(
     seconds,
   ).padStart(2, '0')}`;
 }
+
 function getTrend(
   history: number[],
 ): 'down' | 'flat' | 'up' {
@@ -106,7 +114,7 @@ function getTrend(
     history.slice(-4);
   const change =
     recent[
-      recent.length - 1
+    recent.length - 1
     ] -
     recent[0];
   if (change <= -2) {
@@ -117,6 +125,7 @@ function getTrend(
   }
   return 'flat';
 }
+
 function DirectionIndicator({
   trend,
 }: {
@@ -163,6 +172,7 @@ function DirectionIndicator({
     </View>
   );
 }
+
 function Header() {
   return (
     <View style={styles.header}>
@@ -183,6 +193,7 @@ function Header() {
     </View>
   );
 }
+
 function guideDecrescendoHeight(index: number): number {
   const progress = index / Math.max(BAR_COUNT - 1, 1);
   // A pronounced downward ramp: loud on the left, soft on the right.
@@ -200,14 +211,12 @@ function TargetDecrescendoGuide({
   const activeBarPosition = progress * (BAR_COUNT - 1);
   const activeBarIndex = Math.floor(activeBarPosition);
   const indicatorLeft = Math.min(progress * 100, 98.5);
-
   return (
     <View style={styles.targetGuideCard}>
       <Text style={styles.targetGuideTitle}>Follow this pattern</Text>
       <Text style={styles.targetGuideSubtitle}>
         Start loud, then gradually lower your voice until you reach Soft.
       </Text>
-
       <View style={styles.targetGuideBars}>
         {Array.from({ length: BAR_COUNT }, (_, index) => (
           <View
@@ -231,7 +240,6 @@ function TargetDecrescendoGuide({
           style={[styles.targetGuideIndicator, { left: `${indicatorLeft}%` }]}
         />
       </View>
-
       <View style={styles.targetGuideLabels}>
         <Text style={styles.targetGuideLabel}>LOUD</Text>
         <Text style={styles.targetGuideLabel}>SOFT</Text>
@@ -272,6 +280,7 @@ function InstructionRow({
     </View>
   );
 }
+
 function ResultRow({
   label,
   value,
@@ -304,6 +313,7 @@ function ResultRow({
  * Assessment scores are only used as
  * the cold-start seed for ADS.
  */
+
 function getAssessmentScore(
   assessment: Awaited<
     ReturnType<typeof getLatestAssessment>
@@ -329,16 +339,19 @@ function getAssessmentScore(
     ? score
     : null;
 }
+
 export default function ControlledDecrescendoDrill({
   tier: requestedTier,
 }: ControlledDecrescendoDrillProps) {
+
   const [
     resolvedTier,
     setResolvedTier,
   ] = useState<Tier>(
     requestedTier ??
-      'beginner',
+    'beginner',
   );
+
   const [
     params,
     setParams,
@@ -346,24 +359,30 @@ export default function ControlledDecrescendoDrill({
     useState<ControlledDecrescendoParams>(
       CONTROLLED_DECRESCENDO_PARAMS.beginner,
     );
+
   const [
     paramsReady,
     setParamsReady,
   ] = useState(
     requestedTier !== undefined,
   );
+
   const [
     phase,
     setPhase,
   ] = useState<Phase>(
     'directions',
   );
+
   const [
     elapsedMs,
     setElapsedMs,
   ] = useState(0);
+
   const [countdown, setCountdown] = useState(3);
+
   const [countdownReady, setCountdownReady] = useState(false);
+
   const [
     liveFrame,
     setLiveFrame,
@@ -371,42 +390,55 @@ export default function ControlledDecrescendoDrill({
     useState<LiveAudioFrame | null>(
       null,
     );
+
   const [
     liveHistory,
     setLiveHistory,
   ] = useState<number[]>([]);
+
   const [
     score,
     setScore,
   ] = useState(0);
+
   const [
     repScores,
     setRepScores,
   ] = useState<number[]>([]);
+
   const [
     startDb,
     setStartDb,
   ] = useState(0);
+
   const [
     endDb,
     setEndDb,
   ] = useState(0);
+
   const [
     targetReached,
     setTargetReached,
   ] = useState(false);
+
   const [
     directionCorrect,
     setDirectionCorrect,
   ] = useState(false);
+
   const [
     measurementQuality,
     setMeasurementQuality,
   ] = useState(0);
+
   const finishingRef = useRef(false);
+
   const interRepStopRef = useRef(false);
+
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
+
   const lastHandledBoundaryRef = useRef<number | null>(null);
+
   /*
    * Resolve tier and generate ADS parameters.
    *
@@ -461,9 +493,9 @@ export default function ControlledDecrescendoDrill({
                 .filter(
                   (record) =>
                     record.templateId ===
-                      'controlledDecrescendo' &&
+                    'controlledDecrescendo' &&
                     record.tier ===
-                      finalTier,
+                    finalTier,
                 )
                 .sort(
                   (a, b) =>
@@ -535,7 +567,7 @@ export default function ControlledDecrescendoDrill({
             );
             setParams(
               CONTROLLED_DECRESCENDO_PARAMS[
-                fallbackTier
+              fallbackTier
               ],
             );
             setParamsReady(
@@ -551,21 +583,28 @@ export default function ControlledDecrescendoDrill({
   }, [
     requestedTier,
   ]);
+
   const targetStart =
     params.targetDbRange[1];
+
   const targetEnd =
     params.targetDbRange[0];
+
   const durationSeconds =
     params.durationSec;
+
   const repetitions =
     params.repetitions;
+
   const totalDurationMs =
     durationSeconds *
     repetitions *
     1000;
+
   const repDurationMs =
     durationSeconds *
     1000;
+
   const playReferenceNote =
     async () => {
       try {
@@ -580,6 +619,7 @@ export default function ControlledDecrescendoDrill({
         );
       }
     };
+
   const {
     startRecording,
     stopRecording,
@@ -623,7 +663,6 @@ export default function ControlledDecrescendoDrill({
           }
           return;
         }
-
         const recordedSegments = [
           ...repetitionSamplesRef.current,
           samples,
@@ -639,7 +678,6 @@ export default function ControlledDecrescendoDrill({
           sampleOffset += segment.length;
         }
         repetitionSamplesRef.current = [];
-
         const measurement =
           measureControlledDecrescendo(
             completeSamples,
@@ -699,12 +737,12 @@ export default function ControlledDecrescendoDrill({
         );
       },
     });
+
   useEffect(() => {
     // Start the timer only once the microphone recorder is actually active.
     if (phase !== 'exercise' || !isRecording) {
       return;
     }
-
     // Pause at exact repetition boundaries so the guide never runs ahead.
     if (
       elapsedMs > 0 &&
@@ -712,12 +750,10 @@ export default function ControlledDecrescendoDrill({
       elapsedMs !== lastHandledBoundaryRef.current
     ) {
       lastHandledBoundaryRef.current = elapsedMs;
-
       if (elapsedMs < totalDurationMs) {
         if (finishingRef.current) {
           return;
         }
-
         finishingRef.current = true;
         interRepStopRef.current = true;
         setCountdown(3);
@@ -725,7 +761,6 @@ export default function ControlledDecrescendoDrill({
         setLiveFrame(null);
         setLiveHistory([]);
         setPhase('countdown');
-
         void stopRecording()
           .then(() => {
             finishingRef.current = false;
@@ -745,7 +780,6 @@ export default function ControlledDecrescendoDrill({
         return;
       }
     }
-
     if (elapsedMs >= totalDurationMs) {
       if (!finishingRef.current) {
         finishingRef.current = true;
@@ -761,11 +795,9 @@ export default function ControlledDecrescendoDrill({
       }
       return;
     }
-
     const timer = setTimeout(() => {
       setElapsedMs((previous) => Math.min(previous + 50, totalDurationMs));
     }, 50);
-
     return () => clearTimeout(timer);
   }, [phase, isRecording, elapsedMs, repDurationMs, stopRecording, totalDurationMs]);
 
@@ -774,19 +806,16 @@ export default function ControlledDecrescendoDrill({
     if (phase !== 'countdown' || !countdownReady) {
       return;
     }
-
     const timer = setTimeout(() => {
       if (countdown > 1) {
         setCountdown((previous) => previous - 1);
         return;
       }
-
       setCountdownReady(false);
       setLiveFrame(null);
       setLiveHistory([]);
       finishingRef.current = false;
       setPhase('exercise');
-
       void startRecording()
         .then(() => {
           // Align the live chart's start with the restarted microphone segment.
@@ -802,9 +831,9 @@ export default function ControlledDecrescendoDrill({
           setPhase('directions');
         });
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [phase, countdown, countdownReady, startRecording]);
+
   const startExercise =
     async () => {
       setElapsedMs(0);
@@ -849,35 +878,43 @@ export default function ControlledDecrescendoDrill({
         finishingRef.current = false;
       }
     };
+
   const currentRep =
     Math.min(
       repetitions,
       Math.floor(
         elapsedMs /
-          repDurationMs,
+        repDurationMs,
       ) + 1,
     );
+
   const currentRepElapsed =
     elapsedMs %
     repDurationMs;
+
   const progress =
     clamp(
       currentRepElapsed /
-        repDurationMs,
+      repDurationMs,
       0,
       1,
     );
+
   const liveDbfs =
     liveFrame && Number.isFinite(liveFrame.volume)
       ? liveFrame.volume
       : -100;
+
   const liveDb =
     liveDbfs > -100 && liveDbfs <= 0
       ? clamp(DISPLAY_MAX_DB + liveDbfs, 0, DISPLAY_MAX_DB)
       : 0;
+
   const currentVolume = liveDb > 0 ? formatDb(liveDb) : '--';
+
   const trend =
     liveDb > 0 ? getTrend(liveHistory) : 'flat';
+
   const guidance =
     liveDb === 0
       ? `Start near ${targetStart} dB, then slowly fade down.`
@@ -886,10 +923,12 @@ export default function ControlledDecrescendoDrill({
         : trend === 'up'
           ? 'Your voice is getting louder. Gently lower it.'
           : `Lower your voice smoothly toward ${targetEnd} dB. Keep the sound going.`;
+
   const passed =
     score >= 75 &&
     targetReached &&
     directionCorrect;
+
   if (!paramsReady) {
     return (
       <SafeAreaView
@@ -929,288 +968,111 @@ export default function ControlledDecrescendoDrill({
       </SafeAreaView>
     );
   }
+
   /*
-   * ==========================================================
-   * DIRECTIONS
-   * ==========================================================
+   * Instruction screen copied from the provided reference screen.
+   * The exercise/countdown/results logic below remains unchanged.
    */
-  if (
-    phase ===
-    'directions'
-  ) {
+  if (phase === 'directions') {
     return (
-      <SafeAreaView
-        style={styles.container}
+      <ExerciseScreen
+        title="Controlled Decrescendo"
+        category="VOLUME CONTROL"
+        icon="volume-low-outline"
+        tier={resolvedTier}
+        instructions={`1. Begin with a comfortable, steady voice.
+
+2. Gradually decrease your volume.
+
+3. Keep the decrease smooth and even.
+
+4. Finish softly without abruptly stopping.
+
+5. Repeat the exercise ${repetitions} times.`}
+        summary={[
+          {
+            label: 'Reference note',
+            value: REFERENCE_NOTE.name,
+          },
+          {
+            label: 'Target range',
+            value: `${targetStart}–${targetEnd} dB`,
+          },
+          {
+            label: 'Duration per repetition',
+            value: `${durationSeconds} seconds`,
+          },
+        ]}
+        targetValue={`${targetStart}–${targetEnd} dB`}
+        targetHint="Begin comfortably loud, then gradually lower your volume."
+        repetitions={repetitions}
+        tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
+        onBack={() => router.back()}
+        onStart={startExercise}
+        startLabel="Start Exercise"
       >
-        <Header />
-        <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.pageContent
-          }
-        >
-          <View
-            style={styles.badge}
-          >
-            <Ionicons
-              name="volume-low-outline"
-              size={15}
-              color={ACCENT}
-            />
-            <Text
-              style={styles.badgeText}
-            >
-              VOLUME CONTROL
-            </Text>
-          </View>
-          <Text
-            style={styles.title}
-          >
-            Controlled Decrescendo
-          </Text>
-          <Text
-            style={styles.subtitle}
-          >
-            Practice gradually making your
-            voice softer while keeping the
-            decrease smooth and controlled.
-          </Text>
-          <View
-            style={styles.targetCard}
-          >
-            <Text
-              style={
-                styles.targetEyebrow
-              }
-            >
-              YOUR TARGET
-            </Text>
-            <View
-              style={
-                styles.targetRow
-              }
-            >
-              <View
-                style={
-                  styles.targetPoint
-                }
-              >
-                <Text
-                  style={
-                    styles.targetNumber
-                  }
-                >
-                  {targetStart}
-                </Text>
-                <Text
-                  style={
-                    styles.targetUnit
-                  }
-                >
-                  dB START
-                </Text>
-              </View>
+        <View style={styles.instructionReferenceCard}>
+          <View style={styles.instructionReferenceHeader}>
+            <View style={styles.instructionReferenceIcon}>
               <Ionicons
-                name="arrow-forward"
-                size={23}
-                color={ACCENT}
+                name="musical-note"
+                size={18}
+                color={BROWN}
               />
-              <View
-                style={
-                  styles.targetPoint
-                }
-              >
-                <Text
-                  style={
-                    styles.targetNumber
-                  }
-                >
-                  {targetEnd}
-                </Text>
-                <Text
-                  style={
-                    styles.targetUnit
-                  }
-                >
-                  dB END
-                </Text>
-              </View>
             </View>
-            <View
-              style={styles.metaRow}
-            >
-              <View
-                style={styles.metaPill}
-              >
-                <Ionicons
-                  name="timer-outline"
-                  size={15}
-                  color={BROWN}
-                />
-                <Text
-                  style={
-                    styles.metaText
-                  }
-                >
-                  {durationSeconds}{' '}
-                  seconds
-                </Text>
-              </View>
-              <View
-                style={styles.metaPill}
-              >
-                <Ionicons
-                  name="repeat-outline"
-                  size={15}
-                  color={BROWN}
-                />
-                <Text
-                  style={
-                    styles.metaText
-                  }
-                >
-                  {repetitions} reps
-                </Text>
-              </View>
-              <View
-                style={styles.metaPill}
-              >
-                <Ionicons
-                  name="trending-down-outline"
-                  size={15}
-                  color={BROWN}
-                />
-                <Text
-                  style={
-                    styles.metaText
-                  }
-                >
-                  Smooth
-                </Text>
-              </View>
-            </View>
-          </View>
-          <View
-            style={
-              styles.instructionsCard
-            }
-          >
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              How to do it
-            </Text>
-            <InstructionRow number="1">
-              Start your voice around{' '}
-              {targetStart} dB.
-            </InstructionRow>
-            <InstructionRow number="2">
-              Slowly reduce your volume
-              over {durationSeconds}{' '}
-              seconds.
-            </InstructionRow>
-            <InstructionRow number="3">
-              Finish around {targetEnd}{' '}
-              dB.
-            </InstructionRow>
-            <InstructionRow number="4">
-              Do not suddenly drop or
-              cut off the sound.
-            </InstructionRow>
-          </View>
-          <View
-            style={styles.tipCard}
-          >
-            <Ionicons
-              name="bulb-outline"
-              size={20}
-              color={ACCENT}
-            />
-            <View
-              style={styles.tipCopy}
-            >
-              <Text
-                style={styles.tipTitle}
-              >
-                Think “fade”
+            <View style={styles.instructionReferenceText}>
+              <Text style={styles.instructionReferenceLabel}>
+                BEFORE YOU BEGIN
               </Text>
-              <Text
-                style={styles.tipText}
-              >
-                Imagine slowly turning a
-                volume knob down instead of
-                switching your voice off.
-              </Text>
-            </View>
-          </View>
-          <View
-            style={styles.referenceCard}
-          >
-            <View>
-              <Text
-                style={
-                  styles.referenceEyebrow
-                }
-              >
-                REFERENCE NOTE
-              </Text>
-              <Text
-                style={
-                  styles.referenceNote
-                }
-              >
+              <Text style={styles.instructionReferenceNote}>
                 {REFERENCE_NOTE.name}
               </Text>
             </View>
             <Pressable
-              style={
-                styles.referenceButton
-              }
-              onPress={() =>
-                void playReferenceNote()
-              }
+              style={styles.instructionReplayButton}
+              onPress={() => void playReferenceNote()}
             >
               <Ionicons
                 name="play"
-                size={17}
+                size={13}
                 color={BROWN}
               />
+              <Text style={styles.instructionReplayButtonText}>
+                Play note
+              </Text>
             </Pressable>
           </View>
-          <Pressable
-            style={
-              styles.primaryButton
-            }
-            onPress={() =>
-              void startExercise()
-            }
-          >
-            <Ionicons
-              name="play"
-              size={18}
-              color={WHITE}
-            />
-            <Text
-              style={
-                styles.primaryButtonText
-              }
-            >
-              Start Exercise
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
+          <Text style={styles.instructionReferenceDescription}>
+            Listen to the reference note first. During the exercise,
+            sing the same note while gradually decreasing your volume.
+          </Text>
+        </View>
+        <View style={styles.instructionPreviewCard}>
+          <Text style={styles.instructionPreviewTitle}>
+            Follow this pattern
+          </Text>
+          <View style={styles.instructionPreviewVisualizer}>
+            {Array.from({ length: BAR_COUNT }, (_, index) => (
+              <View
+                key={`instruction-preview-${index}`}
+                style={[
+                  styles.instructionPreviewBar,
+                  {
+                    height: `${guideDecrescendoHeight(index) * 80}%`,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <View style={styles.instructionPreviewLabels}>
+            <Text style={styles.instructionPreviewLabel}>Loud</Text>
+            <Text style={styles.instructionPreviewLabel}>Soft</Text>
+          </View>
+        </View>
+      </ExerciseScreen>
     );
   }
-  /*
-   * ==========================================================
-   * ACTUAL EXERCISE
-   * ==========================================================
-   */
+
   if (phase === 'countdown') {
     return (
       <SafeAreaView style={styles.container}>
@@ -1303,7 +1165,7 @@ export default function ControlledDecrescendoDrill({
               >
                 {formatTimer(
                   repDurationMs -
-                    currentRepElapsed,
+                  currentRepElapsed,
                 )}
               </Text>
             </View>
@@ -1462,6 +1324,7 @@ export default function ControlledDecrescendoDrill({
       </SafeAreaView>
     );
   }
+
   /*
    * ==========================================================
    * RESULTS
@@ -1489,7 +1352,6 @@ export default function ControlledDecrescendoDrill({
             {passed ? 'EXERCISE PASSED' : 'KEEP PRACTICING'}
           </Text>
         </View>
-
         <View style={styles.resultIconCircle}>
           <Ionicons
             name={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
@@ -1497,7 +1359,6 @@ export default function ControlledDecrescendoDrill({
             color={BROWN}
           />
         </View>
-
         <Text style={styles.resultTitle}>
           {passed ? 'Exercise Passed' : 'Needs More Practice'}
         </Text>
@@ -1506,7 +1367,6 @@ export default function ControlledDecrescendoDrill({
             ? 'Great control! Your voice followed the loud-to-soft pattern.'
             : 'Keep practicing a gradual, smooth decrease in volume.'}
         </Text>
-
         <View style={styles.overallScoreCard}>
           <Text style={styles.overallScoreLabel}>OVERALL SCORE</Text>
           <View style={styles.overallScoreRow}>
@@ -1519,7 +1379,6 @@ export default function ControlledDecrescendoDrill({
               : 'Aim to start loud, then lower your voice smoothly toward soft.'}
           </Text>
         </View>
-
         <View style={styles.resultCard}>
           {repScores.map((repScore, index) => (
             <ResultRow
@@ -1540,7 +1399,6 @@ export default function ControlledDecrescendoDrill({
             last
           />
         </View>
-
         <View style={styles.qualityCard}>
           <View style={styles.qualityCopy}>
             <Text style={styles.qualityTitle}>Measurement quality</Text>
@@ -1550,7 +1408,6 @@ export default function ControlledDecrescendoDrill({
           </View>
           <Text style={styles.qualityValue}>{measurementQuality}%</Text>
         </View>
-
         <Pressable
           style={styles.resultTryAgainButton}
           onPress={() => void startExercise()}
@@ -1573,6 +1430,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
+
   header: {
     height: 58,
     flexDirection: 'row',
@@ -1581,6 +1439,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
+
   backButton: {
     width: 36,
     height: 36,
@@ -1589,6 +1448,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -1597,14 +1457,17 @@ const styles = StyleSheet.create({
     color: DARK,
     marginRight: 36,
   },
+
   headerSpacer: {
     width: 36,
   },
+
   pageContent: {
     paddingHorizontal: 18,
     paddingTop: 12,
     paddingBottom: 18,
   },
+
   badge: {
     alignSelf: 'center',
     flexDirection: 'row',
@@ -1615,12 +1478,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: PINK,
   },
+
   badgeText: {
     color: ACCENT,
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
+
   title: {
     marginTop: 8,
     color: DARK,
@@ -1629,6 +1494,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
   },
+
   subtitle: {
     marginTop: 5,
     color: SOFT_TEXT,
@@ -1636,6 +1502,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
   },
+
   targetCard: {
     marginTop: 14,
     padding: 14,
@@ -1644,6 +1511,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   targetEyebrow: {
     color: ACCENT,
     fontSize: 11,
@@ -1651,6 +1519,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: 'center',
   },
+
   targetRow: {
     marginTop: 8,
     flexDirection: 'row',
@@ -1658,16 +1527,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
   },
+
   targetPoint: {
     minWidth: 72,
     alignItems: 'center',
   },
+
   targetNumber: {
     color: BROWN,
     fontSize: 34,
     lineHeight: 38,
     fontWeight: '900',
   },
+
   targetUnit: {
     marginTop: 3,
     color: MUTED,
@@ -1675,6 +1547,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
   },
+
   metaRow: {
     marginTop: 11,
     flexDirection: 'row',
@@ -1682,6 +1555,7 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: 'wrap',
   },
+
   metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1693,11 +1567,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   metaText: {
     color: BROWN,
     fontSize: 11,
     fontWeight: '800',
   },
+
   instructionsCard: {
     marginTop: 12,
     padding: 14,
@@ -1706,17 +1582,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   sectionTitle: {
     color: DARK,
     fontSize: 16,
     fontWeight: '900',
   },
+
   instructionRow: {
     marginTop: 8,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
   },
+
   instructionNumber: {
     width: 22,
     height: 22,
@@ -1725,17 +1604,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   instructionNumberText: {
     color: ACCENT,
     fontSize: 11,
     fontWeight: '900',
   },
+
   instructionText: {
     flex: 1,
     color: SOFT_TEXT,
     fontSize: 12,
     lineHeight: 17,
   },
+
   tipCard: {
     marginTop: 10,
     padding: 12,
@@ -1746,20 +1628,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+
   tipCopy: {
     flex: 1,
   },
+
   tipTitle: {
     color: DARK,
     fontSize: 12,
     fontWeight: '900',
   },
+
   tipText: {
     marginTop: 2,
     color: MUTED,
     fontSize: 11,
     lineHeight: 15,
   },
+
   referenceCard: {
     marginTop: 10,
     padding: 12,
@@ -1771,18 +1657,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   referenceEyebrow: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
   },
+
   referenceNote: {
     marginTop: 3,
     color: BROWN,
     fontSize: 16,
     fontWeight: '900',
   },
+
   referenceButton: {
     width: 36,
     height: 36,
@@ -1791,6 +1680,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   primaryButton: {
     marginTop: 12,
     height: 50,
@@ -1801,50 +1691,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+
   primaryButtonText: {
     color: WHITE,
     fontSize: 15,
     fontWeight: '900',
   },
+
   exerciseContent: {
     paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 30,
   },
+
   exerciseTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
+
   exerciseEyebrow: {
     color: ACCENT,
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
+
   exerciseTitle: {
     marginTop: 5,
     color: DARK,
     fontSize: 23,
     fontWeight: '900',
   },
+
   repBadge: {
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 16,
     backgroundColor: PINK,
   },
+
   repBadgeText: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
   },
+
   timerRow: {
     marginTop: 18,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   timerBadge: {
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -1854,16 +1753,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+
   timerText: {
     color: DARK,
     fontSize: 13,
     fontWeight: '900',
   },
+
   rangeHint: {
     color: MUTED,
     fontSize: 13,
     fontWeight: '800',
   },
+
   progressTrack: {
     marginTop: 12,
     height: 6,
@@ -1871,11 +1773,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5E9EC',
     overflow: 'hidden',
   },
+
   progressFill: {
     height: '100%',
     borderRadius: 3,
     backgroundColor: ACCENT,
   },
+
   targetGuideCard: {
     width: '100%',
     marginTop: 12,
@@ -1885,17 +1789,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   targetGuideTitle: {
     color: DARK,
     fontSize: 13,
     fontWeight: '900',
   },
+
   targetGuideSubtitle: {
     marginTop: 3,
     color: MUTED,
     fontSize: 10,
     lineHeight: 14,
   },
+
   targetGuideBars: {
     height: 66,
     marginTop: 8,
@@ -1905,11 +1812,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+
   targetGuideBar: {
     flex: 1,
     minWidth: 1,
     borderRadius: 3,
   },
+
   targetGuideIndicator: {
     position: 'absolute',
     top: 0,
@@ -1919,16 +1828,19 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     opacity: 0.95,
   },
+
   targetGuideLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 3,
   },
+
   targetGuideLabel: {
     color: MUTED,
     fontSize: 8,
     fontWeight: '800',
   },
+
   targetGuideProgressTrack: {
     height: 4,
     marginTop: 6,
@@ -1936,11 +1848,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3E4E8',
     overflow: 'hidden',
   },
+
   targetGuideProgressFill: {
     height: '100%',
     borderRadius: 2,
     backgroundColor: ACCENT,
   },
+
   countdownContent: {
     flex: 1,
     width: '100%',
@@ -1949,6 +1863,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+
   countdownEyebrow: {
     color: ACCENT,
     fontSize: 11,
@@ -1956,12 +1871,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textAlign: 'center',
   },
+
   countdownPrompt: {
     color: DARK,
     fontSize: 12,
     fontWeight: '900',
     textAlign: 'center',
   },
+
   countdownCircle: {
     width: 88,
     height: 88,
@@ -1970,17 +1887,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   countdownNumber: {
     color: BROWN,
     fontSize: 44,
     fontWeight: '900',
   },
+
   countdownSubtitle: {
     color: MUTED,
     fontSize: 11,
     lineHeight: 16,
     textAlign: 'center',
   },
+
   exerciseGuideCard: {
     marginTop: 12,
     padding: 11,
@@ -1989,22 +1909,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   exerciseGuideHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     marginBottom: 8,
   },
+
   exerciseGuideTitle: {
     color: DARK,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
+
   exerciseGuideSteps: {
     flexDirection: 'row',
     gap: 7,
   },
+
   exerciseGuideStep: {
     flex: 1,
     minWidth: 0,
@@ -2017,6 +1941,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F3E3E7',
   },
+
   exerciseGuideNumber: {
     width: 19,
     height: 19,
@@ -2026,17 +1951,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
+
   exerciseGuideNumberText: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
   },
+
   exerciseGuideStepTitle: {
     color: DARK,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.3,
   },
+
   exerciseGuideStepText: {
     marginTop: 2,
     color: SOFT_TEXT,
@@ -2044,6 +1972,7 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     textAlign: 'center',
   },
+
   exerciseGuideNote: {
     marginTop: 8,
     color: MUTED,
@@ -2051,6 +1980,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     textAlign: 'center',
   },
+
   liveReadoutCard: {
     marginTop: 12,
     paddingVertical: 13,
@@ -2060,68 +1990,80 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   liveLabel: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.1,
   },
+
   liveVolumeRow: {
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'baseline',
   },
+
   liveVolume: {
     color: DARK,
     fontSize: 46,
     lineHeight: 52,
     fontWeight: '900',
   },
+
   liveUnit: {
     marginLeft: 6,
     color: MUTED,
     fontSize: 16,
     fontWeight: '800',
   },
+
   trendGood: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
+
   trendGoodText: {
     color: ACCENT,
     fontSize: 12,
     fontWeight: '900',
   },
+
   trendBad: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
+
   trendBadText: {
     color: '#A95E6A',
     fontSize: 12,
     fontWeight: '900',
   },
+
   trendNeutral: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
+
   trendNeutralText: {
     color: MUTED,
     fontSize: 12,
     fontWeight: '800',
   },
+
   guidance: {
     marginTop: 5,
     color: SOFT_TEXT,
     fontSize: 12,
     fontWeight: '700',
   },
+
   bottomInfo: {
     marginTop: 12,
     padding: 13,
@@ -2131,43 +2073,51 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   bottomLabel: {
     color: ACCENT,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
+
   bottomValue: {
     marginTop: 3,
     color: BROWN,
     fontSize: 16,
     fontWeight: '900',
   },
+
   smoothnessBadge: {
     alignItems: 'flex-end',
   },
+
   smoothnessNumber: {
     color: ACCENT,
     fontSize: 18,
     fontWeight: '900',
   },
+
   smoothnessLabel: {
     marginTop: 1,
     color: MUTED,
     fontSize: 9,
   },
+
   waitingText: {
     marginTop: 10,
     textAlign: 'center',
     color: MUTED,
     fontSize: 11,
   },
+
   resultsContent: {
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 24,
     alignItems: 'center',
   },
+
   resultIconCircle: {
     width: 54,
     height: 54,
@@ -2177,6 +2127,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   overallScoreCard: {
     width: '100%',
     marginTop: 14,
@@ -2188,29 +2139,34 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     alignItems: 'center',
   },
+
   overallScoreLabel: {
     color: MUTED,
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
+
   overallScoreRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 2,
   },
+
   overallScoreNumber: {
     color: DARK,
     fontSize: 34,
     lineHeight: 40,
     fontWeight: '900',
   },
+
   overallScoreSuffix: {
     marginLeft: 2,
     color: DARK,
     fontSize: 13,
     fontWeight: '800',
   },
+
   overallScoreMessage: {
     marginTop: 4,
     color: BROWN,
@@ -2219,6 +2175,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     textAlign: 'center',
   },
+
   resultTryAgainButton: {
     width: '100%',
     height: 44,
@@ -2232,11 +2189,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
+
   resultTryAgainText: {
     color: BROWN,
     fontSize: 12,
     fontWeight: '800',
   },
+
   resultBackButton: {
     width: '100%',
     height: 44,
@@ -2247,11 +2206,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   resultBackButtonText: {
     color: WHITE,
     fontSize: 12,
     fontWeight: '800',
   },
+
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2260,18 +2221,22 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 17,
   },
+
   passPill: {
     backgroundColor: PINK,
   },
+
   tryPill: {
     backgroundColor: '#FFF1F3',
   },
+
   statusText: {
     color: ACCENT,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.9,
   },
+
   resultTitle: {
     marginTop: 15,
     color: DARK,
@@ -2279,6 +2244,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
   },
+
   resultSubtitle: {
     marginTop: 8,
     color: SOFT_TEXT,
@@ -2286,6 +2252,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
+
   scoreCircle: {
     marginTop: 20,
     width: 168,
@@ -2295,23 +2262,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   scoreNumber: {
     color: DARK,
     fontSize: 50,
     lineHeight: 54,
     fontWeight: '900',
   },
+
   scoreOutOf: {
     color: MUTED,
     fontSize: 13,
     fontWeight: '800',
   },
+
   scoreCaption: {
     marginTop: 8,
     color: ACCENT,
     fontSize: 12,
     fontWeight: '900',
   },
+
   resultCard: {
     width: '100%',
     marginTop: 18,
@@ -2321,6 +2292,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
+
   resultRow: {
     minHeight: 44,
     flexDirection: 'row',
@@ -2329,18 +2301,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F4E9EC',
   },
+
   lastResultRow: {
     borderBottomWidth: 0,
   },
+
   resultLabel: {
     color: SOFT_TEXT,
     fontSize: 13,
   },
+
   resultValue: {
     color: DARK,
     fontSize: 13,
     fontWeight: '900',
   },
+
   qualityCard: {
     width: '100%',
     marginTop: 14,
@@ -2352,25 +2328,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+
   qualityCopy: {
     flex: 1,
   },
+
   qualityTitle: {
     color: DARK,
     fontSize: 12,
     fontWeight: '900',
   },
+
   qualityText: {
     marginTop: 2,
     color: MUTED,
     fontSize: 10,
     lineHeight: 16,
   },
+
   qualityValue: {
     color: ACCENT,
     fontSize: 18,
     fontWeight: '900',
   },
+
   secondaryButton: {
     width: '100%',
     height: 54,
@@ -2381,9 +2362,126 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   secondaryButtonText: {
     color: ACCENT,
     fontSize: 15,
     fontWeight: '900',
+  },
+
+  instructionReferenceCard: {
+    width: '100%',
+    backgroundColor: WHITE,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 13,
+    marginTop: 12,
+  },
+
+  instructionReferenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  instructionReferenceIcon: {
+    width: 35,
+    height: 35,
+    borderRadius: 18,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+  },
+
+  instructionReferenceText: {
+    flex: 1,
+  },
+
+  instructionReferenceLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 8,
+    letterSpacing: 1,
+    color: ACCENT,
+    fontWeight: '700',
+  },
+
+  instructionReferenceNote: {
+    fontFamily: 'FredokaBold',
+    fontSize: 18,
+    color: BROWN,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+
+  instructionReplayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PINK,
+    borderRadius: 15,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+
+  instructionReplayButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 9,
+    color: BROWN,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+
+  instructionReferenceDescription: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 9,
+  },
+
+  instructionPreviewCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 14,
+    marginTop: 10,
+  },
+
+  instructionPreviewTitle: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+    color: BROWN,
+    fontWeight: '700',
+  },
+
+  instructionPreviewVisualizer: {
+    height: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 7,
+    overflow: 'hidden',
+  },
+
+  instructionPreviewBar: {
+    flex: 1,
+    maxWidth: 7,
+    backgroundColor: '#EAA5B6',
+    borderRadius: 4,
+    marginHorizontal: 1,
+  },
+
+  instructionPreviewLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 3,
+  },
+
+  instructionPreviewLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
   },
 });
