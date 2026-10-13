@@ -1,10 +1,11 @@
+
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
-    Image,
-    Pressable,
-    StyleSheet,
-    View,
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
 } from 'react-native';
 
 export type DashboardTab =
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: 12,
     height: 95,
     backgroundColor: WHITE,
     borderTopLeftRadius: 50,

@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 140,
+    paddingBottom: 190,
   },
 
   userSection: {
