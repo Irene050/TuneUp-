@@ -1131,48 +1131,37 @@ const target = useMemo(
   // LOADING
   // ============================================================
 
-  if (
-    screen === 'instructions' &&
-    isLoadingAdaptiveParams
-  ) {
-    return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="musical-note-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Preparing Exercise
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Adjusting the exercise to your
-          current progress.
-        </Text>
-
-        <ActivityIndicator
-          size="small"
+if (
+  screen === 'instructions' &&
+  isLoadingAdaptiveParams
+) {
+  return (
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="options-outline"
+          size={44}
           color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
         />
       </View>
-    );
-  }
 
+      <Text style={styles.phaseTitle}>
+        Preparing Your Exercise
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Adjusting the exercise to your
+        current difficulty level
+      </Text>
+
+      <ActivityIndicator
+        size="large"
+        color={BROWN}
+        style={styles.spinner}
+      />
+    </View>
+  );
+}
   // ============================================================
   // INSTRUCTIONS — SHARED
   // ============================================================
@@ -1895,40 +1884,42 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  centerScreen: {
-    flex: 1,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
+centerScreen: {
+  flex: 1,
+  backgroundColor: WHITE,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 30,
+},
 
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
+iconCircle: {
+  width: 96,
+  height: 96,
+  borderRadius: 48,
+  backgroundColor: PINK,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 22,
+},
 
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-    marginTop: 20,
-  },
+phaseTitle: {
+  fontFamily: 'FredokaBold',
+  fontSize: 25,
+  color: BROWN,
+  textAlign: 'center',
+},
 
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+phaseSubtitle: {
+  fontFamily: 'FredokaRegular',
+  fontSize: 15,
+  color: MUTED,
+  textAlign: 'center',
+  marginTop: 6,
+},
+
+spinner: {
+  marginTop: 28,
+},
 
   // ==========================================================
   // LISTENING

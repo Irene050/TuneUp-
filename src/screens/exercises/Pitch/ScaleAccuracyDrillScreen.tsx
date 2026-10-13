@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -1053,6 +1054,42 @@ export default function ScaleAccuracyDrillScreen({
 
   const liveStability = calcLiveStability(liveFrequencies);
 
+    // ============================================================
+  // LOADING — ADAPTIVE PARAMETERS
+  // ============================================================
+
+  if (
+    phase === 'instructions' &&
+    isLoadingAdaptiveParams
+  ) {
+    return (
+      <View style={styles.recordingScreen}>
+        <View style={styles.recordingIcon}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.recordingTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.recordingSubtitle}>
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
   // ==========================================================
   // INSTRUCTIONS
   // ==========================================================
@@ -1405,6 +1442,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+  },
+    spinner: {
+    marginTop: 24,
   },
 
   recordingIcon: {

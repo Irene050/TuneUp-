@@ -54,6 +54,10 @@ import {
 } from '@/utils/dsp/pitch';
 
 import {
+  ExerciseProcessingScreen,
+} from '@/screens/exercises/ExerciseScreen';
+
+import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 
@@ -146,6 +150,7 @@ const INTERVALS: IntervalDefinition[] = [
  */
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;
 const RECORDING_BUFFER_SEC = 0.8;
+const MIN_PROCESSING_DISPLAY_MS = 900;
 
 function getRecordingDurationSec(
   params: IntervalRecognitionParams,
@@ -594,135 +599,120 @@ export default function IntervalRecognitionTaskScreen({
   // RECORDING STOP
   // ==========================================================
 
-  const handleRecordingStop =
-    useCallback(
-      async (
-        samples: Float32Array,
-        sampleRate: number,
-      ) => {
-        /*
-         * Ignore recordings deliberately discarded
-         * by Retry or screen cleanup.
-         *
-         * This check must happen before processing so
-         * the old recording cannot accidentally receive
-         * a score after the user presses Try Again.
-         */
-        if (
-          discardRecordingRef.current
-        ) {
-          discardRecordingRef.current =
-            false;
+  
+  const handleRecordingStop = useCallback(
+    async (
+      samples: Float32Array,
+      sampleRate: number,
+    ) => {
+      // Discard recordings triggered by Retry or screen cleanup.
+      if (discardRecordingRef.current) {
+        discardRecordingRef.current = false;
+        recordingRef.current = false;
+        stopRequestedRef.current = false;
+        processingRef.current = false;
+        return;
+      }
 
-          recordingRef.current =
-            false;
+      if (
+        !mountedRef.current ||
+        processingRef.current
+      ) {
+        return;
+      }
 
-          stopRequestedRef.current =
-            false;
+      processingRef.current = true;
+      recordingRef.current = false;
 
-          processingRef.current =
-            false;
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
 
+      // Record when processing begins.
+      const processingStartedAt = Date.now();
+
+      console.log('🔄 Entering processing phase');
+      setPhase('processing');
+
+      try {
+        const exercise = currentExerciseRef.current;
+
+        if (!exercise) {
+          throw new Error(
+            'No current interval exercise.',
+          );
+        }
+
+        console.log('🎵 Measuring interval recognition');
+
+        const measurement = measureIntervalRecognition(
+          samples,
+          sampleRate,
+          params.minClarity,
+          params.repetitions,
+        );
+
+        console.log('📊 Scoring interval recognition');
+
+        const score = scoreIntervalRecognitionTask(
+          measurement,
+          exercise.interval.ratio,
+          exercise.interval.name,
+          params,
+        );
+
+        console.log('💾 Saving completed exercise');
+
+        await saveCompletedExercise(
+          'pitch',
+          'intervalRecognitionTask',
+          currentTier,
+          score.score,
+        );
+
+        // Keep the processing screen visible for at least 900 ms.
+        const elapsedMs =
+          Date.now() - processingStartedAt;
+
+        const remainingMs =
+          MIN_PROCESSING_DISPLAY_MS - elapsedMs;
+
+        if (remainingMs > 0) {
+          await new Promise<void>(resolve => {
+            setTimeout(resolve, remainingMs);
+          });
+        }
+
+        // The user may have left the screen while processing.
+        if (!mountedRef.current) {
           return;
         }
 
-        if (
-          !mountedRef.current ||
-          processingRef.current
-        ) {
-          return;
-        }
+        console.log('✅ Processing complete; showing results');
 
-        processingRef.current =
-          true;
+        setResult(score);
+        setPhase('results');
+      } catch (error) {
+        console.error(
+          '❌ INTERVAL PROCESSING ERROR:',
+          error,
+        );
 
-        recordingRef.current =
-          false;
-
-        if (
-          recordingTimerRef.current
-        ) {
-          clearInterval(
-            recordingTimerRef.current,
+        if (mountedRef.current) {
+          setErrorMessage(
+            'We could not analyze your recording. Please try again.',
           );
 
-          recordingTimerRef.current =
-            null;
+          setPhase('instructions');
         }
-
-        setPhase('processing');
-
-        try {
-          const exercise =
-            currentExerciseRef.current;
-
-          if (!exercise) {
-            throw new Error(
-              'No current interval exercise.',
-            );
-          }
-
-          const measurement =
-            measureIntervalRecognition(
-              samples,
-              sampleRate,
-              params.minClarity,
-              params.repetitions,
-            );
-
-          const score =
-            scoreIntervalRecognitionTask(
-              measurement,
-              exercise.interval.ratio,
-              exercise.interval.name,
-              params,
-            );
-
-          await saveCompletedExercise(
-            'pitch',
-            'intervalRecognitionTask',
-            currentTier,
-            score.score,
-          );
-
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
-
-          setResult(score);
-          setPhase('results');
-        } catch (error) {
-          console.error(
-            '❌ INTERVAL PROCESSING ERROR:',
-            error,
-          );
-
-          if (
-            mountedRef.current
-          ) {
-            setErrorMessage(
-              'We could not analyze your recording. Please try again.',
-            );
-
-            setPhase(
-              'instructions',
-            );
-          }
-        } finally {
-          processingRef.current =
-            false;
-
-          stopRequestedRef.current =
-            false;
-        }
-      },
-      [
-        currentTier,
-        params,
-      ],
-    );
+      } finally {
+        processingRef.current = false;
+        stopRequestedRef.current = false;
+      }
+    },
+    [currentTier, params],
+  );
 
   // ==========================================================
   // AUDIO RECORDER
@@ -1298,6 +1288,46 @@ export default function IntervalRecognitionTaskScreen({
     calcLiveStability(
       liveFrequencies,
     );
+
+  // ============================================================
+// LOADING — ADAPTIVE PARAMETERS
+// ============================================================
+
+  // ============================================================
+  // LOADING — ADAPTIVE PARAMETERS
+  // ============================================================
+
+  if (
+    phase === 'instructions' &&
+    isLoadingAdaptiveParams
+  ) {
+    return (
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.phaseTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.phaseSubtitle}>
+          Adjusting the exercise to your
+          current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
 
   // ==========================================================
   // INSTRUCTIONS
@@ -1986,50 +2016,19 @@ export default function IntervalRecognitionTaskScreen({
     );
   }
 
-  // ==========================================================
-  // PROCESSING
-  // ==========================================================
+// ============================================================
+// PROCESSING
+// ============================================================
 
-  if (
-    phase === 'processing'
-  ) {
-    return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Analyzing Your Singing
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Checking your repeated interval
-          accuracy.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={
-            styles.processingIndicator
-          }
-        />
-      </View>
-    );
-  }
+if (phase === 'processing') {
+  return (
+    <ExerciseProcessingScreen
+      icon="analytics-outline"
+      title="Analyzing Your Singing"
+      message="Checking your repeated interval accuracy."
+    />
+  );
+}
 
   // ==========================================================
   // RESULTS
@@ -2566,6 +2565,10 @@ const styles = StyleSheet.create({
     paddingTop: 80,
     paddingBottom: 50,
     alignItems: 'center',
+  },
+
+    spinner: {
+    marginTop: 24,
   },
 
   backButton: {
