@@ -1,9 +1,11 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -38,6 +40,7 @@ const WHITE = '#FFFFFF';
 type Phase = 'ready' | 'exercise';
 
 const WAVE_COUNT = 18;
+const PITCH_HISTORY_LIMIT = 19;
 
 function frequencyToNote(frequency: number): string {
   if (!Number.isFinite(frequency) || frequency <= 0) {
@@ -45,18 +48,8 @@ function frequencyToNote(frequency: number): string {
   }
 
   const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
+    'C', 'C#', 'D', 'D#', 'E', 'F',
+    'F#', 'G', 'G#', 'A', 'A#', 'B',
   ];
 
   const midi = Math.round(
@@ -69,7 +62,10 @@ function frequencyToNote(frequency: number): string {
   return `${noteNames[noteIndex]}${octave}`;
 }
 
+
+
 export default function PitchFreeModeScreen() {
+  const isRecordingRef = useRef(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontalPadding = Math.min(22, width * 0.055);
@@ -78,76 +74,65 @@ export default function PitchFreeModeScreen() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
 
-  // ==========================================================
-  // LIVE PITCH DATA
-  // ==========================================================
-
-  const [detectedFrequency, setDetectedFrequency] =
-    useState(0);
-
+  // Live pitch data
+  const [detectedFrequency, setDetectedFrequency] = useState(0);
   const [stabilityPct, setStabilityPct] = useState(0);
+  const [stabilityReady, setStabilityReady] = useState(false);
 
   const [pitchHistory, setPitchHistory] = useState<number[]>(
     () => Array(WAVE_COUNT).fill(0),
   );
 
-  // ==========================================================
-  // AUDIO FRAME HANDLER
-  // ==========================================================
+  // Keep recent valid pitches between audio callbacks.
+  const recentFrequenciesRef = useRef<number[]>([]);
 
+  // Audio frame handler
   const handleAudioFrame = useCallback(
     (frame: LiveAudioFrame) => {
+      if (!isRecordingRef.current) return;
       const reading = measurePitchFreeModeFrame(
         frame.samples,
         frame.sampleRate,
+        recentFrequenciesRef.current,
       );
+
+      if (reading.detectedFrequency > 0) {
+        recentFrequenciesRef.current = [
+          ...recentFrequenciesRef.current,
+          reading.detectedFrequency,
+        ].slice(-PITCH_HISTORY_LIMIT);
+      }
 
       console.log('🎵 PITCH FREE MODE:', {
         frequency: reading.detectedFrequency,
         stability: reading.stabilityPct,
+        stabilityReady: reading.stabilityReady,
+        historyLength: recentFrequenciesRef.current.length,
         samples: frame.samples.length,
         sampleRate: frame.sampleRate,
       });
 
-      setDetectedFrequency(
-        reading.detectedFrequency,
-      );
+      setDetectedFrequency(reading.detectedFrequency);
+      setStabilityPct(reading.stabilityPct);
+      setStabilityReady(reading.stabilityReady);
 
-      setStabilityPct(
-        reading.stabilityPct,
-      );
-
-      /*
-       * Normalize frequency only for the visual waveform.
-       *
-       * This is NOT a pitch score.
-       * It simply lets lower and higher notes appear
-       * at different heights.
-       */
+      // Normalize frequency for the visual waveform only.
       if (reading.detectedFrequency > 0) {
         const minHz = 80;
         const maxHz = 1000;
 
         const normalized =
-          (Math.log(reading.detectedFrequency) -
-            Math.log(minHz)) /
+          (Math.log(reading.detectedFrequency) - Math.log(minHz)) /
           (Math.log(maxHz) - Math.log(minHz));
 
-        const clamped = Math.max(
-          0,
-          Math.min(1, normalized),
-        );
+        const clamped = Math.max(0, Math.min(1, normalized));
 
         setPitchHistory((previous) => [
           ...previous.slice(-(WAVE_COUNT - 1)),
           clamped,
         ]);
       } else {
-        /*
-         * No voiced pitch detected.
-         * Add a small baseline rather than pretending
-         * that silence is a pitch.
-         */
+        // Do not represent silence as a detected pitch.
         setPitchHistory((previous) => [
           ...previous.slice(-(WAVE_COUNT - 1)),
           0,
@@ -165,29 +150,21 @@ export default function PitchFreeModeScreen() {
     onFrame: handleAudioFrame,
   });
 
-  // ==========================================================
-  // TIMER
-  // ==========================================================
-
+  // Timer
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
     }
 
     const timer = setInterval(() => {
-      setElapsedSeconds(
-        (previous) => previous + 1,
-      );
+      setElapsedSeconds((previous) => previous + 1);
     }, 1000);
 
     return () => clearInterval(timer);
   }, [phase]);
 
   const formattedTime = useMemo(() => {
-    const minutes = Math.floor(
-      elapsedSeconds / 60,
-    );
-
+    const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
 
     return `${String(minutes).padStart(2, '0')}:${String(
@@ -195,82 +172,76 @@ export default function PitchFreeModeScreen() {
     ).padStart(2, '0')}`;
   }, [elapsedSeconds]);
 
-  // ==========================================================
-  // CURRENT NOTE
-  // ==========================================================
-
   const currentNote = useMemo(
     () => frequencyToNote(detectedFrequency),
     [detectedFrequency],
   );
 
-  // ==========================================================
-  // START
-  // ==========================================================
+  // Start
+  
+const startFreeMode = async () => {
+  if (isStarting || phase === 'exercise' || isRecording) {
+    return;
+  }
 
-  const startFreeMode = async () => {
-    if (
-      isStarting ||
-      phase === 'exercise' ||
-      isRecording
-    ) {
-      return;
-    }
+  setIsStarting(true);
+  isRecordingRef.current = false;
 
-    setIsStarting(true);
+  try {
+    setElapsedSeconds(0);
+    setDetectedFrequency(0);
+    setStabilityPct(0);
+    setStabilityReady(false);
 
-    try {
-      setElapsedSeconds(0);
+    recentFrequenciesRef.current = [];
+    setPitchHistory(Array(WAVE_COUNT).fill(0));
 
-      setDetectedFrequency(0);
-      setStabilityPct(0);
+    // Allow audio frames only while starting/recording.
+    isRecordingRef.current = true;
+    await startRecording();
 
-      setPitchHistory(
-        Array(WAVE_COUNT).fill(0),
-      );
+    setPhase('exercise');
+  } catch (error) {
+    isRecordingRef.current = false;
 
-      await startRecording();
+    console.error(
+      '❌ FAILED TO START PITCH FREE MODE:',
+      error,
+    );
+  } finally {
+    setIsStarting(false);
+  }
+};
 
-      setPhase('exercise');
-    } catch (error) {
-      console.error(
-        '❌ FAILED TO START PITCH FREE MODE:',
-        error,
-      );
-    } finally {
-      setIsStarting(false);
-    }
-  };
+  // Stop
 
-  // ==========================================================
-  // STOP
-  // ==========================================================
+const stopFreeMode = async () => {
+  // Disable frame processing BEFORE stopping the recorder.
+  isRecordingRef.current = false;
 
-  const stopFreeMode = async () => {
-    try {
-      await stopRecording();
-    } catch (error) {
-      console.error(
-        '❌ FAILED TO STOP PITCH FREE MODE:',
-        error,
-      );
-    }
+  setPhase('ready');
+
+  try {
+    await stopRecording();
+  } catch (error) {
+    console.error(
+      '❌ FAILED TO STOP PITCH FREE MODE:',
+      error,
+    );
+  } finally {
+    recentFrequenciesRef.current = [];
 
     setElapsedSeconds(0);
     setDetectedFrequency(0);
     setStabilityPct(0);
+    setStabilityReady(false);
+    setPitchHistory(Array(WAVE_COUNT).fill(0));
+    setIsStarting(false);
+  }
+};
 
-    setPitchHistory(
-      Array(WAVE_COUNT).fill(0),
-    );
 
-    setPhase('ready');
-  };
-
-  // ==========================================================
-  // READY SCREEN
-  // ==========================================================
-
+  // Ready screen
   if (phase === 'ready') {
     return (
       <SafeAreaView
@@ -282,37 +253,24 @@ export default function PitchFreeModeScreen() {
         <View
           style={[
             styles.header,
-            {
-              paddingHorizontal:
-                horizontalPadding,
-            },
+            { paddingHorizontal: horizontalPadding },
           ]}
         >
           <Pressable
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <Ionicons
-              name="arrow-back"
-              size={20}
-              color={BROWN}
-            />
+            <Ionicons name="arrow-back" size={20} color={BROWN} />
           </Pressable>
 
-          <Text style={styles.headerTitle}>
-            Pitch Free Mode
-          </Text>
-
+          <Text style={styles.headerTitle}>Pitch Free Mode</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <View
           style={[
             styles.readyContent,
-            {
-              paddingHorizontal:
-                horizontalPadding,
-            },
+            { paddingHorizontal: horizontalPadding },
           ]}
         >
           <View style={styles.modeIcon}>
@@ -323,9 +281,7 @@ export default function PitchFreeModeScreen() {
             />
           </View>
 
-          <Text style={styles.pageTitle}>
-            Pitch Free Mode
-          </Text>
+          <Text style={styles.pageTitle}>Pitch Free Mode</Text>
 
           <Text style={styles.pageDescription}>
             Sing naturally and listen to your pitch
@@ -333,27 +289,17 @@ export default function PitchFreeModeScreen() {
           </Text>
 
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>
-              LIVE FEEDBACK
-            </Text>
+            <Text style={styles.infoTitle}>LIVE FEEDBACK</Text>
 
             <View style={styles.infoRow}>
               <View style={styles.infoIcon}>
-                <Ionicons
-                  name="mic-outline"
-                  size={20}
-                  color={ACCENT}
-                />
+                <Ionicons name="mic-outline" size={20} color={ACCENT} />
               </View>
 
               <View style={styles.infoText}>
-                <Text style={styles.infoName}>
-                  Pitch Flow
-                </Text>
-
+                <Text style={styles.infoName}>Pitch Flow</Text>
                 <Text style={styles.infoDescription}>
-                  Follow the natural rise and fall
-                  of your voice.
+                  Follow the natural rise and fall of your voice.
                 </Text>
               </View>
             </View>
@@ -368,13 +314,9 @@ export default function PitchFreeModeScreen() {
               </View>
 
               <View style={styles.infoText}>
-                <Text style={styles.infoName}>
-                  Listening
-                </Text>
-
+                <Text style={styles.infoName}>Listening</Text>
                 <Text style={styles.infoDescription}>
-                  Focus on tone and stability without
-                  a score.
+                  Focus on tone and stability without a score.
                 </Text>
               </View>
             </View>
@@ -398,12 +340,8 @@ export default function PitchFreeModeScreen() {
           style={[
             styles.bottomAction,
             {
-              paddingHorizontal:
-                horizontalPadding,
-              paddingBottom: Math.max(
-                8,
-                insets.bottom,
-              ),
+              paddingHorizontal: horizontalPadding,
+              paddingBottom: Math.max(8, insets.bottom),
             },
           ]}
         >
@@ -416,12 +354,7 @@ export default function PitchFreeModeScreen() {
               <ActivityIndicator color={WHITE} />
             ) : (
               <>
-                <Ionicons
-                  name="mic"
-                  size={19}
-                  color={WHITE}
-                />
-
+                <Ionicons name="mic" size={19} color={WHITE} />
                 <Text style={styles.startButtonText}>
                   Start Free Mode
                 </Text>
@@ -433,10 +366,7 @@ export default function PitchFreeModeScreen() {
     );
   }
 
-  // ==========================================================
-  // EXERCISE SCREEN
-  // ==========================================================
-
+  // Exercise screen
   return (
     <SafeAreaView
       style={[
@@ -447,81 +377,50 @@ export default function PitchFreeModeScreen() {
       <View
         style={[
           styles.header,
-          {
-            paddingHorizontal:
-              horizontalPadding,
-          },
+          { paddingHorizontal: horizontalPadding },
         ]}
       >
         <Pressable
           style={styles.backButton}
           onPress={stopFreeMode}
         >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={BROWN}
-          />
+          <Ionicons name="arrow-back" size={20} color={BROWN} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>
-          Pitch Free Mode
-        </Text>
-
+        <Text style={styles.headerTitle}>Pitch Free Mode</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <View
         style={[
           styles.exerciseContent,
-          {
-            paddingHorizontal:
-              horizontalPadding,
-          },
+          { paddingHorizontal: horizontalPadding },
         ]}
       >
         <View style={styles.exerciseTopRow}>
           <View>
-            <Text style={styles.modeLabel}>
-              FREE PRACTICE
-            </Text>
-
+            <Text style={styles.modeLabel}>FREE PRACTICE</Text>
             <Text style={styles.exerciseSubtitle}>
               Listen to your pitch naturally
             </Text>
           </View>
 
           <View style={styles.timeBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={ACCENT}
-            />
-
-            <Text style={styles.timeText}>
-              {formattedTime}
-            </Text>
+            <Ionicons name="time-outline" size={16} color={ACCENT} />
+            <Text style={styles.timeText}>{formattedTime}</Text>
           </View>
         </View>
 
-        {/* CURRENT PITCH */}
-
+        {/* Current pitch */}
         <View style={styles.liveCard}>
-          <Text style={styles.cardLabel}>
-            CURRENT PITCH
-          </Text>
+          <Text style={styles.cardLabel}>CURRENT PITCH</Text>
 
           <View style={styles.pitchDisplay}>
             <View>
-              <Text style={styles.noteValue}>
-                {currentNote}
-              </Text>
-
+              <Text style={styles.noteValue}>{currentNote}</Text>
               <Text style={styles.frequencyText}>
                 {detectedFrequency > 0
-                  ? `${Math.round(
-                      detectedFrequency,
-                    )} Hz`
+                  ? `${Math.round(detectedFrequency)} Hz`
                   : '-- Hz'}
               </Text>
             </View>
@@ -536,43 +435,30 @@ export default function PitchFreeModeScreen() {
           </View>
 
           <View style={styles.waveRow}>
-            {pitchHistory.map(
-              (value, index) => (
-                <View
-                  key={`wave-${index}`}
-                  style={[
-                    styles.wave,
-                    {
-                      height: `${Math.max(
-                        10,
-                        value * 100,
-                      )}%`,
-                      opacity:
-                        value === 0
-                          ? 0.15
-                          : 0.3 +
-                            value * 0.7,
-                    },
-                  ]}
-                />
-              ),
-            )}
+            {pitchHistory.map((value, index) => (
+              <View
+                key={`wave-${index}`}
+                style={[
+                  styles.wave,
+                  {
+                    height: `${Math.max(10, value * 100)}%`,
+                    opacity:
+                      value === 0 ? 0.15 : 0.3 + value * 0.7,
+                  },
+                ]}
+              />
+            ))}
           </View>
         </View>
 
-        {/* STABILITY */}
-
+        {/* Stability */}
         <View style={styles.stabilityCard}>
           <View>
-            <Text style={styles.cardLabel}>
-              PITCH STABILITY
-            </Text>
+            <Text style={styles.cardLabel}>PITCH STABILITY</Text>
 
             <Text style={styles.stabilityValue}>
-              {detectedFrequency > 0
-                ? `${Math.round(
-                    stabilityPct,
-                  )}%`
+              {detectedFrequency > 0 && stabilityReady
+                ? `${Math.round(stabilityPct)}%`
                 : '--'}
             </Text>
           </View>
@@ -594,9 +480,8 @@ export default function PitchFreeModeScreen() {
           />
 
           <Text style={styles.noteText}>
-            Experiment with a comfortable pitch range
-            and let your voice move naturally without
-            pressure.
+            Experiment with a comfortable pitch range and let
+            your voice move naturally without pressure.
           </Text>
         </View>
       </View>
@@ -605,12 +490,8 @@ export default function PitchFreeModeScreen() {
         style={[
           styles.bottomAction,
           {
-            paddingHorizontal:
-              horizontalPadding,
-            paddingBottom: Math.max(
-              8,
-              insets.bottom,
-            ),
+            paddingHorizontal: horizontalPadding,
+            paddingBottom: Math.max(8, insets.bottom),
           },
         ]}
       >
@@ -618,12 +499,7 @@ export default function PitchFreeModeScreen() {
           style={styles.stopButton}
           onPress={stopFreeMode}
         >
-          <Ionicons
-            name="stop"
-            size={18}
-            color={WHITE}
-          />
-
+          <Ionicons name="stop" size={18} color={WHITE} />
           <Text style={styles.startButtonText}>
             Stop Free Mode
           </Text>
@@ -638,13 +514,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   header: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   backButton: {
     width: 34,
     height: 34,
@@ -653,7 +527,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -661,16 +534,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: BROWN,
   },
-
   headerSpacer: {
     width: 34,
   },
-
   readyContent: {
     flex: 1,
     justifyContent: 'center',
   },
-
   modeIcon: {
     width: 92,
     height: 92,
@@ -681,14 +551,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 18,
   },
-
   pageTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     color: BROWN,
     textAlign: 'center',
   },
-
   pageDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
@@ -697,7 +565,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-
   infoCard: {
     backgroundColor: LIGHT,
     borderRadius: 20,
@@ -706,7 +573,6 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 24,
   },
-
   infoTitle: {
     fontFamily: 'FredokaBold',
     color: BROWN,
@@ -714,13 +580,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: 12,
   },
-
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 14,
   },
-
   infoIcon: {
     width: 36,
     height: 36,
@@ -730,17 +594,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   infoText: {
     flex: 1,
   },
-
   infoName: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   infoDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -748,7 +609,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 18,
   },
-
   noTargetCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -759,7 +619,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 18,
   },
-
   noTargetText: {
     flex: 1,
     marginLeft: 10,
@@ -768,11 +627,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: MUTED,
   },
-
   bottomAction: {
     paddingTop: 12,
   },
-
   startButton: {
     height: 52,
     borderRadius: 16,
@@ -782,40 +639,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   exerciseContent: {
     flex: 1,
     justifyContent: 'space-between',
     paddingTop: 12,
   },
-
   exerciseTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 18,
   },
-
   modeLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: ACCENT,
     letterSpacing: 1.4,
   },
-
   exerciseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 5,
   },
-
   timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -827,13 +678,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   timeText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   liveCard: {
     backgroundColor: LIGHT,
     borderRadius: 24,
@@ -841,34 +690,29 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 18,
   },
-
   cardLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: BROWN,
     letterSpacing: 1.3,
   },
-
   pitchDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
   },
-
   noteValue: {
     fontFamily: 'FredokaBold',
     fontSize: 36,
     color: BROWN,
   },
-
   frequencyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 2,
   },
-
   pitchIcon: {
     width: 52,
     height: 52,
@@ -877,7 +721,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   waveRow: {
     height: 120,
     flexDirection: 'row',
@@ -885,14 +728,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 20,
   },
-
   wave: {
     width: 11,
     borderRadius: 999,
     backgroundColor: ACCENT,
     minHeight: 10,
   },
-
   stabilityCard: {
     marginTop: 18,
     padding: 18,
@@ -904,14 +745,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   stabilityValue: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
     color: BROWN,
     marginTop: 5,
   },
-
   stabilityIcon: {
     width: 48,
     height: 48,
@@ -920,7 +759,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -931,7 +769,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   noteText: {
     flex: 1,
     marginLeft: 10,
@@ -940,7 +777,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: DARK,
   },
-
   stopButton: {
     height: 52,
     borderRadius: 16,
