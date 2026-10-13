@@ -7,20 +7,13 @@ import type {
   MelodicPatternMeasurement,
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
-import {
-  calcPitchAccuracy,
-} from '@/utils/dsp/pitch';
-
 export interface MelodicPatternScoreResult {
   score: number;
   passed: boolean;
-
   noteAccuracies: number[];
   notesHit: boolean[];
-
   patternAccuracy: number;
   rhythmAccuracy: number;
-
   repetitionsCompleted: number;
   repetitionScores: number[];
 }
@@ -31,8 +24,7 @@ export function scoreMelodicPatternMatching(
   targetTimestamps: number[],
   params: MelodicPatternMatchingParams,
 ): MelodicPatternScoreResult {
-  const noteCount =
-    targetFreqs.length;
+  const noteCount = targetFreqs.length;
 
   if (noteCount === 0) {
     return {
@@ -50,18 +42,16 @@ export function scoreMelodicPatternMatching(
   const noteAccuracies: number[] = [];
   const notesHit: boolean[] = [];
 
+  // Cap tolerance to avoid overly generous settings.
+  const strictTolerance = Math.min(
+    params.tolerancePct,
+    1,
+  );
+
   for (let i = 0; i < noteCount; i++) {
-    const target =
-      targetFreqs[i];
+    const target = targetFreqs[i];
+    const frequencies = measurement.segmentFrequencies?.[i] ?? [];
 
-    const frequencies =
-      measurement.segmentFrequencies?.[i] ??
-      [];
-
-    /*
-     * Invalid target or no detected pitch
-     * for this expected note.
-     */
     if (
       !Number.isFinite(target) ||
       target <= 0 ||
@@ -72,177 +62,99 @@ export function scoreMelodicPatternMatching(
       continue;
     }
 
-    /*
-     * Score every reliable pitch frame
-     * inside this note segment.
-     *
-     * A wrong sung pitch contributes 0.
-     */
-    const frameAccuracies =
-      frequencies.map(
-        detected => {
-          if (
-            !Number.isFinite(detected) ||
-            detected <= 0
-          ) {
-            return 0;
-          }
+    const frameAccuracies = frequencies.map(detected => {
+      if (!Number.isFinite(detected) || detected <= 0) {
+        return 0;
+      }
 
-          const deviationPct =
-            (
-              Math.abs(
-                detected - target,
-              ) / target
-            ) * 100;
+      const deviationPct =
+        (Math.abs(detected - target) / target) * 100;
 
-          if (
-            deviationPct >
-            params.tolerancePct
-          ) {
-            return 0;
-          }
-
-          const accuracy =
-            calcPitchAccuracy(
-              detected,
-              target,
-            );
-
-          return Number.isFinite(
-            accuracy,
-          )
-            ? Math.max(
-                0,
-                Math.min(
-                  100,
-                  accuracy,
-                ),
-              )
-            : 0;
-        },
+      // Strict curve: 0% = 100, 0.5% = 50, 1% = 0.
+      return Math.max(
+        0,
+        Math.min(100, 100 - deviationPct * 100),
       );
+    });
 
     const averageAccuracy =
-      frameAccuracies.reduce(
-        (sum, accuracy) =>
-          sum + accuracy,
-        0,
-      ) /
+      frameAccuracies.reduce((sum, value) => sum + value, 0) /
       frameAccuracies.length;
 
-    /*
-     * A note is considered hit only when
-     * every reliable voiced frame in the
-     * segment matches the target.
-     *
-     * This prevents a short correct portion
-     * from hiding an incorrect sung portion.
-     */
-    const allFramesMatch =
-      frameAccuracies.every(
-        accuracy => accuracy > 0,
-      );
+    const allFramesMatch = frequencies.every(detected => {
+      if (!Number.isFinite(detected) || detected <= 0) {
+        return false;
+      }
 
-    noteAccuracies.push(
-      averageAccuracy,
-    );
+      const deviationPct =
+        (Math.abs(detected - target) / target) * 100;
 
-    notesHit.push(
-      allFramesMatch,
-    );
+      return deviationPct <= strictTolerance;
+    });
+
+    noteAccuracies.push(averageAccuracy);
+    notesHit.push(allFramesMatch);
   }
 
   const patternAccuracy =
-    noteAccuracies.length > 0
-      ? noteAccuracies.reduce(
-          (sum, accuracy) =>
-            sum + accuracy,
-          0,
-        ) /
-        noteAccuracies.length
-      : 0;
+    noteAccuracies.reduce((sum, value) => sum + value, 0) /
+    noteCount;
 
-  const hitCount =
-    notesHit.filter(Boolean).length;
+  const timingScores = Array.from(
+    { length: noteCount },
+    (_, index) => {
+      const targetTime = targetTimestamps[index];
+      const detectedTime = measurement.noteTimestamps[index];
 
-  /*
-   * Timing is still evaluated once per
-   * expected note segment.
-   *
-   * Missing notes receive zero timing
-   * accuracy.
-   */
-  const timingScores =
-    targetTimestamps
-      .slice(0, noteCount)
-      .map(
-        (
-          targetTime,
-          index,
-        ) => {
-          const detectedTime =
-            measurement
-              .noteTimestamps[index];
+      if (
+        !Number.isFinite(targetTime) ||
+        !Number.isFinite(detectedTime)
+      ) {
+        return 0;
+      }
 
-          if (
-            !Number.isFinite(
-              detectedTime,
-            )
-          ) {
-            return 0;
-          }
+      const differenceMs =
+        Math.abs(detectedTime - targetTime) * 1000;
 
-          const differenceMs =
-            Math.abs(
-              detectedTime -
-                targetTime,
-            ) * 1000;
-
-          return Math.max(
-            0,
-            100 -
-              (differenceMs /
-                250) *
-                100,
-          );
-        },
+      // Full timing score only within 50 ms.
+      // Zero points at 150 ms or more.
+      return Math.max(
+        0,
+        Math.min(100, 100 - (differenceMs / 150) * 100),
       );
-
-  /*
-   * If the target contains more notes than
-   * the available timestamps, the missing
-   * notes must still contribute zero.
-   */
-  while (
-    timingScores.length <
-    noteCount
-  ) {
-    timingScores.push(0);
-  }
-
-  const rhythmAccuracy =
-    timingScores.length > 0
-      ? timingScores.reduce(
-          (sum, value) =>
-            sum + value,
-          0,
-        ) /
-        timingScores.length
-      : 0;
-
-const score =
-  Math.round(
-    patternAccuracy * 0.7 +
-      rhythmAccuracy * 0.3,
+    },
   );
 
-  /*
-   * At least 70% of the expected notes
-   * must be completely correct.
-   */
+  const rhythmAccuracy =
+    timingScores.reduce((sum, value) => sum + value, 0) /
+    noteCount;
+
+  const hitCount = notesHit.filter(Boolean).length;
+
+  // Pitch accuracy dominates the score.
+  const score = Math.round(
+    patternAccuracy * 0.85 +
+      rhythmAccuracy * 0.15,
+  );
+
   const passed =
-    hitCount / noteCount >=
-    0.85;
+    hitCount / noteCount >= 0.9 &&
+    patternAccuracy >= 85 &&
+    rhythmAccuracy >= 70 &&
+    score >= 85;
+
+  console.log('🎵 MELODIC PATTERN SCORE DEBUG:', {
+    targetFreqs,
+    detectedSegments: measurement.segmentFrequencies,
+    noteAccuracies,
+    notesHit,
+    hitCount,
+    noteCount,
+    patternAccuracy,
+    rhythmAccuracy,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,
@@ -262,6 +174,11 @@ export function scoreMelodicPatternMatchingRepetitions(
   targetTimestamps: number[],
   params: MelodicPatternMatchingParams,
 ): MelodicPatternScoreResult {
+  const requestedRepetitions = Math.max(
+    1,
+    Math.round(params.repetitions),
+  );
+
   if (measurements.length === 0) {
     return {
       score: 0,
@@ -271,95 +188,63 @@ export function scoreMelodicPatternMatchingRepetitions(
       patternAccuracy: 0,
       rhythmAccuracy: 0,
       repetitionsCompleted: 0,
-      repetitionScores: [],
+      repetitionScores: Array(requestedRepetitions).fill(0),
     };
   }
 
-  const repetitionResults =
-    measurements.map(
-      measurement =>
-        scoreMelodicPatternMatching(
-          measurement,
-          targetFreqs,
-          targetTimestamps,
-          params,
-        ),
+  const repetitionResults = measurements
+    .slice(0, requestedRepetitions)
+    .map(measurement =>
+      scoreMelodicPatternMatching(
+        measurement,
+        targetFreqs,
+        targetTimestamps,
+        params,
+      ),
     );
 
-  const repetitionScores =
-    repetitionResults.map(
-      repetition =>
-        repetition.score,
-    );
+  const repetitionScores = [
+    ...repetitionResults.map(result => result.score),
+    ...Array(
+      Math.max(
+        0,
+        requestedRepetitions - repetitionResults.length,
+      ),
+    ).fill(0),
+  ];
 
-  const requestedRepetitions =
-  Math.max(
-    1,
-    Math.round(params.repetitions),
-  );
-
-const completedScores = [
-  ...repetitionScores,
-  ...Array(
-    Math.max(
-      0,
-      requestedRepetitions -
-        repetitionScores.length,
-    ),
-  ).fill(0),
-];
-
-const score =
-  Math.round(
-    completedScores.reduce(
-      (sum, repetitionScore) =>
-        sum + repetitionScore,
-      0,
-    ) /
-      completedScores.length,
+  const score = Math.round(
+    repetitionScores.reduce((sum, value) => sum + value, 0) /
+      requestedRepetitions,
   );
 
   const patternAccuracy =
     repetitionResults.reduce(
-      (sum, repetition) =>
-        sum +
-        repetition.patternAccuracy,
+      (sum, result) => sum + result.patternAccuracy,
       0,
-    ) /
-    repetitionResults.length;
+    ) / repetitionResults.length;
 
   const rhythmAccuracy =
     repetitionResults.reduce(
-      (sum, repetition) =>
-        sum +
-        repetition.rhythmAccuracy,
+      (sum, result) => sum + result.rhythmAccuracy,
       0,
-    ) /
-    repetitionResults.length;
+    ) / repetitionResults.length;
 
-  const noteAccuracies =
-    repetitionResults[0]
-      .noteAccuracies;
-
-  const notesHit =
-    repetitionResults[0]
-      .notesHit;
+  const firstResult = repetitionResults[0];
 
   const passed =
-    repetitionResults.every(
-      repetition =>
-        repetition.passed,
-    );
+    repetitionResults.length === requestedRepetitions &&
+    repetitionResults.every(result => result.passed) &&
+    score >= 85;
 
   return {
     score,
     passed,
-    noteAccuracies,
-    notesHit,
+    noteAccuracies: firstResult.noteAccuracies,
+    notesHit: firstResult.notesHit,
     patternAccuracy,
     rhythmAccuracy,
-    repetitionsCompleted:
-      measurements.length,
+    repetitionsCompleted: repetitionResults.length,
     repetitionScores,
   };
 }

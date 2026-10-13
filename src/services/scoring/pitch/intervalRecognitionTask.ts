@@ -1,31 +1,20 @@
-import type {
-  IntervalRecognitionParams,
-} from '@/constants/exercises/pitch';
 
-import type {
-  IntervalRecognitionMeasurement,
-} from '@/services/measurement/pitch/intervalRecognitionTask';
+import type { IntervalRecognitionParams } from '@/constants/exercises/pitch';
+import type { IntervalRecognitionMeasurement } from '@/services/measurement/pitch/intervalRecognitionTask';
 
 export interface IntervalRecognitionScoreResult {
   score: number;
   passed: boolean;
-
   targetRatio: number;
   detectedRatio: number;
-
   deviationPct: number;
-
   intervalName: string;
-
   freq1: number;
   freq2: number;
-
   firstNoteDetected: boolean;
   secondNoteDetected: boolean;
-
   firstNoteClarity: number;
   secondNoteClarity: number;
-
   repetitionsCompleted: number;
   repetitionScores: number[];
 }
@@ -41,229 +30,125 @@ export function scoreIntervalRecognitionTask(
     Math.round(params.repetitions),
   );
 
-  /*
-   * Invalid target ratio cannot be scored.
-   */
-  if (
-    !Number.isFinite(targetRatio) ||
-    targetRatio <= 0
-  ) {
+  if (!Number.isFinite(targetRatio) || targetRatio <= 0) {
     return {
       score: 0,
       passed: false,
-
       targetRatio,
       detectedRatio: 0,
       deviationPct: 100,
-
       intervalName,
-
       freq1: measurement.freq1,
       freq2: measurement.freq2,
-
-      firstNoteDetected:
-        measurement.hasFirstNote,
-
-      secondNoteDetected:
-        measurement.hasSecondNote,
-
-      firstNoteClarity:
-        measurement.firstNoteClarity,
-
-      secondNoteClarity:
-        measurement.secondNoteClarity,
-
+      firstNoteDetected: measurement.hasFirstNote,
+      secondNoteDetected: measurement.hasSecondNote,
+      firstNoteClarity: measurement.firstNoteClarity,
+      secondNoteClarity: measurement.secondNoteClarity,
       repetitionsCompleted: 0,
-
-      repetitionScores: Array(
-        requestedRepetitions,
-      ).fill(0),
+      repetitionScores: Array(requestedRepetitions).fill(0),
     };
   }
 
-  /*
-   * Keep only complete, valid interval attempts.
-   */
-  const validAttempts =
-    measurement.attempts.filter(
+  const validAttempts = measurement.attempts
+    .filter(
       attempt =>
         attempt.hasFirstNote &&
         attempt.hasSecondNote &&
-        Number.isFinite(
-          attempt.detectedRatio,
-        ) &&
+        Number.isFinite(attempt.detectedRatio) &&
         attempt.detectedRatio > 0,
+    )
+    .slice(0, requestedRepetitions);
+
+  const scoredAttemptResults = validAttempts.map(attempt => {
+    const deviationPct =
+      (Math.abs(attempt.detectedRatio - targetRatio) /
+        targetRatio) *
+      100;
+
+    // Stricter curve:
+    // 0% deviation = 100
+    // 1% deviation = 60
+    // 2% deviation = 20
+    // 2.5% or more = 0
+    const accuracyScore = Math.max(
+      0,
+      Math.min(100, 100 - deviationPct * 40),
     );
 
-  /*
-   * Score at most the number requested by the tier.
-   */
-  const scoredAttempts =
-    validAttempts.slice(
-      0,
+    // An attempt outside the configured tolerance receives zero.
+    const score =
+      deviationPct <= params.tolerancePct
+        ? Math.round(accuracyScore)
+        : 0;
+
+    return { attempt, deviationPct, score };
+  });
+
+  const repetitionScores = [
+    ...scoredAttemptResults.map(result => result.score),
+    ...Array(
+      Math.max(
+        0,
+        requestedRepetitions - scoredAttemptResults.length,
+      ),
+    ).fill(0),
+  ];
+
+  // Missing repetitions count as zero.
+  const score = Math.round(
+    repetitionScores.reduce((sum, value) => sum + value, 0) /
       requestedRepetitions,
-    );
+  );
 
-  /*
-   * Score each detected interval.
-   *
-   * An interval must first be within the configured
-   * tolerance before it can receive pitch accuracy.
-   */
-  const repetitionScores =
-    scoredAttempts.length > 0
-      ? scoredAttempts.map(attempt => {
-          const deviationPct =
-            (
-              Math.abs(
-                attempt.detectedRatio -
-                  targetRatio,
-              ) /
-              targetRatio
-            ) * 100;
-
-          if (
-            deviationPct >
-            params.tolerancePct
-          ) {
-            return 0;
-          }
-
-          return Math.round(
-            Math.max(
-              0,
-              Math.min(
-                100,
-                100 - deviationPct,
-              ),
-            ),
-          );
-        })
-      : [0];
-
-const completedScores = [
-  ...repetitionScores,
-  ...Array(
-    Math.max(
-      0,
-      requestedRepetitions -
-        repetitionScores.length,
-    ),
-  ).fill(0),
-];
-
-const score =
-  completedScores.length > 0
-    ? Math.round(
-        completedScores.reduce(
-          (sum, value) =>
-            sum + value,
-          0,
-        ) / completedScores.length,
-      )
-    : 0;
-
-  /*
-   * Calculate average deviation only from
-   * successfully detected repetitions.
-   */
   const detectedDeviationPct =
-    scoredAttempts.length > 0
-      ? scoredAttempts.reduce(
-          (sum, attempt) => {
-            const deviationPct =
-              (
-                Math.abs(
-                  attempt.detectedRatio -
-                    targetRatio,
-                ) /
-                targetRatio
-              ) * 100;
-
-            return (
-              sum +
-              deviationPct
-            );
-          },
+    scoredAttemptResults.length > 0
+      ? scoredAttemptResults.reduce(
+          (sum, result) => sum + result.deviationPct,
           0,
-        ) / scoredAttempts.length
+        ) / scoredAttemptResults.length
       : 100;
 
-  /*
-   * Every detected repetition must match the
-   * target interval within the configured tolerance.
-   *
-   * Completing fewer repetitions than the tier's
-   * configured maximum does not erase the score.
-   */
+  // All requested repetitions must be detected and accurate.
   const passed =
-    scoredAttempts.length > 0 &&
-    scoredAttempts.every(
-      attempt => {
-        const deviationPct =
-          (
-            Math.abs(
-              attempt.detectedRatio -
-                targetRatio,
-            ) /
-            targetRatio
-          ) * 100;
+    scoredAttemptResults.length === requestedRepetitions &&
+    scoredAttemptResults.every(
+      result =>
+        result.deviationPct <= params.tolerancePct &&
+        result.score >= 85,
+    ) &&
+    score >= 85;
 
-        return (
-          deviationPct <=
-          params.tolerancePct
-        );
-      },
-    );
+  const firstAttempt = validAttempts[0];
 
-  /*
-   * Use the first detected attempt for the
-   * single-interval result fields.
-   */
-  const firstAttempt =
-    scoredAttempts[0];
+  console.log('🎵 INTERVAL RECOGNITION SCORE DEBUG:', {
+    targetRatio,
+    detectedRatios: validAttempts.map(a => a.detectedRatio),
+    deviationsPct: scoredAttemptResults.map(r => r.deviationPct),
+    repetitionScores,
+    requestedRepetitions,
+    repetitionsCompleted: validAttempts.length,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,
     passed,
-
     targetRatio,
-
-    detectedRatio:
-      measurement.detectedRatio,
-
-    deviationPct:
-      detectedDeviationPct,
-
+    detectedRatio: firstAttempt?.detectedRatio ?? measurement.detectedRatio,
+    deviationPct: detectedDeviationPct,
     intervalName,
-
-    freq1:
-      firstAttempt?.freq1 ??
-      measurement.freq1,
-
-    freq2:
-      firstAttempt?.freq2 ??
-      measurement.freq2,
-
+    freq1: firstAttempt?.freq1 ?? measurement.freq1,
+    freq2: firstAttempt?.freq2 ?? measurement.freq2,
     firstNoteDetected:
-      firstAttempt?.hasFirstNote ??
-      measurement.hasFirstNote,
-
+      firstAttempt?.hasFirstNote ?? measurement.hasFirstNote,
     secondNoteDetected:
-      firstAttempt?.hasSecondNote ??
-      measurement.hasSecondNote,
-
+      firstAttempt?.hasSecondNote ?? measurement.hasSecondNote,
     firstNoteClarity:
-      firstAttempt?.firstNoteClarity ??
-      measurement.firstNoteClarity,
-
+      firstAttempt?.firstNoteClarity ?? measurement.firstNoteClarity,
     secondNoteClarity:
-      firstAttempt?.secondNoteClarity ??
-      measurement.secondNoteClarity,
-
-    repetitionsCompleted:
-      scoredAttempts.length,
-
+      firstAttempt?.secondNoteClarity ?? measurement.secondNoteClarity,
+    repetitionsCompleted: validAttempts.length,
     repetitionScores,
   };
 }

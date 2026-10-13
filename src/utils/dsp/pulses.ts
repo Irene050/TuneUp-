@@ -74,7 +74,7 @@ export function detectPulses(
   if (
     !Number.isFinite(maxRms) ||
     maxRms <= 0 ||
-    maxRms <= noiseFloor * 1.25
+    maxRms <= noiseFloor * 1.05
   ) {
     return [];
   }
