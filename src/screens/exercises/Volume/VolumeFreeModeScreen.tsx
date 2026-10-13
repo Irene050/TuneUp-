@@ -26,7 +26,7 @@ import {
 
 import {
   measureVolumeFreeModeFrame,
-} from '@/services/measurement/freeMode/volume';
+} from '@/services/measurement/freemode/volume';
 
 /* =========================================================
    COLORS
