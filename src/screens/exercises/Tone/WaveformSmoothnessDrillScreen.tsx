@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -1203,6 +1204,43 @@ const currentTarget =
       router.back();
     }, [clearTimers]);
 
+  
+  /*
+   * ----------------------------------------------------------
+   * ADAPTIVE PARAMETER LOADING
+   * ----------------------------------------------------------
+   */
+
+  if (loadingParams) {
+    return (
+      <View style={styles.loadingScreen}>
+        <View style={styles.loadingIconContainer}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.loadingTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.loadingMessage}>
+          Adjusting the exercise to your current difficulty level
+          and preparing your vocal range.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.loadingIndicator}
+        />
+      </View>
+    );
+  }
+
+
   /*
    * ----------------------------------------------------------
    * INSTRUCTIONS
@@ -1713,6 +1751,43 @@ const currentTarget =
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+
+  loadingIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  loadingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  loadingMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 22,
+  },
+
+  loadingIndicator: {
+    marginTop: 28,
+  },
   referenceCard: {
     width: '100%',
     alignItems: 'center',

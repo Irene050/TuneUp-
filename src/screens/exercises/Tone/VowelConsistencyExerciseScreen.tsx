@@ -1116,7 +1116,7 @@ export default function VowelConsistencyExerciseScreen({
         >
           <Ionicons
             name="options-outline"
-            size={34}
+            size={44}
             color={BROWN}
           />
         </View>
@@ -1838,7 +1838,7 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
   },
 
   recordingContent: {
@@ -1858,13 +1858,13 @@ const styles = StyleSheet.create({
   },
 
   iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 22,
   },
 
   startButton: {
@@ -1909,8 +1909,8 @@ const styles = StyleSheet.create({
 
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     color: MUTED,
     textAlign: 'center',
     marginTop: 8,

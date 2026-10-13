@@ -1296,59 +1296,41 @@ export default function ToneConsistencyExerciseScreen({
       );
     }, [clearTimers]);
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+// ============================================================
+// LOADING
+// ============================================================
 
-  if (
-    screen === 'instructions' &&
-    isLoadingAdaptiveParams
-  ) {
-    return (
-      <View
-        style={
-          styles.centerScreen
-        }
-      >
-        <View
-          style={
-            styles.iconCircle
-          }
-        >
-          <Ionicons
-            name="musical-note-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={
-            styles.phaseTitle
-          }
-        >
-          Preparing Exercise
-        </Text>
-
-        <Text
-          style={
-            styles.phaseSubtitle
-          }
-        >
-          Adjusting the exercise to your
-          current progress.
-        </Text>
-
-        <ActivityIndicator
-          size="small"
+if (
+  screen === 'instructions' &&
+  isLoadingAdaptiveParams
+) {
+  return (
+    <View style={styles.loadingScreen}>
+      <View style={styles.loadingIconContainer}>
+        <Ionicons
+          name="options-outline"
+          size={44}
           color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
         />
       </View>
-    );
-  }
+
+      <Text style={styles.loadingTitle}>
+        Preparing Your Exercise
+      </Text>
+
+      <Text style={styles.loadingMessage}>
+        Adjusting the exercise to your current difficulty
+        level and preparing your tone consistency targets.
+      </Text>
+
+      <ActivityIndicator
+        size="large"
+        color={BROWN}
+        style={styles.loadingIndicator}
+      />
+    </View>
+  );
+}
 
   // ============================================================
   // INSTRUCTIONS
@@ -2001,6 +1983,44 @@ function MetricCard({
 // ============================================================
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  loadingIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  loadingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  loadingMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
+  },
+
+  loadingIndicator: {
+    marginTop: 28,
+  },
+
   screen: {
     flex: 1,
     backgroundColor: WHITE,

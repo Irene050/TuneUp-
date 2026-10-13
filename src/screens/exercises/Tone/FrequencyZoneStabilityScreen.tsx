@@ -7,7 +7,9 @@ import {
   useRef,
   useState,
 } from 'react';
+
 import {
+  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -895,12 +897,31 @@ export default function FrequencyZoneStabilityScreen({
       },
     ];
 
-  if (loadingParams) {
+    if (loadingParams) {
     return (
       <View style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>
-          Preparing exercise...
+        <View style={styles.loadingIconContainer}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.loadingTitle}>
+          Preparing Your Exercise
         </Text>
+
+        <Text style={styles.loadingMessage}>
+          Adjusting the exercise to your current difficulty level
+          and preparing your frequency stability targets.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.loadingIndicator}
+        />
       </View>
     );
   }
@@ -1178,13 +1199,38 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
   },
 
-  loadingText: {
+  loadingIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FCD6DD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  loadingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  loadingMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
+    lineHeight: 22,
     color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
+  },
+
+  loadingIndicator: {
+    marginTop: 28,
   },
 
   disclaimerCard: {

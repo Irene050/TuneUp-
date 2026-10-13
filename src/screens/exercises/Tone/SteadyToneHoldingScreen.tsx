@@ -1,7 +1,5 @@
-// src/screens/exercises/Tone/SteadyToneHoldingScreen.tsx
-
 import type { LiveAudioFrame } from '@/hooks/useAudioRecorder';
-
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 
 import {
@@ -12,10 +10,11 @@ import {
 } from 'react';
 
 import {
+  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
-  View
+  View,
 } from 'react-native';
 
 import ExerciseScreen, {
@@ -948,6 +947,38 @@ export default function SteadyToneHoldingScreen({
         )} dB`
       : '--';
 
+  if (
+  phase === 'instructions' &&
+  loadingParams
+) {
+  return (
+    <View style={styles.loadingScreen}>
+      <View style={styles.loadingIconContainer}>
+        <Ionicons
+          name="options-outline"
+          size={44}
+          color={BROWN}
+        />
+      </View>
+
+      <Text style={styles.loadingTitle}>
+        Preparing Your Exercise
+      </Text>
+
+      <Text style={styles.loadingMessage}>
+        Adjusting the exercise to your current difficulty
+        level and preparing your steady tone targets.
+      </Text>
+
+      <ActivityIndicator
+        size="large"
+        color={BROWN}
+        style={styles.loadingIndicator}
+      />
+    </View>
+  );
+}
+
   // ==========================================================
   // INSTRUCTIONS
   // ==========================================================
@@ -1310,6 +1341,44 @@ export default function SteadyToneHoldingScreen({
 // ============================================================
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+  flex: 1,
+  backgroundColor: WHITE,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 30,
+},
+
+loadingIconContainer: {
+  width: 96,
+  height: 96,
+  borderRadius: 48,
+  backgroundColor: PINK,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 22,
+},
+
+loadingTitle: {
+  fontFamily: 'FredokaBold',
+  fontSize: 25,
+  color: BROWN,
+  textAlign: 'center',
+},
+
+loadingMessage: {
+  fontFamily: 'FredokaRegular',
+  fontSize: 15,
+  lineHeight: 22,
+  color: MUTED,
+  textAlign: 'center',
+  marginTop: 8,
+  maxWidth: 320,
+},
+
+loadingIndicator: {
+  marginTop: 28,
+},
   liveContent: {
     width: '100%',
     alignItems: 'center',
