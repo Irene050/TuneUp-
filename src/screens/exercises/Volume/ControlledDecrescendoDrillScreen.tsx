@@ -588,15 +588,7 @@ export default function ControlledDecrescendoDrill({
       );
     }
   }, [referenceNote]);
-  useEffect(() => {
-    if (phase === 'directions' && !loadingParams && referenceNoteReady) {
-      void playReferenceNote();
-    }
-  }, [phase, playReferenceNote, loadingParams, referenceNoteReady]);
-  /*
-   * Animate the target guide separately from the audio analysis.
-   * It resets for each repetition and moves from LOUD to SOFT.
-   */
+
   useEffect(() => {
     if (phase !== 'exercise') {
       setGuideElapsed(0);
@@ -879,7 +871,7 @@ export default function ControlledDecrescendoDrill({
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds, repetitions, stopRecording]);
 
-  const startExercise = useCallback(async () => {
+  const startExercise = useCallback(() => {
     setErrorMessage(undefined);
     setRep(1);
     setSeconds(0);
@@ -895,25 +887,15 @@ export default function ControlledDecrescendoDrill({
     setMaxDb(0);
     setLiveFrame(null);
     setLiveHistory([]);
+
     finishingRef.current = false;
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
-    try {
-      await playReferenceNote();
-      setCountdownSeconds(3);
-      setPhase('countdown');
-    } catch (recordingError) {
-      console.error(
-        'Unable to start Controlled Decrescendo recording:',
-        recordingError,
-      );
-      setErrorMessage(
-        'Microphone recording could not start. Check microphone permission and try again.',
-      );
-      setPhase('directions');
-    }
-  }, [playReferenceNote, repetitions]);
+
+    setCountdownSeconds(3);
+    setPhase('countdown');
+  }, [repetitions]);
 
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;

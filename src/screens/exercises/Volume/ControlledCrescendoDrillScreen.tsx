@@ -505,11 +505,7 @@ export default function ControlledCrescendoExercise({
       );
     }
   }, [referenceNote]);
-  useEffect(() => {
-    if (phase === 'directions' && !loadingParams && referenceNoteReady) {
-      void playReferenceNote();
-    }
-  }, [phase, playReferenceNote, loadingParams, referenceNoteReady]);
+  
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setRep(1);
@@ -753,7 +749,8 @@ export default function ControlledCrescendoExercise({
     }, 1000);
     return () => clearTimeout(timeout);
   }, [phase, countdown, countdownReady, startRecording]);
-  const startExercise = useCallback(async () => {
+  
+  const startExercise = useCallback(() => {
     setErrorMessage(undefined);
     setRep(1);
     setSeconds(0);
@@ -766,31 +763,18 @@ export default function ControlledCrescendoExercise({
     setMaxDb(0);
     setLiveFrame(null);
     setLiveHistory([]);
+
     finishingRef.current = false;
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
+
     setCountdown(3);
-    setCountdownReady(false);
-    try {
-      await playReferenceNote();
-      phaseRef.current = 'countdown';
-      setPhase('countdown');
-      setCountdownReady(true);
-    } catch (recordingError) {
-      phaseRef.current = 'directions';
-      repetitionSamplesRef.current = [];
-      interRepStopRef.current = false;
-      console.error(
-        'Unable to start Controlled Crescendo recording:',
-        recordingError,
-      );
-      setErrorMessage(
-        'Microphone recording could not start. Check microphone permission and try again.',
-      );
-      setPhase('directions');
-    }
-  }, [playReferenceNote, repetitions]);
+    setCountdownReady(true);
+    phaseRef.current = 'countdown';
+    setPhase('countdown');
+  }, [repetitions]);
+  
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
