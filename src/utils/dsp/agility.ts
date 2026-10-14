@@ -29,12 +29,6 @@ const DEFAULT_MAX_FREQUENCY = 1000;
 const DEFAULT_MIN_RMS = 0.008;
 const DEFAULT_MIN_CORRELATION = 0.3;
 
-/**
- * In-place radix-2 Cooley-Tukey FFT.
- *
- * For inverse transforms, the output is divided by the
- * transform length.
- */
 function fft(
   real: Float64Array,
   imag: Float64Array,
@@ -42,7 +36,6 @@ function fft(
 ): void {
   const n = real.length;
 
-  // Bit-reversal permutation.
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;
 
@@ -64,7 +57,6 @@ function fft(
     }
   }
 
-  // Butterfly stages.
   for (let size = 2; size <= n; size <<= 1) {
     const halfSize = size >> 1;
     const angle =
@@ -139,16 +131,6 @@ export function midiToFrequency(
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-/**
- * Estimates pitch using FFT-based autocorrelation.
- *
- * The FFT computes autocorrelation in O(N log N), avoiding
- * the much more expensive direct calculation for every lag.
- *
- * The existing frequency, RMS, and correlation thresholds
- * remain configurable through AgilityPitchOptions.
- */
-
 export function detectPitchAutocorrelation(
   frame: Float32Array,
   sampleRate: number,
@@ -176,7 +158,6 @@ export function detectPitchAutocorrelation(
 
   const length = frame.length;
 
-  // Reject silence or very weak input before pitch analysis.
   let mean = 0;
   let rawEnergy = 0;
 
@@ -194,8 +175,6 @@ export function detectPitchAutocorrelation(
 
   mean /= length;
 
-  // Remove DC offset and apply a Hann window to reduce
-  // edge discontinuities and improve autocorrelation peaks.
   const processed = new Float64Array(length);
   const prefixEnergy = new Float64Array(length + 1);
   let totalEnergy = 0;
@@ -228,7 +207,6 @@ export function detectPitchAutocorrelation(
     return null;
   }
 
-  // Pad the FFT to avoid circular wraparound in autocorrelation.
   let fftSize = 1;
   while (fftSize < length * 2 - 1) {
     fftSize <<= 1;
@@ -241,7 +219,6 @@ export function detectPitchAutocorrelation(
 
   fft(real, imag);
 
-  // Power spectrum: X multiplied by its complex conjugate.
   for (let i = 0; i < fftSize; i++) {
     const re = real[i];
     const im = imag[i];
@@ -252,7 +229,6 @@ export function detectPitchAutocorrelation(
 
   fft(real, imag, true);
 
-  // Normalize correlations and identify the strongest peak.
   const correlations = new Float64Array(maxLag + 2);
   let bestLag = -1;
   let bestCorrelation = -Infinity;
@@ -283,9 +259,6 @@ export function detectPitchAutocorrelation(
     return null;
   }
 
-  // Prefer the earliest credible local peak. If a longer
-  // period wins only slightly, this helps avoid octave-low
-  // readings caused by selecting a multiple of the true period.
   const credibleThreshold = Math.max(
     minCorrelation,
     bestCorrelation * 0.9,
@@ -306,8 +279,6 @@ export function detectPitchAutocorrelation(
     }
   }
 
-  // Parabolic interpolation provides a more precise period
-  // estimate than rounding directly to an integer lag.
   const left = correlations[selectedLag - 1];
   const center = correlations[selectedLag];
   const right = correlations[selectedLag + 1];
@@ -389,7 +360,6 @@ export function extractAgilityPitchFrames(
   return frames;
 }
 
-
 export function extractAgilityNotes(
   frames: AgilityPitchFrame[],
   confirmationFrames = 1,
@@ -419,8 +389,6 @@ export function extractAgilityNotes(
       continue;
     }
 
-    // Reset an unconfirmed transition if voiced frames are
-    // separated by a long gap.
     if (
       previousTimestampMs !== null &&
       frame.timestamp - previousTimestampMs > 120
@@ -441,9 +409,6 @@ export function extractAgilityNotes(
 
     const midi = Math.round(midiFloat);
 
-    // Ignore one-semitone fluctuations around the current note.
-    // This helps prevent vibrato and small pitch-estimation errors
-    // from being counted as new notes.
     if (
       currentMidi !== null &&
       Math.abs(midi - currentMidi) <= 1
@@ -462,8 +427,6 @@ export function extractAgilityNotes(
 
     candidateCount++;
 
-    // Octave jumps need stronger confirmation because octave
-    // errors are common in autocorrelation-based pitch detection.
     const isOctaveJump =
       currentMidi !== null &&
       Math.abs(Math.abs(midi - currentMidi) - 12) <= 1;

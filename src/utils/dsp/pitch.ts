@@ -131,10 +131,6 @@ export function filterByClarity(
   );
 }
 
-// ============================================================
-// PITCH TRACKING
-// ============================================================
-
 export function trackPitchOverTime(
   samples: Float32Array,
   frameSizeMs: number,

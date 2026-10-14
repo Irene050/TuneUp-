@@ -1,5 +1,3 @@
-// src/utils/dsp/fft.ts
-
 export function computeFFTMagnitudes(
   frame: Float32Array
 ): Float32Array {
@@ -9,10 +7,6 @@ export function computeFFTMagnitudes(
   const imag = new Float32Array(n);
 
   real.set(frame);
-
-  // ============================================================
-  // BIT-REVERSAL PERMUTATION
-  // ============================================================
 
   for (
     let i = 1, j = 0;
@@ -39,10 +33,6 @@ export function computeFFTMagnitudes(
       ];
     }
   }
-
-  // ============================================================
-  // ITERATIVE COOLEY-TUKEY FFT
-  // ============================================================
 
   for (
     let len = 2;
@@ -142,10 +132,6 @@ export function computeFFTMagnitudes(
     }
   }
 
-  // ============================================================
-  // MAGNITUDES
-  // ============================================================
-
   const magnitudes =
     new Float32Array(
       n / 2
@@ -166,10 +152,6 @@ export function computeFFTMagnitudes(
   return magnitudes;
 }
 
-// ============================================================
-// PCM SAMPLES → FFT MAGNITUDE FRAMES
-// ============================================================
-
 export function samplesToFFTFrames(
   samples: Float32Array,
   fftSize = 1024,
@@ -183,10 +165,6 @@ export function samplesToFFTFrames(
     return [];
   }
 
-  /*
-   * The current FFT implementation requires
-   * the frame size to be a power of two.
-   */
   if (
     (fftSize &
       (fftSize - 1)) !==
@@ -206,10 +184,6 @@ export function samplesToFFTFrames(
       samples.length;
     start += hopSize
   ) {
-    /*
-     * Copy the raw audio into a separate frame.
-     * This keeps the original recording untouched.
-     */
     const frame =
       new Float32Array(
         fftSize
@@ -222,9 +196,6 @@ export function samplesToFFTFrames(
       )
     );
 
-    /*
-     * Hann window reduces spectral leakage.
-     */
     for (
       let i = 0;
       i < fftSize;
@@ -243,10 +214,6 @@ export function samplesToFFTFrames(
       frame[i] *= window;
     }
 
-    /*
-     * Convert the windowed audio frame
-     * into frequency magnitudes.
-     */
     frames.push(
       computeFFTMagnitudes(
         frame

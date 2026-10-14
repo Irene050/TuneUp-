@@ -107,13 +107,11 @@ export function detectPulses(
   let lastAcceptedIndex = -Infinity;
 
   const finishPulse = () => {
-    // Capture the current event before resetting detector state.
     const pulseStart = startIndex;
     const pulseAmplitude = strongestAmplitude;
     const validPulse =
       active && activeWindows >= minPulseWindows;
 
-    // Always reset, including when the event is too short.
     active = false;
     activeWindows = 0;
     belowThresholdWindows = 0;

@@ -43,14 +43,9 @@ export function calcVolumeConsistency(dbArray: number[]): number {
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
-
 export function checkBandCompliance(avgDb: number, targetBand: [number, number]): boolean {
   return avgDb >= targetBand[0] && avgDb <= targetBand[1];
 }
-
-/* =========================================================
-   SHARED VOLUME WINDOW ANALYSIS
-   ========================================================= */
 
 export interface VolumeWindowAnalysis {
   rmsArray: number[];
