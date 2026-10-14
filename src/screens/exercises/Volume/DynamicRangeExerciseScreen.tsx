@@ -3,65 +3,50 @@ import {
   type DynamicRangeParams,
   type Tier,
 } from '@/constants/exercises/volume';
-
 import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-
 import ExerciseScreen, {
   ExerciseListeningScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-
 import {
   generateDynamicRangeParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
-
 import {
   auth,
 } from '@/services/firebase/config';
-
 import {
   measureDynamicRange,
 } from '@/services/measurement/volume/dynamicRangeExercise';
-
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
-
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
 import {
   scoreDynamicRange,
 } from '@/services/scoring/volume/dynamicRangeExercise';
-
 import {
   playSingleNote,
 } from '@/utils/music/notePlayer';
-
 import {
   createMusicalNote,
 } from '@/utils/music/notes';
-
 import Ionicons from '@expo/vector-icons/Ionicons';
-
 import { router } from 'expo-router';
-
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
-
 import {
   ActivityIndicator,
   StyleSheet,
@@ -82,7 +67,6 @@ const DBFS_MIN = -60;
 const DBFS_MAX = -10;
 const PHASES_PER_REPETITION = 3;
 const WINDOW_MS = 50;
-const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
@@ -109,7 +93,6 @@ function referenceHeight(index: number): number {
   const distance = Math.abs(index - middle) / middle;
   return 0.18 + (1 - distance) * 0.72;
 }
-
 /* =========================================================
    DYNAMIC RANGE VISUALIZER
    ========================================================= */
@@ -151,7 +134,6 @@ function DynamicRangeVisualizer({
     </View>
   );
 }
-
 /* =========================================================
    MAIN SCREEN
    ========================================================= */
@@ -166,6 +148,9 @@ export default function DynamicRangeExercise({
     useState<DynamicRangeParams>(
       DYNAMIC_RANGE_PARAMS[initialTier],
     );
+  const [referenceNote, setReferenceNote] = useState(() =>
+    createMusicalNote(60),
+  );
   const [phase, setPhase] = useState<Phase>('directions');
   const [loadingParams, setLoadingParams] = useState(true);
   const [countdown, setCountdown] = useState(3);
@@ -188,11 +173,59 @@ export default function DynamicRangeExercise({
   const repetitions = Math.max(1, params.repetitions);
   const totalSeconds = rampSeconds * PHASES_PER_REPETITION;
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadReferenceNote() {
+      try {
+        const assessment = await getLatestAssessment();
+        const vocalRange = assessment?.vocalRange;
+        const lowHz = Number(
+          vocalRange?.lowHz ?? assessment?.vocalRangeLowHz,
+        );
+        const highHz = Number(
+          vocalRange?.highHz ?? assessment?.vocalRangeHighHz,
+        );
+
+        if (
+          !Number.isFinite(lowHz) ||
+          !Number.isFinite(highHz) ||
+          lowHz <= 0 ||
+          highHz <= lowHz
+        ) {
+          return;
+        }
+
+        const lowMidi = Math.round(69 + 12 * Math.log2(lowHz / 440));
+        const highMidi = Math.round(69 + 12 * Math.log2(highHz / 440));
+        const midpointHz = Math.sqrt(lowHz * highHz);
+        const midpointMidi = Math.round(
+          69 + 12 * Math.log2(midpointHz / 440),
+        );
+        const midiNote = Math.max(
+          lowMidi,
+          Math.min(highMidi, midpointMidi),
+        );
+
+        if (!cancelled) {
+          setReferenceNote(createMusicalNote(midiNote));
+        }
+      } catch (error) {
+        console.error('Unable to load assessed vocal range for Dynamic Range:', error);
+      }
+    }
+
+    void loadReferenceNote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       countdownRunIdRef.current += 1;
     };
   }, []);
-
   /* =======================================================
      ADAPTIVE DIFFICULTY SCALING
      ======================================================= */
@@ -284,21 +317,19 @@ export default function DynamicRangeExercise({
       cancelled = true;
     };
   }, [tier]);
-
   /* =======================================================
      REFERENCE NOTE
      ======================================================= */
   const playReferenceNote = useCallback(async () => {
     try {
       await playSingleNote(
-        REFERENCE_NOTE.frequency,
+        referenceNote.frequency,
         REFERENCE_NOTE_DURATION_SEC,
       );
     } catch (error) {
       console.error('Unable to play reference note:', error);
     }
-  }, []);
-
+  }, [referenceNote]);
   /* =======================================================
      AUDIO RECORDER
      ======================================================= */
@@ -385,7 +416,6 @@ export default function DynamicRangeExercise({
       }
     },
   });
-
   /* =======================================================
      EXERCISE TIMER
      ======================================================= */
@@ -434,7 +464,6 @@ export default function DynamicRangeExercise({
     totalSeconds,
     stopRecording,
   ]);
-
   /* =======================================================
      CURRENT INSTRUCTION
      ======================================================= */
@@ -449,7 +478,6 @@ export default function DynamicRangeExercise({
   }
   const secondsUntilChange =
     rampSeconds - (seconds % rampSeconds);
-
   /* =======================================================
      START / RETRY / CANCEL
      ======================================================= */
@@ -543,7 +571,6 @@ export default function DynamicRangeExercise({
       </View>
     );
   }
-
   /* =======================================================
      DIRECTIONS
      ======================================================= */
@@ -557,7 +584,7 @@ export default function DynamicRangeExercise({
         preparationSteps={[
           {
             icon: 'ear-outline',
-            text: `Listen to the reference note (${REFERENCE_NOTE.name}) before starting.`,
+            text: `Listen to the reference note (${referenceNote.name}) before starting.`,
           },
           {
             icon: 'volume-low-outline',
@@ -602,7 +629,7 @@ export default function DynamicRangeExercise({
                 REFERENCE NOTE
               </Text>
               <Text style={styles.referenceNote}>
-                {REFERENCE_NOTE.name}
+                {referenceNote.name}
               </Text>
             </View>
           </View>
@@ -671,13 +698,12 @@ export default function DynamicRangeExercise({
             Recording starts when the countdown ends.
           </Text>
           <Text style={styles.countdownHint}>
-            Prepare to sing {REFERENCE_NOTE.name}. Start softly, then follow the volume prompts.
+            Prepare to sing {referenceNote.name}. Start softly, then follow the volume prompts.
           </Text>
         </View>
       </View>
     );
   }
-
   /* =======================================================
      LIVE EXERCISE
      ======================================================= */
@@ -808,7 +834,7 @@ export default function DynamicRangeExercise({
         elapsed={seconds}
         targetDuration={totalSeconds}
         promptTitle={instructionTitle}
-        prompt={`${instructionPrompt} Sing ${REFERENCE_NOTE.name} throughout the pattern.`}
+        prompt={`${instructionPrompt} Sing ${referenceNote.name} throughout the pattern.`}
         liveContent={liveContent}
         progress={progress}
         onBack={() => {
@@ -817,7 +843,6 @@ export default function DynamicRangeExercise({
       />
     );
   }
-
   /* =======================================================
      RESULTS
      ======================================================= */
@@ -866,7 +891,6 @@ export default function DynamicRangeExercise({
     />
   );
 }
-
 /* =========================================================
    RESULT ROW
    ========================================================= */
@@ -885,7 +909,6 @@ function ResultRow({
     </View>
   );
 }
-
 /* =========================================================
    SCREEN-SPECIFIC STYLES
    ========================================================= */

@@ -45,19 +45,29 @@ import {
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
+
 const PINK = '#FCD6DD';
+
 const LIGHT = '#FFF8FA';
+
 const BORDER = '#F1DCE2';
+
 const ACCENT = '#D86C89';
+
 const MUTED = '#9A817D';
+
 const WHITE = '#FFFFFF';
 
 const WINDOW_MS = 50;
+
 const BAR_COUNT = 32;
+
 const DBFS_MIN = -60;
+
 const DBFS_MAX = -10;
 
 const REFERENCE_NOTE = createMusicalNote(60);
+
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 
 type ControlledCrescendoParams =
@@ -102,6 +112,7 @@ function targetHeight(index: number): number {
 
 function guideCrescendoHeight(index: number): number {
   const progress = index / (BAR_COUNT - 1);
+
   // Make the rise from soft to loud much easier to recognize.
   return 0.08 + Math.pow(progress, 0.75) * 0.92;
 }
@@ -117,7 +128,9 @@ function calculateLiveSmoothness(values: number[]): number {
   const meanDerivative =
     derivatives.reduce((sum, value) => sum + value, 0) /
     derivatives.length;
+
   // A crescendo should trend upward. A flat or decreasing
+
   // signal should not be treated as a smooth crescendo.
   if (
     !Number.isFinite(meanDerivative) ||
@@ -248,9 +261,11 @@ function ResultItem({ label, value }: ResultItemProps) {
 export default function ControlledCrescendoExercise({
   tier,
 }: ControlledCrescendoExerciseProps) {
+
   const [phase, setPhase] = useState<
     'directions' | 'exercise' | 'countdown' | 'results'
   >('directions');
+
   // Show the preparation screen while adaptive exercise parameters load.
   const [loadingParams, setLoadingParams] = useState(true);
   const [resolvedTier, setResolvedTier] = useState<Tier>(
@@ -260,6 +275,66 @@ export default function ControlledCrescendoExercise({
     useState<ControlledCrescendoParams>(
       CONTROLLED_CRESCENDO_PARAMS.beginner,
     );
+  const [referenceNote, setReferenceNote] = useState(() =>
+    createMusicalNote(60),
+  );
+  const [referenceNoteReady, setReferenceNoteReady] = useState(false);
+
+  // Use the latest assessment's detected vocal range for the reference note.
+
+  // Keep C4 as a fallback when no valid range is available.
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReferenceNote() {
+      try {
+        const assessment = await getLatestAssessment();
+        if (!assessment || cancelled) {
+          return;
+        }
+        const lowHz = Number(
+          assessment.vocalRange?.lowHz ?? assessment.vocalRangeLowHz ?? 0,
+        );
+        const highHz = Number(
+          assessment.vocalRange?.highHz ?? assessment.vocalRangeHighHz ?? 0,
+        );
+        if (
+          !Number.isFinite(lowHz) ||
+          !Number.isFinite(highHz) ||
+          lowHz <= 0 ||
+          highHz <= 0 ||
+          lowHz > highHz
+        ) {
+          return;
+        }
+        const midiForFrequency = (frequency: number) =>
+          69 + 12 * Math.log2(frequency / 440);
+        const lowestMidi = Math.ceil(midiForFrequency(lowHz));
+        const highestMidi = Math.floor(midiForFrequency(highHz));
+        const centerFrequency = Math.sqrt(lowHz * highHz);
+        let midiNote = Math.round(midiForFrequency(centerFrequency));
+        if (lowestMidi <= highestMidi) {
+          midiNote = clamp(midiNote, lowestMidi, highestMidi);
+        }
+        if (!cancelled) {
+          setReferenceNote(createMusicalNote(midiNote));
+        }
+      } catch (assessmentError) {
+        console.warn(
+          'Unable to load the vocal range for Controlled Crescendo reference note:',
+          assessmentError,
+        );
+      } finally {
+        if (!cancelled) {
+          setReferenceNoteReady(true);
+        }
+      }
+    }
+    void loadReferenceNote();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [rep, setRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
   const [countdown, setCountdown] = useState(3);
@@ -281,6 +356,7 @@ export default function ControlledCrescendoExercise({
   const phaseRef = useRef(phase);
   const interRepStopRef = useRef(false);
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
+
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
@@ -289,6 +365,7 @@ export default function ControlledCrescendoExercise({
   const rampSeconds = params.durationSec;
   const repetitions = params.repetitions;
   const smoothnessTarget = params.smoothnessThreshold;
+
   useEffect(() => {
     if (phase !== 'exercise') {
       setGuideElapsed(0);
@@ -310,6 +387,7 @@ export default function ControlledCrescendoExercise({
    * 3. Use the latest five matching exercise scores.
    * 4. Use the latest Volume assessment only as a cold-start fallback.
    */
+
   useEffect(() => {
     let cancelled = false;
     async function initializeAdaptiveParams() {
@@ -414,10 +492,11 @@ export default function ControlledCrescendoExercise({
       cancelled = true;
     };
   }, [tier]);
+
   const playReferenceNote = useCallback(async () => {
     try {
       await playSingleNote(
-        REFERENCE_NOTE.frequency,
+        referenceNote.frequency,
         REFERENCE_NOTE_DURATION_SEC,
       );
     } catch (playbackError) {
@@ -426,12 +505,14 @@ export default function ControlledCrescendoExercise({
         playbackError,
       );
     }
-  }, []);
+  }, [referenceNote]);
+
   useEffect(() => {
-    if (phase === 'directions' && !loadingParams) {
+    if (phase === 'directions' && !loadingParams && referenceNoteReady) {
       void playReferenceNote();
     }
-  }, [phase, playReferenceNote, loadingParams]);
+  }, [phase, playReferenceNote, loadingParams, referenceNoteReady]);
+
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setRep(1);
@@ -568,7 +649,9 @@ export default function ControlledCrescendoExercise({
       }
     },
   });
+
   // The visible guide and timer run only during an active repetition.
+
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
@@ -580,8 +663,11 @@ export default function ControlledCrescendoExercise({
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, rampSeconds]);
+
   // Stop between repetitions, collect that segment, then show a 3-second
+
   // preparation countdown. The recording pause is excluded from scoring.
+
   useEffect(() => {
     if (phase !== 'exercise' || seconds < rampSeconds) {
       return;
@@ -641,7 +727,9 @@ export default function ControlledCrescendoExercise({
       });
     }
   }, [phase, seconds, rep, rampSeconds, repetitions, stopRecording]);
+
   // Countdown runs only after the previous recording segment has fully stopped.
+
   useEffect(() => {
     if (phase !== 'countdown' || !countdownReady) {
       return;
@@ -675,6 +763,7 @@ export default function ControlledCrescendoExercise({
     }, 1000);
     return () => clearTimeout(timeout);
   }, [phase, countdown, countdownReady, startRecording]);
+
   const startExercise = useCallback(async () => {
     setErrorMessage(undefined);
     setRep(1);
@@ -713,6 +802,7 @@ export default function ControlledCrescendoExercise({
       setPhase('directions');
     }
   }, [repetitions, startRecording]);
+
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
@@ -735,6 +825,7 @@ export default function ControlledCrescendoExercise({
       setPhase('directions');
     }
   }, [clearLiveState, isRecording, stopRecording]);
+
   const handleBackFromExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
@@ -756,6 +847,7 @@ export default function ControlledCrescendoExercise({
       router.back();
     }
   }, [isRecording, stopRecording]);
+
   const tryAgain = useCallback(() => {
     void startExercise();
   }, [startExercise]);
@@ -806,18 +898,14 @@ export default function ControlledCrescendoExercise({
         icon="volume-high-outline"
         tier={resolvedTier}
         instructions={`1. Begin with a soft voice.
-
           2. Gradually increase your volume.
-
           3. Keep the increase smooth and even.
-
           4. Reach the target volume.
-
           5. Repeat the exercise ${repetitions} times.`}
         summary={[
           {
             label: 'Reference note',
-            value: REFERENCE_NOTE.name,
+            value: referenceNote.name,
           },
           {
             label: 'Target range',
@@ -851,7 +939,7 @@ export default function ControlledCrescendoExercise({
                 BEFORE YOU BEGIN
               </Text>
               <Text style={styles.referenceNote}>
-                {REFERENCE_NOTE.name}
+                {referenceNote.name}
               </Text>
             </View>
             <TouchableOpacity
@@ -956,7 +1044,7 @@ export default function ControlledCrescendoExercise({
                 color={BROWN}
               />
               <Text style={styles.exerciseReferenceText}>
-                Sing {REFERENCE_NOTE.name} while following the crescendo.
+                Sing {referenceNote.name} while following the crescendo.
               </Text>
               <TouchableOpacity
                 style={styles.exerciseReplayButton}

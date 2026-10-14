@@ -36,6 +36,7 @@ import {
   Text,
   View,
 } from 'react-native';
+
 /* =========================================================
    CONSTANTS
    ========================================================= */
@@ -48,7 +49,6 @@ const ACCENT = '#D86C89';
 const MUTED = '#8E7770';
 const WHITE = '#FFFFFF';
 const SOFT_TEXT = '#765D63';
-const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const PREPARATION_COUNTDOWN_SECONDS = 3;
 const HISTORY_LIMIT = 60;
@@ -66,6 +66,7 @@ const MIN_LIVE_INPUT_DBFS = -60;
 const LIVE_LEVEL_OFFSET = 70;
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 type VoiceStatus = 'low' | 'inside' | 'high' | 'none';
+
 /* =========================================================
    HELPERS
    ========================================================= */
@@ -179,6 +180,7 @@ function hasSufficientRecordedSignal(samples: Float32Array): boolean {
   const activeRatio = activeSamples / samples.length;
   return rms >= 0.002 && peak >= 0.01 && activeRatio >= 0.01;
 }
+
 /* =========================================================
    TARGET BAND METER
    ========================================================= */
@@ -241,6 +243,7 @@ function TargetBandMeter({
     </View>
   );
 }
+
 /* =========================================================
    LIVE VOICE HISTORY
    ========================================================= */
@@ -346,6 +349,7 @@ function ReferenceNoteButton({
     </Pressable>
   );
 }
+
 /* =========================================================
    MAIN SCREEN
    ========================================================= */
@@ -371,6 +375,8 @@ export default function VolumeBandTargeting({
     PREPARATION_COUNTDOWN_SECONDS,
   );
   const [referencePlaying, setReferencePlaying] = useState(false);
+  const [referenceNote, setReferenceNote] = useState(() => createMusicalNote(60));
+  const [referenceNoteReady, setReferenceNoteReady] = useState(false);
   const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [score, setScore] = useState(0);
@@ -488,6 +494,53 @@ export default function VolumeBandTargeting({
   /* ---------------------------------------------------------
      REFERENCE NOTE
      --------------------------------------------------------- */
+  useEffect(() => {
+    let active = true;
+    const loadReferenceNote = async () => {
+      try {
+        const assessment = await getLatestAssessment();
+        const vocalRange = assessment?.vocalRange;
+        const lowHz = Number(
+          vocalRange?.lowHz ?? assessment?.vocalRangeLowHz,
+        );
+        const highHz = Number(
+          vocalRange?.highHz ?? assessment?.vocalRangeHighHz,
+        );
+        if (
+          Number.isFinite(lowHz) &&
+          Number.isFinite(highHz) &&
+          lowHz > 0 &&
+          highHz > lowHz
+        ) {
+          const lowMidi = Math.ceil(69 + 12 * Math.log2(lowHz / 440));
+          const highMidi = Math.floor(69 + 12 * Math.log2(highHz / 440));
+          if (lowMidi <= highMidi) {
+            const midpointHz = Math.sqrt(lowHz * highHz);
+            const midpointMidi = Math.round(
+              69 + 12 * Math.log2(midpointHz / 440),
+            );
+            const selectedMidi = clamp(midpointMidi, lowMidi, highMidi);
+            if (active) {
+              setReferenceNote(createMusicalNote(selectedMidi));
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          'Unable to load assessed vocal range for reference note:',
+          error,
+        );
+      } finally {
+        if (active) {
+          setReferenceNoteReady(true);
+        }
+      }
+    };
+    void loadReferenceNote();
+    return () => {
+      active = false;
+    };
+  }, []);
   const playReferenceNote = async (): Promise<boolean> => {
     if (referencePlaying) {
       return false;
@@ -495,7 +548,7 @@ export default function VolumeBandTargeting({
     try {
       setReferencePlaying(true);
       await playSingleNote(
-        REFERENCE_NOTE.frequency,
+        referenceNote.frequency,
         REFERENCE_NOTE_DURATION_SEC,
       );
       return true;
@@ -824,8 +877,7 @@ export default function VolumeBandTargeting({
   /* =========================================================
      PREPARING YOUR EXERCISE
      ========================================================= */
-
-  if (!parametersReady) {
+  if (!parametersReady || !referenceNoteReady) {
     return (
       <SafeAreaView style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
@@ -843,14 +895,12 @@ export default function VolumeBandTargeting({
       </SafeAreaView>
     );
   }
-
   /* =========================================================
      DIRECTIONS
      ========================================================= */
   if (phase === 'directions') {
     const startDisabled =
       !parametersReady || referencePlaying || isRecording;
-
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.directionHeader}>
@@ -867,14 +917,11 @@ export default function VolumeBandTargeting({
               color={BROWN}
             />
           </Pressable>
-
           <Text style={styles.directionHeaderText}>
             VOLUME CONTROL
           </Text>
-
           <View style={styles.backButtonPlaceholder} />
         </View>
-
         <ScrollView
           style={styles.directionsScroll}
           contentContainerStyle={styles.directionsScrollContent}
@@ -889,38 +936,33 @@ export default function VolumeBandTargeting({
                 color={BROWN}
               />
             </View>
-
             <Text style={styles.directionTitle}>
               Volume Band Targeting
             </Text>
-
             <Text style={styles.directionSubtitle}>
               Practice keeping your voice within a target volume
               range while singing a reference note.
             </Text>
-
             <View style={styles.tierPill}>
               <Text style={styles.tierPillText}>
                 {resolvedTier.toUpperCase()} LEVEL
               </Text>
             </View>
           </View>
-
           <View style={styles.directionCard}>
             <Text style={styles.directionCardTitle}>
               How to do the exercise
             </Text>
-
             {[
               {
                 icon: 'musical-note-outline' as const,
                 title: 'Listen to the reference note',
-                description: `Play ${REFERENCE_NOTE.name} using the button below.`,
+                description: `Play ${referenceNote.name} using the button below.`,
               },
               {
                 icon: 'mic-outline' as const,
                 title: 'Sing on “Ah”',
-                description: `Match the ${REFERENCE_NOTE.name} note comfortably.`,
+                description: `Match the ${referenceNote.name} note comfortably.`,
               },
               {
                 icon: 'options-outline' as const,
@@ -944,12 +986,10 @@ export default function VolumeBandTargeting({
                     color={ACCENT}
                   />
                 </View>
-
                 <View style={styles.directionStepContent}>
                   <Text style={styles.directionStepTitle}>
                     {index + 1}. {step.title}
                   </Text>
-
                   <Text style={styles.directionStepText}>
                     {step.description}
                   </Text>
@@ -957,19 +997,16 @@ export default function VolumeBandTargeting({
               </View>
             ))}
           </View>
-
           <View style={styles.referenceCard}>
             <View style={styles.referenceTopRow}>
               <View>
                 <Text style={styles.eyebrow}>
                   REFERENCE NOTE
                 </Text>
-
                 <Text style={styles.referenceNote}>
-                  {REFERENCE_NOTE.name}
+                  {referenceNote.name}
                 </Text>
               </View>
-
               <View style={styles.referenceIconCircle}>
                 <Ionicons
                   name="musical-note"
@@ -978,24 +1015,20 @@ export default function VolumeBandTargeting({
                 />
               </View>
             </View>
-
             <Text style={styles.referenceInstruction}>
               Play the note when needed, then sing it on “Ah” while
               controlling your volume.
             </Text>
-
             <ReferenceNoteButton
               playing={referencePlaying}
-              label={`Play ${REFERENCE_NOTE.name}`}
+              label={`Play ${referenceNote.name}`}
               onPress={() => void playReferenceNote()}
             />
           </View>
-
           <TargetBandMeter
             liveDb={0}
             targetRange={params.targetDbRange}
           />
-
           <View style={styles.directionSummary}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>
@@ -1005,9 +1038,7 @@ export default function VolumeBandTargeting({
                 Per repetition
               </Text>
             </View>
-
             <View style={styles.summaryDivider} />
-
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>
                 {params.repetitions}
@@ -1016,9 +1047,7 @@ export default function VolumeBandTargeting({
                 Repetitions
               </Text>
             </View>
-
             <View style={styles.summaryDivider} />
-
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>
                 {params.consistencyThreshold}%
@@ -1028,18 +1057,15 @@ export default function VolumeBandTargeting({
               </Text>
             </View>
           </View>
-
           <Text style={styles.directionTip}>
             Tip: Don't chase the number. Find a comfortable
             loudness first, then make small adjustments to stay
             inside the band.
           </Text>
-
           <Text style={styles.directionDisclaimer}>
             The displayed volume is a relative microphone-level
             indicator. It is not calibrated acoustic dB SPL.
           </Text>
-
           {recordingNotice && (
             <View style={styles.directionError}>
               <Ionicons
@@ -1053,7 +1079,6 @@ export default function VolumeBandTargeting({
             </View>
           )}
         </ScrollView>
-
         <View style={styles.directionFooter}>
           <Pressable
             style={({ pressed }) => [
@@ -1090,7 +1115,6 @@ export default function VolumeBandTargeting({
                 color={WHITE}
               />
             )}
-
             <Text style={styles.startExerciseText}>
               {startDisabled
                 ? referencePlaying
@@ -1112,7 +1136,7 @@ export default function VolumeBandTargeting({
         icon="musical-note-outline"
         title="Get Ready"
         countdown={countdown}
-        promptTitle={`Prepare to sing ${REFERENCE_NOTE.name}.`}
+        promptTitle={`Prepare to sing ${referenceNote.name}.`}
         prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume inside the ${targetRangeText} target band for ${exerciseDurationSec} seconds per repetition.`}
         onBack={cancelAndLeave}
       />
@@ -1132,14 +1156,14 @@ export default function VolumeBandTargeting({
           elapsed={Math.floor(currentRepElapsed / 1000)}
           targetDuration={exerciseDurationSec}
           promptTitle="Hold the zone"
-          prompt={`Sing ${REFERENCE_NOTE.name} on “Ah.” Move your volume into the ${targetRangeText} target band and keep it steady.`}
+          prompt={`Sing ${referenceNote.name} on “Ah.” Move your volume into the ${targetRangeText} target band and keep it steady.`}
           progress={progress * 100}
           onBack={cancelAndLeave}
           liveContent={
             <View style={styles.liveContent}>
               <ReferenceNoteButton
                 playing={referencePlaying}
-                label={`Replay ${REFERENCE_NOTE.name}`}
+                label={`Replay ${referenceNote.name}`}
                 onPress={() => void playReferenceNote()}
               />
               <View
@@ -1205,7 +1229,7 @@ export default function VolumeBandTargeting({
         title="Volume Band Results"
         subtitle={
           noVoiceDetected
-            ? `No usable singing signal was detected. No score was calculated or saved. Sing ${REFERENCE_NOTE.name} on “Ah” near the microphone, then try again.`
+            ? `No usable singing signal was detected. No score was calculated or saved. Sing ${referenceNote.name} on “Ah” near the microphone, then try again.`
             : passed
               ? 'Nice control. You stayed inside the target band consistently.'
               : targetReached
@@ -1309,6 +1333,7 @@ export default function VolumeBandTargeting({
     </SafeAreaView>
   );
 }
+
 /* =========================================================
    STYLES
    ========================================================= */
