@@ -1,6 +1,6 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-
 import {
   useCallback,
   useEffect,
@@ -758,14 +758,16 @@ export default function VolumeControlStabilityScreen({
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="pulse-outline"
-        title="Get Ready"
-        countdown={countdown}
-        promptTitle={`Prepare to sing ${NOTE}.`}
-        prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume steady for ${durationSeconds} seconds per repetition.`}
-        onBack={cancelAndLeave}
-      />
+      <SafeAreaView style={styles.safeArea}>
+        <ExerciseCountdownScreen
+          icon="pulse-outline"
+          title="Get Ready"
+          countdown={countdown}
+          promptTitle={`Prepare to sing ${NOTE}.`}
+          prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume steady for ${durationSeconds} seconds per repetition.`}
+          onBack={cancelAndLeave}
+        />
+      </SafeAreaView>
     );
   }
 
@@ -836,7 +838,7 @@ export default function VolumeControlStabilityScreen({
               >
                 <Ionicons
                   name={referencePlaying ? 'volume-high' : 'play'}
-                  size={17}
+                  size={16}
                   color={COLORS.ACCENT}
                 />
 
@@ -848,12 +850,13 @@ export default function VolumeControlStabilityScreen({
               </Pressable>
 
               {/* LIVE VOLUME */}
+
               <View style={styles.liveCard}>
                 <View style={styles.liveCardHeader}>
                   <View style={styles.liveIconCircle}>
                     <Ionicons
                       name="volume-medium-outline"
-                      size={19}
+                      size={18}
                       color={COLORS.ACCENT}
                     />
                   </View>
@@ -906,12 +909,13 @@ export default function VolumeControlStabilityScreen({
                 </View>
 
                 <Text style={styles.helperText}>
-                  This is a relative level for feedback, not a
-                  calibrated sound-pressure measurement.
+                  Relative level for feedback, not a calibrated
+                  sound-pressure measurement.
                 </Text>
               </View>
 
               {/* VOLUME STABILITY */}
+
               <View style={styles.liveCard}>
                 <View style={styles.rowBetween}>
                   <View style={styles.stabilityHeading}>
@@ -952,7 +956,7 @@ export default function VolumeControlStabilityScreen({
                   />
                 </View>
 
-                <View style={styles.rowBetween}>
+                <View style={styles.scaleRow}>
                   <Text style={styles.scaleText}>
                     Less steady
                   </Text>
@@ -969,7 +973,7 @@ export default function VolumeControlStabilityScreen({
                 <View style={styles.tipInline}>
                   <Ionicons
                     name="bulb-outline"
-                    size={16}
+                    size={15}
                     color={COLORS.ACCENT}
                   />
 
@@ -981,12 +985,13 @@ export default function VolumeControlStabilityScreen({
               </View>
 
               {/* DETECTED NOTE */}
+
               <View style={styles.liveCard}>
                 <View style={styles.liveCardHeader}>
                   <View style={styles.liveIconCircle}>
                     <Ionicons
                       name="musical-note-outline"
-                      size={19}
+                      size={18}
                       color={COLORS.ACCENT}
                     />
                   </View>
@@ -1050,8 +1055,8 @@ export default function VolumeControlStabilityScreen({
 
                 <Text style={styles.mutedSmall}>
                   Try to sing close to {NOTE}. Pitch feedback
-                  helps you identify the note, while this
-                  exercise focuses on volume consistency.
+                  helps identify the note, while this exercise
+                  focuses on volume consistency.
                 </Text>
               </View>
             </View>
@@ -1158,7 +1163,7 @@ export default function VolumeControlStabilityScreen({
             ))}
           </View>
         }
-        onRetry={startExercise}
+        onRetry={resetExercise}
         onExit={() => router.back()}
       >
         {resultPassed && (
@@ -1217,17 +1222,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 30,
+    paddingHorizontal: 24,
     backgroundColor: COLORS.LIGHT_PINK,
   },
 
   preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 22,
+    marginBottom: 16,
     backgroundColor: COLORS.PINK,
   },
 
@@ -1249,7 +1254,7 @@ const styles = StyleSheet.create({
   },
 
   preparingSpinner: {
-    marginTop: 24,
+    marginTop: 20,
   },
 
   /* SHARED */
@@ -1259,21 +1264,21 @@ const styles = StyleSheet.create({
   },
 
   liveContent: {
-    gap: 12,
+    gap: 9,
   },
 
   rowBetween: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
   },
 
   /* REFERENCE NOTE */
 
   referenceCard: {
-    padding: 16,
-    borderRadius: 18,
+    padding: 13,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
@@ -1283,7 +1288,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
 
   referenceCopy: {
@@ -1301,36 +1306,36 @@ const styles = StyleSheet.create({
     marginTop: 2,
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',
-    fontSize: 30,
+    fontSize: 28,
   },
 
   noteIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.LIGHT_PINK,
   },
 
   referenceInstruction: {
-    marginTop: 8,
+    marginTop: 7,
     color: COLORS.SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
   },
 
   referenceButton: {
-    minHeight: 47,
-    marginTop: 13,
-    paddingHorizontal: 14,
-    borderRadius: 14,
+    minHeight: 43,
+    marginTop: 11,
+    paddingHorizontal: 12,
+    borderRadius: 13,
     backgroundColor: COLORS.ACCENT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 7,
   },
 
   referenceButtonText: {
@@ -1340,7 +1345,7 @@ const styles = StyleSheet.create({
   },
 
   referenceReadyRow: {
-    marginTop: 11,
+    marginTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -1351,14 +1356,14 @@ const styles = StyleSheet.create({
     color: COLORS.SUCCESS,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    lineHeight: 16,
+    lineHeight: 15,
   },
 
   /* INFORMATION CARD */
 
   infoCard: {
-    padding: 15,
-    borderRadius: 18,
+    padding: 13,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.LIGHT_PINK,
@@ -1367,13 +1372,13 @@ const styles = StyleSheet.create({
   infoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
   },
 
   infoIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.WHITE,
@@ -1388,16 +1393,16 @@ const styles = StyleSheet.create({
   /* LIVE EXERCISE */
 
   replayButton: {
-    minHeight: 43,
-    paddingHorizontal: 14,
-    borderRadius: 14,
+    minHeight: 39,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 7,
   },
 
   replayButtonText: {
@@ -1407,8 +1412,8 @@ const styles = StyleSheet.create({
   },
 
   liveCard: {
-    padding: 15,
-    borderRadius: 19,
+    padding: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
@@ -1417,13 +1422,13 @@ const styles = StyleSheet.create({
   liveCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 9,
   },
 
   liveIconCircle: {
-    width: 39,
-    height: 39,
-    borderRadius: 13,
+    width: 34,
+    height: 34,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.LIGHT_PINK,
@@ -1431,51 +1436,52 @@ const styles = StyleSheet.create({
 
   liveCardHeading: {
     flex: 1,
+    minWidth: 0,
   },
 
   cardTitle: {
     color: COLORS.BROWN,
     fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
+    fontSize: 13,
   },
 
   mutedSmall: {
-    marginTop: 4,
+    marginTop: 3,
     color: COLORS.MUTED,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 14,
   },
 
   liveVolumeRow: {
-    marginTop: 12,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 7,
+    gap: 6,
   },
 
   liveVolume: {
     color: COLORS.BROWN,
     fontFamily: 'FredokaBold',
-    fontSize: 35,
+    fontSize: 30,
   },
 
   liveUnit: {
     color: COLORS.MUTED,
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
+    fontSize: 11,
   },
 
   statusBadge: {
     alignSelf: 'flex-start',
-    minHeight: 29,
-    marginTop: 9,
-    paddingHorizontal: 10,
-    borderRadius: 15,
+    minHeight: 25,
+    marginTop: 7,
+    paddingHorizontal: 9,
+    borderRadius: 13,
     backgroundColor: COLORS.LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
   },
 
   statusDot: {
@@ -1489,7 +1495,7 @@ const styles = StyleSheet.create({
     color: COLORS.SOFT_TEXT,
     fontFamily: 'FredokaBold',
     fontSize: 9,
-    letterSpacing: 0.35,
+    letterSpacing: 0.25,
   },
 
   statusTextSuccess: {
@@ -1497,29 +1503,30 @@ const styles = StyleSheet.create({
   },
 
   helperText: {
-    marginTop: 10,
+    marginTop: 7,
     color: COLORS.MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    lineHeight: 15,
+    lineHeight: 14,
   },
 
   /* STABILITY METER */
 
   stabilityHeading: {
     flex: 1,
+    minWidth: 0,
   },
 
   stabilityValue: {
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',
-    fontSize: 25,
+    fontSize: 23,
   },
 
   stabilityTrack: {
-    height: 12,
-    marginTop: 15,
-    borderRadius: 8,
+    height: 9,
+    marginTop: 11,
+    borderRadius: 6,
     backgroundColor: COLORS.LIGHT_PINK,
     overflow: 'hidden',
     position: 'relative',
@@ -1527,16 +1534,24 @@ const styles = StyleSheet.create({
 
   stabilityFill: {
     height: '100%',
-    borderRadius: 8,
+    borderRadius: 6,
     backgroundColor: COLORS.ACCENT,
   },
 
   stabilityTargetMarker: {
     position: 'absolute',
-    top: -2,
-    bottom: -2,
+    top: 0,
+    bottom: 0,
     width: 2,
     backgroundColor: COLORS.BROWN,
+  },
+
+  scaleRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
   },
 
   scaleText: {
@@ -1546,33 +1561,34 @@ const styles = StyleSheet.create({
   },
 
   tipInline: {
-    marginTop: 14,
-    padding: 11,
-    borderRadius: 13,
+    marginTop: 10,
+    padding: 9,
+    borderRadius: 11,
     backgroundColor: COLORS.LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 7,
   },
 
   tipInlineText: {
     flex: 1,
     color: COLORS.SOFT_TEXT,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 15,
   },
 
   /* DETECTED NOTE */
 
   noteStatusBadge: {
-    minHeight: 25,
-    paddingHorizontal: 8,
-    borderRadius: 13,
+    flexShrink: 0,
+    minHeight: 23,
+    paddingHorizontal: 7,
+    borderRadius: 12,
     backgroundColor: '#F5F2F2',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
   },
 
   noteStatusBadgeActive: {
@@ -1583,13 +1599,13 @@ const styles = StyleSheet.create({
     color: COLORS.MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 8,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 
   detectedNotePanel: {
-    marginTop: 13,
-    paddingVertical: 12,
-    borderRadius: 16,
+    marginTop: 10,
+    paddingVertical: 9,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.LIGHT_PINK,
@@ -1599,8 +1615,8 @@ const styles = StyleSheet.create({
   detectedNote: {
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',
-    fontSize: 38,
-    lineHeight: 44,
+    fontSize: 34,
+    lineHeight: 40,
   },
 
   detectedNoteWaiting: {
@@ -1611,7 +1627,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
     color: COLORS.MUTED,
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 10,
+    textAlign: 'center',
   },
 
   /* RESULTS */
@@ -1619,22 +1636,23 @@ const styles = StyleSheet.create({
   resultCard: {
     width: '100%',
     marginTop: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 4,
-    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
   },
 
   resultRow: {
-    minHeight: 43,
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#F4E9EC',
-    gap: 12,
+    gap: 10,
+    paddingVertical: 5,
   },
 
   lastResultRow: {
@@ -1657,9 +1675,9 @@ const styles = StyleSheet.create({
   },
 
   nextButton: {
-    minHeight: 46,
-    marginTop: 12,
-    borderRadius: 15,
+    minHeight: 44,
+    marginTop: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.LIGHT_PINK,
