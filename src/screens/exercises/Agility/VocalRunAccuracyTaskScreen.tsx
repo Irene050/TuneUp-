@@ -1942,7 +1942,7 @@ const startCountdown = useCallback(async () => {
                 style={[
                   styles.liveNote,
                   activeTargetNoteIndex === index &&
-                    styles.referenceNotePlaying,
+                    styles.liveNotePlaying,
                 ]}
               >
                 <Text
@@ -2880,6 +2880,12 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     backgroundColor: PINK,
     alignItems: 'center',
+  },
+
+  liveNotePlaying: {
+    backgroundColor: '#E85D83',
+    borderWidth: 2,
+    borderColor: '#C93E68',
   },
 
   liveNoteNumber: {
