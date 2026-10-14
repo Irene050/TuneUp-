@@ -87,6 +87,11 @@ interface VolumeVisualizerProps {
   liveHistory: number[];
 }
 
+interface TargetDecrescendoGuideProps {
+  seconds: number;
+  durationSeconds: number;
+}
+
 function clamp(
   value: number,
   min: number,
@@ -107,11 +112,103 @@ function normalizeVolume(value: number): number {
   );
 }
 
+/**
+ * The target always moves from tall bars to short bars.
+ * Tall bars represent louder volume; short bars represent softer volume.
+ */
 function targetHeight(index: number): number {
   const progress = index / (BAR_COUNT - 1);
-
-  // A decrescendo starts loud and gradually becomes softer.
   return 0.83 - progress * 0.65;
+}
+
+/**
+ * Displays the target decrescendo pattern and highlights the
+ * current position based on the elapsed time of the repetition.
+ */
+function TargetDecrescendoGuide({
+  seconds,
+  durationSeconds,
+}: TargetDecrescendoGuideProps) {
+  const progress = clamp(
+    durationSeconds > 0 ? seconds / durationSeconds : 0,
+    0,
+    1,
+  );
+
+  const activeIndex = Math.min(
+    BAR_COUNT - 1,
+    Math.floor(progress * BAR_COUNT),
+  );
+
+  const indicatorLeft: `${number}%` = `${progress * 100}%`;
+
+  return (
+    <View style={styles.guideCard}>
+      <View style={styles.guideHeader}>
+        <View style={styles.guideHeaderText}>
+          <Text style={styles.guideTitle}>
+            Follow the target
+          </Text>
+          <Text style={styles.guideSubtitle}>
+            Gradually lower your volume from loud to soft
+          </Text>
+        </View>
+
+        <View style={styles.guideIcon}>
+          <Ionicons
+            name="trending-down"
+            size={18}
+            color={BROWN}
+          />
+        </View>
+      </View>
+
+      <View style={styles.guideVisualizer}>
+        {Array.from({ length: BAR_COUNT }, (_, index) => {
+          const isActive = index === activeIndex;
+          const hasPassed = index < activeIndex;
+
+          return (
+            <View
+              key={`target-guide-${index}`}
+              style={[
+                styles.guideBar,
+                {
+                  height: `${targetHeight(index) * 100}%`,
+                  backgroundColor: isActive
+                    ? ACCENT
+                    : hasPassed
+                      ? '#EAA5B6'
+                      : '#F5DDE4',
+                },
+              ]}
+            />
+          );
+        })}
+
+        <View
+          style={[
+            styles.guideIndicator,
+            { left: indicatorLeft },
+          ]}
+        />
+      </View>
+
+      <View style={styles.guideLabels}>
+        <Text style={styles.guideLabel}>LOUD</Text>
+        <Text style={styles.guideLabel}>SOFT</Text>
+      </View>
+
+      <View style={styles.guideProgressTrack}>
+        <View
+          style={[
+            styles.guideProgressFill,
+            { width: `${progress * 100}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
 }
 
 function calculateLiveSmoothness(values: number[]): number {
@@ -129,8 +226,7 @@ function calculateLiveSmoothness(values: number[]): number {
     derivatives.reduce((sum, value) => sum + value, 0) /
     derivatives.length;
 
-  // A decrescendo should trend downward. A flat or increasing
-  // signal should not be treated as a smooth decrescendo.
+  // A decrescendo should trend downward.
   if (
     !Number.isFinite(meanDerivative) ||
     meanDerivative >= 0
@@ -221,6 +317,7 @@ export default function ControlledDecrescendoDrill({
 
   const [rep, setRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
+  const [guideElapsed, setGuideElapsed] = useState(0);
 
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
@@ -402,9 +499,35 @@ export default function ControlledDecrescendoDrill({
     }
   }, [phase, playReferenceNote]);
 
+  /*
+   * Animate the target guide separately from the audio analysis.
+   * It resets for each repetition and moves from LOUD to SOFT.
+   */
+  useEffect(() => {
+    if (phase !== 'exercise') {
+      setGuideElapsed(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setGuideElapsed(0);
+
+    const interval = setInterval(() => {
+      setGuideElapsed(
+        Math.min(
+          (Date.now() - startedAt) / 1000,
+          rampSeconds,
+        ),
+      );
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [phase, rep, rampSeconds]);
+
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setRep(1);
+    setGuideElapsed(0);
     setLiveFrame(null);
     setLiveHistory([]);
   }, []);
@@ -579,6 +702,7 @@ export default function ControlledDecrescendoDrill({
     setErrorMessage(undefined);
     setRep(1);
     setSeconds(0);
+    setGuideElapsed(0);
     setSmoothness(0);
     setRepResults(Array(repetitions).fill(0));
     setRangeReached(false);
@@ -838,6 +962,11 @@ export default function ControlledDecrescendoDrill({
               </TouchableOpacity>
             </View>
 
+            <TargetDecrescendoGuide
+              seconds={guideElapsed}
+              durationSeconds={rampSeconds}
+            />
+
             <View style={styles.visualizerCard}>
               <View style={styles.visualizerHeader}>
                 <View>
@@ -846,7 +975,7 @@ export default function ControlledDecrescendoDrill({
                   </Text>
 
                   <Text style={styles.visualizerSubtitle}>
-                    Match the target decrescendo
+                    Compare your voice with the target above
                   </Text>
                 </View>
 
@@ -870,11 +999,11 @@ export default function ControlledDecrescendoDrill({
 
               <View style={styles.visualizerLabels}>
                 <Text style={styles.visualizerLabel}>
-                  LOUD
+                  LIVE AUDIO
                 </Text>
 
                 <Text style={styles.visualizerLabel}>
-                  SOFT
+                  RECENT VOLUME
                 </Text>
               </View>
             </View>
@@ -1171,8 +1300,10 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
+
   liveContent: {
     width: '100%',
+    gap: 8,
   },
   exerciseReference: {
     minHeight: 39,
@@ -1181,7 +1312,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
   exerciseReferenceText: {
     flex: 1,
@@ -1205,6 +1335,92 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 4,
   },
+
+  guideCard: {
+    width: '100%',
+    backgroundColor: LIGHT,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 12,
+  },
+  guideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  guideHeaderText: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  guideTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
+  },
+  guideSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    lineHeight: 14,
+    color: MUTED,
+    marginTop: 2,
+  },
+  guideIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideVisualizer: {
+    height: 55,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    marginTop: 8,
+    position: 'relative',
+  },
+  guideBar: {
+    flex: 1,
+    maxWidth: 7,
+    borderRadius: 4,
+    marginHorizontal: 1,
+  },
+  guideIndicator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    marginLeft: -1,
+    backgroundColor: BROWN,
+    opacity: 0.8,
+  },
+  guideLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 3,
+  },
+  guideLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 8,
+    letterSpacing: 0.5,
+    color: MUTED,
+  },
+  guideProgressTrack: {
+    height: 4,
+    borderRadius: 3,
+    backgroundColor: '#F3E3E8',
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  guideProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: ACCENT,
+  },
+
   visualizerCard: {
     width: '100%',
     minHeight: 185,
@@ -1213,7 +1429,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     padding: 13,
-    marginBottom: 8,
   },
   visualizerHeader: {
     flexDirection: 'row',
@@ -1300,7 +1515,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
   },
   voiceLeft: {
     flexDirection: 'row',
@@ -1345,7 +1559,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
   },
   targetLabel: {
     fontFamily: 'FredokaSemiBold',
@@ -1371,7 +1584,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
   sessionPart: {
     flex: 1,
