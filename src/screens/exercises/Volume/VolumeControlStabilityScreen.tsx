@@ -1334,7 +1334,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-
   referenceReadyText: {
     flex: 1,
     color: COLORS.SUCCESS,

@@ -156,6 +156,7 @@ export function measureControlledDecrescendo(
     effectiveValues.length > 0 ? Math.min(...effectiveValues) : 0;
   const maxDb =
     effectiveValues.length > 0 ? Math.max(...effectiveValues) : 0;
+
   const targetStart = targetRange[0];
   const targetEnd = targetRange[1];
   const repetitionResults = Array.from({ length: repetitions }, (_, repIndex) => {

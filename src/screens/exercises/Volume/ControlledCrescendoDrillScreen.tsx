@@ -2,34 +2,43 @@ import {
   CONTROLLED_CRESCENDO_PARAMS,
   type Tier,
 } from '@/constants/exercises/volume';
+
 import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
 import ExerciseScreen, {
   ExerciseListeningScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
+
 import {
   generateControlledCrescendoParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
+
 import { auth } from '@/services/firebase/config';
 import {
   measureControlledCrescendo,
 } from '@/services/measurement/volume/controlledCrescendoDrill';
+
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
+
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
+
 import {
   scoreControlledCrescendo,
 } from '@/services/scoring/volume/controlledCrescendoDrill';
+
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,45 +52,28 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
 const BROWN = '#4E2F1F';
-
 const PINK = '#FCD6DD';
-
 const LIGHT = '#FFF8FA';
-
 const BORDER = '#F1DCE2';
-
 const ACCENT = '#D86C89';
-
 const MUTED = '#9A817D';
-
 const WHITE = '#FFFFFF';
-
 const WINDOW_MS = 50;
-
 const BAR_COUNT = 32;
-
 const DBFS_MIN = -60;
-
 const DBFS_MAX = -10;
-
 const REFERENCE_NOTE = createMusicalNote(60);
-
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
-
 type ControlledCrescendoParams =
   typeof CONTROLLED_CRESCENDO_PARAMS.beginner;
-
 interface ControlledCrescendoExerciseProps {
   tier?: Tier;
 }
-
 interface ResultItemProps {
   label: string;
   value: string;
 }
-
 interface VolumeVisualizerProps {
   liveHistory: number[];
 }
@@ -98,8 +90,14 @@ function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
+  // Audio frames may report linear amplitude (0–1) instead of dBFS.
+  // Convert amplitude to dBFS before mapping it to the visualizer range.
+  const dbfs =
+    value >= 0 && value <= 1
+      ? 20 * Math.log10(Math.max(value, 0.001))
+      : value;
   return clamp(
-    (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
+    (dbfs - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
     0,
     1,
   );
@@ -112,39 +110,49 @@ function targetHeight(index: number): number {
 
 function guideCrescendoHeight(index: number): number {
   const progress = index / (BAR_COUNT - 1);
-
   // Make the rise from soft to loud much easier to recognize.
   return 0.08 + Math.pow(progress, 0.75) * 0.92;
 }
 
 function calculateLiveSmoothness(values: number[]): number {
-  if (values.length < 3) {
+  if (values.length < 4) {
+    return 0;
+  }
+  const netRise = values[values.length - 1] - values[0];
+  // Require a real increase in loudness; silence or a flat signal scores 0.
+  if (!Number.isFinite(netRise) || netRise < 1.5) {
     return 0;
   }
   const derivatives: number[] = [];
   for (let index = 1; index < values.length; index += 1) {
     derivatives.push(values[index] - values[index - 1]);
   }
+  const upwardChange = derivatives.reduce(
+    (sum, value) => sum + Math.max(value, 0),
+    0,
+  );
+  const downwardChange = derivatives.reduce(
+    (sum, value) => sum + Math.abs(Math.min(value, 0)),
+    0,
+  );
+  const totalChange = upwardChange + downwardChange;
+  if (totalChange === 0) {
+    return 0;
+  }
+  const directionConsistency = upwardChange / totalChange;
   const meanDerivative =
     derivatives.reduce((sum, value) => sum + value, 0) /
     derivatives.length;
-
-  // A crescendo should trend upward. A flat or decreasing
-
-  // signal should not be treated as a smooth crescendo.
-  if (
-    !Number.isFinite(meanDerivative) ||
-    meanDerivative <= 0
-  ) {
-    return 0;
-  }
   const derivativeVariance =
     derivatives.reduce(
       (sum, value) => sum + (value - meanDerivative) ** 2,
       0,
     ) / derivatives.length;
+  const derivativeStdDev = Math.sqrt(derivativeVariance);
+  const rampConsistency =
+    1 / (1 + derivativeStdDev / Math.max(meanDerivative, 0.5));
   return clamp(
-    100 - (derivativeVariance / meanDerivative) * 100,
+    directionConsistency * 65 + rampConsistency * 35,
     0,
     100,
   );
@@ -261,11 +269,9 @@ function ResultItem({ label, value }: ResultItemProps) {
 export default function ControlledCrescendoExercise({
   tier,
 }: ControlledCrescendoExerciseProps) {
-
   const [phase, setPhase] = useState<
     'directions' | 'exercise' | 'countdown' | 'results'
   >('directions');
-
   // Show the preparation screen while adaptive exercise parameters load.
   const [loadingParams, setLoadingParams] = useState(true);
   const [resolvedTier, setResolvedTier] = useState<Tier>(
@@ -279,11 +285,8 @@ export default function ControlledCrescendoExercise({
     createMusicalNote(60),
   );
   const [referenceNoteReady, setReferenceNoteReady] = useState(false);
-
   // Use the latest assessment's detected vocal range for the reference note.
-
   // Keep C4 as a fallback when no valid range is available.
-
   useEffect(() => {
     let cancelled = false;
     async function loadReferenceNote() {
@@ -356,7 +359,6 @@ export default function ControlledCrescendoExercise({
   const phaseRef = useRef(phase);
   const interRepStopRef = useRef(false);
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
-
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
@@ -365,7 +367,6 @@ export default function ControlledCrescendoExercise({
   const rampSeconds = params.durationSec;
   const repetitions = params.repetitions;
   const smoothnessTarget = params.smoothnessThreshold;
-
   useEffect(() => {
     if (phase !== 'exercise') {
       setGuideElapsed(0);
@@ -387,7 +388,6 @@ export default function ControlledCrescendoExercise({
    * 3. Use the latest five matching exercise scores.
    * 4. Use the latest Volume assessment only as a cold-start fallback.
    */
-
   useEffect(() => {
     let cancelled = false;
     async function initializeAdaptiveParams() {
@@ -492,7 +492,6 @@ export default function ControlledCrescendoExercise({
       cancelled = true;
     };
   }, [tier]);
-
   const playReferenceNote = useCallback(async () => {
     try {
       await playSingleNote(
@@ -506,13 +505,11 @@ export default function ControlledCrescendoExercise({
       );
     }
   }, [referenceNote]);
-
   useEffect(() => {
     if (phase === 'directions' && !loadingParams && referenceNoteReady) {
       void playReferenceNote();
     }
   }, [phase, playReferenceNote, loadingParams, referenceNoteReady]);
-
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setRep(1);
@@ -649,9 +646,7 @@ export default function ControlledCrescendoExercise({
       }
     },
   });
-
   // The visible guide and timer run only during an active repetition.
-
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
@@ -663,11 +658,8 @@ export default function ControlledCrescendoExercise({
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, rampSeconds]);
-
   // Stop between repetitions, collect that segment, then show a 3-second
-
   // preparation countdown. The recording pause is excluded from scoring.
-
   useEffect(() => {
     if (phase !== 'exercise' || seconds < rampSeconds) {
       return;
@@ -727,9 +719,7 @@ export default function ControlledCrescendoExercise({
       });
     }
   }, [phase, seconds, rep, rampSeconds, repetitions, stopRecording]);
-
   // Countdown runs only after the previous recording segment has fully stopped.
-
   useEffect(() => {
     if (phase !== 'countdown' || !countdownReady) {
       return;
@@ -763,7 +753,6 @@ export default function ControlledCrescendoExercise({
     }, 1000);
     return () => clearTimeout(timeout);
   }, [phase, countdown, countdownReady, startRecording]);
-
   const startExercise = useCallback(async () => {
     setErrorMessage(undefined);
     setRep(1);
@@ -783,11 +772,11 @@ export default function ControlledCrescendoExercise({
     repetitionSamplesRef.current = [];
     setCountdown(3);
     setCountdownReady(false);
-    // Accept live audio frames as soon as the recorder starts emitting them.
-    phaseRef.current = 'exercise';
     try {
-      await startRecording();
-      setPhase('exercise');
+      await playReferenceNote();
+      phaseRef.current = 'countdown';
+      setPhase('countdown');
+      setCountdownReady(true);
     } catch (recordingError) {
       phaseRef.current = 'directions';
       repetitionSamplesRef.current = [];
@@ -801,8 +790,7 @@ export default function ControlledCrescendoExercise({
       );
       setPhase('directions');
     }
-  }, [repetitions, startRecording]);
-
+  }, [playReferenceNote, repetitions]);
   const cancelExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
@@ -825,7 +813,6 @@ export default function ControlledCrescendoExercise({
       setPhase('directions');
     }
   }, [clearLiveState, isRecording, stopRecording]);
-
   const handleBackFromExercise = useCallback(async () => {
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
@@ -847,7 +834,6 @@ export default function ControlledCrescendoExercise({
       router.back();
     }
   }, [isRecording, stopRecording]);
-
   const tryAgain = useCallback(() => {
     void startExercise();
   }, [startExercise]);
@@ -1181,10 +1167,6 @@ export default function ControlledCrescendoExercise({
       scoreDetails={
         <View style={styles.referenceCard}>
           <ResultItem
-            label="Target reached"
-            value={rangeReached ? 'Yes' : 'No'}
-          />
-          <ResultItem
             label="Observed range"
             value={`${minDb}–${maxDb} dB`}
           />
@@ -1214,10 +1196,6 @@ export default function ControlledCrescendoExercise({
             value={`${value}%`}
           />
         ))}
-        <ResultItem
-          label="Target reached"
-          value={rangeReached ? 'Yes' : 'No'}
-        />
         <ResultItem
           label="Observed range"
           value={`${minDb}–${maxDb} dB`}
