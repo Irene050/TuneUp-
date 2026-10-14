@@ -1,8 +1,9 @@
-// src/screens/exercises/Tone/VowelConsistencyExerciseScreen.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { router } from 'expo-router';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import {
   ActivityIndicator,
   Alert,
@@ -63,18 +64,27 @@ import ExerciseScreen, {
 } from '@/screens/exercises/ExerciseScreen';
 
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
+
 import { frequencyToNote } from '@/utils/dsp/pitch';
 
 const BROWN = '#4E2F1F';
+
 const PINK = '#FCD6DD';
+
 const LIGHT_PINK = '#FFF8FA';
+
 const WHITE = '#FFFFFF';
+
 const MUTED = '#8E7770';
+
 const LIGHT_GRAY = '#F2F2F2';
 
 const FFT_SIZE = 1024;
+
 const FFT_HOP_SIZE = 512;
+
 const COUNTDOWN_SECONDS = 3;
+
 const REST_MS = 1200;
 
 interface Props {
@@ -108,8 +118,8 @@ function clamp(
 function randomInRange(
   range: [number, number],
 ) {
-  const [min, max] = range;
 
+  const [min, max] = range;
   return (
     min +
     Math.random() * (max - min)
@@ -132,6 +142,7 @@ function vowelDisplay(vowel: string) {
 export default function VowelConsistencyExerciseScreen({
   tier,
 }: Props) {
+
   const initialTier =
     tier ?? 'beginner';
 
@@ -250,56 +261,44 @@ export default function VowelConsistencyExerciseScreen({
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadAdaptiveParams() {
       setLoadingParams(true);
-
       try {
         let resolvedTier: Tier =
           initialTier;
-
         if (!tier) {
           const user =
             auth.currentUser;
-
           if (user) {
             const progress =
               await fetchComponentProgress(
                 user.uid,
                 'tone',
               );
-
             resolvedTier =
               progress?.currentTier ??
               'beginner';
           }
         }
-
         if (cancelled) {
           return;
         }
-
         setCurrentTier(
           resolvedTier,
         );
-
         let recentScores: number[] =
           [];
-
         const user =
           auth.currentUser;
-
         if (user) {
           const records =
             await fetchExerciseRecords(
               user.uid,
               'tone',
             );
-
           if (cancelled) {
             return;
           }
-
           const currentTierRecords =
             records
               .filter(
@@ -314,7 +313,6 @@ export default function VowelConsistencyExerciseScreen({
                   a.timestamp -
                   b.timestamp,
               );
-
           recentScores =
             currentTierRecords
               .slice(-5)
@@ -322,25 +320,21 @@ export default function VowelConsistencyExerciseScreen({
                 record =>
                   record.scorePct,
               );
-
           if (
             recentScores.length ===
             0
           ) {
             const assessment =
               await getLatestAssessment();
-
             if (cancelled) {
               return;
             }
-
             const toneScore =
               assessment?.scores.find(
                 score =>
                   score.componentId ===
                   'tone',
               );
-
             if (
               toneScore &&
               Number.isFinite(
@@ -353,29 +347,23 @@ export default function VowelConsistencyExerciseScreen({
             }
           }
         }
-
         const generatedParams =
           generateVowelConsistencyParams({
             tier: resolvedTier,
             recentScores,
           });
-
         if (cancelled) {
           return;
         }
-
         setParams(
           generatedParams,
         );
-
         const newTargetDuration =
           randomInRange(
             generatedParams.durationRangeSec,
           );
-
         targetDurationRef.current =
           newTargetDuration;
-
         setTargetDuration(
           newTargetDuration,
         );
@@ -384,12 +372,10 @@ export default function VowelConsistencyExerciseScreen({
           '❌ FAILED TO LOAD VOWEL CONSISTENCY ADS PARAMETERS:',
           error,
         );
-
         if (!cancelled) {
           setCurrentTier(
             initialTier,
           );
-
           setParams(
             VOWEL_CONSISTENCY_PARAMS[
               initialTier
@@ -402,9 +388,7 @@ export default function VowelConsistencyExerciseScreen({
         }
       }
     }
-
     void loadAdaptiveParams();
-
     return () => {
       cancelled = true;
     };
@@ -412,10 +396,8 @@ export default function VowelConsistencyExerciseScreen({
 
   useEffect(() => {
     mountedRef.current = true;
-
     return () => {
       mountedRef.current = false;
-
       if (
         countdownTimerRef.current
       ) {
@@ -423,7 +405,6 @@ export default function VowelConsistencyExerciseScreen({
           countdownTimerRef.current,
         );
       }
-
       if (
         recordingTimerRef.current
       ) {
@@ -431,7 +412,6 @@ export default function VowelConsistencyExerciseScreen({
           recordingTimerRef.current,
         );
       }
-
       if (
         restTimerRef.current
       ) {
@@ -439,7 +419,6 @@ export default function VowelConsistencyExerciseScreen({
           restTimerRef.current,
         );
       }
-
       recordingRef.current = false;
       stopRequestedRef.current =
         false;
@@ -477,7 +456,6 @@ export default function VowelConsistencyExerciseScreen({
           countdownTimerRef.current,
         );
       }
-
       if (
         recordingTimerRef.current
       ) {
@@ -485,7 +463,6 @@ export default function VowelConsistencyExerciseScreen({
           recordingTimerRef.current,
         );
       }
-
       if (
         restTimerRef.current
       ) {
@@ -493,7 +470,6 @@ export default function VowelConsistencyExerciseScreen({
           restTimerRef.current,
         );
       }
-
       repetitionRef.current = 1;
       recordingRef.current = false;
       stopRequestedRef.current =
@@ -501,12 +477,9 @@ export default function VowelConsistencyExerciseScreen({
       processingRef.current =
         false;
       elapsedRef.current = 0;
-
       repetitionMeasurementsRef.current =
         [];
-
       resultsRef.current = [];
-
       setCurrentRepetition(1);
       setElapsedMs(0);
       setLiveFrame(null);
@@ -515,15 +488,12 @@ export default function VowelConsistencyExerciseScreen({
       setFinalAverageCentroid(0);
       setFrameCount(0);
       setErrorMessage(null);
-
       const newTargetDuration =
         randomInRange(
           params.durationRangeSec,
         );
-
       targetDurationRef.current =
         newTargetDuration;
-
       setTargetDuration(
         newTargetDuration,
       );
@@ -540,7 +510,6 @@ export default function VowelConsistencyExerciseScreen({
       ) {
         return;
       }
-
       if (
         countdownTimerRef.current
       ) {
@@ -548,20 +517,15 @@ export default function VowelConsistencyExerciseScreen({
           countdownTimerRef.current,
         );
       }
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setPhase('countdown');
-
       let value =
         COUNTDOWN_SECONDS;
-
       countdownTimerRef.current =
         setInterval(() => {
           value -= 1;
-
           if (value <= 0) {
             if (
               countdownTimerRef.current
@@ -570,15 +534,11 @@ export default function VowelConsistencyExerciseScreen({
                 countdownTimerRef.current,
               );
             }
-
             countdownTimerRef.current =
               null;
-
             void beginRecording();
-
             return;
           }
-
           if (
             mountedRef.current
           ) {
@@ -594,7 +554,6 @@ export default function VowelConsistencyExerciseScreen({
   } = useAudioRecorder({
     onFrame:
       handleLiveFrame,
-
     onStop: async (
       samples,
       sampleRate,
@@ -605,23 +564,18 @@ export default function VowelConsistencyExerciseScreen({
       ) {
         return;
       }
-
       recordingRef.current =
         false;
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       setPhase('processing');
-
       try {
         if (
           !samples.length ||
@@ -631,71 +585,58 @@ export default function VowelConsistencyExerciseScreen({
             'No usable audio was recorded.',
           );
         }
-
         const fftFrames =
           samplesToFFTFrames(
             samples,
             FFT_SIZE,
             FFT_HOP_SIZE,
           );
-
         if (!fftFrames.length) {
           throw new Error(
             'No FFT frames could be generated.',
           );
         }
-
         const measurement =
           measureVowelConsistency(
             fftFrames,
             sampleRate,
             FFT_SIZE,
           );
-
         const scored =
           scoreVowelConsistencyExercise(
             measurement,
             params,
           );
-
         repetitionMeasurementsRef.current.push(
           measurement,
         );
-
         const repResult: RepetitionResult =
           {
             score: scored.score,
             passed: scored.passed,
           };
-
         const nextResults = [
           ...resultsRef.current,
           repResult,
         ];
-
         resultsRef.current =
           nextResults;
-
         if (
           !mountedRef.current
         ) {
           return;
         }
-
         setResults(
           nextResults,
         );
-
         setFrameCount(
           previous =>
             previous +
             fftFrames.length,
         );
-
         const measurementCount =
           repetitionMeasurementsRef.current
             .length;
-
         setFinalAverageCentroid(
           measurementCount > 0
             ? repetitionMeasurementsRef.current.reduce(
@@ -711,11 +652,9 @@ export default function VowelConsistencyExerciseScreen({
                         ) &&
                         value > 0,
                     );
-
                   if (!valid.length) {
                     return sum;
                   }
-
                   return (
                     sum +
                     valid.reduce(
@@ -731,7 +670,6 @@ export default function VowelConsistencyExerciseScreen({
                 measurementCount
             : 0,
         );
-
         if (
           nextResults.length <
           repetitions
@@ -739,21 +677,15 @@ export default function VowelConsistencyExerciseScreen({
           const nextRep =
             nextResults.length +
             1;
-
           repetitionRef.current =
             nextRep;
-
           setCurrentRepetition(
             nextRep,
           );
-
           setLiveFrame(null);
           setElapsedMs(0);
-
           elapsedRef.current = 0;
-
           setPhase('rest');
-
           restTimerRef.current =
             setTimeout(() => {
               if (
@@ -761,16 +693,12 @@ export default function VowelConsistencyExerciseScreen({
               ) {
                 return;
               }
-
               startRepCountdown();
             }, REST_MS);
-
           return;
         }
-
         processingRef.current =
           true;
-
         const overallScore =
           Math.round(
             nextResults.reduce(
@@ -780,12 +708,10 @@ export default function VowelConsistencyExerciseScreen({
             ) /
               nextResults.length,
           );
-
         const overallPassed =
           nextResults.every(
             item => item.passed,
           );
-
         const finalScored:
           VowelConsistencyScoreResult =
           {
@@ -797,18 +723,15 @@ export default function VowelConsistencyExerciseScreen({
             passed:
               overallPassed,
           };
-
         setFinalResult(
           finalScored,
         );
-
         await saveCompletedExercise(
           'tone',
           'vowelConsistency',
           currentTier,
           finalScored.score,
         );
-
         if (
           mountedRef.current
         ) {
@@ -819,14 +742,12 @@ export default function VowelConsistencyExerciseScreen({
           '❌ VOWEL CONSISTENCY PROCESSING ERROR:',
           error,
         );
-
         if (
           mountedRef.current
         ) {
           setErrorMessage(
             'We could not analyze this repetition. Please try again.',
           );
-
           setPhase(
             'instructions',
           );
@@ -839,7 +760,6 @@ export default function VowelConsistencyExerciseScreen({
           processingRef.current =
             false;
         }
-
         stopRequestedRef.current =
           false;
       }
@@ -855,34 +775,25 @@ export default function VowelConsistencyExerciseScreen({
       ) {
         return;
       }
-
       try {
         setErrorMessage(null);
         setLiveFrame(null);
-
         elapsedRef.current = 0;
         setElapsedMs(0);
-
         stopRequestedRef.current =
           false;
-
         setPhase('recording');
-
         await startRecording();
-
         if (
           !mountedRef.current
         ) {
           return;
         }
-
         recordingRef.current =
           true;
-
         const durationMs =
           targetDurationRef.current *
           1000;
-
         recordingTimerRef.current =
           setInterval(() => {
             if (
@@ -892,14 +803,11 @@ export default function VowelConsistencyExerciseScreen({
             ) {
               return;
             }
-
             elapsedRef.current +=
               100;
-
             setElapsedMs(
               elapsedRef.current,
             );
-
             if (
               elapsedRef.current >=
               durationMs
@@ -910,34 +818,27 @@ export default function VowelConsistencyExerciseScreen({
                 clearInterval(
                   recordingTimerRef.current,
                 );
-
                 recordingTimerRef.current =
                   null;
               }
-
               stopRequestedRef.current =
                 true;
-
               stopRecording().catch(
                 error => {
                   console.error(
                     '❌ FAILED TO STOP VOWEL RECORDING:',
                     error,
                   );
-
                   recordingRef.current =
                     false;
-
                   stopRequestedRef.current =
                     false;
-
                   if (
                     mountedRef.current
                   ) {
                     setErrorMessage(
                       'We could not finish the recording. Please try again.',
                     );
-
                     setPhase(
                       'instructions',
                     );
@@ -951,20 +852,16 @@ export default function VowelConsistencyExerciseScreen({
           '❌ FAILED TO START VOWEL RECORDING:',
           error,
         );
-
         recordingRef.current =
           false;
-
         stopRequestedRef.current =
           false;
-
         if (
           mountedRef.current
         ) {
           setPhase(
             'instructions',
           );
-
           Alert.alert(
             'Microphone Error',
             'Unable to start the microphone. Please check your microphone permission and try again.',
@@ -981,9 +878,7 @@ export default function VowelConsistencyExerciseScreen({
       if (loadingParams) {
         return;
       }
-
       resetExercise();
-
       startRepCountdown();
     }, [
       loadingParams,
@@ -999,10 +894,8 @@ export default function VowelConsistencyExerciseScreen({
       ) {
         return;
       }
-
       stopRequestedRef.current =
         true;
-
       if (
         recordingTimerRef.current
       ) {
@@ -1010,17 +903,14 @@ export default function VowelConsistencyExerciseScreen({
           recordingTimerRef.current,
         );
       }
-
       recordingTimerRef.current =
         null;
-
       stopRecording().catch(
         error => {
           console.error(
             '❌ FAILED TO STOP VOWEL RECORDING EARLY:',
             error,
           );
-
           stopRequestedRef.current =
             false;
         },
@@ -1035,37 +925,30 @@ export default function VowelConsistencyExerciseScreen({
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       if (
         restTimerRef.current
       ) {
         clearTimeout(
           restTimerRef.current,
         );
-
         restTimerRef.current =
           null;
       }
-
       if (recordingRef.current) {
         stopRequestedRef.current =
           true;
-
         void stopRecording().catch(
           error => {
             console.error(
@@ -1075,9 +958,7 @@ export default function VowelConsistencyExerciseScreen({
           },
         );
       }
-
       recordingRef.current = false;
-
       router.replace(
         '/dashboard?tab=exercises',
       );
@@ -1110,14 +991,22 @@ export default function VowelConsistencyExerciseScreen({
 
   if (loadingParams || !params || !tier) {
     return (
-      <ExerciseProcessingScreen
-        icon="cloud-outline"
-        title="Preparing Your Exercise"
-        message="Adjusting the exercise to your current difficulty level"
-      />
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="pulse-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
     );
   }
-
 
   if (phase === 'instructions') {
     const preparationSteps: ExercisePreparationStep[] = [
@@ -1134,7 +1023,6 @@ export default function VowelConsistencyExerciseScreen({
         text: 'You will repeat the same vowel several times so TuneUp! can compare your consistency.',
       },
     ];
-
     const summary: ExerciseSummaryItem[] = [
       {
         label: 'TARGET',
@@ -1157,7 +1045,6 @@ export default function VowelConsistencyExerciseScreen({
         hint: 'minimum',
       },
     ];
-
     return (
       <ExerciseScreen
         title="Vowel Consistency"
@@ -1208,13 +1095,11 @@ export default function VowelConsistencyExerciseScreen({
             color={BROWN}
           />
         </View>
-
         <Text
           style={styles.phaseTitle}
         >
           Relax
         </Text>
-
         <Text
           style={styles.phaseSubtitle}
         >
@@ -1222,13 +1107,11 @@ export default function VowelConsistencyExerciseScreen({
           {currentRepetition - 1}{' '}
           complete.
         </Text>
-
         <Text
           style={styles.largeVowel}
         >
           Next {currentRepetition}
         </Text>
-
         <ActivityIndicator
           size="small"
           color={BROWN}
@@ -1260,13 +1143,11 @@ export default function VowelConsistencyExerciseScreen({
             {currentRepetition} /{' '}
             {repetitions}
           </Text>
-
           <Text
             style={styles.recordingTitle}
           >
             Keep the Vowel Consistent
           </Text>
-
           <Text
             style={
               styles.recordingSubtitle
@@ -1275,7 +1156,6 @@ export default function VowelConsistencyExerciseScreen({
             Do not change the vowel
             shape while you sustain it.
           </Text>
-
           <View
             style={styles.vowelCard}
           >
@@ -1284,7 +1164,6 @@ export default function VowelConsistencyExerciseScreen({
             >
               TARGET VOWEL
             </Text>
-
             <Text
               style={styles.vowelValue}
             >
@@ -1292,7 +1171,6 @@ export default function VowelConsistencyExerciseScreen({
                 params.vowel,
               )}
             </Text>
-
             <Text
               style={
                 styles.vowelInstruction
@@ -1301,7 +1179,6 @@ export default function VowelConsistencyExerciseScreen({
               Same vowel • same sound
             </Text>
           </View>
-
           <View
             style={styles.microphoneArea}
           >
@@ -1322,14 +1199,12 @@ export default function VowelConsistencyExerciseScreen({
                 />
               </View>
             </View>
-
             <View
               style={styles.recordingBadge}
             >
               <View
                 style={styles.recordingDot}
               />
-
               <Text
                 style={
                   styles.recordingBadgeText
@@ -1339,7 +1214,6 @@ export default function VowelConsistencyExerciseScreen({
               </Text>
             </View>
           </View>
-
           <View
             style={styles.liveCard}
           >
@@ -1348,13 +1222,11 @@ export default function VowelConsistencyExerciseScreen({
             >
               LIVE SIGNAL
             </Text>
-
             <Text
               style={styles.liveNote}
             >
               {livePitchNote}
             </Text>
-
             <Text
               style={
                 styles.liveFrequency
@@ -1367,7 +1239,6 @@ export default function VowelConsistencyExerciseScreen({
                   )} Hz`
                 : '--'}
             </Text>
-
             <View
               style={styles.liveStats}
             >
@@ -1381,7 +1252,6 @@ export default function VowelConsistencyExerciseScreen({
                 >
                   Clarity
                 </Text>
-
                 <Text
                   style={
                     styles.liveStatValue
@@ -1397,7 +1267,6 @@ export default function VowelConsistencyExerciseScreen({
                     : '--'}
                 </Text>
               </View>
-
               <View
                 style={styles.liveStat}
               >
@@ -1408,7 +1277,6 @@ export default function VowelConsistencyExerciseScreen({
                 >
                   Volume
                 </Text>
-
                 <Text
                   style={
                     styles.liveStatValue
@@ -1426,7 +1294,6 @@ export default function VowelConsistencyExerciseScreen({
               </View>
             </View>
           </View>
-
           <Text
             style={styles.timerText}
           >
@@ -1439,7 +1306,6 @@ export default function VowelConsistencyExerciseScreen({
             )}
             s
           </Text>
-
           <View
             style={styles.timerTrack}
           >
@@ -1455,7 +1321,6 @@ export default function VowelConsistencyExerciseScreen({
               ]}
             />
           </View>
-
           <Text
             style={styles.helperText}
           >
@@ -1463,7 +1328,6 @@ export default function VowelConsistencyExerciseScreen({
             keeping the vowel sounding
             the same from start to finish.
           </Text>
-
           <Pressable
             style={styles.stopButton}
             onPress={stopEarly}
@@ -1474,7 +1338,6 @@ export default function VowelConsistencyExerciseScreen({
               size={20}
               color={BROWN}
             />
-
             <Text
               style={
                 styles.stopButtonText
@@ -1491,7 +1354,6 @@ export default function VowelConsistencyExerciseScreen({
   if (phase === 'processing') {
     const isFinalRep =
       currentRepetition >= repetitions;
-
     return (
       <ExerciseProcessingScreen
         icon="analytics-outline"
@@ -1508,7 +1370,6 @@ export default function VowelConsistencyExerciseScreen({
       />
     );
   }
-
   if (
     phase === 'results' &&
     finalResult
@@ -1541,7 +1402,6 @@ export default function VowelConsistencyExerciseScreen({
               color={BROWN}
             />
           </View>
-
           <Text
             style={styles.resultTitle}
           >
@@ -1549,7 +1409,6 @@ export default function VowelConsistencyExerciseScreen({
               ? 'Great Job!'
               : 'Keep Practicing!'}
           </Text>
-
           <Text
             style={
               styles.resultSubtitle
@@ -1557,7 +1416,6 @@ export default function VowelConsistencyExerciseScreen({
           >
             Vowel Consistency Result
           </Text>
-
           <View
             style={styles.scoreCard}
           >
@@ -1566,13 +1424,11 @@ export default function VowelConsistencyExerciseScreen({
             >
               Overall Score
             </Text>
-
             <Text
               style={styles.scoreValue}
             >
               {finalResult.score}%
             </Text>
-
             <Text
               style={
                 styles.scoreDescription
@@ -1583,7 +1439,6 @@ export default function VowelConsistencyExerciseScreen({
                 : 'Try to keep the vowel shape and tone more consistent in every repetition.'}
             </Text>
           </View>
-
           <View
             style={styles.resultCard}
           >
@@ -1594,7 +1449,6 @@ export default function VowelConsistencyExerciseScreen({
             >
               Target
             </Text>
-
             <View
               style={
                 styles.targetResultRow
@@ -1608,7 +1462,6 @@ export default function VowelConsistencyExerciseScreen({
                 >
                   VOWEL
                 </Text>
-
                 <Text
                   style={
                     styles.resultTargetLarge
@@ -1619,7 +1472,6 @@ export default function VowelConsistencyExerciseScreen({
                   )}
                 </Text>
               </View>
-
               <View
                 style={styles.targetBadge}
               >
@@ -1633,7 +1485,6 @@ export default function VowelConsistencyExerciseScreen({
               </View>
             </View>
           </View>
-
           <View
             style={styles.resultCard}
           >
@@ -1644,7 +1495,6 @@ export default function VowelConsistencyExerciseScreen({
             >
               Repetition Scores
             </Text>
-
             {results.map(
               (item, index) => (
                 <View
@@ -1664,7 +1514,6 @@ export default function VowelConsistencyExerciseScreen({
                       Repetition{' '}
                       {index + 1}
                     </Text>
-
                     <Text
                       style={
                         styles.resultRowHint
@@ -1675,7 +1524,6 @@ export default function VowelConsistencyExerciseScreen({
                         : 'Needs more consistent vowel quality'}
                     </Text>
                   </View>
-
                   <Text
                     style={
                       styles.resultRowValue
@@ -1687,7 +1535,6 @@ export default function VowelConsistencyExerciseScreen({
               ),
             )}
           </View>
-
           <View
             style={styles.resultCard}
           >
@@ -1698,7 +1545,6 @@ export default function VowelConsistencyExerciseScreen({
             >
               Analysis
             </Text>
-
             <View
               style={styles.resultRow}
             >
@@ -1710,7 +1556,6 @@ export default function VowelConsistencyExerciseScreen({
                 Average spectral
                 centroid
               </Text>
-
               <Text
                 style={
                   styles.resultRowValue
@@ -1724,7 +1569,6 @@ export default function VowelConsistencyExerciseScreen({
                   : '--'}
               </Text>
             </View>
-
             <View
               style={styles.resultRow}
             >
@@ -1735,7 +1579,6 @@ export default function VowelConsistencyExerciseScreen({
               >
                 Frames analyzed
               </Text>
-
               <Text
                 style={
                   styles.resultRowValue
@@ -1744,7 +1587,6 @@ export default function VowelConsistencyExerciseScreen({
                 {frameCount}
               </Text>
             </View>
-
             <View
               style={styles.resultRow}
             >
@@ -1755,7 +1597,6 @@ export default function VowelConsistencyExerciseScreen({
               >
                 Required smoothness
               </Text>
-
               <Text
                 style={
                   styles.resultRowValue
@@ -1769,7 +1610,6 @@ export default function VowelConsistencyExerciseScreen({
               </Text>
             </View>
           </View>
-
           <Pressable
             style={styles.startButton}
             onPress={retry}
@@ -1781,14 +1621,12 @@ export default function VowelConsistencyExerciseScreen({
             >
               Try Again
             </Text>
-
             <Ionicons
               name="refresh"
               size={18}
               color={WHITE}
             />
           </Pressable>
-
           <Pressable
             style={
               styles.secondaryButton
@@ -1807,7 +1645,6 @@ export default function VowelConsistencyExerciseScreen({
       </View>
     );
   }
-
   return null;
 }
 
@@ -1816,7 +1653,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#9A817D',
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1824,7 +1694,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1832,7 +1701,6 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-
   resultsContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1840,7 +1708,6 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-
   iconCircle: {
     width: 76,
     height: 76,
@@ -1850,7 +1717,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
   },
-
   startButton: {
     width: '100%',
     height: 54,
@@ -1861,13 +1727,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   secondaryButton: {
     width: '100%',
     height: 50,
@@ -1877,20 +1741,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
-
   secondaryButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,
   },
-
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1900,18 +1761,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 320,
   },
-
   largeVowel: {
     fontFamily: 'FredokaBold',
     fontSize: 58,
     color: BROWN,
     marginTop: 14,
   },
-
   restIndicator: {
     marginTop: 18,
   },
-
   recordingEyebrow: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
@@ -1919,7 +1777,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
@@ -1927,7 +1784,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1937,7 +1793,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 18,
   },
-
   vowelCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -1946,32 +1801,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
   },
-
   vowelLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   vowelValue: {
     fontFamily: 'FredokaBold',
     fontSize: 54,
     color: BROWN,
     marginTop: 2,
   },
-
   vowelInstruction: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
     marginTop: 2,
   },
-
   microphoneArea: {
     alignItems: 'center',
     marginVertical: 20,
   },
-
   outerMicCircle: {
     width: 146,
     height: 146,
@@ -1980,7 +1830,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   innerMicCircle: {
     width: 108,
     height: 108,
@@ -1989,28 +1838,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   recordingBadge: {
     marginTop: 11,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-
   recordingDot: {
     width: 9,
     height: 9,
     borderRadius: 5,
     backgroundColor: BROWN,
   },
-
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     color: BROWN,
     letterSpacing: 0.8,
   },
-
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2021,51 +1866,43 @@ const styles = StyleSheet.create({
     marginTop: 25,
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   liveNote: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
     marginTop: 3,
   },
-
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   liveStats: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 18,
   },
-
   liveStat: {
     alignItems: 'center',
   },
-
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
   },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 2,
   },
-
   timerText: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
@@ -2073,7 +1910,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
   },
-
   timerTrack: {
     width: '100%',
     height: 9,
@@ -2082,12 +1918,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 9,
   },
-
   timerFill: {
     height: '100%',
     backgroundColor: PINK,
   },
-
   helperText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2096,7 +1930,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-
   stopButton: {
     width: '100%',
     height: 50,
@@ -2110,17 +1943,14 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 18,
   },
-
   stopButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   processingIndicator: {
     marginTop: 28,
   },
-
   resultIcon: {
     width: 82,
     height: 82,
@@ -2129,22 +1959,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   resultIconPassed: {
     backgroundColor: PINK,
   },
-
   resultIconFailed: {
     backgroundColor: LIGHT_GRAY,
   },
-
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     textAlign: 'center',
   },
-
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -2153,7 +1979,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: 22,
   },
-
   scoreCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -2161,20 +1986,17 @@ const styles = StyleSheet.create({
     padding: 22,
     alignItems: 'center',
   },
-
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
   },
-
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
     color: BROWN,
     marginVertical: 3,
   },
-
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2182,7 +2004,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2192,45 +2013,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F2DDE5',
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginBottom: 10,
   },
-
   targetResultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   resultTargetSmall: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
     color: MUTED,
   },
-
   resultTargetLarge: {
     fontFamily: 'FredokaBold',
     fontSize: 38,
     color: BROWN,
   },
-
   targetBadge: {
     backgroundColor: WHITE,
     borderRadius: 12,
     paddingHorizontal: 11,
     paddingVertical: 8,
   },
-
   targetBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: BROWN,
   },
-
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2239,17 +2053,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F2DDE5',
   },
-
   resultRowContent: {
     flex: 1,
   },
-
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultRowHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
@@ -2257,7 +2068,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     maxWidth: 220,
   },
-
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,

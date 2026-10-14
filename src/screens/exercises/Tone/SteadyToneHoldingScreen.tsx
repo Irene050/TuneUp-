@@ -1,81 +1,65 @@
-// src/screens/exercises/Tone/SteadyToneHoldingScreen.tsx
-
-import type { LiveAudioFrame } from '@/hooks/useAudioRecorder';
-
-import { router } from 'expo-router';
-
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-
-import {
-  Alert,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
-
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-} from '@/screens/exercises/ExerciseScreen';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import {
   STEADY_TONE_HOLDING_PARAMS,
   type SteadyToneHoldingParams,
   type Tier,
 } from '@/constants/exercises/tone';
-
+import type { LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import {
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
+import {
+  generateSteadyToneHoldingParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
 import {
   measureSteadyToneHolding,
   type SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
-
-import {
-  scoreSteadyToneHolding,
-  type SteadyToneHoldingScoreResult,
-} from '@/services/scoring/tone/steadyToneHolding';
-
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
-
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
 import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-
-import {
-  generateSteadyToneHoldingParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
-import { auth } from '@/services/firebase/config';
-
+  scoreSteadyToneHolding,
+  type SteadyToneHoldingScoreResult,
+} from '@/services/scoring/tone/steadyToneHolding';
 import {
   samplesToFFTFrames,
 } from '@/utils/dsp/fft';
-
 import {
   frequencyToNote,
 } from '@/utils/dsp/pitch';
-
+import { router } from 'expo-router';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 // ============================================================
 // COLORS
 // ============================================================
-
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -83,34 +67,27 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
-
 // ============================================================
 // CONFIGURATION
 // ============================================================
-
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
 const COUNTDOWN_SECONDS = 3;
-
 // ============================================================
 // TYPES
 // ============================================================
-
 interface Props {
   tier?: Tier;
 }
-
 type Phase =
   | 'instructions'
   | 'countdown'
   | 'recording'
   | 'processing'
   | 'results';
-
 // ============================================================
 // HELPERS
 // ============================================================
-
 function clamp(
   value: number,
   min: number,
@@ -121,7 +98,6 @@ function clamp(
     Math.min(max, value),
   );
 }
-
 function formatNumber(
   value: number,
   decimals = 1,
@@ -129,108 +105,83 @@ function formatNumber(
   if (!Number.isFinite(value)) {
     return '--';
   }
-
   return value.toFixed(decimals);
 }
-
 // ============================================================
 // SCREEN
 // ============================================================
-
 export default function SteadyToneHoldingScreen({
   tier,
 }: Props) {
   const fallbackTier: Tier =
     tier ?? 'beginner';
-
   // ==========================================================
   // STATE
   // ==========================================================
-
   const [currentTier, setCurrentTier] =
     useState<Tier>(fallbackTier);
-
   const [params, setParams] =
     useState<SteadyToneHoldingParams>(
       STEADY_TONE_HOLDING_PARAMS[
         fallbackTier
       ],
     );
-
   const [loadingParams, setLoadingParams] =
     useState(true);
-
   const [phase, setPhase] =
     useState<Phase>('instructions');
-
   const [countdown, setCountdown] =
     useState(COUNTDOWN_SECONDS);
-
   const [elapsedMs, setElapsedMs] =
     useState(0);
-
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
   const [result, setResult] =
     useState<SteadyToneHoldingScoreResult | null>(
       null,
     );
-
   const [measurement, setMeasurement] =
     useState<SteadyToneHoldingMeasurement | null>(
       null,
     );
-
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
-
   // ==========================================================
   // ADS PARAMETER LOADING
   // ==========================================================
-
   useEffect(() => {
     let cancelled = false;
-
     const loadParams = async () => {
       try {
         setLoadingParams(true);
-
         const user = auth.currentUser;
-
         if (!user) {
           if (!cancelled) {
             setCurrentTier(
               fallbackTier,
             );
-
             setParams(
               STEADY_TONE_HOLDING_PARAMS[
                 fallbackTier
               ],
             );
           }
-
           return;
         }
-
         const componentProgress =
           await fetchComponentProgress(
             user.uid,
             'tone',
           );
-
         const resolvedTier: Tier =
           tier ??
           componentProgress?.currentTier ??
           'beginner';
-
         const records =
           await fetchExerciseRecords(
             user.uid,
             'tone',
           );
-
         const currentTierRecords =
           records
             .filter(
@@ -245,7 +196,6 @@ export default function SteadyToneHoldingScreen({
                 a.timestamp -
                 b.timestamp,
             );
-
         let recentScores =
           currentTierRecords
             .slice(-5)
@@ -253,7 +203,6 @@ export default function SteadyToneHoldingScreen({
               record =>
                 record.scorePct,
             );
-
         /*
          * Assessment is only used as the initial
          * reference when current-tier exercise
@@ -264,14 +213,12 @@ export default function SteadyToneHoldingScreen({
         ) {
           const latestAssessment =
             await getLatestAssessment();
-
           const assessmentToneScore =
             latestAssessment?.scores.find(
               score =>
                 score.componentId ===
                 'tone',
             )?.scorePct;
-
           if (
             assessmentToneScore !==
               undefined &&
@@ -284,18 +231,15 @@ export default function SteadyToneHoldingScreen({
             ];
           }
         }
-
         const generatedParams =
           generateSteadyToneHoldingParams({
             tier: resolvedTier,
             recentScores,
           });
-
         if (!cancelled) {
           setCurrentTier(
             resolvedTier,
           );
-
           setParams(
             generatedParams,
           );
@@ -305,12 +249,10 @@ export default function SteadyToneHoldingScreen({
           '❌ FAILED TO LOAD STEADY TONE HOLDING PARAMETERS:',
           error,
         );
-
         if (!cancelled) {
           setCurrentTier(
             fallbackTier,
           );
-
           setParams(
             STEADY_TONE_HOLDING_PARAMS[
               fallbackTier
@@ -323,9 +265,7 @@ export default function SteadyToneHoldingScreen({
         }
       }
     };
-
     void loadParams();
-
     return () => {
       cancelled = true;
     };
@@ -333,106 +273,82 @@ export default function SteadyToneHoldingScreen({
     tier,
     fallbackTier,
   ]);
-
   // ==========================================================
   // REFS
   // ==========================================================
-
   const mountedRef =
     useRef(true);
-
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingRef =
     useRef(false);
-
   const stopRequestedRef =
     useRef(false);
-
   const processingRef =
     useRef(false);
-
   const elapsedRef =
     useRef(0);
-
   const stopRecordingRef =
     useRef<
       (() => Promise<void>) | null
     >(null);
-
   // ==========================================================
   // CLEANUP
   // ==========================================================
-
   useEffect(() => {
     mountedRef.current = true;
-
     return () => {
       const wasRecording =
         recordingRef.current;
-
       mountedRef.current = false;
-
       if (
         countdownTimerRef.current
       ) {
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       if (wasRecording) {
         void stopRecordingRef.current?.();
       }
-
       recordingRef.current = false;
       stopRequestedRef.current =
         false;
     };
   }, []);
-
   // ==========================================================
   // LIVE AUDIO
   // ==========================================================
-
   const handleLiveFrame =
     useCallback(
       (frame: LiveAudioFrame) => {
         if (!mountedRef.current) {
           return;
         }
-
         setLiveFrame(frame);
       },
       [],
     );
-
   // ==========================================================
   // RECORDING STOP / ANALYSIS
   // ==========================================================
-
   const handleRecordingStop =
     useCallback(
       async (
@@ -445,30 +361,24 @@ export default function SteadyToneHoldingScreen({
         ) {
           return;
         }
-
         processingRef.current = true;
         recordingRef.current = false;
-
         if (
           recordingTimerRef.current
         ) {
           clearInterval(
             recordingTimerRef.current,
           );
-
           recordingTimerRef.current =
             null;
         }
-
         setPhase('processing');
-
         try {
           if (samples.length === 0) {
             throw new Error(
               'No audio samples were recorded.',
             );
           }
-
           if (
             !Number.isFinite(sampleRate) ||
             sampleRate <= 0
@@ -477,20 +387,17 @@ export default function SteadyToneHoldingScreen({
               'Invalid audio sample rate.',
             );
           }
-
           const fftFrames =
             samplesToFFTFrames(
               samples,
               FFT_SIZE,
               FFT_HOP_SIZE,
             );
-
           if (fftFrames.length === 0) {
             throw new Error(
               'No FFT frames could be generated.',
             );
           }
-
           const measured =
             measureSteadyToneHolding(
               samples,
@@ -498,13 +405,11 @@ export default function SteadyToneHoldingScreen({
               sampleRate,
               FFT_SIZE,
             );
-
           const scored =
             scoreSteadyToneHolding(
               measured,
               params,
             );
-
           if (
             !Number.isFinite(
               scored.score,
@@ -514,42 +419,34 @@ export default function SteadyToneHoldingScreen({
               'The tone score could not be calculated.',
             );
           }
-
           if (!mountedRef.current) {
             return;
           }
-
           setMeasurement(
             measured,
           );
-
           setResult(
             scored,
           );
-
           await saveCompletedExercise(
             'tone',
             'steadyToneHolding',
             currentTier,
             scored.score,
           );
-
           if (!mountedRef.current) {
             return;
           }
-
           setPhase('results');
         } catch (error) {
           console.error(
             '❌ STEADY TONE HOLDING PROCESSING ERROR:',
             error,
           );
-
           if (mountedRef.current) {
             setErrorMessage(
               'We could not analyze your recording. Please try again.',
             );
-
             setPhase(
               'instructions',
             );
@@ -565,11 +462,9 @@ export default function SteadyToneHoldingScreen({
         params,
       ],
     );
-
   // ==========================================================
   // AUDIO RECORDER
   // ==========================================================
-
   const {
     startRecording,
     stopRecording,
@@ -579,21 +474,17 @@ export default function SteadyToneHoldingScreen({
       onFrame: handleLiveFrame,
       onStop: handleRecordingStop,
     });
-
   useEffect(() => {
     stopRecordingRef.current =
       stopRecording;
-
     return () => {
       stopRecordingRef.current =
         null;
     };
   }, [stopRecording]);
-
   // ==========================================================
   // BEGIN RECORDING
   // ==========================================================
-
   const beginRecording =
     useCallback(async () => {
       if (
@@ -604,34 +495,24 @@ export default function SteadyToneHoldingScreen({
       ) {
         return;
       }
-
       try {
         setErrorMessage(null);
         setLiveFrame(null);
         setMeasurement(null);
         setResult(null);
-
         elapsedRef.current = 0;
         setElapsedMs(0);
-
         stopRequestedRef.current =
           false;
-
         processingRef.current = false;
-
         setPhase('recording');
-
         await startRecording();
-
         if (!mountedRef.current) {
           return;
         }
-
         recordingRef.current = true;
-
         const durationMs =
           params.durationSec * 1000;
-
         recordingTimerRef.current =
           setInterval(() => {
             if (
@@ -641,13 +522,10 @@ export default function SteadyToneHoldingScreen({
             ) {
               return;
             }
-
             elapsedRef.current += 100;
-
             setElapsedMs(
               elapsedRef.current,
             );
-
             if (
               elapsedRef.current >=
               durationMs
@@ -658,40 +536,32 @@ export default function SteadyToneHoldingScreen({
                 clearInterval(
                   recordingTimerRef.current,
                 );
-
                 recordingTimerRef.current =
                   null;
               }
-
               if (
                 stopRequestedRef.current
               ) {
                 return;
               }
-
               stopRequestedRef.current =
                 true;
-
               void stopRecording().catch(
                 error => {
                   console.error(
                     '❌ FAILED TO STOP STEADY TONE RECORDING:',
                     error,
                   );
-
                   recordingRef.current =
                     false;
-
                   stopRequestedRef.current =
                     false;
-
                   if (
                     mountedRef.current
                   ) {
                     setErrorMessage(
                       'We could not finish the recording. Please try again.',
                     );
-
                     setPhase(
                       'instructions',
                     );
@@ -705,16 +575,13 @@ export default function SteadyToneHoldingScreen({
           '❌ FAILED TO START STEADY TONE RECORDING:',
           error,
         );
-
         recordingRef.current = false;
         stopRequestedRef.current =
           false;
-
         if (mountedRef.current) {
           setPhase(
             'instructions',
           );
-
           Alert.alert(
             'Microphone Error',
             'Unable to start the microphone. Please check your microphone permission and try again.',
@@ -727,11 +594,9 @@ export default function SteadyToneHoldingScreen({
       startRecording,
       stopRecording,
     ]);
-
   // ==========================================================
   // COUNTDOWN
   // ==========================================================
-
   const startCountdown =
     useCallback(() => {
       if (
@@ -741,44 +606,34 @@ export default function SteadyToneHoldingScreen({
       ) {
         return;
       }
-
       if (
         countdownTimerRef.current
       ) {
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       setErrorMessage(null);
       setLiveFrame(null);
       setMeasurement(null);
       setResult(null);
-
       elapsedRef.current = 0;
       setElapsedMs(0);
-
       recordingRef.current = false;
       stopRequestedRef.current =
         false;
       processingRef.current = false;
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setPhase('countdown');
-
       let value =
         COUNTDOWN_SECONDS;
-
       countdownTimerRef.current =
         setInterval(() => {
           value -= 1;
-
           if (value <= 0) {
             if (
               countdownTimerRef.current
@@ -786,16 +641,12 @@ export default function SteadyToneHoldingScreen({
               clearInterval(
                 countdownTimerRef.current,
               );
-
               countdownTimerRef.current =
                 null;
             }
-
             void beginRecording();
-
             return;
           }
-
           if (mountedRef.current) {
             setCountdown(value);
           }
@@ -804,11 +655,9 @@ export default function SteadyToneHoldingScreen({
       beginRecording,
       loadingParams,
     ]);
-
   // ==========================================================
   // RETRY
   // ==========================================================
-
   const retry =
     useCallback(() => {
       if (
@@ -817,46 +666,36 @@ export default function SteadyToneHoldingScreen({
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       recordingRef.current = false;
       stopRequestedRef.current =
         false;
       processingRef.current = false;
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setElapsedMs(0);
       elapsedRef.current = 0;
-
       setLiveFrame(null);
       setMeasurement(null);
       setResult(null);
       setErrorMessage(null);
-
       setPhase('instructions');
     }, []);
-
   // ==========================================================
   // GO BACK
   // ==========================================================
-
   const goBack =
     useCallback(() => {
       if (
@@ -865,36 +704,28 @@ export default function SteadyToneHoldingScreen({
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       recordingRef.current = false;
       stopRequestedRef.current = true;
-
       void stopRecordingRef.current?.();
-
       router.replace(
         '/dashboard?tab=exercises',
       );
     }, []);
-
   // ==========================================================
   // LIVE VALUES
   // ==========================================================
-
   const recordingProgress =
     params.durationSec > 0
       ? clamp(
@@ -905,7 +736,6 @@ export default function SteadyToneHoldingScreen({
           1,
         )
       : 0;
-
   const livePitchNote =
     liveFrame &&
     Number.isFinite(
@@ -916,7 +746,6 @@ export default function SteadyToneHoldingScreen({
           liveFrame.pitch,
         )
       : '--';
-
   const livePitchHz =
     liveFrame &&
     Number.isFinite(
@@ -927,7 +756,6 @@ export default function SteadyToneHoldingScreen({
           liveFrame.pitch,
         )} Hz`
       : '--';
-
   const liveClarity =
     liveFrame &&
     Number.isFinite(
@@ -937,7 +765,6 @@ export default function SteadyToneHoldingScreen({
           liveFrame.clarity * 100,
         )}%`
       : '--';
-
   const liveVolume =
     liveFrame &&
     Number.isFinite(
@@ -947,11 +774,27 @@ export default function SteadyToneHoldingScreen({
           liveFrame.volume,
         )} dB`
       : '--';
-
   // ==========================================================
   // INSTRUCTIONS
   // ==========================================================
-
+  if (loadingParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="pulse-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
   if (phase === 'instructions') {
     return (
       <ExerciseScreen
@@ -1001,11 +844,9 @@ export default function SteadyToneHoldingScreen({
       />
     );
   }
-
   // ==========================================================
   // COUNTDOWN
   // ==========================================================
-
   if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
@@ -1018,11 +859,9 @@ export default function SteadyToneHoldingScreen({
       />
     );
   }
-
   // ==========================================================
   // RECORDING
   // ==========================================================
-
   if (phase === 'recording') {
     return (
       <ExerciseListeningScreen
@@ -1048,19 +887,16 @@ export default function SteadyToneHoldingScreen({
             >
               LIVE AUDIO
             </Text>
-
             <Text
               style={styles.liveNote}
             >
               {livePitchNote}
             </Text>
-
             <Text
               style={styles.liveFrequency}
             >
               {livePitchHz}
             </Text>
-
             <View
               style={styles.liveStats}
             >
@@ -1074,7 +910,6 @@ export default function SteadyToneHoldingScreen({
                 >
                   Clarity
                 </Text>
-
                 <Text
                   style={
                     styles.liveStatValue
@@ -1083,7 +918,6 @@ export default function SteadyToneHoldingScreen({
                   {liveClarity}
                 </Text>
               </View>
-
               <View
                 style={styles.liveStat}
               >
@@ -1094,7 +928,6 @@ export default function SteadyToneHoldingScreen({
                 >
                   Volume
                 </Text>
-
                 <Text
                   style={
                     styles.liveStatValue
@@ -1104,7 +937,6 @@ export default function SteadyToneHoldingScreen({
                 </Text>
               </View>
             </View>
-
             <View
               style={
                 styles.recordingStatus
@@ -1115,7 +947,6 @@ export default function SteadyToneHoldingScreen({
                   styles.recordingDot
                 }
               />
-
               <Text
                 style={
                   styles.recordingStatusText
@@ -1132,11 +963,9 @@ export default function SteadyToneHoldingScreen({
       />
     );
   }
-
   // ==========================================================
   // PROCESSING
   // ==========================================================
-
   if (phase === 'processing') {
     return (
       <ExerciseProcessingScreen
@@ -1147,11 +976,9 @@ export default function SteadyToneHoldingScreen({
       />
     );
   }
-
   // ==========================================================
   // RESULTS
   // ==========================================================
-
   if (
     phase === 'results' &&
     result &&
@@ -1190,7 +1017,6 @@ export default function SteadyToneHoldingScreen({
           >
             Your Performance
           </Text>
-
           <View
             style={styles.resultRow}
           >
@@ -1201,7 +1027,6 @@ export default function SteadyToneHoldingScreen({
             >
               Tone smoothness
             </Text>
-
             <Text
               style={
                 styles.resultRowValue
@@ -1214,7 +1039,6 @@ export default function SteadyToneHoldingScreen({
               %
             </Text>
           </View>
-
           <View
             style={styles.resultRow}
           >
@@ -1225,7 +1049,6 @@ export default function SteadyToneHoldingScreen({
             >
               Loudness stability
             </Text>
-
             <Text
               style={
                 styles.resultRowValue
@@ -1238,7 +1061,6 @@ export default function SteadyToneHoldingScreen({
               %
             </Text>
           </View>
-
           <View
             style={styles.resultRow}
           >
@@ -1249,7 +1071,6 @@ export default function SteadyToneHoldingScreen({
             >
               Pitch stability
             </Text>
-
             <Text
               style={
                 styles.resultRowValue
@@ -1262,7 +1083,6 @@ export default function SteadyToneHoldingScreen({
               %
             </Text>
           </View>
-
           <View
             style={styles.resultRow}
           >
@@ -1273,7 +1093,6 @@ export default function SteadyToneHoldingScreen({
             >
               Duration
             </Text>
-
             <Text
               style={
                 styles.resultRowValue
@@ -1286,7 +1105,6 @@ export default function SteadyToneHoldingScreen({
             </Text>
           </View>
         </View>
-
         <View
           style={styles.resultTip}
         >
@@ -1301,41 +1119,69 @@ export default function SteadyToneHoldingScreen({
       </ExerciseResultsScreen>
     );
   }
-
   return null;
 }
-
 // ============================================================
 // STYLES
 // ============================================================
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#9A817D',
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   liveContent: {
     width: '100%',
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.7,
   },
-
   liveNote: {
     fontFamily: 'FredokaBold',
     fontSize: 40,
     color: BROWN,
     marginTop: 4,
   },
-
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   liveStats: {
     width: '100%',
     flexDirection: 'row',
@@ -1345,30 +1191,25 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: BORDER,
   },
-
   liveStat: {
     alignItems: 'center',
   },
-
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
   },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 2,
   },
-
   recordingStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 18,
   },
-
   recordingDot: {
     width: 8,
     height: 8,
@@ -1376,13 +1217,11 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginRight: 7,
   },
-
   recordingStatusText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1391,35 +1230,30 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 20,
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
     color: BROWN,
     marginBottom: 10,
   },
-
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
   },
-
   resultRowLabel: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
     marginLeft: 12,
   },
-
   resultTip: {
     width: '100%',
     backgroundColor: PINK,
@@ -1427,7 +1261,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 14,
   },
-
   resultTipText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,

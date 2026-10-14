@@ -1,5 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { router } from 'expo-router';
+
 import {
   useCallback,
   useEffect,
@@ -76,28 +78,39 @@ import ExerciseScreen, {
 
 // ============================================================
 // COLORS
+
 // ============================================================
 
 const BROWN = '#4E2F1F';
+
 const PINK = '#FCD6DD';
+
 const LIGHT_PINK = '#FFF8FA';
+
 const WHITE = '#FFFFFF';
+
 const MUTED = '#8E7770';
+
 const LIGHT_GRAY = '#F2F2F2';
+
 const BORDER = '#F2DDE5';
 
 // ============================================================
 // EXERCISE CONFIG
+
 // ============================================================
 
 const FFT_SIZE = 1024;
+
 const FFT_HOP_SIZE = 512;
 
 const COUNTDOWN_SECONDS = 3;
+
 const TARGET_NOTE_DURATION_SECONDS = 1.5;
 
 // ============================================================
 // TYPES
+
 // ============================================================
 
 type Screen =
@@ -128,6 +141,7 @@ type ResultState = {
 
 // ============================================================
 // HELPERS
+
 // ============================================================
 
 function clamp(
@@ -150,7 +164,6 @@ function formatFrequency(
   ) {
     return '--';
   }
-
   return `${frequency.toFixed(1)} Hz`;
 }
 
@@ -160,12 +173,12 @@ function formatVolume(
   if (!Number.isFinite(volume)) {
     return '--';
   }
-
   return `${Math.round(volume)} dB`;
 }
 
 // ============================================================
 // COMPONENT
+
 // ============================================================
 
 export default function ToneConsistencyExerciseScreen({
@@ -175,41 +188,32 @@ export default function ToneConsistencyExerciseScreen({
     useState<Screen>(
       'instructions',
     );
-
   const [currentTier, setCurrentTier] =
     useState<Tier>(
       tier ?? 'beginner',
     );
-
   const [params, setParams] =
     useState<ToneConsistencyParams>(
       TONE_CONSISTENCY_PARAMS[
         tier ?? 'beginner'
       ],
     );
-
   const [
     isLoadingAdaptiveParams,
     setIsLoadingAdaptiveParams,
   ] = useState(true);
-
   const [vocalRange, setVocalRange] =
     useState<VocalRange | null>(null);
-
   const [countdown, setCountdown] =
     useState(
       COUNTDOWN_SECONDS,
     );
-
   const [elapsedSeconds, setElapsedSeconds] =
     useState(0);
-
   const [listenElapsedSeconds, setListenElapsedSeconds] =
     useState(0);
-
   const [currentRep, setCurrentRep] =
     useState(1);
-
   const [liveTone, setLiveTone] =
     useState<LiveToneState>({
       pitch: 0,
@@ -217,19 +221,15 @@ export default function ToneConsistencyExerciseScreen({
       clarity: 0,
       volume: -100,
     });
-
   const [result, setResult] =
     useState<ResultState | null>(
       null,
     );
-
   const [errorMessage, setErrorMessage] =
     useState('');
-
   // ==========================================================
   // TARGET NOTE
   // ==========================================================
-
   const generatedTarget = useMemo(
     () =>
       getRandomPitchNote(
@@ -241,7 +241,6 @@ export default function ToneConsistencyExerciseScreen({
       vocalRange,
     ],
   );
-
   /*
    * The generated target is shown on the instruction screen.
    * Once the exercise starts, the target is locked so every
@@ -251,121 +250,91 @@ export default function ToneConsistencyExerciseScreen({
     useRef<typeof generatedTarget | null>(
       null,
     );
-
   const activeTarget =
     lockedTargetRef.current ??
     generatedTarget;
-
   const targetFrequency =
     activeTarget.frequency;
-
   const targetNote =
     activeTarget.name;
-
   // ==========================================================
   // REFS
   // ==========================================================
-
   const mountedRef =
     useRef(true);
-
   const exitingRef =
     useRef(false);
-
   const startingRef =
     useRef(false);
-
   const finishingRef =
     useRef(false);
-
   const currentRepRef =
     useRef(1);
-
   const countdownTimerRef =
     useRef<ReturnType<
       typeof setInterval
     > | null>(null);
-
   const recordingTimerRef =
     useRef<ReturnType<
       typeof setInterval
     > | null>(null);
-
   const listeningTimerRef =
     useRef<ReturnType<
       typeof setInterval
     > | null>(null);
-
   const repetitionSamplesRef =
     useRef<Float32Array[]>([]);
-
   const repetitionFFTFramesRef =
     useRef<Float32Array[][]>([]);
-
   const startRecordingRef =
     useRef<
       (() => Promise<void>) | null
     >(null);
-
   const stopRecordingRef =
     useRef<
       (() => void) | null
     >(null);
-
   const isRecordingRef =
     useRef(false);
-
   // ==========================================================
   // ADAPTIVE DIFFICULTY
   // ==========================================================
-
   useEffect(() => {
     let cancelled = false;
-
     async function loadAdaptiveParameters() {
       setIsLoadingAdaptiveParams(true);
-
       try {
         const user =
           auth.currentUser;
-
         let resolvedTier: Tier =
           tier ?? 'beginner';
-
         if (!tier && user) {
           const progress =
             await fetchComponentProgress(
               user.uid,
               'tone',
             );
-
           resolvedTier =
             progress?.currentTier ??
             'beginner';
         }
-
         if (cancelled) {
           return;
         }
-
         setCurrentTier(
           resolvedTier,
         );
-
         let recentScores: number[] =
           [];
-
         if (user) {
           const records =
             await fetchExerciseRecords(
               user.uid,
               'tone',
             );
-
           if (cancelled) {
             return;
           }
-
           const currentTierRecords =
             records
               .filter(
@@ -380,7 +349,6 @@ export default function ToneConsistencyExerciseScreen({
                   a.timestamp -
                   b.timestamp,
               );
-
           recentScores =
             currentTierRecords
               .slice(-5)
@@ -388,17 +356,14 @@ export default function ToneConsistencyExerciseScreen({
                 record =>
                   record.scorePct,
               );
-
           const assessment =
             await getLatestAssessment();
-
           if (assessment) {
             setVocalRange(
               assessment.vocalRange ??
                 null,
             );
           }
-
           if (
             recentScores.length ===
             0
@@ -409,7 +374,6 @@ export default function ToneConsistencyExerciseScreen({
                   score.componentId ===
                   'tone',
               );
-
             if (
               assessmentScore
             ) {
@@ -419,7 +383,6 @@ export default function ToneConsistencyExerciseScreen({
             }
           }
         }
-
         const generatedParams =
           generateToneConsistencyParams(
             {
@@ -427,11 +390,9 @@ export default function ToneConsistencyExerciseScreen({
               recentScores,
             },
           );
-
         if (cancelled) {
           return;
         }
-
         setParams(
           generatedParams,
         );
@@ -440,15 +401,12 @@ export default function ToneConsistencyExerciseScreen({
           '❌ TONE CONSISTENCY ADS ERROR:',
           error,
         );
-
         const fallbackTier =
           tier ?? 'beginner';
-
         if (!cancelled) {
           setCurrentTier(
             fallbackTier,
           );
-
           setParams(
             TONE_CONSISTENCY_PARAMS[
               fallbackTier
@@ -463,18 +421,14 @@ export default function ToneConsistencyExerciseScreen({
         }
       }
     }
-
     loadAdaptiveParameters();
-
     return () => {
       cancelled = true;
     };
   }, [tier]);
-
   // ============================================================
   // TIMER CLEANUP
   // ============================================================
-
   const clearTimers =
     useCallback(() => {
       if (
@@ -483,38 +437,31 @@ export default function ToneConsistencyExerciseScreen({
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
-
       if (
         listeningTimerRef.current
       ) {
         clearInterval(
           listeningTimerRef.current,
         );
-
         listeningTimerRef.current =
           null;
       }
     }, []);
-
   // ============================================================
   // LIVE AUDIO FRAME
   // ============================================================
-
   const handleLiveFrame =
     useCallback(
       (frame: {
@@ -529,7 +476,6 @@ export default function ToneConsistencyExerciseScreen({
         ) {
           return;
         }
-
         setLiveTone({
           pitch:
             Number.isFinite(
@@ -548,11 +494,9 @@ export default function ToneConsistencyExerciseScreen({
       },
       [],
     );
-
   // ============================================================
   // LISTEN TO TARGET NOTE
   // ============================================================
-
   const listenToTargetNote =
     useCallback(async () => {
       if (
@@ -561,18 +505,13 @@ export default function ToneConsistencyExerciseScreen({
       ) {
         return false;
       }
-
       clearTimers();
-
       setListenElapsedSeconds(
         0,
       );
-
       setScreen('listening');
-
       const startTime =
         Date.now();
-
       listeningTimerRef.current =
         setInterval(() => {
           if (
@@ -581,12 +520,10 @@ export default function ToneConsistencyExerciseScreen({
           ) {
             return;
           }
-
           const elapsed =
             (Date.now() -
               startTime) /
             1000;
-
           setListenElapsedSeconds(
             Math.min(
               elapsed,
@@ -594,7 +531,6 @@ export default function ToneConsistencyExerciseScreen({
             ),
           );
         }, 50);
-
       try {
         /*
          * Read the locked target at playback time so a
@@ -603,7 +539,6 @@ export default function ToneConsistencyExerciseScreen({
         const targetToPlay =
           lockedTargetRef.current ??
           generatedTarget;
-
         await playSingleNote(
           targetToPlay.frequency,
           TARGET_NOTE_DURATION_SECONDS,
@@ -613,9 +548,7 @@ export default function ToneConsistencyExerciseScreen({
           '❌ FAILED TO PLAY TARGET NOTE:',
           error,
         );
-
         clearTimers();
-
         if (
           mountedRef.current &&
           !exitingRef.current
@@ -623,38 +556,30 @@ export default function ToneConsistencyExerciseScreen({
           setErrorMessage(
             'We could not play the reference note. Please try again.',
           );
-
           setScreen(
             'instructions',
           );
         }
-
         return false;
       }
-
       clearTimers();
-
       if (
         !mountedRef.current ||
         exitingRef.current
       ) {
         return false;
       }
-
       setListenElapsedSeconds(
         TARGET_NOTE_DURATION_SECONDS,
       );
-
       return true;
     }, [
       clearTimers,
       generatedTarget,
     ]);
-
   // ============================================================
   // START A RECORDING REPETITION
   // ============================================================
-
   const startRecordingAttempt =
     useCallback(async () => {
       if (
@@ -665,29 +590,23 @@ export default function ToneConsistencyExerciseScreen({
       ) {
         return;
       }
-
       clearTimers();
-
       setLiveTone({
         pitch: 0,
         note: '--',
         clarity: 0,
         volume: -100,
       });
-
       setElapsedSeconds(0);
       setScreen('recording');
-
       try {
         await startRecordingRef.current();
-
         if (
           !mountedRef.current ||
           exitingRef.current
         ) {
           return;
         }
-
         isRecordingRef.current =
           true;
       } catch (error) {
@@ -695,10 +614,8 @@ export default function ToneConsistencyExerciseScreen({
           '❌ FAILED TO START RECORDING:',
           error,
         );
-
         isRecordingRef.current =
           false;
-
         if (
           mountedRef.current &&
           !exitingRef.current
@@ -706,21 +623,16 @@ export default function ToneConsistencyExerciseScreen({
           setErrorMessage(
             'We could not start the exercise. Please check your microphone permission and try again.',
           );
-
           setScreen(
             'instructions',
           );
         }
-
         startingRef.current =
           false;
-
         return;
       }
-
       const startTime =
         Date.now();
-
       recordingTimerRef.current =
         setInterval(() => {
           if (
@@ -729,31 +641,26 @@ export default function ToneConsistencyExerciseScreen({
           ) {
             return;
           }
-
           const elapsed =
             (Date.now() -
               startTime) /
             1000;
-
           setElapsedSeconds(
             Math.min(
               elapsed,
               params.intervalSec,
             ),
           );
-
           if (
             elapsed >=
             params.intervalSec
           ) {
             clearTimers();
-
             if (
               !finishingRef.current
             ) {
               finishingRef.current =
                 true;
-
               stopRecordingRef.current?.();
             }
           }
@@ -762,11 +669,9 @@ export default function ToneConsistencyExerciseScreen({
       clearTimers,
       params.intervalSec,
     ]);
-
   // ============================================================
   // RECORDER
   // ============================================================
-
   const {
     startRecording,
     stopRecording,
@@ -775,24 +680,20 @@ export default function ToneConsistencyExerciseScreen({
     useAudioRecorder({
       onFrame:
         handleLiveFrame,
-
       onStop:
         async (
           samples: Float32Array,
           sampleRate: number,
         ) => {
           clearTimers();
-
           isRecordingRef.current =
             false;
-
           if (
             !mountedRef.current ||
             exitingRef.current
           ) {
             return;
           }
-
           try {
             if (
               samples.length ===
@@ -803,63 +704,50 @@ export default function ToneConsistencyExerciseScreen({
                 'No usable recording data was captured.',
               );
             }
-
             const fftFrames =
               samplesToFFTFrames(
                 samples,
                 FFT_SIZE,
                 FFT_HOP_SIZE,
               );
-
             repetitionSamplesRef.current.push(
               samples,
             );
-
             repetitionFFTFramesRef.current.push(
               fftFrames,
             );
-
             const isLastRepetition =
               currentRepRef.current >=
               params.repetitions;
-
             // ==================================================
             // NON-FINAL REPETITION
             // Recording → Listening → Recording
             // ==================================================
-
             if (
               !isLastRepetition
             ) {
               const nextRep =
                 currentRepRef.current +
                 1;
-
               currentRepRef.current =
                 nextRep;
-
               setCurrentRep(
                 nextRep,
               );
-
               finishingRef.current =
                 false;
-
               setElapsedSeconds(0);
               setListenElapsedSeconds(
                 0,
               );
-
               setLiveTone({
                 pitch: 0,
                 note: '--',
                 clarity: 0,
                 volume: -100,
               });
-
               const played =
                 await listenToTargetNote();
-
               if (
                 !played ||
                 !mountedRef.current ||
@@ -867,21 +755,16 @@ export default function ToneConsistencyExerciseScreen({
               ) {
                 return;
               }
-
               await startRecordingAttempt();
-
               return;
             }
-
             // ==================================================
             // FINAL REPETITION
             // Recording → Processing → Results
             // ==================================================
-
             setScreen(
               'processing',
             );
-
             const measurement =
               measureToneConsistency(
                 repetitionSamplesRef.current,
@@ -889,13 +772,11 @@ export default function ToneConsistencyExerciseScreen({
                 sampleRate,
                 FFT_SIZE,
               );
-
             const scored =
               scoreToneConsistencyExercise(
                 measurement,
                 params,
               );
-
             const validCentroids =
               measurement.centroids.filter(
                 centroid =>
@@ -904,7 +785,6 @@ export default function ToneConsistencyExerciseScreen({
                   ) &&
                   centroid > 0,
               );
-
             const averageCentroid =
               validCentroids.length >
               0
@@ -918,7 +798,6 @@ export default function ToneConsistencyExerciseScreen({
                   ) /
                   validCentroids.length
                 : 0;
-
             const validAmplitudes =
               measurement.amplitudes.filter(
                 amplitude =>
@@ -926,7 +805,6 @@ export default function ToneConsistencyExerciseScreen({
                     amplitude,
                   ),
               );
-
             const averageAmplitudeValue =
               validAmplitudes.length >
               0
@@ -940,21 +818,18 @@ export default function ToneConsistencyExerciseScreen({
                   ) /
                   validAmplitudes.length
                 : 0;
-
             await saveCompletedExercise(
               'tone',
               'toneConsistencyExercise',
               currentTier,
               scored.score,
             );
-
             if (
               !mountedRef.current ||
               exitingRef.current
             ) {
               return;
             }
-
             setResult({
               score: scored.score,
               passed: scored.passed,
@@ -963,7 +838,6 @@ export default function ToneConsistencyExerciseScreen({
               averageAmplitude:
                 averageAmplitudeValue,
             });
-
             setScreen(
               'results',
             );
@@ -972,7 +846,6 @@ export default function ToneConsistencyExerciseScreen({
               '❌ TONE CONSISTENCY ANALYSIS ERROR:',
               error,
             );
-
             if (
               mountedRef.current &&
               !exitingRef.current
@@ -980,7 +853,6 @@ export default function ToneConsistencyExerciseScreen({
               setErrorMessage(
                 'We could not analyze your recording. Please try again.',
               );
-
               setScreen(
                 'instructions',
               );
@@ -988,42 +860,32 @@ export default function ToneConsistencyExerciseScreen({
           } finally {
             finishingRef.current =
               false;
-
             startingRef.current =
               false;
           }
         },
     });
-
   stopRecordingRef.current =
     stopRecording;
-
   startRecordingRef.current =
     startRecording;
-
   // ============================================================
   // UNMOUNT CLEANUP
   // ============================================================
-
   useEffect(() => {
     mountedRef.current = true;
     exitingRef.current = false;
-
     return () => {
       mountedRef.current =
         false;
-
       clearTimers();
-
       if (
         isRecordingRef.current
       ) {
         stopRecordingRef.current?.();
       }
-
       isRecordingRef.current =
         false;
-
       disposeNotePlayer().catch(
         error => {
           console.warn(
@@ -1034,11 +896,9 @@ export default function ToneConsistencyExerciseScreen({
       );
     };
   }, [clearTimers]);
-
   // ============================================================
   // START EXERCISE
   // ============================================================
-
   const startExercise =
     useCallback(() => {
       if (
@@ -1048,59 +908,43 @@ export default function ToneConsistencyExerciseScreen({
       ) {
         return;
       }
-
       startingRef.current =
         true;
-
       exitingRef.current =
         false;
-
       finishingRef.current =
         false;
-
       /*
        * Lock the generated target for this entire exercise run.
        */
       lockedTargetRef.current =
         generatedTarget;
-
       clearTimers();
-
       repetitionSamplesRef.current =
         [];
-
       repetitionFFTFramesRef.current =
         [];
-
       currentRepRef.current =
         1;
-
       setCurrentRep(1);
-
       setErrorMessage('');
       setResult(null);
-
       setLiveTone({
         pitch: 0,
         note: '--',
         clarity: 0,
         volume: -100,
       });
-
       setElapsedSeconds(0);
       setListenElapsedSeconds(0);
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setScreen(
         'countdown',
       );
-
       let remaining =
         COUNTDOWN_SECONDS;
-
       countdownTimerRef.current =
         setInterval(() => {
           if (
@@ -1109,21 +953,15 @@ export default function ToneConsistencyExerciseScreen({
           ) {
             return;
           }
-
           remaining -= 1;
-
           if (remaining > 0) {
             setCountdown(
               remaining,
             );
-
             return;
           }
-
           clearTimers();
-
           setCountdown(0);
-
           listenToTargetNote()
             .then(
               async played => {
@@ -1134,10 +972,8 @@ export default function ToneConsistencyExerciseScreen({
                 ) {
                   startingRef.current =
                     false;
-
                   return;
                 }
-
                 await startRecordingAttempt();
               },
             )
@@ -1146,10 +982,8 @@ export default function ToneConsistencyExerciseScreen({
                 '❌ FAILED TO START TONE CONSISTENCY:',
                 error,
               );
-
               startingRef.current =
                 false;
-
               if (
                 mountedRef.current &&
                 !exitingRef.current
@@ -1157,7 +991,6 @@ export default function ToneConsistencyExerciseScreen({
                 setErrorMessage(
                   'We could not start the exercise. Please check your microphone permission and try again.',
                 );
-
                 setScreen(
                   'instructions',
                 );
@@ -1171,11 +1004,9 @@ export default function ToneConsistencyExerciseScreen({
       listenToTargetNote,
       startRecordingAttempt,
     ]);
-
   // ============================================================
   // MANUAL FINISH
   // ============================================================
-
   const finishRecording =
     useCallback(() => {
       if (
@@ -1184,27 +1015,21 @@ export default function ToneConsistencyExerciseScreen({
       ) {
         return;
       }
-
       finishingRef.current =
         true;
-
       clearTimers();
-
       stopRecording();
     }, [
       clearTimers,
       isRecording,
       stopRecording,
     ]);
-
   // ============================================================
   // RETRY
   // ============================================================
-
   const retryExercise =
     useCallback(() => {
       clearTimers();
-
       disposeNotePlayer().catch(
         error => {
           console.warn(
@@ -1213,66 +1038,48 @@ export default function ToneConsistencyExerciseScreen({
           );
         },
       );
-
       startingRef.current =
         false;
-
       finishingRef.current =
         false;
-
       exitingRef.current =
         false;
-
       isRecordingRef.current =
         false;
-
       lockedTargetRef.current =
         null;
-
       repetitionSamplesRef.current =
         [];
-
       repetitionFFTFramesRef.current =
         [];
-
       currentRepRef.current =
         1;
-
       setCurrentRep(1);
-
       setResult(null);
       setErrorMessage('');
-
       setElapsedSeconds(0);
       setListenElapsedSeconds(0);
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setLiveTone({
         pitch: 0,
         note: '--',
         clarity: 0,
         volume: -100,
       });
-
       setScreen(
         'instructions',
       );
     }, [clearTimers]);
-
   // ============================================================
   // GO BACK
   // ============================================================
-
   const goBack =
     useCallback(() => {
       exitingRef.current =
         true;
-
       clearTimers();
-
       disposeNotePlayer().catch(
         error => {
           console.warn(
@@ -1281,79 +1088,41 @@ export default function ToneConsistencyExerciseScreen({
           );
         },
       );
-
       if (
         isRecordingRef.current
       ) {
         stopRecordingRef.current?.();
       }
-
       isRecordingRef.current =
         false;
-
       router.replace(
         '/dashboard?tab=exercises',
       );
     }, [clearTimers]);
-
   // ============================================================
   // LOADING
   // ============================================================
-
-  if (
-    screen === 'instructions' &&
-    isLoadingAdaptiveParams
-  ) {
+  if (screen === 'instructions' && isLoadingAdaptiveParams) {
     return (
-      <View
-        style={
-          styles.centerScreen
-        }
-      >
-        <View
-          style={
-            styles.iconCircle
-          }
-        >
-          <Ionicons
-            name="musical-note-outline"
-            size={34}
-            color={BROWN}
-          />
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="pulse-outline" size={32} color={BROWN} />
         </View>
-
-        <Text
-          style={
-            styles.phaseTitle
-          }
-        >
-          Preparing Exercise
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
         </Text>
-
-        <Text
-          style={
-            styles.phaseSubtitle
-          }
-        >
-          Adjusting the exercise to your
-          current progress.
-        </Text>
-
         <ActivityIndicator
-          size="small"
+          size="large"
           color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
+          style={styles.preparingSpinner}
         />
       </View>
     );
   }
-
   // ============================================================
   // INSTRUCTIONS
   // ============================================================
-
   if (
     screen === 'instructions'
   ) {
@@ -1420,11 +1189,9 @@ export default function ToneConsistencyExerciseScreen({
       />
     );
   }
-
   // ============================================================
   // COUNTDOWN
   // ============================================================
-
   if (
     screen === 'countdown'
   ) {
@@ -1442,11 +1209,9 @@ export default function ToneConsistencyExerciseScreen({
       />
     );
   }
-
   // ============================================================
   // LISTENING
   // ============================================================
-
   if (
     screen === 'listening'
   ) {
@@ -1457,7 +1222,6 @@ export default function ToneConsistencyExerciseScreen({
         0,
         1,
       ) * 100;
-
     return (
       <ExerciseListeningScreen
         icon="volume-high-outline"
@@ -1487,7 +1251,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               TARGET NOTE
             </Text>
-
             <Text
               style={
                 styles.largeNote
@@ -1495,7 +1258,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               {targetNote}
             </Text>
-
             <Text
               style={
                 styles.stateFrequency
@@ -1513,11 +1275,9 @@ export default function ToneConsistencyExerciseScreen({
       />
     );
   }
-
   // ============================================================
   // RECORDING
   // ============================================================
-
   if (
     screen === 'recording'
   ) {
@@ -1528,7 +1288,6 @@ export default function ToneConsistencyExerciseScreen({
         0,
         1,
       );
-
     return (
       <View
         style={styles.screen}
@@ -1552,7 +1311,6 @@ export default function ToneConsistencyExerciseScreen({
               color={BROWN}
             />
           </View>
-
           <Text
             style={
               styles.recordingTitle
@@ -1560,7 +1318,6 @@ export default function ToneConsistencyExerciseScreen({
           >
             Sing the Note
           </Text>
-
           <Text
             style={
               styles.recordingSubtitle
@@ -1569,7 +1326,6 @@ export default function ToneConsistencyExerciseScreen({
             Repetition {currentRep} of{' '}
             {params.repetitions}
           </Text>
-
           <View
             style={
               styles.smallTargetCard
@@ -1583,7 +1339,6 @@ export default function ToneConsistencyExerciseScreen({
               >
                 TARGET
               </Text>
-
               <Text
                 style={
                   styles.smallNote
@@ -1592,7 +1347,6 @@ export default function ToneConsistencyExerciseScreen({
                 {targetNote}
               </Text>
             </View>
-
             <Text
               style={
                 styles.smallHz
@@ -1603,7 +1357,6 @@ export default function ToneConsistencyExerciseScreen({
               )}
             </Text>
           </View>
-
           <View
             style={
               styles.microphoneArea
@@ -1626,7 +1379,6 @@ export default function ToneConsistencyExerciseScreen({
                 />
               </View>
             </View>
-
             <View
               style={
                 styles.recordingBadge
@@ -1637,7 +1389,6 @@ export default function ToneConsistencyExerciseScreen({
                   styles.recordingDot
                 }
               />
-
               <Text
                 style={
                   styles.recordingBadgeText
@@ -1647,7 +1398,6 @@ export default function ToneConsistencyExerciseScreen({
               </Text>
             </View>
           </View>
-
           <View
             style={
               styles.detectedArea
@@ -1660,7 +1410,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               CURRENT NOTE
             </Text>
-
             <Text
               style={
                 styles.detectedNote
@@ -1668,7 +1417,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               {liveTone.note}
             </Text>
-
             <Text
               style={
                 styles.detectedFrequency
@@ -1678,7 +1426,6 @@ export default function ToneConsistencyExerciseScreen({
                 liveTone.pitch,
               )}
             </Text>
-
             <Text
               style={
                 styles.pitchMessage
@@ -1689,7 +1436,6 @@ export default function ToneConsistencyExerciseScreen({
                 : 'Listening...'}
             </Text>
           </View>
-
           <View
             style={
               styles.metricsGrid
@@ -1705,7 +1451,6 @@ export default function ToneConsistencyExerciseScreen({
                   : '--'
               }
             />
-
             <MetricCard
               label="CLARITY"
               value={
@@ -1717,20 +1462,17 @@ export default function ToneConsistencyExerciseScreen({
                   : '--'
               }
             />
-
             <MetricCard
               label="VOLUME"
               value={formatVolume(
                 liveTone.volume,
               )}
             />
-
             <MetricCard
               label="REP"
               value={`${currentRep}/${params.repetitions}`}
             />
           </View>
-
           <Text
             style={styles.timerText}
           >
@@ -1743,7 +1485,6 @@ export default function ToneConsistencyExerciseScreen({
             )}
             s
           </Text>
-
           <View
             style={
               styles.timerTrack
@@ -1758,7 +1499,6 @@ export default function ToneConsistencyExerciseScreen({
               ]}
             />
           </View>
-
           <Pressable
             style={
               styles.finishButton
@@ -1772,7 +1512,6 @@ export default function ToneConsistencyExerciseScreen({
               size={20}
               color={BROWN}
             />
-
             <Text
               style={
                 styles.finishButtonText
@@ -1785,11 +1524,9 @@ export default function ToneConsistencyExerciseScreen({
       </View>
     );
   }
-
   // ============================================================
   // PROCESSING
   // ============================================================
-
   if (
     screen === 'processing'
   ) {
@@ -1803,11 +1540,9 @@ export default function ToneConsistencyExerciseScreen({
       />
     );
   }
-
   // ============================================================
   // RESULTS
   // ============================================================
-
   if (
     screen === 'results' &&
     result
@@ -1846,7 +1581,6 @@ export default function ToneConsistencyExerciseScreen({
           >
             Tone Consistency
           </Text>
-
           <View
             style={
               styles.resultTarget
@@ -1859,7 +1593,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               TARGET NOTE
             </Text>
-
             <Text
               style={
                 styles.resultTargetNote
@@ -1867,7 +1600,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               {targetNote}
             </Text>
-
             <Text
               style={
                 styles.resultTargetFrequency
@@ -1879,7 +1611,6 @@ export default function ToneConsistencyExerciseScreen({
             </Text>
           </View>
         </View>
-
         <View
           style={styles.resultsGrid}
         >
@@ -1887,7 +1618,6 @@ export default function ToneConsistencyExerciseScreen({
             label="OVERALL SCORE"
             value={`${result.score}%`}
           />
-
           <MetricCard
             label="AVG. CENTROID"
             value={
@@ -1899,7 +1629,6 @@ export default function ToneConsistencyExerciseScreen({
                 : '--'
             }
           />
-
           <MetricCard
             label="AVG. AMPLITUDE"
             value={
@@ -1911,7 +1640,6 @@ export default function ToneConsistencyExerciseScreen({
                 : '--'
             }
           />
-
           <MetricCard
             label="REPETITIONS"
             value={String(
@@ -1919,7 +1647,6 @@ export default function ToneConsistencyExerciseScreen({
             )}
           />
         </View>
-
         <View
           style={
             styles.feedbackCard
@@ -1930,7 +1657,6 @@ export default function ToneConsistencyExerciseScreen({
             size={21}
             color={BROWN}
           />
-
           <View
             style={
               styles.feedbackContent
@@ -1943,7 +1669,6 @@ export default function ToneConsistencyExerciseScreen({
             >
               Feedback
             </Text>
-
             <Text
               style={
                 styles.feedbackText
@@ -1958,12 +1683,12 @@ export default function ToneConsistencyExerciseScreen({
       </ExerciseResultsScreen>
     );
   }
-
   return null;
 }
 
 // ============================================================
 // SMALL COMPONENTS
+
 // ============================================================
 
 function MetricCard({
@@ -1984,7 +1709,6 @@ function MetricCard({
       >
         {label}
       </Text>
-
       <Text
         style={
           styles.metricValue
@@ -1998,6 +1722,7 @@ function MetricCard({
 
 // ============================================================
 // STYLES
+
 // ============================================================
 
 const styles = StyleSheet.create({
@@ -2005,46 +1730,43 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
-  centerScreen: {
+  preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
   },
-
-  iconCircle: {
+  preparingIconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 22,
   },
-
-  phaseTitle: {
+  preparingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 25,
+    fontSize: 20,
     color: BROWN,
     textAlign: 'center',
-    marginTop: 20,
   },
-
-  phaseSubtitle: {
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: MUTED,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#9A817D',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 6,
+    maxWidth: 285,
   },
-
+  preparingSpinner: {
+    marginTop: 24,
+  },
   // ==========================================================
   // LISTENING
   // ==========================================================
-
   sharedListenNoteBox: {
     minWidth: 180,
     backgroundColor: PINK,
@@ -2054,32 +1776,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 22,
   },
-
   listenLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.8,
   },
-
   largeNote: {
     fontFamily: 'FredokaBold',
     fontSize: 55,
     color: BROWN,
     marginTop: 10,
   },
-
   stateFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
     marginTop: 1,
   },
-
   // ==========================================================
   // RECORDING
   // ==========================================================
-
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -2087,7 +1804,6 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-
   recordingIcon: {
     width: 76,
     height: 76,
@@ -2097,14 +1813,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 26,
     color: BROWN,
     textAlign: 'center',
   },
-
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -2112,7 +1826,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 3,
   },
-
   smallTargetCard: {
     width: '100%',
     marginTop: 20,
@@ -2126,33 +1839,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   smallLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.7,
   },
-
   smallNote: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
     color: BROWN,
     marginTop: 1,
   },
-
   smallHz: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   microphoneArea: {
     alignItems: 'center',
     marginTop: 24,
     marginBottom: 18,
   },
-
   outerMicCircle: {
     width: 150,
     height: 150,
@@ -2162,7 +1870,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   innerMicCircle: {
     width: 118,
     height: 118,
@@ -2171,7 +1878,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   recordingBadge: {
     marginTop: 12,
     flexDirection: 'row',
@@ -2181,7 +1887,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
-
   recordingDot: {
     width: 8,
     height: 8,
@@ -2189,45 +1894,38 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginRight: 7,
   },
-
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.6,
     color: BROWN,
   },
-
   detectedArea: {
     alignItems: 'center',
   },
-
   detectedLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     letterSpacing: 0.7,
     color: MUTED,
   },
-
   detectedNote: {
     fontFamily: 'FredokaBold',
     fontSize: 48,
     color: BROWN,
     marginTop: 2,
   },
-
   detectedFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
   },
-
   pitchMessage: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
     marginTop: 5,
   },
-
   metricsGrid: {
     width: '100%',
     flexDirection: 'row',
@@ -2235,7 +1933,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 18,
   },
-
   metricCard: {
     flex: 1,
     minWidth: '47%',
@@ -2245,21 +1942,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   metricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
     letterSpacing: 0.6,
     color: MUTED,
   },
-
   metricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 3,
   },
-
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2268,7 +1962,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 7,
   },
-
   timerTrack: {
     width: '100%',
     height: 7,
@@ -2276,12 +1969,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
-
   timerFill: {
     height: '100%',
     backgroundColor: PINK,
   },
-
   finishButton: {
     width: '100%',
     height: 53,
@@ -2293,17 +1984,14 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 18,
   },
-
   finishButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   // ==========================================================
   // RESULTS
   // ==========================================================
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2313,41 +2001,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginBottom: 12,
   },
-
   resultTarget: {
     alignItems: 'center',
     backgroundColor: PINK,
     borderRadius: 18,
     paddingVertical: 18,
   },
-
   resultTargetLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.7,
   },
-
   resultTargetNote: {
     fontFamily: 'FredokaBold',
     fontSize: 42,
     color: BROWN,
     marginTop: 4,
   },
-
   resultTargetFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultsGrid: {
     width: '100%',
     flexDirection: 'row',
@@ -2355,7 +2037,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 14,
   },
-
   feedbackCard: {
     width: '100%',
     flexDirection: 'row',
@@ -2365,18 +2046,15 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 18,
   },
-
   feedbackContent: {
     flex: 1,
     marginLeft: 10,
   },
-
   feedbackTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   feedbackText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,

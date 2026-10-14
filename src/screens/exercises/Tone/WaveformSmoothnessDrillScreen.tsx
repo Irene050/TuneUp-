@@ -1,5 +1,3 @@
-// src/screens/exercises/Tone/WaveformSmoothnessDrillScreen.tsx
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -11,6 +9,7 @@ import {
 } from 'react';
 
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -60,7 +59,6 @@ import {
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
 
 import { auth } from '@/services/firebase/config';
-
 import {
   samplesToFFTFrames,
 } from '@/utils/dsp/fft';
@@ -88,16 +86,13 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
-
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
 const COUNTDOWN_SECONDS = 3;
 const REFERENCE_NOTE_DURATION_SECONDS = 1.5;
-
 interface Props {
   tier?: Tier;
 }
-
 type Phase =
   | 'instructions'
   | 'countdown'
@@ -105,13 +100,11 @@ type Phase =
   | 'recording'
   | 'processing'
   | 'results';
-
 interface RepetitionResult {
   targetNote: string;
   measurement: WaveformSmoothnessMeasurement;
   score: WaveformSmoothnessScoreResult;
 }
-
 function clamp(
   value: number,
   min: number,
@@ -122,7 +115,6 @@ function clamp(
     Math.min(max, value),
   );
 }
-
 function formatNumber(
   value: number,
   decimals = 1,
@@ -131,97 +123,70 @@ function formatNumber(
     ? value.toFixed(decimals)
     : '--';
 }
-
 export default function WaveformSmoothnessDrillScreen({
   tier,
 }: Props) {
   const initialTier = tier ?? 'beginner';
-
   const [currentTier, setCurrentTier] =
     useState<Tier>(initialTier);
-
   const [params, setParams] =
     useState<WaveformSmoothnessParams>(
       WAVEFORM_SMOOTHNESS_PARAMS[
         initialTier
       ],
     );
-
   const [loadingParams, setLoadingParams] =
     useState(true);
-
   const [vocalRange, setVocalRange] =
     useState<VocalRange | null>(null);
-
   const [phase, setPhase] =
     useState<Phase>('instructions');
-
   const [countdown, setCountdown] =
     useState(COUNTDOWN_SECONDS);
-
   const [currentRep, setCurrentRep] =
     useState(1);
-
   const [elapsedMs, setElapsedMs] =
     useState(0);
-
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
   const [repetitionResults, setRepetitionResults] =
     useState<RepetitionResult[]>([]);
-
   const [finalResult, setFinalResult] =
     useState<WaveformSmoothnessScoreResult | null>(
       null,
     );
-
   const [averageCentroidSmoothness, setAverageCentroidSmoothness] =
     useState(0);
-
   const [averageAmplitudeStability, setAverageAmplitudeStability] =
     useState(0);
-
   const [averageCentroid, setAverageCentroid] =
     useState(0);
-
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
-
   const mountedRef =
     useRef(true);
-
   const leavingRef =
     useRef(false);
-
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingRef =
     useRef(false);
-
   const stopRequestedRef =
     useRef(false);
-
   const processingRef =
     useRef(false);
-
   const elapsedRef =
     useRef(0);
-
   const currentRepRef =
     useRef(1);
-
   const resultsRef =
     useRef<RepetitionResult[]>([]);
-
   /*
    * ----------------------------------------------------------
    * TARGET NOTES
@@ -231,7 +196,6 @@ export default function WaveformSmoothnessDrillScreen({
    * getRandomPitchNote uses the current tier and the user's
    * detected vocal range when one is available.
    */
-
   const targetNote = useMemo(
   () =>
     getRandomPitchNote(
@@ -243,58 +207,45 @@ export default function WaveformSmoothnessDrillScreen({
     vocalRange,
   ],
 );
-
 const targetNoteRef =
   useRef<ReturnType<typeof getRandomPitchNote> | null>(
     null,
   );
-
 useEffect(() => {
   targetNoteRef.current =
     targetNote;
 }, [targetNote]);
-
 const currentTarget =
   targetNote;
-
   /*
    * ----------------------------------------------------------
    * LOAD ADAPTIVE PARAMETERS + VOCAL RANGE
    * ----------------------------------------------------------
    */
-
   useEffect(() => {
     let cancelled = false;
-
     const loadExerciseData =
       async () => {
         const user =
           auth.currentUser;
-
         if (!user) {
           if (!cancelled) {
             const fallbackTier =
               tier ?? 'beginner';
-
             setCurrentTier(
               fallbackTier,
             );
-
             setParams(
               WAVEFORM_SMOOTHNESS_PARAMS[
                 fallbackTier
               ],
             );
-
             setLoadingParams(false);
           }
-
           return;
         }
-
         try {
           setLoadingParams(true);
-
           /*
            * The vocal range is independent of ADS history.
            * Always retrieve the latest assessment so target
@@ -302,13 +253,11 @@ const currentTarget =
            */
           const assessment =
             await getLatestAssessment();
-
           if (!cancelled) {
             setVocalRange(
               assessment?.vocalRange ?? null,
             );
           }
-
           /*
            * Resolve the current Tone tier.
            */
@@ -317,12 +266,10 @@ const currentTarget =
               user.uid,
               'tone',
             );
-
           const resolvedTier =
             tier ??
             componentProgress?.currentTier ??
             'beginner';
-
           /*
            * Get completed exercise history.
            */
@@ -331,7 +278,6 @@ const currentTarget =
               user.uid,
               'tone',
             );
-
           const currentTierRecords =
             records
               .filter(
@@ -346,7 +292,6 @@ const currentTarget =
                   a.timestamp -
                   b.timestamp,
               );
-
           /*
            * Continuous ADS history uses only the latest
            * five completed exercises from this tier/template.
@@ -362,7 +307,6 @@ const currentTarget =
               .filter(score =>
                 Number.isFinite(score),
               );
-
           /*
            * Assessment score is only used as the cold-start
            * reference when no current-tier exercise history
@@ -370,7 +314,6 @@ const currentTarget =
            */
           let referenceScores =
             recentScores;
-
           if (
             referenceScores.length ===
             0
@@ -381,7 +324,6 @@ const currentTarget =
                   score.componentId ===
                   'tone',
               )?.scorePct;
-
             if (
               Number.isFinite(
                 toneAssessmentScore,
@@ -394,26 +336,21 @@ const currentTarget =
               ];
             }
           }
-
           const generatedParams =
             generateWaveformSmoothnessParams(
               {
                 tier:
                   resolvedTier,
-
                 recentScores:
                   referenceScores,
               },
             );
-
           if (cancelled) {
             return;
           }
-
           setCurrentTier(
             resolvedTier,
           );
-
           setParams(
             generatedParams,
           );
@@ -422,15 +359,12 @@ const currentTarget =
             '❌ FAILED TO LOAD WAVEFORM SMOOTHNESS DATA:',
             error,
           );
-
           if (!cancelled) {
             const fallbackTier =
               tier ?? 'beginner';
-
             setCurrentTier(
               fallbackTier,
             );
-
             setParams(
               WAVEFORM_SMOOTHNESS_PARAMS[
                 fallbackTier
@@ -443,20 +377,16 @@ const currentTarget =
           }
         }
       };
-
     void loadExerciseData();
-
     return () => {
       cancelled = true;
     };
   }, [tier]);
-
   /*
    * ----------------------------------------------------------
    * CLEANUP
    * ----------------------------------------------------------
    */
-
   const clearTimers =
     useCallback(() => {
       if (
@@ -465,45 +395,35 @@ const currentTarget =
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
-
       if (
         recordingTimerRef.current
       ) {
         clearInterval(
           recordingTimerRef.current,
         );
-
         recordingTimerRef.current =
           null;
       }
     }, []);
-
   useEffect(() => {
     mountedRef.current = true;
-
     return () => {
       mountedRef.current = false;
       leavingRef.current = true;
-
       clearTimers();
-
       recordingRef.current = false;
       stopRequestedRef.current = true;
-
       disposeNotePlayer();
     };
   }, [clearTimers]);
-
   /*
    * ----------------------------------------------------------
    * LIVE AUDIO
    * ----------------------------------------------------------
    */
-
   const handleLiveFrame =
     useCallback(
       (frame: LiveAudioFrame) => {
@@ -513,18 +433,15 @@ const currentTarget =
         ) {
           return;
         }
-
         setLiveFrame(frame);
       },
       [],
     );
-
   /*
    * ----------------------------------------------------------
    * RECORDER
    * ----------------------------------------------------------
    */
-
   const handleRecordingStop =
     useCallback(
       async (
@@ -538,44 +455,34 @@ const currentTarget =
         ) {
           return;
         }
-
         processingRef.current =
           true;
-
         recordingRef.current =
           false;
-
         stopRequestedRef.current =
           false;
-
         clearTimers();
-
         setElapsedMs(0);
         elapsedRef.current = 0;
         setLiveFrame(null);
-
         setPhase('processing');
-
         try {
           if (samples.length === 0) {
             throw new Error(
               'No audio samples were recorded.',
             );
           }
-
           const fftFrames =
             samplesToFFTFrames(
               samples,
               FFT_SIZE,
               FFT_HOP_SIZE,
             );
-
           if (fftFrames.length === 0) {
             throw new Error(
               'No FFT frames could be generated.',
             );
           }
-
           const measurement =
             measureWaveformSmoothness(
               samples,
@@ -583,46 +490,35 @@ const currentTarget =
               sampleRate,
               FFT_SIZE,
             );
-
           const scored =
             scoreWaveformSmoothnessDrill(
               measurement,
               params,
             );
-
           const repIndex =
             currentRepRef.current - 1;
-
           const target =
             targetNoteRef.current;
-
           const nextResult: RepetitionResult =
             {
               targetNote:
                 target?.name ?? '--',
-
               measurement,
-
               score:
                 scored,
             };
-
           const nextResults = [
             ...resultsRef.current,
             nextResult,
           ];
-
           resultsRef.current =
             nextResults;
-
           if (!mountedRef.current) {
             return;
           }
-
           setRepetitionResults(
             nextResults,
           );
-
           /*
            * Final repetition:
            * aggregate all repetition results.
@@ -639,13 +535,11 @@ const currentTarget =
                 0,
               ) /
               nextResults.length;
-
             const allPassed =
               nextResults.every(
                 item =>
                   item.score.passed,
               );
-
             const centroidSmoothness =
               nextResults.reduce(
                 (sum, item) =>
@@ -655,7 +549,6 @@ const currentTarget =
                 0,
               ) /
               nextResults.length;
-
             const amplitudeStability =
               nextResults.reduce(
                 (sum, item) =>
@@ -665,7 +558,6 @@ const currentTarget =
                 0,
               ) /
               nextResults.length;
-
             const averageCentroidHz =
               nextResults.reduce(
                 (sum, item) =>
@@ -675,7 +567,6 @@ const currentTarget =
                 0,
               ) /
               nextResults.length;
-
             const roundedScore =
               Math.round(
                 clamp(
@@ -684,85 +575,66 @@ const currentTarget =
                   100,
                 ),
               );
-
             const aggregatedResult:
               WaveformSmoothnessScoreResult =
               {
                 score:
                   roundedScore,
-
                 passed:
                   allPassed,
               };
-
             setAverageCentroidSmoothness(
               centroidSmoothness,
             );
-
             setAverageAmplitudeStability(
               amplitudeStability,
             );
-
             setAverageCentroid(
               averageCentroidHz,
             );
-
             setFinalResult(
               aggregatedResult,
             );
-
             await saveCompletedExercise(
               'tone',
               'waveformSmoothnessDrill',
               currentTier,
               roundedScore,
             );
-
             if (
               !mountedRef.current ||
               leavingRef.current
             ) {
               return;
             }
-
             processingRef.current =
               false;
-
             setPhase('results');
-
             return;
           }
-
           /*
            * More repetitions remain.
            */
           const nextRep =
             currentRepRef.current + 1;
-
           currentRepRef.current =
             nextRep;
-
           setCurrentRep(
             nextRep,
           );
-
           processingRef.current =
             false;
-
           setCountdown(
             COUNTDOWN_SECONDS,
           );
-
           setPhase('countdown');
         } catch (error) {
           console.error(
             '❌ WAVEFORM SMOOTHNESS PROCESSING ERROR:',
             error,
           );
-
           processingRef.current =
             false;
-
           if (
             mountedRef.current &&
             !leavingRef.current
@@ -770,7 +642,6 @@ const currentTarget =
             setErrorMessage(
               'We could not analyze your recording. Please try again.',
             );
-
             setPhase(
               'instructions',
             );
@@ -783,24 +654,20 @@ const currentTarget =
         params,
       ],
     );
-
   const {
     startRecording,
     stopRecording,
   } = useAudioRecorder({
     onFrame:
       handleLiveFrame,
-
     onStop:
       handleRecordingStop,
   });
-
   /*
    * ----------------------------------------------------------
    * RECORDING
    * ----------------------------------------------------------
    */
-
   const beginRecording =
     useCallback(
       async () => {
@@ -812,37 +679,26 @@ const currentTarget =
         ) {
           return;
         }
-
         try {
           setErrorMessage(null);
-
           setLiveFrame(null);
-
           elapsedRef.current = 0;
-
           setElapsedMs(0);
-
           recordingRef.current =
             true;
-
           stopRequestedRef.current =
             false;
-
           setPhase('recording');
-
           await startRecording();
-
           if (
             !mountedRef.current ||
             leavingRef.current
           ) {
             return;
           }
-
           const durationMs =
             params.durationSec *
             1000;
-
           recordingTimerRef.current =
             setInterval(
               () => {
@@ -854,45 +710,35 @@ const currentTarget =
                 ) {
                   return;
                 }
-
                 elapsedRef.current +=
                   100;
-
                 setElapsedMs(
                   elapsedRef.current,
                 );
-
                 if (
                   elapsedRef.current >=
                   durationMs
                 ) {
                   clearTimers();
-
                   if (
                     stopRequestedRef.current
                   ) {
                     return;
                   }
-
                   stopRequestedRef.current =
                     true;
-
                   void stopRecording().catch(
                     error => {
                       console.error(
                         '❌ FAILED TO STOP WAVEFORM RECORDING:',
                         error,
                       );
-
                       recordingRef.current =
                         false;
-
                       stopRequestedRef.current =
                         false;
-
                       processingRef.current =
                         false;
-
                       if (
                         mountedRef.current &&
                         !leavingRef.current
@@ -900,7 +746,6 @@ const currentTarget =
                         setErrorMessage(
                           'We could not finish the recording. Please try again.',
                         );
-
                         setPhase(
                           'instructions',
                         );
@@ -916,16 +761,12 @@ const currentTarget =
             '❌ FAILED TO START WAVEFORM RECORDING:',
             error,
           );
-
           recordingRef.current =
             false;
-
           stopRequestedRef.current =
             false;
-
           processingRef.current =
             false;
-
           if (
             mountedRef.current &&
             !leavingRef.current
@@ -933,7 +774,6 @@ const currentTarget =
             setErrorMessage(
               'Unable to start the microphone. Please check your microphone permission and try again.',
             );
-
             setPhase(
               'instructions',
             );
@@ -947,19 +787,16 @@ const currentTarget =
         stopRecording,
       ],
     );
-
   /*
    * ----------------------------------------------------------
    * REFERENCE NOTE
    * ----------------------------------------------------------
    */
-
   const playCurrentReference =
     useCallback(
       async () => {
         const target =
           targetNoteRef.current;
-
         if (
           !target ||
           !mountedRef.current ||
@@ -967,31 +804,25 @@ const currentTarget =
         ) {
           return;
         }
-
         try {
           setErrorMessage(null);
-
           setPhase('listening');
-
           await playSingleNote(
             target.frequency,
             REFERENCE_NOTE_DURATION_SECONDS,
           );
-
           if (
             !mountedRef.current ||
             leavingRef.current
           ) {
             return;
           }
-
           await beginRecording();
         } catch (error) {
           console.error(
             '❌ FAILED TO PLAY WAVEFORM REFERENCE NOTE:',
             error,
           );
-
           if (
             mountedRef.current &&
             !leavingRef.current
@@ -999,7 +830,6 @@ const currentTarget =
             setErrorMessage(
               'We could not play the reference note. Please try again.',
             );
-
             setPhase(
               'instructions',
             );
@@ -1008,25 +838,20 @@ const currentTarget =
       },
       [beginRecording],
     );
-
   /*
    * ----------------------------------------------------------
    * COUNTDOWN
    * ----------------------------------------------------------
    */
-
   useEffect(() => {
     if (
       phase !== 'countdown'
     ) {
       return;
     }
-
     let value =
       COUNTDOWN_SECONDS;
-
     setCountdown(value);
-
     if (
       countdownTimerRef.current
     ) {
@@ -1034,12 +859,10 @@ const currentTarget =
         countdownTimerRef.current,
       );
     }
-
     countdownTimerRef.current =
       setInterval(
         () => {
           value -= 1;
-
           if (
             value <= 0
           ) {
@@ -1049,16 +872,12 @@ const currentTarget =
               clearInterval(
                 countdownTimerRef.current,
               );
-
               countdownTimerRef.current =
                 null;
             }
-
             void playCurrentReference();
-
             return;
           }
-
           if (
             mountedRef.current &&
             !leavingRef.current
@@ -1070,7 +889,6 @@ const currentTarget =
         },
         1000,
       );
-
     return () => {
       if (
         countdownTimerRef.current
@@ -1078,7 +896,6 @@ const currentTarget =
         clearInterval(
           countdownTimerRef.current,
         );
-
         countdownTimerRef.current =
           null;
       }
@@ -1087,13 +904,11 @@ const currentTarget =
     phase,
     playCurrentReference,
   ]);
-
   /*
    * ----------------------------------------------------------
    * START / RESET
    * ----------------------------------------------------------
    */
-
   const startExercise =
     useCallback(() => {
       if (
@@ -1102,113 +917,90 @@ const currentTarget =
       ) {
         return;
       }
-
       resultsRef.current = [];
-
       setRepetitionResults([]);
-
       setFinalResult(null);
-
       setAverageCentroidSmoothness(0);
-
       setAverageAmplitudeStability(0);
-
       setAverageCentroid(0);
-
       setErrorMessage(null);
-
       currentRepRef.current = 1;
-
       setCurrentRep(1);
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setElapsedMs(0);
-
       setLiveFrame(null);
-
       processingRef.current =
         false;
-
       recordingRef.current =
         false;
-
       stopRequestedRef.current =
         false;
-
       setPhase('countdown');
     }, [
       loadingParams,
       targetNote,
     ]);
-
   const retryExercise =
     useCallback(() => {
       clearTimers();
-
       resultsRef.current = [];
-
       setRepetitionResults([]);
-
       setFinalResult(null);
-
       setAverageCentroidSmoothness(0);
-
       setAverageAmplitudeStability(0);
-
       setAverageCentroid(0);
-
       setErrorMessage(null);
-
       currentRepRef.current = 1;
-
       setCurrentRep(1);
-
       setCountdown(
         COUNTDOWN_SECONDS,
       );
-
       setElapsedMs(0);
-
       setLiveFrame(null);
-
       recordingRef.current =
         false;
-
       stopRequestedRef.current =
         false;
-
       processingRef.current =
         false;
-
       setPhase('countdown');
     }, [clearTimers]);
-
   const goBack =
     useCallback(() => {
       leavingRef.current = true;
-
       clearTimers();
-
       recordingRef.current =
         false;
-
       stopRequestedRef.current =
         true;
-
       disposeNotePlayer();
-
       router.back();
     }, [clearTimers]);
-
   /*
    * ----------------------------------------------------------
    * INSTRUCTIONS
    * ----------------------------------------------------------
    */
-
+  if (loadingParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="pulse-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
   if (phase === 'instructions') {
     return (
       <ExerciseScreen
@@ -1273,13 +1065,11 @@ const currentTarget =
       />
     );
   }
-
   /*
    * ----------------------------------------------------------
    * COUNTDOWN
    * ----------------------------------------------------------
    */
-
   if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
@@ -1300,13 +1090,11 @@ const currentTarget =
       />
     );
   }
-
   /*
    * ----------------------------------------------------------
    * LISTENING
    * ----------------------------------------------------------
    */
-
   if (phase === 'listening') {
     return (
       <ExerciseListeningScreen
@@ -1331,7 +1119,6 @@ const currentTarget =
             >
               SING THIS NOTE
             </Text>
-
             <Text
               style={
                 styles.referenceNote
@@ -1340,7 +1127,6 @@ const currentTarget =
               {currentTarget?.name ??
                 '--'}
             </Text>
-
             <Text
               style={
                 styles.referenceFrequency
@@ -1359,17 +1145,14 @@ const currentTarget =
       />
     );
   }
-
   /*
    * ----------------------------------------------------------
    * RECORDING
    * ----------------------------------------------------------
    */
-
   if (phase === 'recording') {
     const elapsedSeconds =
       elapsedMs / 1000;
-
     const progress =
       params.durationSec > 0
         ? clamp(
@@ -1379,7 +1162,6 @@ const currentTarget =
             1,
           )
         : 0;
-
     const detectedNote =
       liveFrame &&
       Number.isFinite(
@@ -1390,7 +1172,6 @@ const currentTarget =
             liveFrame.pitch,
           )
         : '--';
-
     return (
       <ExerciseListeningScreen
         icon="pulse-outline"
@@ -1424,7 +1205,6 @@ const currentTarget =
               >
                 TARGET
               </Text>
-
               <Text
                 style={
                   styles.liveValue
@@ -1434,13 +1214,11 @@ const currentTarget =
                   '--'}
               </Text>
             </View>
-
             <View
               style={
                 styles.liveDivider
               }
             />
-
             <View
               style={
                 styles.liveMetric
@@ -1453,7 +1231,6 @@ const currentTarget =
               >
                 DETECTED
               </Text>
-
               <Text
                 style={
                   styles.liveValue
@@ -1468,18 +1245,15 @@ const currentTarget =
       />
     );
   }
-
   /*
    * ----------------------------------------------------------
    * PROCESSING
    * ----------------------------------------------------------
    */
-
   if (phase === 'processing') {
     const isFinalRep =
       currentRep >=
       params.repetitions;
-
     return (
       <ExerciseProcessingScreen
         icon="analytics-outline"
@@ -1497,19 +1271,15 @@ const currentTarget =
       />
     );
   }
-
   /*
    * ----------------------------------------------------------
    * RESULTS
    * ----------------------------------------------------------
    */
-
   const score =
     finalResult?.score ?? 0;
-
   const passed =
     finalResult?.passed ?? false;
-
   return (
     <ExerciseResultsScreen
       title="Exercise Complete"
@@ -1543,7 +1313,6 @@ const currentTarget =
             >
               Spectral Smoothness
             </Text>
-
             <Text
               style={
                 styles.scoreMetricValue
@@ -1555,7 +1324,6 @@ const currentTarget =
               %
             </Text>
           </View>
-
           <View
             style={
               styles.scoreMetric
@@ -1568,7 +1336,6 @@ const currentTarget =
             >
               Amplitude Stability
             </Text>
-
             <Text
               style={
                 styles.scoreMetricValue
@@ -1580,7 +1347,6 @@ const currentTarget =
               %
             </Text>
           </View>
-
           <View
             style={
               styles.scoreMetric
@@ -1593,7 +1359,6 @@ const currentTarget =
             >
               Average Centroid
             </Text>
-
             <Text
               style={
                 styles.scoreMetricValue
@@ -1622,7 +1387,6 @@ const currentTarget =
         >
           Repetition Results
         </Text>
-
         {repetitionResults.map(
           (item, index) => (
             <View
@@ -1643,7 +1407,6 @@ const currentTarget =
                 >
                   Repetition {index + 1}
                 </Text>
-
                 <Text
                   style={
                     styles.repetitionScore
@@ -1652,7 +1415,6 @@ const currentTarget =
                   {item.score.score}%
                 </Text>
               </View>
-
               <View
                 style={
                   styles.repetitionNoteRow
@@ -1663,7 +1425,6 @@ const currentTarget =
                   size={18}
                   color={BROWN}
                 />
-
                 <Text
                   style={
                     styles.repetitionNote
@@ -1672,7 +1433,6 @@ const currentTarget =
                   {item.targetNote}
                 </Text>
               </View>
-
               <View
                 style={
                   styles.repetitionMetrics
@@ -1690,7 +1450,6 @@ const currentTarget =
                   )}
                   %
                 </Text>
-
                 <Text
                   style={
                     styles.repetitionMetric
@@ -1713,6 +1472,40 @@ const currentTarget =
 }
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#9A817D',
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   referenceCard: {
     width: '100%',
     alignItems: 'center',
@@ -1723,7 +1516,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   referenceLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
@@ -1731,20 +1523,17 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginBottom: 6,
   },
-
   referenceNote: {
     fontFamily: 'FredokaBold',
     fontSize: 38,
     color: BROWN,
   },
-
   referenceFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 2,
   },
-
   liveCard: {
     width: '100%',
     flexDirection: 'row',
@@ -1756,18 +1545,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   liveMetric: {
     flex: 1,
     alignItems: 'center',
   },
-
   liveDivider: {
     width: 1,
     height: 42,
     backgroundColor: BORDER,
   },
-
   liveLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
@@ -1775,19 +1561,16 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginBottom: 4,
   },
-
   liveValue: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
     color: BROWN,
   },
-
   scoreDetails: {
     width: '100%',
     marginTop: 18,
     gap: 10,
   },
-
   scoreMetric: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1797,30 +1580,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: LIGHT_PINK,
   },
-
   scoreMetricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
   },
-
   scoreMetricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   resultsSection: {
     marginTop: 18,
   },
-
   resultsSectionTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
     marginBottom: 10,
   },
-
   repetitionCard: {
     padding: 14,
     marginBottom: 10,
@@ -1829,45 +1607,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   repetitionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-
   repetitionTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   repetitionScore: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   repetitionNoteRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
     marginBottom: 8,
   },
-
   repetitionNote: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   repetitionMetrics: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
   },
-
   repetitionMetric: {
     flex: 1,
     fontFamily: 'FredokaRegular',

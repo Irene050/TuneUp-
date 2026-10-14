@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { router } from 'expo-router';
 
 import {
@@ -7,7 +8,9 @@ import {
   useRef,
   useState,
 } from 'react';
+
 import {
+  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -69,12 +72,17 @@ import {
 import { auth } from '@/services/firebase/config';
 
 const BROWN = '#4E2F1F';
+
 const LIGHT_PINK = '#FFF8FA';
+
 const WHITE = '#FFFFFF';
+
 const MUTED = '#8E7770';
+
 const BORDER = '#F2DDE5';
 
 const COUNTDOWN_SECONDS = 3;
+
 const REST_SECONDS = 2;
 
 interface Props {
@@ -113,7 +121,6 @@ function formatNumber(
   if (!Number.isFinite(value)) {
     return '--';
   }
-
   return value.toFixed(decimals);
 }
 
@@ -131,106 +138,78 @@ export default function FrequencyZoneStabilityScreen({
   tier,
 }: Props) {
   const user = auth.currentUser;
-
   const [currentTier, setCurrentTier] =
     useState<Tier>('beginner');
-
   const [params, setParams] =
     useState<FrequencyZoneStabilityParams>(
       FREQUENCY_ZONE_STABILITY_PARAMS.beginner,
     );
-
   const [loadingParams, setLoadingParams] =
     useState(true);
-
   const [phase, setPhase] =
     useState<Phase>('instructions');
-
   const [countdown, setCountdown] =
     useState(COUNTDOWN_SECONDS);
-
   const [restCountdown, setRestCountdown] =
     useState(REST_SECONDS);
-
   const [repetition, setRepetition] =
     useState(1);
-
   const [elapsedMs, setElapsedMs] =
     useState(0);
-
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
   const [liveZone, setLiveZone] =
     useState<FrequencyZone | null>(null);
-
   const [repetitionResults, setRepetitionResults] =
     useState<RepetitionResult[]>([]);
-
   const [result, setResult] =
     useState<{
       score: number;
       passed: boolean;
     } | null>(null);
-
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
-
   const mountedRef =
     useRef(true);
-
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const restTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(
       null,
     );
-
   const recordingRef =
     useRef(false);
-
   const processingRef =
     useRef(false);
-
   const stopRequestedRef =
     useRef(false);
-
   const elapsedRef =
     useRef(0);
-
   const repetitionRef =
     useRef(1);
-
   const resultsRef =
     useRef<RepetitionResult[]>([]);
-
   const pitchHistoryRef =
     useRef<number[]>([]);
-
   useEffect(() => {
     return () => {
       mountedRef.current = false;
-
       if (countdownTimerRef.current) {
         clearInterval(
           countdownTimerRef.current,
         );
       }
-
       if (restTimerRef.current) {
         clearInterval(
           restTimerRef.current,
         );
       }
-
       if (recordingTimerRef.current) {
         clearInterval(
           recordingTimerRef.current,
@@ -238,40 +217,32 @@ export default function FrequencyZoneStabilityScreen({
       }
     };
   }, []);
-
   const loadParams = useCallback(
     async () => {
       if (!user) {
         setLoadingParams(false);
         return;
       }
-
       try {
         setLoadingParams(true);
-
         const progress =
           await fetchComponentProgress(
             user.uid,
             'tone',
           );
-
         const resolvedTier =
           tier ??
           progress?.currentTier ??
           'beginner';
-
         if (!mountedRef.current) {
           return;
         }
-
         setCurrentTier(resolvedTier);
-
         const records =
           await fetchExerciseRecords(
             user.uid,
             'tone',
           );
-
         const currentTierRecords =
           records
             .filter(
@@ -286,7 +257,6 @@ export default function FrequencyZoneStabilityScreen({
                 a.timestamp -
                 b.timestamp,
             );
-
         let recentScores =
           currentTierRecords
             .slice(-5)
@@ -294,17 +264,14 @@ export default function FrequencyZoneStabilityScreen({
               (record) =>
                 record.scorePct,
             );
-
         if (recentScores.length === 0) {
           const assessment =
             await getLatestAssessment();
-
           const assessmentScore =
             assessment?.scores.find(
               (score) =>
                 score.componentId === 'tone',
             )?.scorePct;
-
           if (
             typeof assessmentScore ===
             'number'
@@ -314,33 +281,26 @@ export default function FrequencyZoneStabilityScreen({
             ];
           }
         }
-
         const generatedParams =
           generateFrequencyZoneStabilityParams({
             tier: resolvedTier,
             recentScores,
           });
-
         if (!mountedRef.current) {
           return;
         }
-
         setParams(generatedParams);
       } catch (error) {
         console.error(
           'Failed to load Frequency Zone Stability parameters:',
           error,
         );
-
         if (!mountedRef.current) {
           return;
         }
-
         const fallbackTier =
           tier ?? 'beginner';
-
         setCurrentTier(fallbackTier);
-
         setParams(
           FREQUENCY_ZONE_STABILITY_PARAMS[
             fallbackTier
@@ -354,20 +314,16 @@ export default function FrequencyZoneStabilityScreen({
     },
     [tier, user],
   );
-
   useEffect(() => {
     loadParams();
   }, [loadParams]);
-
   const handleLiveFrame =
     useCallback(
       (frame: LiveAudioFrame) => {
         if (!mountedRef.current) {
           return;
         }
-
         setLiveFrame(frame);
-
         if (
           Number.isFinite(frame.pitch) &&
           frame.pitch > 0
@@ -375,7 +331,6 @@ export default function FrequencyZoneStabilityScreen({
           pitchHistoryRef.current.push(
             frame.pitch,
           );
-
           setLiveZone(
             classifyFrequencyZone(
               frame.pitch,
@@ -387,7 +342,6 @@ export default function FrequencyZoneStabilityScreen({
       },
       [],
     );
-
   const finishExercise =
     useCallback(
       async (
@@ -400,20 +354,17 @@ export default function FrequencyZoneStabilityScreen({
           setPhase('instructions');
           return;
         }
-
         const averageScore =
           results.reduce(
             (sum, item) =>
               sum + item.score.score,
             0,
           ) / results.length;
-
         const allPassed =
           results.every(
             (item) =>
               item.score.passed,
           );
-
         const finalScore = Math.round(
           clamp(
             averageScore,
@@ -421,7 +372,6 @@ export default function FrequencyZoneStabilityScreen({
             100,
           ),
         );
-
         if (user) {
           try {
             await saveCompletedExercise(
@@ -435,7 +385,6 @@ export default function FrequencyZoneStabilityScreen({
               'Failed to save Frequency Zone Stability result:',
               error,
             );
-
             if (mountedRef.current) {
               Alert.alert(
                 'Progress Save Error',
@@ -444,21 +393,17 @@ export default function FrequencyZoneStabilityScreen({
             }
           }
         }
-
         if (!mountedRef.current) {
           return;
         }
-
         setResult({
           score: finalScore,
           passed: allPassed,
         });
-
         setPhase('results');
       },
       [currentTier, user],
     );
-
   const handleRecordingStop =
     useCallback(
       (
@@ -471,33 +416,26 @@ export default function FrequencyZoneStabilityScreen({
         ) {
           return;
         }
-
         processingRef.current = true;
         recordingRef.current = false;
-
         if (recordingTimerRef.current) {
           clearInterval(
             recordingTimerRef.current,
           );
-
           recordingTimerRef.current = null;
         }
-
         const measurement =
           measureFrequencyZoneStability(
             pitchHistoryRef.current,
             elapsedRef.current / 1000,
           );
-
         const score =
           scoreFrequencyZoneStability(
             measurement,
             params,
           );
-
         const detectedZones =
           measurement.zoneSequence;
-
         const zoneCounts: Record<
           FrequencyZone,
           number
@@ -506,18 +444,14 @@ export default function FrequencyZoneStabilityScreen({
           mid: 0,
           high: 0,
         };
-
         for (const zone of detectedZones) {
           zoneCounts[zone] += 1;
         }
-
         let detectedZone:
           | FrequencyZone
           | null = null;
-
         if (detectedZones.length > 0) {
           detectedZone = 'low';
-
           for (const zone of [
             'mid',
             'high',
@@ -530,36 +464,28 @@ export default function FrequencyZoneStabilityScreen({
             }
           }
         }
-
         const repetitionResult: RepetitionResult =
           {
             measurement,
             score,
             detectedZone,
           };
-
         const updatedResults = [
           ...resultsRef.current,
           repetitionResult,
         ];
-
         resultsRef.current =
           updatedResults;
-
         if (!mountedRef.current) {
           return;
         }
-
         setRepetitionResults(
           updatedResults,
         );
         setLiveFrame(null);
         setLiveZone(null);
-
         pitchHistoryRef.current = [];
-
         processingRef.current = false;
-
         if (
           repetitionRef.current <
           params.repetitions
@@ -570,7 +496,6 @@ export default function FrequencyZoneStabilityScreen({
           );
         } else {
           setPhase('processing');
-
           void finishExercise(
             updatedResults,
           );
@@ -578,7 +503,6 @@ export default function FrequencyZoneStabilityScreen({
       },
       [finishExercise, params],
     );
-
   const {
     startRecording,
     stopRecording,
@@ -586,7 +510,6 @@ export default function FrequencyZoneStabilityScreen({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });
-
   const startRecordingPhase =
     useCallback(
       async () => {
@@ -596,29 +519,22 @@ export default function FrequencyZoneStabilityScreen({
         ) {
           return;
         }
-
         try {
           setErrorMessage(null);
           setElapsedMs(0);
           elapsedRef.current = 0;
           pitchHistoryRef.current = [];
-
           recordingRef.current = true;
           stopRequestedRef.current = false;
-
           setLiveFrame(null);
           setLiveZone(null);
-
           await startRecording();
-
           if (!mountedRef.current) {
             return;
           }
-
           recordingTimerRef.current =
             setInterval(() => {
               elapsedRef.current += 100;
-
               if (
                 mountedRef.current
               ) {
@@ -626,7 +542,6 @@ export default function FrequencyZoneStabilityScreen({
                   elapsedRef.current,
                 );
               }
-
               if (
                 elapsedRef.current >=
                 params.durationSec *
@@ -638,50 +553,40 @@ export default function FrequencyZoneStabilityScreen({
                   clearInterval(
                     recordingTimerRef.current,
                   );
-
                   recordingTimerRef.current =
                     null;
                 }
-
                 if (
                   !stopRequestedRef.current
                 ) {
                   stopRequestedRef.current =
                     true;
-
                   stopRecording();
                 }
               }
             }, 100);
-
           setPhase('recording');
         } catch (error) {
           console.error(
             'Failed to start recording:',
             error,
           );
-
           recordingRef.current =
             false;
-
           pitchHistoryRef.current = [];
-
           if (
             recordingTimerRef.current
           ) {
             clearInterval(
               recordingTimerRef.current,
             );
-
             recordingTimerRef.current =
               null;
           }
-
           if (mountedRef.current) {
             setErrorMessage(
               'Unable to start recording. Please check microphone permission and try again.',
             );
-
             setPhase('instructions');
           }
         }
@@ -692,7 +597,6 @@ export default function FrequencyZoneStabilityScreen({
         stopRecording,
       ],
     );
-
   const beginCountdown =
     useCallback(() => {
       setErrorMessage(null);
@@ -700,20 +604,16 @@ export default function FrequencyZoneStabilityScreen({
         COUNTDOWN_SECONDS,
       );
       setPhase('countdown');
-
       let value =
         COUNTDOWN_SECONDS;
-
       countdownTimerRef.current =
         setInterval(() => {
           value -= 1;
-
           if (
             !mountedRef.current
           ) {
             return;
           }
-
           if (value <= 0) {
             if (
               countdownTimerRef.current
@@ -721,55 +621,43 @@ export default function FrequencyZoneStabilityScreen({
               clearInterval(
                 countdownTimerRef.current,
               );
-
               countdownTimerRef.current =
                 null;
             }
-
             void startRecordingPhase();
             return;
           }
-
           setCountdown(value);
         }, 1000);
     }, [startRecordingPhase]);
-
   const startExercise =
     useCallback(() => {
       resultsRef.current = [];
       repetitionRef.current = 1;
       pitchHistoryRef.current = [];
-
       setRepetitionResults([]);
       setResult(null);
       setRepetition(1);
       setErrorMessage(null);
-
       beginCountdown();
     }, [beginCountdown]);
-
   const handleRest =
     useCallback(() => {
       let value = REST_SECONDS;
-
       setRestCountdown(value);
-
       if (restTimerRef.current) {
         clearInterval(
           restTimerRef.current,
         );
       }
-
       restTimerRef.current =
         setInterval(() => {
           value -= 1;
-
           if (
             !mountedRef.current
           ) {
             return;
           }
-
           if (value <= 0) {
             if (
               restTimerRef.current
@@ -777,41 +665,32 @@ export default function FrequencyZoneStabilityScreen({
               clearInterval(
                 restTimerRef.current,
               );
-
               restTimerRef.current =
                 null;
             }
-
             repetitionRef.current += 1;
-
             setRepetition(
               repetitionRef.current,
             );
-
             setElapsedMs(0);
             elapsedRef.current = 0;
             pitchHistoryRef.current = [];
-
             beginCountdown();
             return;
           }
-
           setRestCountdown(value);
         }, 1000);
     }, [beginCountdown]);
-
   useEffect(() => {
     if (phase === 'rest') {
       handleRest();
     }
   }, [phase, handleRest]);
-
   const handleRetry =
     useCallback(() => {
       resultsRef.current = [];
       repetitionRef.current = 1;
       pitchHistoryRef.current = [];
-
       setRepetitionResults([]);
       setResult(null);
       setRepetition(1);
@@ -820,15 +699,12 @@ export default function FrequencyZoneStabilityScreen({
       setLiveFrame(null);
       setLiveZone(null);
       setErrorMessage(null);
-
       setPhase('instructions');
     }, []);
-
   const handleExit =
     useCallback(() => {
       router.back();
     }, []);
-
   const recordingProgress =
     params.durationSec > 0
       ? clamp(
@@ -838,14 +714,12 @@ export default function FrequencyZoneStabilityScreen({
           1,
         ) * 100
       : 0;
-
   const livePitch =
     liveFrame &&
     Number.isFinite(liveFrame.pitch) &&
     liveFrame.pitch > 0
       ? liveFrame.pitch
       : null;
-
   const averageScore =
     repetitionResults.length > 0
       ? Math.round(
@@ -857,7 +731,6 @@ export default function FrequencyZoneStabilityScreen({
             repetitionResults.length,
         )
       : 0;
-
   const preparationSteps: ExercisePreparationStep[] =
     [
       {
@@ -873,7 +746,6 @@ export default function FrequencyZoneStabilityScreen({
         text: 'Maintain a steady vocal frequency throughout the recording.',
       },
     ];
-
   const summary: ExerciseSummaryItem[] =
     [
       {
@@ -894,17 +766,24 @@ export default function FrequencyZoneStabilityScreen({
         hint: 'attempts',
       },
     ];
-
   if (loadingParams) {
     return (
-      <View style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>
-          Preparing exercise...
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="pulse-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level and preparing your vocal range.
         </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
       </View>
     );
   }
-
   if (phase === 'instructions') {
     return (
       <ExerciseScreen
@@ -930,7 +809,6 @@ export default function FrequencyZoneStabilityScreen({
             size={20}
             color={BROWN}
           />
-
           <Text
             style={styles.disclaimerText}
           >
@@ -943,7 +821,6 @@ export default function FrequencyZoneStabilityScreen({
       </ExerciseScreen>
     );
   }
-
   if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
@@ -958,7 +835,6 @@ export default function FrequencyZoneStabilityScreen({
       />
     );
   }
-
   if (phase === 'recording') {
     return (
       <ExerciseListeningScreen
@@ -982,7 +858,6 @@ export default function FrequencyZoneStabilityScreen({
             >
               LIVE FREQUENCY
             </Text>
-
             <Text
               style={styles.liveValue}
             >
@@ -993,7 +868,6 @@ export default function FrequencyZoneStabilityScreen({
                   )} Hz`
                 : '--'}
             </Text>
-
             <View
               style={styles.liveZoneRow}
             >
@@ -1002,7 +876,6 @@ export default function FrequencyZoneStabilityScreen({
               >
                 Zone
               </Text>
-
               <Text
                 style={styles.liveZoneValue}
               >
@@ -1013,7 +886,6 @@ export default function FrequencyZoneStabilityScreen({
                   : '--'}
               </Text>
             </View>
-
             <Text
               style={styles.liveDisclaimer}
             >
@@ -1028,16 +900,13 @@ export default function FrequencyZoneStabilityScreen({
           ) {
             stopRequestedRef.current =
               true;
-
             stopRecording();
           }
-
           router.back();
         }}
       />
     );
   }
-
   if (phase === 'rest') {
     return (
       <ExerciseCountdownScreen
@@ -1052,7 +921,6 @@ export default function FrequencyZoneStabilityScreen({
       />
     );
   }
-
   if (phase === 'processing') {
     return (
       <ExerciseProcessingScreen
@@ -1062,7 +930,6 @@ export default function FrequencyZoneStabilityScreen({
       />
     );
   }
-
   if (phase === 'results' && result) {
     return (
       <ExerciseResultsScreen
@@ -1097,7 +964,6 @@ export default function FrequencyZoneStabilityScreen({
             >
               Stability
             </Text>
-
             <Text
               style={styles.resultDetailValue}
             >
@@ -1118,11 +984,9 @@ export default function FrequencyZoneStabilityScreen({
               %
             </Text>
           </View>
-
           <View
             style={styles.resultDivider}
           />
-
           <View
             style={styles.resultDetailRow}
           >
@@ -1131,7 +995,6 @@ export default function FrequencyZoneStabilityScreen({
             >
               Repetitions
             </Text>
-
             <Text
               style={styles.resultDetailValue}
             >
@@ -1144,11 +1007,9 @@ export default function FrequencyZoneStabilityScreen({
               /{repetitionResults.length}
             </Text>
           </View>
-
           <View
             style={styles.resultDivider}
           />
-
           <View
             style={styles.resultDetailRow}
           >
@@ -1157,7 +1018,6 @@ export default function FrequencyZoneStabilityScreen({
             >
               Average Score
             </Text>
-
             <Text
               style={styles.resultDetailValue}
             >
@@ -1168,25 +1028,44 @@ export default function FrequencyZoneStabilityScreen({
       </ExerciseResultsScreen>
     );
   }
-
   return null;
 }
 
 const styles = StyleSheet.create({
-  loadingScreen: {
+  preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
   },
-
-  loadingText: {
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#FCD6DD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 15,
+    fontSize: 12,
+    lineHeight: 17,
     color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
   },
-
+  preparingSpinner: {
+    marginTop: 24,
+  },
   disclaimerCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1197,7 +1076,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   disclaimerText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -1206,7 +1084,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginLeft: 9,
   },
-
   liveFrequencyCard: {
     width: '100%',
     backgroundColor: WHITE,
@@ -1216,40 +1093,34 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
     color: MUTED,
     letterSpacing: 0.7,
   },
-
   liveValue: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     color: BROWN,
     marginTop: 4,
   },
-
   liveZoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
   },
-
   liveZoneLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     color: MUTED,
   },
-
   liveZoneValue: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
     marginLeft: 5,
   },
-
   liveDisclaimer: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1257,7 +1128,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   resultDetailsCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
@@ -1266,25 +1136,21 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 2,
   },
-
   resultDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   resultDetailLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
   },
-
   resultDetailValue: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
   },
-
   resultDivider: {
     height: 1,
     backgroundColor: BORDER,
