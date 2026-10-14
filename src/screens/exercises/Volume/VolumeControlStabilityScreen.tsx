@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from 'react';
-
 import {
   ActivityIndicator,
   Pressable,
@@ -61,7 +60,6 @@ import { createMusicalNote } from '@/utils/music/notes';
 ========================================================= */
 
 const CURRENT_TIER: Tier = 'beginner';
-
 const DEFAULT_VOLUME_CONTROL_STABILITY =
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
@@ -152,7 +150,6 @@ export default function VolumeControlStabilityScreen({
 
   useEffect(() => {
     let cancelled = false;
-
     const loadParameters = async () => {
       try {
         const user = auth.currentUser;
@@ -199,13 +196,11 @@ export default function VolumeControlStabilityScreen({
             }
           }
         }
-
         const generatedParams =
           generateVolumeControlStabilityParams({
             tier: selectedTier,
             recentScores,
           });
-
         if (cancelled) {
           return;
         }
@@ -218,7 +213,6 @@ export default function VolumeControlStabilityScreen({
           'Failed to load Volume Control Stability parameters:',
           error,
         );
-
         if (!cancelled) {
           setResolvedTier(tier ?? CURRENT_TIER);
           setExerciseParams(DEFAULT_VOLUME_CONTROL_STABILITY);
@@ -296,7 +290,6 @@ export default function VolumeControlStabilityScreen({
           : -60;
 
       setLiveVolume(db);
-
       const isVoiced =
         Number.isFinite(frame.pitch) &&
         frame.pitch > 0 &&
@@ -304,14 +297,12 @@ export default function VolumeControlStabilityScreen({
         frame.clarity >= 0.45 &&
         typeof frame.note === 'string' &&
         frame.note !== '--';
-
       setLivePitch(isVoiced ? frame.pitch : null);
       setLiveNote(
         isVoiced && typeof frame.note === 'string'
           ? frame.note
           : '--',
       );
-
       if (!isVoiced) {
         setLiveStability(0);
         return;
@@ -385,7 +376,6 @@ export default function VolumeControlStabilityScreen({
       setMeasurement(measured);
       setScore(scored);
       setPhase('results');
-
       void saveCompletedExercise(
         'volume',
         'volumeControlStability',
@@ -1283,7 +1273,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
   },
-
   referenceTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1301,14 +1290,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
   },
-
   referenceNote: {
     marginTop: 2,
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
-
   noteIconCircle: {
     width: 42,
     height: 42,
@@ -1317,7 +1304,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.LIGHT_PINK,
   },
-
   referenceInstruction: {
     marginTop: 7,
     color: COLORS.SOFT_TEXT,
@@ -1325,7 +1311,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-
   referenceButton: {
     minHeight: 43,
     marginTop: 11,
@@ -1343,7 +1328,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
-
   referenceReadyRow: {
     marginTop: 9,
     flexDirection: 'row',
@@ -1516,7 +1500,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-
   stabilityValue: {
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',

@@ -158,15 +158,47 @@ export function measureControlledDecrescendo(
     effectiveValues.length > 0 ? Math.max(...effectiveValues) : 0;
   const targetStart = targetRange[0];
   const targetEnd = targetRange[1];
-  const targetStartReached = withinTolerance(startDb, targetStart);
-  const targetEndReached = withinTolerance(endDb, targetEnd);
-  const achievedVolumeDecrease = endDb - startDb;
+  const repetitionResults = Array.from({ length: repetitions }, (_, repIndex) => {
+    const repStart = repIndex * windowsPerRep;
+    const repValues = effectiveValues.slice(
+      repStart,
+      Math.min(repStart + windowsPerRep, effectiveValues.length),
+    );
+    const repStartDb = repValues[0];
+    const repEndDb = repValues[repValues.length - 1];
+    const repDecrease =
+      Number.isFinite(repStartDb) && Number.isFinite(repEndDb)
+        ? repEndDb - repStartDb
+        : 0;
+
+    return {
+      startReached:
+        Number.isFinite(repStartDb) && withinTolerance(repStartDb, targetStart),
+      endReached:
+        Number.isFinite(repEndDb) && withinTolerance(repEndDb, targetEnd),
+      directionCorrect:
+        repValues.length >= 2 && repEndDb > repStartDb,
+      decrease: repDecrease,
+    };
+  });
+  const targetStartReached =
+    repetitionResults.length === repetitions &&
+    repetitionResults.every((result) => result.startReached);
+  const targetEndReached =
+    repetitionResults.length === repetitions &&
+    repetitionResults.every((result) => result.endReached);
+  const achievedVolumeDecrease = average(
+    repetitionResults.map((result) => result.decrease),
+  );
+  const directionCorrect =
+    repetitionResults.length === repetitions &&
+    repetitionResults.every((result) => result.directionCorrect);
   const targetReached =
     targetStartReached &&
     targetEndReached &&
-    achievedVolumeDecrease >= volumeDecreaseThreshold;
-  const directionCorrect =
-    effectiveValues.length >= 2 && endDb > startDb;
+    repetitionResults.every(
+      (result) => result.decrease >= volumeDecreaseThreshold,
+    );
 
   const measurementQuality = clamp(
     (effectiveValues.length / expectedWindowCount) * 100,
