@@ -1455,6 +1455,36 @@ const startCountdown = useCallback(async () => {
       </Text>
 
       <View style={styles.instructionCard}>
+        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
+          Exercise Instructions
+        </Text>
+
+        {[
+          'Listen carefully to the reference vocal run.',
+          'Sing every note in the same order.',
+          'Keep your pitch accurate throughout the run.',
+          'Move smoothly between each note.',
+          `Complete all ${config.repetitions} repetitions of the vocal run.`,
+        ].map((instruction, index) => (
+          <View
+            key={instruction}
+            style={styles.prepareItem}
+          >
+            <Ionicons
+              name={
+                index === 4
+                  ? 'repeat-outline'
+                  : 'checkmark-circle-outline'
+              }
+              size={17}
+              color={BROWN}
+            />
+
+            <Text style={styles.prepareText}>
+              {instruction}
+            </Text>
+          </View>
+        ))}
         <View style={styles.prepareCard}>
           <View style={styles.prepareHeader}>
             <Ionicons
@@ -1464,28 +1494,28 @@ const startCountdown = useCallback(async () => {
             />
 
             <Text style={styles.prepareTitle}>
-              Before You Begin
-            </Text>
-          </View>
+                Before You Begin
+              </Text>
+            </View>
 
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="volume-mute-outline"
-              size={17}
-              color={BROWN}
-            />
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="volume-mute-outline"
+                size={17}
+                color={BROWN}
+              />
 
             <Text style={styles.prepareText}>
               Find a quiet area with minimal background noise.
             </Text>
           </View>
 
-          <View style={styles.prepareItem}>
-            <Ionicons
-              name="body-outline"
-              size={17}
-              color={BROWN}
-            />
+            <View style={styles.prepareItem}>
+              <Ionicons
+                name="body-outline"
+                size={17}
+                color={BROWN}
+              />
 
             <Text style={styles.prepareText}>
               Stand or sit upright with your shoulders relaxed.
@@ -1562,37 +1592,6 @@ const startCountdown = useCallback(async () => {
             {config.noteDurationSec.toFixed(2)} sec
           </Text>
         </View>
-
-        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
-          Exercise Instructions
-        </Text>
-
-        {[
-          'Listen carefully to the reference vocal run.',
-          'Sing every note in the same order.',
-          'Keep your pitch accurate throughout the run.',
-          'Move smoothly between each note.',
-          `Complete all ${config.repetitions} repetitions of the vocal run.`,
-        ].map((instruction, index) => (
-          <View
-            key={instruction}
-            style={styles.prepareItem}
-          >
-            <Ionicons
-              name={
-                index === 4
-                  ? 'repeat-outline'
-                  : 'checkmark-circle-outline'
-              }
-              size={17}
-              color={BROWN}
-            />
-
-            <Text style={styles.prepareText}>
-              {instruction}
-            </Text>
-          </View>
-        ))}
       </View>
 
       <View style={styles.referenceCard}>

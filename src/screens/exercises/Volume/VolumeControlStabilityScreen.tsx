@@ -554,18 +554,18 @@ export default function VolumeControlStabilityScreen({
     router.back();
   }, [phase, stopRecording]);
 
-  /* =========================================================
-     PREPARING
+ /* =========================================================
+   PREPARING
   ========================================================= */
 
   if (!paramsReady) {
     return (
-      <SafeAreaView style={styles.preparingScreen}>
+      <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
           <Ionicons
             name="options-outline"
             size={32}
-            color={COLORS.ACCENT}
+            color={COLORS.BROWN}
           />
         </View>
 
@@ -575,15 +575,15 @@ export default function VolumeControlStabilityScreen({
 
         <Text style={styles.preparingSubtitle}>
           Adjusting the exercise to your current difficulty
-          level and preparing your session.
+          level and preparing your vocal range.
         </Text>
 
         <ActivityIndicator
           size="large"
-          color={COLORS.ACCENT}
+          color={COLORS.BROWN}
           style={styles.preparingSpinner}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -1210,41 +1210,41 @@ const styles = StyleSheet.create({
 
   preparingScreen: {
     flex: 1,
+    backgroundColor: COLORS.WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    backgroundColor: COLORS.LIGHT_PINK,
+    paddingHorizontal: 30,
   },
 
   preparingIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: COLORS.PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    backgroundColor: COLORS.PINK,
+    marginBottom: 22,
   },
 
   preparingTitle: {
-    color: COLORS.BROWN,
     fontFamily: 'FredokaBold',
-    fontSize: 21,
+    fontSize: 20,
+    color: COLORS.BROWN,
     textAlign: 'center',
   },
 
   preparingSubtitle: {
-    maxWidth: 285,
-    marginTop: 7,
-    color: COLORS.MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
+    color: '#9A817D',
     textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
   },
 
   preparingSpinner: {
-    marginTop: 20,
+    marginTop: 24,
   },
 
   /* SHARED */

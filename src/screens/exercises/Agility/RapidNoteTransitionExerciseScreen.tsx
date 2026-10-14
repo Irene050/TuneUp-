@@ -1353,6 +1353,27 @@ export default function RapidNoteTransitionExerciseScreen({
         VOCAL AGILITY
       </Text>
       <View style={styles.instructionCard}>
+        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
+          Exercise Instructions
+        </Text>
+        {[
+          'Listen carefully to the reference sequence.',
+          'Sing the same notes in the same order.',
+          'Move quickly and smoothly between each note.',
+          'Focus on maintaining accurate pitch throughout the sequence.',
+        ].map(item => (
+          <View
+            key={item}
+            style={styles.prepareItem}
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+            <Text style={styles.prepareText}>{item}</Text>
+          </View>
+        ))}
         <View style={styles.prepareCard}>
           <View style={styles.prepareHeader}>
             <Ionicons
@@ -1435,27 +1456,6 @@ export default function RapidNoteTransitionExerciseScreen({
           label="Accuracy Goal"
           value={`${exerciseConfig.accuracyThreshold}%`}
         />
-        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
-          Exercise Instructions
-        </Text>
-        {[
-          'Listen carefully to the reference sequence.',
-          'Sing the same notes in the same order.',
-          'Move quickly and smoothly between each note.',
-          'Focus on maintaining accurate pitch throughout the sequence.',
-        ].map(item => (
-          <View
-            key={item}
-            style={styles.prepareItem}
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-            <Text style={styles.prepareText}>{item}</Text>
-          </View>
-        ))}
       </View>
       {errorMessage ? (
         <View style={styles.errorCard}>

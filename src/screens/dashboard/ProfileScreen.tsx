@@ -222,7 +222,6 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       await logoutUser();
-
       router.replace({
         pathname: '/[auth]',
         params: { auth: 'login' },
