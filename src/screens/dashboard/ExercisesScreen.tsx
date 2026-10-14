@@ -486,7 +486,7 @@ export default function ExercisesScreen() {
                       : exercise.category === 'Pitch'
                         ? 'musical-note-outline'
                         : exercise.category === 'Tone'
-                          ? 'pulse-outline'
+                          ? 'radio-outline'
                           : exercise.category === 'Volume'
                             ? 'volume-high-outline'
                             : 'flash-outline'
