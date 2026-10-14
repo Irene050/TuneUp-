@@ -40,18 +40,6 @@ function calculateSpeedScore(
   );
 }
 
-/**
- * Scores a Rapid Scale Trill attempt.
- *
- * Weights:
- * - Pitch accuracy: 35%
- * - Sequence accuracy: 30%
- * - Transition accuracy: 20%
- * - Speed: 15%
- *
- * The optional threshold defaults to 70 to preserve
- * compatibility with existing callers.
- */
 export function scoreRapidScaleTrill(
   measurement: RapidScaleTrillMeasurement,
   accuracyThreshold = 70,

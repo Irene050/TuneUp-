@@ -45,14 +45,10 @@ export function scoreControlledCrescendo(
   return {
     smoothness:
       overallScore,
-
     overallScore,
-
     passed,
-
     targetReached:
       measurement.targetReached,
-
     measurementQuality:
       round(
         measurement.overallMeasurementQuality,

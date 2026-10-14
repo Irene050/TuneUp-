@@ -1,21 +1,21 @@
 import {
-    confirmPasswordReset,
-    createUserWithEmailAndPassword,
-    deleteUser,
-    EmailAuthProvider,
-    reauthenticateWithCredential,
-    sendPasswordResetEmail,
-    signInWithEmailAndPassword,
-    signOut,
-    updatePassword,
-    updateProfile,
-    type User,
+  confirmPasswordReset,
+  createUserWithEmailAndPassword,
+  deleteUser,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updatePassword,
+  updateProfile,
+  type User,
 } from 'firebase/auth';
 
 import {
-    doc,
-    serverTimestamp,
-    writeBatch,
+  doc,
+  serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 
 import { auth, db } from './config';
@@ -26,10 +26,6 @@ type RegistrationProfile = {
 };
 
 const ALL_COMPONENT_IDS = ['breathControl', 'pitch', 'tone', 'volume', 'agility'] as const;
-
-/* =========================================================
-   REGISTER USER
-========================================================= */
 
 export async function registerUser(
   name: string,
@@ -67,7 +63,6 @@ export async function registerUser(
 
   const user = credential.user;
 
-  // Save user's name in Firebase Authentication
   await updateProfile(user, {
     displayName: trimmedName,
   });
@@ -97,10 +92,6 @@ export async function registerUser(
   return user;
 }
 
-/* =========================================================
-   LOGIN USER
-========================================================= */
-
 export async function loginUser(
   email: string,
   password: string,
@@ -124,10 +115,6 @@ export async function loginUser(
 
   return credential.user;
 }
-
-/* =========================================================
-   SEND PASSWORD RESET EMAIL
-========================================================= */
 
 export async function sendPasswordReset(
   email: string,
@@ -174,23 +161,11 @@ export async function sendPasswordReset(
   }
 }
 
-/* =========================================================
-   SEND PASSWORD RESET CODE
-   Alias for compatibility with existing screens.
-   
-   Firebase sends a secure reset EMAIL/LINK,
-   not a random 4/6 digit code.
-========================================================= */
-
 export async function sendPasswordResetCode(
   email: string,
 ): Promise<void> {
   return sendPasswordReset(email);
 }
-
-/* =========================================================
-   RESET PASSWORD
-========================================================= */
 
 export async function resetPassword(
   code: string,
@@ -255,10 +230,6 @@ export async function resetPassword(
     }
   }
 }
-
-/* =========================================================
-   LOGOUT USER
-========================================================= */
 
 export async function logoutUser(): Promise<void> {
   await signOut(auth);

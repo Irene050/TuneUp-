@@ -2,10 +2,6 @@ import type {
   VolumeControlStabilityMeasurement,
 } from '@/services/measurement/volume/volumeControlStability';
 
-/* =========================================================
-   SCORE RESULT
-   ========================================================= */
-
 export interface VolumeControlStabilityScore {
   overallScore: number;
   stabilityScore: number;
@@ -15,24 +11,12 @@ export interface VolumeControlStabilityScore {
   feedback: string;
 }
 
-/* =========================================================
-   DEFAULTS
-   ========================================================= */
-
 const DEFAULT_TARGET_STABILITY = 70;
 const MIN_VOICED_COVERAGE = 20;
-
-/* =========================================================
-   OPTIONS
-   ========================================================= */
 
 export interface VolumeControlStabilityScoreOptions {
   passingScore?: number;
 }
-
-/* =========================================================
-   CLAMP
-   ========================================================= */
 
 function clamp(
   value: number,
@@ -48,10 +32,6 @@ function clamp(
     Math.min(max, value),
   );
 }
-
-/* =========================================================
-   SCORE VOLUME CONTROL STABILITY
-   ========================================================= */
 
 export function scoreVolumeControlStability(
   measurement: VolumeControlStabilityMeasurement,
@@ -73,10 +53,6 @@ export function scoreVolumeControlStability(
     measurement.voicedCoveragePercent,
   );
 
-  /* -------------------------------------------------------
-     AUDIO VALIDATION
-     ------------------------------------------------------- */
-
   const averageDb = measurement.averageDb;
 
   const hasAudio =
@@ -85,27 +61,15 @@ export function scoreVolumeControlStability(
     averageDb <= 0 &&
     voicedCoverage > 0;
 
-  /* -------------------------------------------------------
-     OVERALL SCORE
-     ------------------------------------------------------- */
-
   const overallScore = clamp(
     stabilityScore * 0.7 +
     durationScore * 0.3,
   );
 
-  /* -------------------------------------------------------
-     PASS CONDITION
-     ------------------------------------------------------- */
-
   const passed =
     hasAudio &&
     voicedCoverage >= MIN_VOICED_COVERAGE &&
     overallScore >= targetStability;
-
-  /* -------------------------------------------------------
-     FEEDBACK
-     ------------------------------------------------------- */
 
   let feedback: string;
 

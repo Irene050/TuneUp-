@@ -26,12 +26,6 @@ function calculateStrictScore(value: number): number {
 }
 
 function calculateAmplitudeScore(value: number): number {
-  // More forgiving amplitude scoring:
-  // 100% = 100 points
-  // 90% = 92.5 points
-  // 80% = 85 points
-  // 70% = 77.5 points
-  // 60% = 70 points
   return Math.max(
     0,
     Math.min(100, 0.75 * value + 25),

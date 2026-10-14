@@ -45,7 +45,6 @@ export function scoreVocalRunAccuracy(
         )
       : sequenceScore;
 
-  // Preserve the established scoring weights.
   const overall =
     pitchScore * 0.4 +
     sequenceScore * 0.35 +

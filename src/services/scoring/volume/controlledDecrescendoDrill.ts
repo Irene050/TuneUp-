@@ -51,9 +51,7 @@ export function scoreControlledDecrescendo(
     measurement.validWindowCount >= MIN_VALID_WINDOWS &&
     measurement.measurementQuality > 0;
 
-  // Keep scores from repetitions that produced a measurable result.
-  // A failed/missing repetition must not erase scores from earlier valid reps.
-  const validRepScores = measurement.repSmoothness.filter(
+    const validRepScores = measurement.repSmoothness.filter(
     (score) => Number.isFinite(score) && score > 0,
   );
 
@@ -63,8 +61,6 @@ export function scoreControlledDecrescendo(
         validRepScores.length
       : 0;
 
-  // If audio is insufficient, return 0. Otherwise, preserve partial results
-  // even when the complete exercise did not meet every passing condition.
   const overallScore = hasEnoughAudio
     ? roundScore(repetitionAverage)
     : 0;

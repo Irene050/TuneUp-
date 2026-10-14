@@ -45,16 +45,7 @@ export function scoreVowelConsistencyExercise(
       ? clamp(measurement.smoothnessPct, 0, 100)
       : 0;
 
-  // Gradual scoring:
-  // 100% smoothness = 100 points
-  // 90% smoothness = 90 points
-  // 80% smoothness = 80 points
-  // 70% smoothness = 70 points
-  // 60% smoothness = 60 points
   const smoothnessPoints = smoothnessScore;
-
-  // Reward the expected frequency band, but do not
-  // make a slightly out-of-band result nearly worthless.
   const score = Math.round(
     inBand
       ? smoothnessPoints

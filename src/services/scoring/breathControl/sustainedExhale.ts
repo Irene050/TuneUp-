@@ -29,7 +29,6 @@ export function scoreSustainedExhale(
     ? Math.max(0, measurement.actualDurationSec)
     : 0;
 
-  // Full duration credit requires reaching the maximum target.
   const durationScore =
     maxDurationSec > 0
       ? Math.max(
@@ -44,10 +43,6 @@ export function scoreSustainedExhale(
     ? Math.max(0, Math.min(100, measurement.consistencyPct))
     : 0;
 
-  // Apply a steeper penalty to inconsistent sound.
-  // 100 consistency = 100 points
-  // 75 consistency = 50 points
-  // 50 consistency or lower = 0 points
   const strictConsistencyScore = Math.max(
     0,
     Math.min(100, (consistencyScore - 50) * 2),

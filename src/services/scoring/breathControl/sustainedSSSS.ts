@@ -48,16 +48,11 @@ export function scoreSustainedSSSS(
       )
     : 0;
 
-  // Penalize inconsistent sound more heavily.
-  // 100% consistency = 100 points
-  // 75% consistency = 50 points
-  // 50% consistency or lower = 0 points
   const strictConsistencyScore = Math.max(
     0,
     Math.min(100, (consistencyScore - 50) * 2),
   );
 
-  // Consistency is the primary scoring factor.
   const score = Math.round(
     durationScore * 0.3 +
       strictConsistencyScore * 0.7,

@@ -1,5 +1,3 @@
-// src/services/progress/progressModule.ts
-
 import type {
   ComponentId,
 } from '@/services/assessment/assessmentModule';
@@ -11,8 +9,6 @@ export type {
 import type {
   Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
-
-// fetchExerciseAttempts(uid: string, sinceTimestamp: number): Promise<ExerciseAttempt[]>
 
 export interface ExerciseRecord {
   componentId: ComponentId;
@@ -122,7 +118,7 @@ export interface PeriodStats {
 export interface PeriodComparison {
   current: PeriodStats;
   previous: PeriodStats;
-  scoreDelta: number | null; // null = nothing to compare against
+  scoreDelta: number | null; 
   countDelta: number | null;
 }
 

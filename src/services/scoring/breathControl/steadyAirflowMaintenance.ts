@@ -42,7 +42,6 @@ export function scoreSteadyAirflow(
       )
     : 0;
 
-  // Stability is weighted more heavily than duration.
   const score = Math.round(
     durationScore * 0.4 +
       stabilityScore * 0.6,

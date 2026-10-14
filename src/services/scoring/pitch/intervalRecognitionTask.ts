@@ -65,17 +65,11 @@ export function scoreIntervalRecognitionTask(
         targetRatio) *
       100;
 
-    // Stricter curve:
-    // 0% deviation = 100
-    // 1% deviation = 60
-    // 2% deviation = 20
-    // 2.5% or more = 0
     const accuracyScore = Math.max(
       0,
       Math.min(100, 100 - deviationPct * 40),
     );
 
-    // An attempt outside the configured tolerance receives zero.
     const score =
       deviationPct <= params.tolerancePct
         ? Math.round(accuracyScore)
@@ -108,7 +102,6 @@ export function scoreIntervalRecognitionTask(
         ) / scoredAttemptResults.length
       : 100;
 
-  // All requested repetitions must be detected and accurate.
   const passed =
     scoredAttemptResults.length === requestedRepetitions &&
     scoredAttemptResults.every(

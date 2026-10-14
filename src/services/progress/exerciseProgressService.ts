@@ -1,5 +1,3 @@
-// src/services/progress/exerciseProgressService.ts
-
 import { auth } from '@/services/firebase/config';
 
 import type {
@@ -17,10 +15,6 @@ import {
 import type {
   Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
-
-/* ============================================================
-   SAVE COMPLETED EXERCISE
-============================================================ */
 
 export async function saveCompletedExercise(
   componentId: ComponentId,

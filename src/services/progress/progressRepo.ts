@@ -1,5 +1,3 @@
-// src/services/firebase/progressRepo.ts
-
 import {
   addDoc,
   collection,
@@ -30,10 +28,6 @@ import {
   type Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 
-/* ============================================================
-   SAVE COMPONENT SUMMARY
-============================================================ */
-
 export async function saveComponentProgress(
   userId: string,
   summary: ComponentProgressSummary
@@ -49,10 +43,6 @@ export async function saveComponentProgress(
     summary
   );
 }
-
-/* ============================================================
-   FETCH ALL COMPONENT SUMMARIES
-============================================================ */
 
 export async function fetchAllProgress(
   userId: string
@@ -72,10 +62,6 @@ export async function fetchAllProgress(
       documentSnapshot.data() as ComponentProgressSummary
   );
 }
-
-/* ============================================================
-   FETCH ONE COMPONENT SUMMARY
-============================================================ */
 
 export async function fetchComponentProgress(
   userId: string,
@@ -98,10 +84,6 @@ export async function fetchComponentProgress(
 
   return snapshot.data() as ComponentProgressSummary;
 }
-
-/* ============================================================
-   SAVE EXERCISE RECORD
-============================================================ */
 
 export async function saveExerciseRecord(
   userId: string,
@@ -131,10 +113,6 @@ export async function saveExerciseRecord(
 
   return exerciseDoc.id;
 }
-
-/* ============================================================
-   FETCH EXERCISE HISTORY
-============================================================ */
 
 export async function fetchExerciseRecords(
   userId: string,
@@ -170,10 +148,6 @@ export async function fetchExerciseRecords(
   );
 }
 
-/* ============================================================
-   FETCH ALL EXERCISE RECORDS
-============================================================ */
-
 export async function fetchAllExerciseRecords(
   userId: string
 ): Promise<ExerciseRecord[]> {
@@ -196,33 +170,15 @@ export async function fetchAllExerciseRecords(
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-/* ============================================================
-   SAVE EXERCISE + UPDATE COMPONENT SUMMARY
-============================================================ */
-
 export async function saveExerciseAndUpdateProgress(
   userId: string,
   record: ExerciseRecord
 ): Promise<ComponentProgressSummary> {
-  /*
-   * ----------------------------------------------------------
-   * STEP 1: SAVE THE COMPLETED EXERCISE
-   * ----------------------------------------------------------
-   */
 
   await saveExerciseRecord(
     userId,
     record
   );
-
-  /*
-   * ----------------------------------------------------------
-   * STEP 2: GET THE USER'S CURRENT TIER
-   * ----------------------------------------------------------
-   *
-   * If no progress summary exists yet, use the tier supplied
-   * by the exercise record.
-   */
 
   const existingSummary =
     await fetchComponentProgress(
@@ -234,29 +190,11 @@ export async function saveExerciseAndUpdateProgress(
     existingSummary?.currentTier ??
     record.tier;
 
-  /*
-   * ----------------------------------------------------------
-   * STEP 3: FETCH COMPLETE COMPONENT HISTORY
-   * ----------------------------------------------------------
-   */
-
   const records =
     await fetchExerciseRecords(
       userId,
       record.componentId
     );
-
-  /*
-   * ----------------------------------------------------------
-   * STEP 4: CHECK TIER PROGRESSION
-   * ----------------------------------------------------------
-   *
-   * Only exercises completed in the user's CURRENT tier
-   * are considered for unlocking the next tier.
-   *
-   * Beginner records therefore cannot contribute toward
-   * Intermediate → Advanced progression.
-   */
 
   const currentTierRecords =
     records.filter(
@@ -295,15 +233,6 @@ export async function saveExerciseAndUpdateProgress(
       `📈 ${record.componentId} remains at ${currentTier} tier.`
     );
   }
-
-  /*
-   * ----------------------------------------------------------
-   * STEP 5: BUILD CURRENT PROGRESS SUMMARIES
-   * ----------------------------------------------------------
-   *
-   * The updated currentTier is used when creating the
-   * component summary.
-   */
 
   const currentTiers: Record<
     ComponentId,
@@ -347,12 +276,6 @@ export async function saveExerciseAndUpdateProgress(
       `Unable to create progress summary for ${record.componentId}.`
     );
   }
-
-  /*
-   * ----------------------------------------------------------
-   * STEP 6: SAVE UPDATED COMPONENT SUMMARY
-   * ----------------------------------------------------------
-   */
 
   await saveComponentProgress(
     userId,

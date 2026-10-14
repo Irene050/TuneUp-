@@ -30,8 +30,6 @@ export function scoreDynamicRange(
     100
   );
 
-  // Dynamic Range scoring follows the manuscript weighting:
-  // 40% range accuracy and 60% ramp consistency.
   const overallScore = clamp(
     rangeAccuracy * 0.4 +
       rampConsistency * 0.6,
