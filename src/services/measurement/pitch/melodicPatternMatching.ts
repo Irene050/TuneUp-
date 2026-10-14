@@ -53,13 +53,6 @@ export function measureMelodicPatternMatching(
       frequencies,
     );
 
-    /*
-     * Keep the average frequency for the
-     * existing result/display fields.
-     *
-     * The scorer uses segmentFrequencies
-     * for actual pitch scoring.
-     */
     const averageFrequency =
       frequencies.reduce(
         (sum, frequency) =>

@@ -1,5 +1,3 @@
-// src/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling.ts
-
 export interface ParameterBounds {
   min: number;
   max: number;
@@ -9,10 +7,6 @@ export type Tier = 'beginner' | 'intermediate' | 'advanced';
 
 export type DifficultyDirection = 'higher' | 'lower';
 
-/**
- * Fixed tier progression requirements.
- * These are independent of continuous ADS adjustment.
- */
 export const TIER_PROGRESSION_REQUIREMENTS = {
   beginnerToIntermediate: {
     minExercises: 20,
@@ -31,12 +25,6 @@ export const TIER_PROGRESSION_REQUIREMENTS = {
 
 export const ADS_BASELINE_PCT = 75;
 
-/**
- * Determines the reference score used for continuous ADS.
- *
- * Only completed exercise history is used.
- * Assessment results are not used as a continuous ADS fallback.
- */
 export function getReferenceValue(
   recentScores: number[],
 ): number | null {
@@ -52,17 +40,6 @@ export function getReferenceValue(
   );
 }
 
-/**
- * Normalizes the reference score around the 75% baseline.
- *
- * R < 75:
- *   d = (R - 75) / 75
- *
- * R >= 75:
- *   d = (R - 75) / 25
- *
- * Result is constrained to [-1, 1].
- */
 export function calculateNormalizedDeviation(
   referenceValue: number,
 ): number {
@@ -75,20 +52,6 @@ export function calculateNormalizedDeviation(
   return clamp(deviation, -1, 1);
 }
 
-/**
- * Adjusts a parameter range according to the user's recent performance.
- *
- * Higher:
- *   Larger values represent greater difficulty.
- *
- * Lower:
- *   Smaller values represent greater difficulty.
- *
- * S = (P_hard - P_easy) × d × 0.5
- *
- * The shift is applied toward the harder/easier direction and
- * each endpoint is clamped to the current tier's original bounds.
- */
 export function biasParameterBounds(
   baseBounds: ParameterBounds,
   referenceValue: number,
@@ -131,12 +94,6 @@ export function biasParameterBounds(
   };
 }
 
-/**
- * Complete continuous ADS calculation.
- *
- * When there is no exercise history, the tier's default parameter
- * range is returned unchanged.
- */
 export function calculateAdjustedParameterBounds(
   recentScores: number[],
   baseBounds: ParameterBounds,
@@ -158,11 +115,6 @@ export function calculateAdjustedParameterBounds(
   );
 }
 
-/**
- * Checks whether a component qualifies to unlock the next tier.
- *
- * This function does not perform continuous parameter adjustment.
- */
 export function checkTierProgression(
   currentTier: Tier,
   exerciseHistory: {

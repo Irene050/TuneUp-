@@ -16,22 +16,15 @@ const DEFAULT_TOLERANCE_DB = 5;
 
 export interface VolumeBandMeasurement {
   dbValues: number[];
-
   repConsistency: number[];
   consistency: number;
-
   averageDb: number;
-
   minDb: number;
   maxDb: number;
-
   targetReached: boolean;
-
   repTargetReached: boolean[];
-
   validWindowCount: number;
   expectedWindowCount: number;
-
   measurementQuality: number;
 }
 
@@ -263,13 +256,6 @@ export function measureVolumeBandTargeting(
     );
   }
 
-  /*
-   * PCM
-   * ↓
-   * RMS windows
-   * ↓
-   * dB magnitude
-   */
   const rmsValues =
     calcRMSWindows(
       samples,
@@ -428,25 +414,16 @@ export function measureVolumeBandTargeting(
   return {
     dbValues:
       effectiveValues,
-
     repConsistency,
-
     consistency,
-
     averageDb,
-
     minDb,
     maxDb,
-
     targetReached,
-
     repTargetReached,
-
     validWindowCount:
       effectiveValues.length,
-
     expectedWindowCount,
-
     measurementQuality,
   };
 }

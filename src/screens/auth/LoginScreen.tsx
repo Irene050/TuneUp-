@@ -83,7 +83,6 @@ export function LoginScreen() {
     >
       <View style={loginStyles.content}>
 
-        {/* TuneUp Logo */}
         <Image
           source={require('@/assets/images/tabIcons/tuneup-logo.png')}
           style={loginStyles.logo}
@@ -92,7 +91,6 @@ export function LoginScreen() {
 
         <View style={loginStyles.form}>
 
-          {/* Email Address */}
           <Text style={loginStyles.label}>
             Email Address
           </Text>
@@ -107,7 +105,6 @@ export function LoginScreen() {
             editable={!loading}
           />
 
-          {/* Password */}
           <Text style={loginStyles.label}>
             Password
           </Text>
@@ -123,7 +120,6 @@ export function LoginScreen() {
               editable={!loading}
             />
 
-            {/* Eye Toggle */}
             <Pressable
               style={loginStyles.eyeButton}
               onPress={() =>
@@ -187,30 +183,25 @@ const loginStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-
   content: {
     flex: 1,
     paddingHorizontal: 26,
     justifyContent: 'center',
   },
-
   logo: {
     width: 125,
     height: 125,
     alignSelf: 'center',
     marginBottom: 72,
   },
-
   form: {
     width: '100%',
   },
-
   label: {
     fontSize: 10,
     color: '#4A302F',
     marginBottom: 6,
   },
-
   input: {
     height: 42,
     backgroundColor: '#F5F3F3',
@@ -220,12 +211,10 @@ const loginStyles = StyleSheet.create({
     color: '#3F2B2A',
     marginBottom: 14,
   },
-
   passwordContainer: {
     position: 'relative',
     width: '100%',
   },
-
   passwordInput: {
     height: 42,
     backgroundColor: '#F5F3F3',
@@ -236,7 +225,6 @@ const loginStyles = StyleSheet.create({
     color: '#3F2B2A',
     marginBottom: 14,
   },
-
   eyeButton: {
     position: 'absolute',
     right: 8,
@@ -246,24 +234,20 @@ const loginStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   eyeText: {
     fontSize: 16,
     color: '#8B7C7B',
   },
-
   forgotButton: {
     alignSelf: 'flex-end',
     marginTop: -5,
     marginBottom: 38,
   },
-
   forgotText: {
     fontSize: 8,
     color: '#8B7C7B',
     textDecorationLine: 'underline',
   },
-
   loginButton: {
     width: 68,
     height: 34,
@@ -274,17 +258,14 @@ const loginStyles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-
   disabledButton: {
     opacity: 0.6,
   },
-
   buttonText: {
     fontSize: 11,
     fontFamily: 'FredokaBold',
     color: '#4A302F',
   },
-
   signupText: {
     textAlign: 'center',
     fontSize: 8,
@@ -310,8 +291,6 @@ export function ForgotPasswordScreen() {
 
     try {
       setLoading(true);
-
-      // Send Firebase password reset email
       await sendPasswordResetCode(trimmedEmail);
 
       Alert.alert(
@@ -372,7 +351,6 @@ export function ForgotPasswordScreen() {
     >
       <View style={forgotPasswordStyles.content}>
 
-        {/* Back Button */}
         <Pressable
           style={forgotPasswordStyles.backButton}
           onPress={() => router.back()}
@@ -381,18 +359,15 @@ export function ForgotPasswordScreen() {
           <Text style={forgotPasswordStyles.backArrow}>‹</Text>
         </Pressable>
 
-        {/* Title */}
         <Text style={forgotPasswordStyles.title}>
           Forgot Password?
         </Text>
 
-        {/* Description */}
         <Text style={forgotPasswordStyles.description}>
           Enter your email address and we will send you
           a password reset email.
         </Text>
 
-        {/* Email */}
         <Text style={forgotPasswordStyles.label}>
           Email Address
         </Text>
@@ -409,7 +384,6 @@ export function ForgotPasswordScreen() {
           placeholderTextColor="#A99C9A"
         />
 
-        {/* Send Button */}
         <Pressable
           style={[
             forgotPasswordStyles.sendButton,
@@ -437,14 +411,11 @@ const forgotPasswordStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-
   content: {
     flex: 1,
     paddingHorizontal: 26,
     justifyContent: 'center',
   },
-
-  /* Back Arrow */
   backButton: {
     position: 'absolute',
     top: 45,
@@ -455,13 +426,11 @@ const forgotPasswordStyles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 10,
   },
-
   backArrow: {
     fontSize: 32,
     fontFamily: 'FredokaLight',
     color: '#4A302F',
   },
-
   title: {
     textAlign: 'center',
     fontSize: 22,
@@ -469,7 +438,6 @@ const forgotPasswordStyles = StyleSheet.create({
     color: '#4A302F',
     marginBottom: 12,
   },
-
   description: {
     textAlign: 'center',
     fontSize: 11,
@@ -477,13 +445,11 @@ const forgotPasswordStyles = StyleSheet.create({
     color: '#7D6D6B',
     marginBottom: 35,
   },
-
   label: {
     fontSize: 10,
     color: '#4A302F',
     marginBottom: 6,
   },
-
   input: {
     height: 42,
     backgroundColor: '#F5F3F3',
@@ -493,7 +459,6 @@ const forgotPasswordStyles = StyleSheet.create({
     color: '#3F2B2A',
     marginBottom: 28,
   },
-
   sendButton: {
     width: 80,
     height: 36,
@@ -503,11 +468,9 @@ const forgotPasswordStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   disabledButton: {
     opacity: 0.6,
   },
-
   buttonText: {
     fontSize: 11,
     fontFamily: 'FredokaBold',
@@ -638,8 +601,6 @@ export function ResetPasswordScreen() {
       }
     >
       <View style={resetPasswordStyles.content}>
-
-        {/* Back Button */}
         <Pressable
           style={resetPasswordStyles.backButton}
           onPress={() => router.back()}
@@ -650,7 +611,6 @@ export function ResetPasswordScreen() {
           </Text>
         </Pressable>
 
-        {/* TuneUp Logo */}
         <Image
           source={require('@/assets/images/tabIcons/tuneup-logo.png')}
           style={resetPasswordStyles.logo}
@@ -658,8 +618,6 @@ export function ResetPasswordScreen() {
         />
 
         <View style={resetPasswordStyles.form}>
-
-          {/* Set New Password */}
           <Text style={resetPasswordStyles.label}>
             Set New Password
           </Text>
@@ -692,7 +650,6 @@ export function ResetPasswordScreen() {
             </Pressable>
           </View>
 
-          {/* Confirm New Password */}
           <Text style={resetPasswordStyles.label}>
             Confirm New Password
           </Text>
@@ -725,7 +682,6 @@ export function ResetPasswordScreen() {
             </Pressable>
           </View>
 
-          {/* Reset Password */}
           <Pressable
             style={[
               resetPasswordStyles.resetButton,
@@ -756,13 +712,11 @@ const resetPasswordStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-
   content: {
     flex: 1,
     paddingHorizontal: 22,
     justifyContent: 'center',
   },
-
   backButton: {
     position: 'absolute',
     top: 42,
@@ -773,36 +727,30 @@ const resetPasswordStyles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
-
   backArrow: {
     fontSize: 28,
     fontFamily: 'FredokaLight',
     color: '#4A302F',
   },
-
   logo: {
     width: 125,
     height: 125,
     alignSelf: 'center',
     marginBottom: 70,
   },
-
   form: {
     width: '100%',
   },
-
   label: {
     fontSize: 9,
     color: '#4A302F',
     marginBottom: 6,
   },
-
   passwordContainer: {
     position: 'relative',
     width: '100%',
     marginBottom: 12,
   },
-
   input: {
     width: '100%',
     height: 42,
@@ -813,7 +761,6 @@ const resetPasswordStyles = StyleSheet.create({
     fontSize: 12,
     color: '#3F2B2A',
   },
-
   eyeButton: {
     position: 'absolute',
     right: 8,
@@ -823,12 +770,10 @@ const resetPasswordStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   eyeText: {
     fontSize: 15,
     color: '#8B7C7B',
   },
-
   resetButton: {
     width: 110,
     height: 34,
@@ -839,11 +784,9 @@ const resetPasswordStyles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 20,
   },
-
   disabledButton: {
     opacity: 0.6,
   },
-
   buttonText: {
     fontSize: 9,
     fontFamily: 'FredokaBold',

@@ -1,9 +1,7 @@
-// src/services/measurement/pitch/scaleAccuracyDrill.ts
-
 import {
-    calcTransitionSmoothness,
-    filterByClarity,
-    trackPitchOverTime,
+  calcTransitionSmoothness,
+  filterByClarity,
+  trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
 export interface ScaleAccuracyMeasurement {
@@ -149,11 +147,6 @@ export function measureScaleAccuracyDrill(
       continue;
     }
 
-    /*
-     * Median pitch is used so that a few
-     * incorrect pitch frames do not heavily
-     * affect the detected note.
-     */
     const sorted =
       [...validFrequencies].sort(
         (a, b) => a - b
@@ -199,9 +192,6 @@ export function measureScaleAccuracyDrill(
     detectedFreqs
   );
 
-  /*
-   * Calculate transition smoothness.
-   */
   let transitionSmoothness = 0;
 
   try {
@@ -224,11 +214,6 @@ export function measureScaleAccuracyDrill(
       error
     );
 
-    /*
-     * A single-note or completely
-     * undetected result should not crash
-     * the entire exercise.
-     */
     transitionSmoothness =
       detectedFreqs.length <= 1
         ? 100

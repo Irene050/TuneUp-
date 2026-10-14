@@ -45,12 +45,6 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-/**
- * Scores how consistently the recorded volume becomes softer.
- * toDbArray returns negative dBFS values; this measurement stores their
- * absolute magnitudes, so quieter audio has a larger value. Therefore,
- * a decrescendo is an upward trend in dbValues.
- */
 export function calculateDecrescendoSmoothness(dbValues: number[]): number {
   if (dbValues.length < 3) return 0;
 
@@ -68,9 +62,6 @@ export function calculateDecrescendoSmoothness(dbValues: number[]): number {
     (change) => change > 0,
   ).length;
 
-  // Avoid returning 0 merely because the recorded signal contains normal
-  // microphone fluctuations; score the proportion of changes in the target
-  // direction instead of dividing variance by a near-zero average derivative.
   return clamp(
     (correctlyDirected / meaningfulChanges.length) * 100,
     0,
@@ -166,9 +157,6 @@ export function measureControlledDecrescendo(
   const maxDb =
     effectiveValues.length > 0 ? Math.max(...effectiveValues) : 0;
 
-  // With absolute dBFS magnitude, louder audio is a smaller number and softer
-  // audio is a larger number. Evaluate each repetition independently; comparing
-  // the first sample of rep 1 with the last sample of rep 2 can hide a failed rep.
   const targetStart = targetRange[0];
   const targetEnd = targetRange[1];
   const repetitionResults = Array.from({ length: repetitions }, (_, repIndex) => {

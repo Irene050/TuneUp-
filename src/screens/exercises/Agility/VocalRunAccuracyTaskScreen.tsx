@@ -2329,7 +2329,7 @@ const startCountdown = useCallback(async () => {
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
           <Ionicons
-            name="flash-outline"
+            name="options-outline"
             size={32}
             color={BROWN}
           />

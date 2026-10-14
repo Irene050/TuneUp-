@@ -1,3 +1,4 @@
+
 import AppHeader from '@/components/appheader';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgress } from '@/hooks/useProgress';
@@ -31,12 +32,35 @@ const PINK = '#FCD6DD';
 const LIGHT_GRAY = '#F7F7F7';
 const WHITE = '#FFFFFF';
 const RED = '#FF5A5F';
+const MUTED = '#8E7770';
+const BORDER = '#F0E8E5';
+
+function ModalHeader({
+  title,
+  onBack,
+}: {
+  title: string;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.modalHeader}>
+      <Pressable
+        style={styles.backButton}
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel={`Back from ${title}`}
+        hitSlop={8}
+      >
+        <Ionicons name="arrow-back" size={22} color={BROWN} />
+      </Pressable>
+
+      <Text style={styles.modalTitle}>{title}</Text>
+    </View>
+  );
+}
 
 export default function ProfileScreen() {
-  const {
-    userName,
-    userPhotoURL,
-  } = useAuth();
+  const { userName, userPhotoURL } = useAuth();
   const {
     summaries: progressSummaries,
     loading: progressLoading,
@@ -52,27 +76,28 @@ export default function ProfileScreen() {
 
   const overallTier = progressSummaries.reduce(
     (highestTier, summary) =>
-      tierRank[summary.currentTier] >
-      tierRank[highestTier]
+      tierRank[summary.currentTier] > tierRank[highestTier]
         ? summary.currentTier
         : highestTier,
     'beginner' as keyof typeof tierRank,
   );
 
   const formattedTier =
-    overallTier.charAt(0).toUpperCase() +
-    overallTier.slice(1);
+    overallTier.charAt(0).toUpperCase() + overallTier.slice(1);
 
   const [editVisible, setEditVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] =
+    useState(false);
+
   const [nameDraft, setNameDraft] = useState(displayName);
   const [profileName, setProfileName] = useState(displayName);
   const [photoDraft, setPhotoDraft] = useState<string | null>(
     userPhotoURL,
   );
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,47 +108,61 @@ export default function ProfileScreen() {
   }, [displayName, userPhotoURL]);
 
   const pickPhoto = async () => {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!permission.granted) {
-      setError('Photo library permission is required.');
-      return;
-    }
+      if (!permission.granted) {
+        setError('Photo library permission is required.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-    if (!result.canceled) {
-      setPhotoDraft(result.assets[0].uri);
+      if (!result.canceled) {
+        setPhotoDraft(result.assets[0].uri);
+      }
+    } catch (photoError) {
+      console.error('Photo picker error:', photoError);
+      setError('Unable to select a profile photo.');
     }
   };
 
   const saveProfile = async () => {
+    if (!nameDraft.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
     try {
-      await updateCurrentUserProfile(
-        nameDraft,
-        photoDraft,
-      );
+      await updateCurrentUserProfile(nameDraft.trim(), photoDraft);
       setProfileName(nameDraft.trim());
       setEditVisible(false);
     } catch (saveError: any) {
-      setError(saveError?.message ?? 'Unable to update your profile.');
+      setError(
+        saveError?.message ?? 'Unable to update your profile.',
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const updatePassword = async () => {
-    if (newPassword !== confirmPassword) {
-      setError('New passwords do not match.');
+    if (!currentPassword.trim() || !newPassword) {
+      setError('Please enter your current and new passwords.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('Your new password must be at least 6 characters.');
       return;
     }
 
@@ -131,35 +170,28 @@ export default function ProfileScreen() {
     setError(null);
 
     try {
-      await changeCurrentPassword(
-        currentPassword,
-        newPassword,
-      );
+      await changeCurrentPassword(currentPassword, newPassword);
+
       setCurrentPassword('');
       setNewPassword('');
-      setConfirmPassword('');
       setSettingsVisible(false);
-      Alert.alert('Password updated', 'Your password has been changed.');
+
+      Alert.alert(
+        'Password updated',
+        'Your password has been changed.',
+      );
     } catch (passwordError: any) {
-      setError(passwordError?.message ?? 'Unable to change your password.');
+      setError(
+        passwordError?.message ?? 'Unable to change your password.',
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const confirmDeleteAccount = () => {
-    Alert.alert(
-      'Delete account?',
-      'This permanently deletes your account and progress.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: deleteAccount,
-        },
-      ],
-    );
+    setError(null);
+    setDeleteConfirmVisible(true);
   };
 
   const deleteAccount = async () => {
@@ -168,13 +200,60 @@ export default function ProfileScreen() {
 
     try {
       await deleteCurrentAccount(currentPassword);
+
+      setDeleteConfirmVisible(false);
       setSettingsVisible(false);
-      router.replace('/login');
+
+      router.replace({
+        pathname: '/[auth]',
+        params: { auth: 'login' },
+      });
     } catch (deleteError: any) {
-      setError(deleteError?.message ?? 'Unable to delete your account.');
+      console.error('Delete account error:', deleteError);
+      setDeleteConfirmVisible(false);
+      setError(
+        deleteError?.message ?? 'Unable to delete your account.',
+      );
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+
+      router.replace({
+        pathname: '/[auth]',
+        params: { auth: 'login' },
+      });
+    } catch (logoutError) {
+      console.error('Logout error:', logoutError);
+
+      Alert.alert(
+        'Logout failed',
+        'Unable to log out. Please try again.',
+      );
+    }
+  };
+
+  const openEditProfile = () => {
+    setError(null);
+    setNameDraft(profileName);
+    setPhotoDraft(userPhotoURL);
+    setEditVisible(true);
+  };
+
+  const closeEditProfile = () => {
+    setError(null);
+    setEditVisible(false);
+  };
+
+  const closeSettings = () => {
+    setError(null);
+    setSettingsVisible(false);
+    setCurrentPassword('');
+    setNewPassword('');
   };
 
   return (
@@ -182,7 +261,6 @@ export default function ProfileScreen() {
       <AppHeader />
 
       <View style={styles.content}>
-
         <View style={styles.profileSection}>
           <Image
             source={
@@ -194,9 +272,7 @@ export default function ProfileScreen() {
             resizeMode="cover"
           />
 
-          <Text style={styles.name}>
-            {profileName}
-          </Text>
+          <Text style={styles.name}>{profileName}</Text>
 
           <Text style={styles.tier}>
             {progressLoading
@@ -206,19 +282,13 @@ export default function ProfileScreen() {
 
           <Pressable
             style={styles.editButton}
-            onPress={() => {
-              setError(null);
-              setEditVisible(true);
-            }}
+            onPress={openEditProfile}
           >
-            <Text style={styles.editText}>
-              Edit Profile
-            </Text>
+            <Text style={styles.editText}>Edit Profile</Text>
           </Pressable>
         </View>
 
         <View style={styles.optionsContainer}>
-
           {/* ACCOUNT SETTINGS */}
           <Pressable
             style={styles.optionCard}
@@ -235,9 +305,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.optionText}>
-              Account Settings
-            </Text>
+            <Text style={styles.optionText}>Account Settings</Text>
 
             <Ionicons
               name="chevron-forward"
@@ -246,6 +314,7 @@ export default function ProfileScreen() {
             />
           </Pressable>
 
+          {/* VIEW PROGRESS */}
           <Pressable
             style={styles.optionCard}
             onPress={() =>
@@ -263,9 +332,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.optionText}>
-              View Progress
-            </Text>
+            <Text style={styles.optionText}>View Progress</Text>
 
             <Ionicons
               name="chevron-forward"
@@ -273,35 +340,39 @@ export default function ProfileScreen() {
               color="#A5A5A5"
             />
           </Pressable>
-
         </View>
 
         {/* LOG OUT */}
         <Pressable
           style={styles.logoutButton}
-          onPress={logoutUser}
+          onPress={handleLogout}
         >
-          <Text style={styles.logoutText}>
-            Log out
-          </Text>
+          <Text style={styles.logoutText}>Log out</Text>
         </Pressable>
-
       </View>
 
+      {/* EDIT PROFILE MODAL */}
       <Modal
         visible={editVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditVisible(false)}
+        onRequestClose={closeEditProfile}
       >
         <KeyboardAvoidingView
           style={styles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <ModalHeader
+              title="Edit Profile"
+              onBack={closeEditProfile}
+            />
 
-            <Pressable style={styles.photoPicker} onPress={pickPhoto}>
+            <Pressable
+              style={styles.photoPicker}
+              onPress={pickPhoto}
+              disabled={saving}
+            >
               <Image
                 source={
                   photoDraft
@@ -310,7 +381,10 @@ export default function ProfileScreen() {
                 }
                 style={styles.modalAvatar}
               />
-              <Text style={styles.photoPickerText}>Change photo</Text>
+
+              <Text style={styles.photoPickerText}>
+                Change photo
+              </Text>
             </Pressable>
 
             <TextInput
@@ -320,46 +394,54 @@ export default function ProfileScreen() {
               placeholder="Your name"
               placeholderTextColor="#A5A5A5"
               autoCapitalize="words"
+              editable={!saving}
             />
 
-            {error && <Text style={styles.errorText}>{error}</Text>}
+            {error && (
+              <Text style={styles.errorText}>{error}</Text>
+            )}
 
             <View style={styles.modalActions}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={() => setEditVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
+            <Pressable
+              style={styles.cancelButton}
+              onPress={closeEditProfile}
+              disabled={saving}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
 
-              <Pressable
-                style={styles.primaryModalButton}
-                onPress={saveProfile}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color={WHITE} />
-                ) : (
-                  <Text style={styles.primaryModalText}>Save</Text>
-                )}
-              </Pressable>
-            </View>
+            <Pressable
+              style={styles.saveProfileButton}
+              onPress={saveProfile}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color={WHITE} />
+              ) : (
+                <Text style={styles.saveProfileButtonText}>Save</Text>
+              )}
+            </Pressable>
+          </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ACCOUNT SETTINGS MODAL */}
       <Modal
         visible={settingsVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setSettingsVisible(false)}
+        onRequestClose={closeSettings}
       >
         <KeyboardAvoidingView
           style={styles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Account Settings</Text>
+            <ModalHeader
+              title="Account Settings"
+              onBack={closeSettings}
+            />
 
             <Text style={styles.fieldLabel}>Change password</Text>
 
@@ -370,6 +452,8 @@ export default function ProfileScreen() {
               placeholder="Current password"
               placeholderTextColor="#A5A5A5"
               secureTextEntry
+              autoCapitalize="none"
+              editable={!saving}
             />
 
             <TextInput
@@ -379,18 +463,13 @@ export default function ProfileScreen() {
               placeholder="New password"
               placeholderTextColor="#A5A5A5"
               secureTextEntry
+              autoCapitalize="none"
+              editable={!saving}
             />
 
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Confirm new password"
-              placeholderTextColor="#A5A5A5"
-              secureTextEntry
-            />
-
-            {error && <Text style={styles.errorText}>{error}</Text>}
+            {error && (
+              <Text style={styles.errorText}>{error}</Text>
+            )}
 
             <Pressable
               style={styles.primaryModalButton}
@@ -400,7 +479,9 @@ export default function ProfileScreen() {
               {saving ? (
                 <ActivityIndicator color={WHITE} />
               ) : (
-                <Text style={styles.primaryModalText}>Update password</Text>
+                <Text style={styles.primaryModalText}>
+                  Update password
+                </Text>
               )}
             </Pressable>
 
@@ -409,17 +490,77 @@ export default function ProfileScreen() {
               onPress={confirmDeleteAccount}
               disabled={saving}
             >
-              <Text style={styles.deleteButtonText}>Delete account</Text>
+              <Text style={styles.deleteButtonText}>
+                Delete account
+              </Text>
             </Pressable>
 
             <Pressable
-              style={styles.cancelButton}
-              onPress={() => setSettingsVisible(false)}
+              style={styles.closeButton}
+              onPress={closeSettings}
+              disabled={saving}
             >
               <Text style={styles.cancelButtonText}>Close</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* DELETE ACCOUNT CONFIRMATION */}
+      <Modal
+        visible={deleteConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!saving) {
+            setDeleteConfirmVisible(false);
+          }
+        }}
+      >
+        <View style={styles.deleteBackdrop}>
+          <View style={styles.deleteConfirmCard}>
+            <View style={styles.deleteIconCircle}>
+              <Ionicons
+                name="warning-outline"
+                size={30}
+                color={RED}
+              />
+            </View>
+
+            <Text style={styles.deleteConfirmTitle}>
+              Delete account?
+            </Text>
+
+            <Text style={styles.deleteConfirmMessage}>
+              This will permanently delete your account and progress.
+              This action cannot be undone.
+            </Text>
+
+            <View style={styles.deleteConfirmActions}>
+              <Pressable
+                style={styles.deleteCancelButton}
+                onPress={() => setDeleteConfirmVisible(false)}
+                disabled={saving}
+              >
+                <Text style={styles.deleteCancelText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.deleteConfirmButton}
+                onPress={deleteAccount}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color={WHITE} />
+                ) : (
+                  <Text style={styles.deleteConfirmButtonText}>
+                    Delete
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -433,9 +574,7 @@ const styles = StyleSheet.create({
 
   content: {
     flex: 1,
-
     alignItems: 'center',
-
     paddingHorizontal: 24,
     paddingTop: 70,
     paddingBottom: 120,
@@ -443,160 +582,124 @@ const styles = StyleSheet.create({
 
   profileSection: {
     alignItems: 'center',
-
     marginBottom: 36,
   },
 
   avatar: {
     width: 94,
     height: 94,
-
     borderRadius: 47,
-
     backgroundColor: PINK,
-
     marginBottom: 10,
   },
 
   name: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-
     color: BROWN,
-
     marginBottom: 8,
   },
 
   tier: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: '#8E7770',
+    color: MUTED,
     marginBottom: 8,
   },
 
   editButton: {
     minWidth: 84,
     height: 22,
-
     paddingHorizontal: 14,
-
     borderRadius: 12,
-
     backgroundColor: PINK,
-
     alignItems: 'center',
     justifyContent: 'center',
-
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
 
   editText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
-
     color: BROWN,
   },
 
   optionsContainer: {
     width: '100%',
-
     gap: 18,
   },
 
   optionCard: {
     width: '100%',
     height: 68,
-
     backgroundColor: LIGHT_GRAY,
-
     borderRadius: 17,
-
     paddingHorizontal: 24,
-
     flexDirection: 'row',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
 
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
+    shadowColor: '#3f3e3e',
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 3,
     },
-
     elevation: 3,
   },
 
   optionIcon: {
     width: 38,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginRight: 20,
   },
 
   progressIcon: {
     width: 38,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginRight: 20,
   },
 
   optionText: {
     flex: 1,
-
     fontFamily: 'FredokaBold',
     fontSize: 19,
-
     color: BROWN,
   },
 
   logoutButton: {
     width: 107,
     height: 38,
-
     borderRadius: 20,
-
     backgroundColor: RED,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginTop: 70,
-
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 4,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F2D5D5',
   },
+
+  saveProfileButtonText: {
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 14,
+  color: '#FFFFFF',
+},
 
   logoutText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-
     color: WHITE,
   },
 
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(78, 47, 31, 0.28)',
+    backgroundColor: 'rgba(220, 220, 220, 0.55)',
   },
 
   modalCard: {
@@ -605,13 +708,33 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 34,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: LIGHT_GRAY,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
 
   modalTitle: {
+    flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
-    marginBottom: 18,
   },
 
   photoPicker: {
@@ -650,6 +773,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
     marginBottom: 10,
+    backgroundColor: WHITE,
   },
 
   errorText: {
@@ -659,20 +783,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
 
-  cancelButton: {
-    flex: 1,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: LIGHT_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   cancelButtonText: {
     fontFamily: 'FredokaSemiBold',
@@ -681,7 +792,6 @@ const styles = StyleSheet.create({
   },
 
   primaryModalButton: {
-    flex: 1,
     minHeight: 46,
     borderRadius: 23,
     backgroundColor: BROWN,
@@ -698,10 +808,50 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  closeButton: {
+    minHeight: 46,
+    borderRadius: 23,
+    backgroundColor: LIGHT_GRAY,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+modalActions: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 12,
+  marginTop: 12,
+},
+
+cancelButton: {
+  flex: 1,
+  height: 44,
+  borderRadius: 22,
+  backgroundColor: '#F7F7F7',
+  borderWidth: 1,
+  borderColor: '#F0E8E5',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+saveProfileButton: {
+  flex: 1,
+  height: 44,
+  borderRadius: 22,
+  backgroundColor: '#4E2F1F',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
   deleteButton: {
     height: 44,
     borderRadius: 22,
     backgroundColor: '#FFF0F0',
+    borderWidth: 1,
+    borderColor: '#F2D5D5',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -711,5 +861,90 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: RED,
+  },
+
+  deleteBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(220, 220, 220, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+  deleteConfirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  deleteIconCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#FFF0F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+
+  deleteConfirmTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    color: BROWN,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+
+  deleteConfirmMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: MUTED,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+
+  deleteConfirmActions: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+
+  deleteCancelButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 23,
+    backgroundColor: LIGHT_GRAY,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  deleteCancelText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 14,
+    color: BROWN,
+  },
+
+  deleteConfirmButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 23,
+    backgroundColor: RED,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  deleteConfirmButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 14,
+    color: WHITE,
   },
 });

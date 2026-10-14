@@ -64,7 +64,6 @@ export function measureSustainedNoteStability(
     frame => frame.frequency,
   );
 
-  // Find the central pitch.
   const medianFrequency = median(frequencies);
 
   if (
@@ -77,7 +76,6 @@ export function measureSustainedNoteStability(
     };
   }
 
-  // Remove obvious pitch-detection outliers.
   const stableFrequencies = frequencies.filter(
     frequency => {
       const relativeDeviation =
@@ -95,8 +93,6 @@ export function measureSustainedNoteStability(
     };
   }
 
-  // Use the central portion of the remaining pitch values
-  // to reduce the influence of extreme pitch detections.
   const sortedStable = [...stableFrequencies].sort(
     (a, b) => a - b,
   );
@@ -113,13 +109,10 @@ export function measureSustainedNoteStability(
         )
       : sortedStable;
 
-  // Use the median of the remaining pitch values
-  // as the reference pitch.
   const referenceFrequency = median(
     trimmedFrequencies,
   );
 
-  // Calculate mean absolute pitch deviation in cents.
   const centsDeviations = trimmedFrequencies.map(
     frequency =>
       Math.abs(

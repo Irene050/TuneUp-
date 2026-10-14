@@ -15,16 +15,8 @@ export interface VolumeControlStabilityMeasurement {
   repetitionCount: number;
 }
 
-/* =========================================================
-   CONSTANTS
-   ========================================================= */
-
 const WINDOW_MS = 50;
 const SILENCE_DBFS = -60;
-
-/* =========================================================
-   AVERAGE
-   ========================================================= */
 
 export function calcMean(
   values: number[],
@@ -40,10 +32,6 @@ export function calcMean(
     ) / values.length
   );
 }
-
-/* =========================================================
-   STANDARD DEVIATION
-   ========================================================= */
 
 export function calcStandardDeviation(
   values: number[],
@@ -63,10 +51,6 @@ export function calcStandardDeviation(
 
   return Math.sqrt(variance);
 }
-
-/* =========================================================
-   VOLUME STABILITY
-   ========================================================= */
 
 export function calcVolumeStability(
   values: number[],
@@ -98,10 +82,6 @@ export function calcVolumeStability(
   );
 }
 
-/* =========================================================
-   REPETITION MEASUREMENT
-   ========================================================= */
-
 function measureRepetition(
   amplitudes: number[],
   voicedFlags: boolean[],
@@ -126,10 +106,6 @@ function measureRepetition(
 
   return calcVolumeStability(repetitionValues);
 }
-
-/* =========================================================
-   MAIN MEASUREMENT FUNCTION
-   ========================================================= */
 
 export function measureVolumeControlStability(
   samples: Float32Array,
@@ -192,10 +168,6 @@ export function measureVolumeControlStability(
     };
   }
 
-  /* -------------------------------------------------------
-     VOICED WINDOWS AND COVERAGE
-     ------------------------------------------------------- */
-
   const voicedRms = rmsArray.filter(
     (_, index) => voicedArray[index],
   );
@@ -217,12 +189,6 @@ export function measureVolumeControlStability(
     Math.min(100, voicedCoveragePercent),
   );
 
-  /* -------------------------------------------------------
-     VOLUME STATISTICS
-     ------------------------------------------------------- */
-
-  // Calculate these before any low-coverage decision.
-  // Silence/no voiced windows must not report 0 dBFS.
   const averageDb =
     voicedDb.length > 0
       ? calcMean(voicedDb)
@@ -238,16 +204,8 @@ export function measureVolumeControlStability(
       ? Math.max(...voicedDb)
       : SILENCE_DBFS;
 
-  /* -------------------------------------------------------
-     OVERALL STABILITY
-     ------------------------------------------------------- */
-
   const stability =
     calcVolumeStability(voicedRms);
-
-  /* -------------------------------------------------------
-     REPETITION STABILITY
-     ------------------------------------------------------- */
 
   const repStability: number[] = [];
 
@@ -288,10 +246,6 @@ export function measureVolumeControlStability(
       ),
     );
   }
-
-  /* -------------------------------------------------------
-     MEASUREMENT QUALITY
-     ------------------------------------------------------- */
 
   const coverageQuality = Math.max(
     0,

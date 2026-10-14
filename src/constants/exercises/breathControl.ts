@@ -3,8 +3,6 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
-// sustained exhale params
-
 export interface SustainedExhaleParams {
   durationRangeSec: [number, number];
   pacingGuideMs: number;
@@ -42,13 +40,8 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
   },
 };
 
-
-// sustained ssss params (uses the same params as sustained exhale)
-
 export const SUSTAINED_SSSS_PARAMS =
   SUSTAINED_EXHALE_PARAMS;
-
-// diaphragmatic breathing params
 
 export interface DiaphragmaticBreathingParams {
   inhaleSec: number;
@@ -87,8 +80,6 @@ export const DIAPHRAGMATIC_BREATHING_PARAMS: Record<
   },
 };
 
-// steady airflow maintenance params
-
 export interface SteadyAirflowParams {
   durationSec: number;
   repetitions: number;
@@ -121,8 +112,6 @@ export const STEADY_AIRFLOW_PARAMS: Record<
     detectionThreshold: 0.02,
   },
 };
-
-// controlled breath release params
 
 export interface ControlledBreathReleaseParams {
   pulseCount: number;

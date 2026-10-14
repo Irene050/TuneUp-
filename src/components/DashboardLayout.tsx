@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    // bottom is set dynamically using safe area insets
     backgroundColor: WHITE,
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,

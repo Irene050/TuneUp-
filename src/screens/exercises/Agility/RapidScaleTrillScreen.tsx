@@ -1137,7 +1137,7 @@ export default function RapidScaleTrillScreen() {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="flash-outline" size={32} color={BROWN} />
+          <Ionicons name="options-outline" size={32} color={BROWN} />
         </View>
         <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
         <Text style={styles.preparingSubtitle}>
