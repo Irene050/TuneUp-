@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
-    Image,
-    Pressable,
-    StyleSheet,
-    View,
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type DashboardTab =
   | 'index'
@@ -41,17 +43,46 @@ export default function DashboardLayout({
   activeTab,
   children,
 }: DashboardLayoutProps) {
+  const insets = useSafeAreaInsets();
+  const { height, width } = useWindowDimensions();
+
+  const isCompactScreen = height < 720 || width < 360;
+  const tabBarHeight = isCompactScreen ? 76 : 84;
+  const sideIconContainerSize = isCompactScreen ? 44 : 50;
+  const sideIconSize = isCompactScreen ? 24 : 26;
+  const centerCircleSize = isCompactScreen ? 82 : 90;
+  const centerActiveSize = isCompactScreen ? 54 : 60;
+  const centerIconSize = isCompactScreen ? 30 : 35;
+  const centerCircleBottom = isCompactScreen ? 12 : 14;
+  const safeBottom = Math.max(insets.bottom, 8);
+
   const showTabBar =
     activeTab === 'index' ||
     activeTab === 'exercises' ||
     activeTab === 'profile';
 
+  // Reserve enough screen space for the tab bar and its raised center button.
+  // This prevents scrollable dashboard content from rendering underneath it.
+  const contentBottomInset = showTabBar
+    ? safeBottom + Math.max(tabBarHeight, centerCircleSize + centerCircleBottom)
+    : 0;
+
   return (
     <View style={styles.container}>
-      <View style={styles.screen}>{children}</View>
+      <View style={[styles.screen, { paddingBottom: contentBottomInset }]}>
+        {children}
+      </View>
 
       {showTabBar && (
-        <View style={styles.tabBar}>
+        <View
+          style={[
+            styles.tabBar,
+            {
+              height: tabBarHeight,
+              bottom: safeBottom,
+            },
+          ]}
+        >
           {tabs.map((tabItem) => {
             const focused = activeTab === tabItem.name;
             const centerTab = tabItem.name === 'exercises';
@@ -64,20 +95,42 @@ export default function DashboardLayout({
                 accessibilityState={{ selected: focused }}
                 style={[
                   styles.tabButton,
+                  { height: tabBarHeight },
                   centerTab && styles.centerTabButton,
                 ]}
                 onPress={() => router.setParams({ tab: tabItem.name })}
               >
                 {centerTab ? (
-                  <View style={styles.centerCircle}>
+                  <View
+                    style={[
+                      styles.centerCircle,
+                      {
+                        width: centerCircleSize,
+                        height: centerCircleSize,
+                        borderRadius: centerCircleSize / 2,
+                        bottom: centerCircleBottom,
+                      },
+                    ]}
+                  >
                     <View
-                      style={
-                        focused ? styles.centerActiveCircle : undefined
-                      }
+                      style={[
+                        focused && styles.centerActiveCircle,
+                        focused && {
+                          width: centerActiveSize,
+                          height: centerActiveSize,
+                          borderRadius: centerActiveSize / 2,
+                        },
+                      ]}
                     >
                       <Image
                         source={tabItem.icon}
-                        style={styles.centerIcon}
+                        style={[
+                          styles.centerIcon,
+                          {
+                            width: centerIconSize,
+                            height: centerIconSize,
+                          },
+                        ]}
                         resizeMode="contain"
                       />
                     </View>
@@ -86,12 +139,23 @@ export default function DashboardLayout({
                   <View
                     style={[
                       styles.iconContainer,
+                      {
+                        width: sideIconContainerSize,
+                        height: sideIconContainerSize,
+                        borderRadius: sideIconContainerSize / 2,
+                      },
                       focused && styles.activeCircle,
                     ]}
                   >
                     <Image
                       source={tabItem.icon}
-                      style={styles.icon}
+                      style={[
+                        styles.icon,
+                        {
+                          width: sideIconSize,
+                          height: sideIconSize,
+                        },
+                      ]}
                       resizeMode="contain"
                     />
                   </View>
@@ -121,8 +185,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    height: 95,
     backgroundColor: WHITE,
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,
@@ -141,7 +203,6 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
-    height: 95,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 0,
@@ -166,14 +227,10 @@ const styles = StyleSheet.create({
     height: 26,
   },
   centerCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 999,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    bottom: 18,
     zIndex: 100,
     elevation: 20,
     shadowColor: '#000000',
@@ -185,9 +242,6 @@ const styles = StyleSheet.create({
     },
   },
   centerActiveCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 999,
     backgroundColor: LIGHT_GRAY,
     alignItems: 'center',
     justifyContent: 'center',

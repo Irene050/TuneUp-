@@ -1,5 +1,4 @@
 import type { SustainedExhaleParams } from '@/constants/exercises/breathControl';
-
 import type { SustainedSSSSMeasurement } from '@/services/measurement/breathControl/sustainedSSSS';
 
 export interface SustainedSSSSScoreResult {
@@ -20,41 +19,68 @@ export function scoreSustainedSSSS(
     };
   }
 
-  const minDurationSec =
-    params.durationRangeSec[0];
+  const minDurationSec = params.durationRangeSec[0];
+  const maxDurationSec = params.durationRangeSec[1];
+
+  const actualDurationSec = Number.isFinite(
+    measurement.actualDurationSec,
+  )
+    ? Math.max(0, measurement.actualDurationSec)
+    : 0;
 
   const durationScore =
-    minDurationSec > 0
-      ? Math.min(
-          measurement.actualDurationSec /
-            minDurationSec,
-          1,
-        ) * 100
-      : 0;
-
-  const consistencyScore =
-    Number.isFinite(
-      measurement.consistencyPct,
-    )
+    maxDurationSec > 0
       ? Math.max(
           0,
           Math.min(
             100,
-            measurement.consistencyPct,
+            (actualDurationSec / maxDurationSec) * 100,
           ),
         )
       : 0;
 
+  const consistencyScore = Number.isFinite(
+    measurement.consistencyPct,
+  )
+    ? Math.max(
+        0,
+        Math.min(100, measurement.consistencyPct),
+      )
+    : 0;
+
+  // Penalize inconsistent sound more heavily.
+  // 100% consistency = 100 points
+  // 75% consistency = 50 points
+  // 50% consistency or lower = 0 points
+  const strictConsistencyScore = Math.max(
+    0,
+    Math.min(100, (consistencyScore - 50) * 2),
+  );
+
+  // Consistency is the primary scoring factor.
   const score = Math.round(
-    durationScore * 0.6 +
-      consistencyScore * 0.4,
+    durationScore * 0.3 +
+      strictConsistencyScore * 0.7,
   );
 
   const passed =
-    measurement.actualDurationSec >=
-      minDurationSec &&
-    consistencyScore >=
-      params.consistencyThreshold;
+    actualDurationSec >= minDurationSec &&
+    consistencyScore >= Math.max(
+      params.consistencyThreshold,
+      85,
+    ) &&
+    score >= 85;
+
+  console.log('🌬️ STRICT SUSTAINED SSSS SCORE DEBUG:', {
+    actualDurationSec,
+    minDurationSec,
+    maxDurationSec,
+    durationScore,
+    consistencyScore,
+    strictConsistencyScore,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,

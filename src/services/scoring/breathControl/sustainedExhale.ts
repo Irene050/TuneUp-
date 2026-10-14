@@ -1,5 +1,5 @@
-import type { SustainedExhaleParams } from '@/constants/exercises/breathControl';
 
+import type { SustainedExhaleParams } from '@/constants/exercises/breathControl';
 import type { SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
 
 export interface SustainedExhaleScoreResult {
@@ -20,41 +20,60 @@ export function scoreSustainedExhale(
     };
   }
 
-  const minDurationSec =
-    params.durationRangeSec[0];
+  const minDurationSec = params.durationRangeSec[0];
+  const maxDurationSec = params.durationRangeSec[1];
 
+  const actualDurationSec = Number.isFinite(
+    measurement.actualDurationSec,
+  )
+    ? Math.max(0, measurement.actualDurationSec)
+    : 0;
+
+  // Full duration credit requires reaching the maximum target.
   const durationScore =
-    minDurationSec > 0
-      ? Math.min(
-          measurement.actualDurationSec /
-            minDurationSec,
-          1,
-        ) * 100
-      : 0;
-
-  const consistencyScore =
-    Number.isFinite(
-      measurement.consistencyPct,
-    )
+    maxDurationSec > 0
       ? Math.max(
           0,
-          Math.min(
-            100,
-            measurement.consistencyPct,
-          ),
+          Math.min(100, (actualDurationSec / maxDurationSec) * 100),
         )
       : 0;
 
+  const consistencyScore = Number.isFinite(
+    measurement.consistencyPct,
+  )
+    ? Math.max(0, Math.min(100, measurement.consistencyPct))
+    : 0;
+
+  // Apply a steeper penalty to inconsistent sound.
+  // 100 consistency = 100 points
+  // 75 consistency = 50 points
+  // 50 consistency or lower = 0 points
+  const strictConsistencyScore = Math.max(
+    0,
+    Math.min(100, (consistencyScore - 50) * 2),
+  );
+
   const score = Math.round(
-    durationScore * 0.6 +
-      consistencyScore * 0.4,
+    durationScore * 0.3 +
+      strictConsistencyScore * 0.7,
   );
 
   const passed =
-    measurement.actualDurationSec >=
-      minDurationSec &&
-    consistencyScore >=
-      params.consistencyThreshold;
+    actualDurationSec >= minDurationSec &&
+    actualDurationSec >= maxDurationSec &&
+    consistencyScore >= Math.max(params.consistencyThreshold, 85) &&
+    score >= 85;
+
+  console.log('🌬️ STRICT SUSTAINED EXHALE DEBUG:', {
+    actualDurationSec,
+    minDurationSec,
+    maxDurationSec,
+    durationScore,
+    consistencyScore,
+    strictConsistencyScore,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,

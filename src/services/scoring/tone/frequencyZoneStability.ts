@@ -1,4 +1,3 @@
-
 import type {
   FrequencyZoneStabilityParams,
 } from '@/constants/exercises/tone';
@@ -12,52 +11,62 @@ export interface FrequencyZoneStabilityScoreResult {
   passed: boolean;
 }
 
+function clampScore(value: number): number {
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value))
+    : 0;
+}
+
 export function scoreFrequencyZoneStability(
   measurement: FrequencyZoneStabilityMeasurement,
   params: FrequencyZoneStabilityParams,
 ): FrequencyZoneStabilityScoreResult {
+  const stabilityScore = clampScore(
+    measurement.stabilityPct,
+  );
+
+  const coverageScore = clampScore(
+    measurement.detectionCoveragePct,
+  );
+
   const durationScore =
     params.durationSec > 0
-      ? Math.min(
-          measurement.durationSec /
-            params.durationSec,
-          1,
-        ) * 100
+      ? clampScore(
+          (measurement.durationSec /
+            params.durationSec) *
+            100,
+        )
       : 0;
 
-  const coverageScore =
-    Math.min(
-      Math.max(
-        measurement.detectionCoveragePct,
-        0,
-      ),
-      100,
-    );
+  // Stricter stability scoring:
+  // Values below 60 receive no stability points.
+  // Values from 60 to 100 scale to 0–100.
+  const adjustedStabilityScore = clampScore(
+    ((stabilityScore - 60) / 40) * 100,
+  );
 
-  // Pitch and zone stability are combined
-  // in measurement.stabilityPct.
   const rawScore =
-    measurement.stabilityPct * 0.7 +
+    adjustedStabilityScore * 0.7 +
     coverageScore * 0.2 +
     durationScore * 0.1;
 
   const score = Math.round(
-    Math.max(0, Math.min(100, rawScore)),
+    clampScore(rawScore),
   );
 
   const enoughPitchData =
-    measurement.validPitchCount >= 5;
+    measurement.validPitchCount >= 8;
 
   const enoughCoverage =
-    coverageScore >= 70;
+    coverageScore >= 80;
 
   const enoughDuration =
     measurement.durationSec >=
     params.durationSec;
 
   const stableEnough =
-    measurement.stabilityPct >=
-    params.stabilityThreshold;
+    stabilityScore >=
+    Math.max(params.stabilityThreshold, 80);
 
   return {
     score,
@@ -65,6 +74,7 @@ export function scoreFrequencyZoneStability(
       enoughPitchData &&
       enoughCoverage &&
       enoughDuration &&
-      stableEnough,
+      stableEnough &&
+      score >= 80,
   };
 }

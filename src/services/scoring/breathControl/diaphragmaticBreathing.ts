@@ -1,3 +1,4 @@
+
 import type { DiaphragmaticBreathingParams } from '@/constants/exercises/breathControl';
 import type { DiaphragmaticBreathingMeasurement } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 
@@ -19,37 +20,27 @@ export function scoreDiaphragmaticBreathing(
     };
   }
 
-  /*
-   * ---------------------------------------------------
-   * EXHALATION DURATION
-   * ---------------------------------------------------
-   *
-   * Longer exhalation targets are harder.
-   */
-
   const durationScore =
     params.exhaleSec > 0
-      ? Math.min(
-          measurement.exhaleDurationSec /
-            params.exhaleSec,
-          1,
-        ) * 100
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (measurement.exhaleDurationSec /
+              (params.exhaleSec * 1.25)) *
+              100,
+          ),
+        )
       : 0;
 
-  /*
-   * ---------------------------------------------------
-   * CONSISTENCY
-   * ---------------------------------------------------
-   */
-
-  const consistencyScore =
-    measurement.consistencyPct;
-
-  /*
-   * ---------------------------------------------------
-   * FINAL SCORE
-   * ---------------------------------------------------
-   */
+  const consistencyScore = Number.isFinite(
+    measurement.consistencyPct,
+  )
+    ? Math.max(
+        0,
+        Math.min(100, measurement.consistencyPct),
+      )
+    : 0;
 
   const score = Math.round(
     durationScore * 0.4 +
@@ -57,10 +48,18 @@ export function scoreDiaphragmaticBreathing(
   );
 
   const passed =
-    measurement.exhaleDurationSec >=
-      params.exhaleSec &&
-    consistencyScore >=
-      params.consistencyThreshold;
+    measurement.exhaleDurationSec >= params.exhaleSec &&
+    consistencyScore >= params.consistencyThreshold &&
+    score >= 75;
+
+  console.log('🌬️ DIAPHRAGMATIC BREATHING SCORE DEBUG:', {
+    exhaleDurationSec: measurement.exhaleDurationSec,
+    targetExhaleSec: params.exhaleSec,
+    durationScore,
+    consistencyScore,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,

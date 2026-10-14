@@ -268,27 +268,6 @@ export default function BreathControlFreeModeScreen() {
                 </Text>
               </View>
             </View>
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons
-                  name="analytics-outline"
-                  size={20}
-                  color={ACCENT}
-                />
-              </View>
-
-              <View style={styles.infoText}>
-                <Text style={styles.infoName}>
-                  Stability
-                </Text>
-
-                <Text style={styles.infoDescription}>
-                  See how even your airflow feels in real
-                  time.
-                </Text>
-              </View>
-            </View>
           </View>
 
           <View style={styles.noTargetCard}>
@@ -439,28 +418,6 @@ export default function BreathControlFreeModeScreen() {
                 ]}
               />
             ))}
-          </View>
-        </View>
-
-        {/* STABILITY */}
-
-        <View style={styles.stabilityCard}>
-          <View>
-            <Text style={styles.cardLabel}>
-              BREATH STABILITY
-            </Text>
-
-            <Text style={styles.stabilityValue}>
-              {Math.round(consistencyPct)}%
-            </Text>
-          </View>
-
-          <View style={styles.stabilityIcon}>
-            <Ionicons
-              name="analytics-outline"
-              size={25}
-              color={ACCENT}
-            />
           </View>
         </View>
 

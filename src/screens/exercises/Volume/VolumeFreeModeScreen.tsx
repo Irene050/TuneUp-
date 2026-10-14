@@ -1,3 +1,10 @@
+import {
+  LiveAudioFrame,
+  useAudioRecorder,
+} from '@/hooks/useAudioRecorder';
+import {
+  measureVolumeFreeModeFrame,
+} from '@/services/measurement/freemode/volume';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
@@ -19,19 +26,9 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
-import {
-  LiveAudioFrame,
-  useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
-
-import {
-  measureVolumeFreeModeFrame,
-} from '@/services/measurement/freemode/volume';
-
 /* =========================================================
    COLORS
    ========================================================= */
-
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
 const PINK = '#FCD6DD';
@@ -45,14 +42,12 @@ const WHITE = '#FFFFFF';
 /* =========================================================
    VOLUME RANGE
    ========================================================= */
-
 const DBFS_MIN = -60;
 const DBFS_MAX = -10;
 
 /* =========================================================
    GRAPH
    ========================================================= */
-
 const BAR_COUNT = 32;
 
 /* =========================================================
@@ -71,7 +66,6 @@ function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
-
   return Math.max(
     0,
     Math.min(
@@ -99,19 +93,16 @@ function VolumeVisualizer({
       if (index < liveHistory.length) {
         return liveHistory[index];
       }
-
       return 0;
     },
   );
-
   return (
     <View style={styles.visualizer}>
-      {/* CENTER REFERENCE LINE */}
 
+      {/* CENTER REFERENCE LINE */}
       <View style={styles.centerLine} />
 
       {/* LIVE BARS */}
-
       <View style={styles.actualBars}>
         {actualBars.map((value, index) => (
           <View
@@ -131,7 +122,6 @@ function VolumeVisualizer({
           />
         ))}
       </View>
-
       {liveHistory.length === 0 && (
         <Text
           style={
@@ -153,52 +143,39 @@ function VolumeVisualizer({
 export default function VolumeFreeModeScreen() {
   const insets =
     useSafeAreaInsets();
-
   const {
     width,
     height,
   } = useWindowDimensions();
-
   const horizontalPadding =
     Math.min(
       22,
       width * 0.055,
     );
-
   const isSmallScreen =
     height < 700;
 
   /* =======================================================
      STATE
      ======================================================= */
-
   const [
     phase,
     setPhase,
   ] = useState<Phase>('ready');
-
   const [
     liveVolume,
     setLiveVolume,
   ] = useState<number | null>(
     null,
   );
-
-  const [
-    liveStability,
-    setLiveStability,
-  ] = useState(0);
-
   const [
     liveHistory,
     setLiveHistory,
   ] = useState<number[]>([]);
-
   const [
     elapsedSeconds,
     setElapsedSeconds,
   ] = useState(0);
-
   const [
     isStarting,
     setIsStarting,
@@ -207,10 +184,8 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      TIMER REFS
      ======================================================= */
-
   const startedAtRef =
     useRef<number | null>(null);
-
   const timerRef =
     useRef<
       ReturnType<typeof setInterval> | null
@@ -219,7 +194,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      TIMER CLEANUP
      ======================================================= */
-
   useEffect(() => {
     return () => {
       if (timerRef.current) {
@@ -233,7 +207,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      LIVE AUDIO
      ======================================================= */
-
   const handleAudioFrame = (
     frame: LiveAudioFrame,
   ) => {
@@ -254,7 +227,6 @@ export default function VolumeFreeModeScreen() {
         frame.samples,
         frame.sampleRate,
       );
-
     if (
       !Number.isFinite(
         reading.volumeDb,
@@ -262,13 +234,8 @@ export default function VolumeFreeModeScreen() {
     ) {
       return;
     }
-
     setLiveVolume(
       reading.volumeDb,
-    );
-
-    setLiveStability(
-      reading.consistencyPct,
     );
 
     /*
@@ -282,7 +249,6 @@ export default function VolumeFreeModeScreen() {
       normalizeVolume(
         reading.volumeDb,
       );
-
     setLiveHistory(
       (previous) =>
         [
@@ -291,7 +257,6 @@ export default function VolumeFreeModeScreen() {
         ].slice(-BAR_COUNT),
     );
   };
-
   const {
     startRecording,
     stopRecording,
@@ -303,15 +268,12 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      TIMER
      ======================================================= */
-
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
     }
-
     startedAtRef.current =
       Date.now();
-
     timerRef.current =
       setInterval(() => {
         if (
@@ -323,19 +285,16 @@ export default function VolumeFreeModeScreen() {
                 startedAtRef.current) /
                 1000,
             );
-
           setElapsedSeconds(
             elapsed,
           );
         }
       }, 250);
-
     return () => {
       if (timerRef.current) {
         clearInterval(
           timerRef.current,
         );
-
         timerRef.current = null;
       }
     };
@@ -344,7 +303,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      START FREE MODE
      ======================================================= */
-
   const startFreeMode =
     async () => {
       if (
@@ -354,20 +312,14 @@ export default function VolumeFreeModeScreen() {
       ) {
         return;
       }
-
       try {
         setIsStarting(true);
-
         setLiveVolume(null);
-        setLiveStability(0);
         setLiveHistory([]);
         setElapsedSeconds(0);
-
         startedAtRef.current =
           null;
-
         await startRecording();
-
         setPhase('exercise');
       } catch (error) {
         console.error(
@@ -382,7 +334,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      STOP FREE MODE
      ======================================================= */
-
   const stopFreeMode =
     async () => {
       try {
@@ -393,15 +344,12 @@ export default function VolumeFreeModeScreen() {
           error,
         );
       }
-
       if (timerRef.current) {
         clearInterval(
           timerRef.current,
         );
-
         timerRef.current = null;
       }
-
       startedAtRef.current =
         null;
 
@@ -412,9 +360,7 @@ export default function VolumeFreeModeScreen() {
        * - update adaptive difficulty
        */
       setPhase('ready');
-
       setLiveVolume(null);
-      setLiveStability(0);
       setLiveHistory([]);
       setElapsedSeconds(0);
     };
@@ -422,17 +368,14 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      FORMATTED TIME
      ======================================================= */
-
   const formattedTime =
     useMemo(() => {
       const minutes =
         Math.floor(
           elapsedSeconds / 60,
         );
-
       const seconds =
         elapsedSeconds % 60;
-
       return `${String(
         minutes,
       ).padStart(
@@ -449,7 +392,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      READY SCREEN
      ======================================================= */
-
   if (phase === 'ready') {
     return (
       <SafeAreaView
@@ -461,8 +403,8 @@ export default function VolumeFreeModeScreen() {
           },
         ]}
       >
-        {/* HEADER */}
 
+        {/* HEADER */}
         <View
           style={[
             styles.header,
@@ -486,7 +428,6 @@ export default function VolumeFreeModeScreen() {
               color={BROWN}
             />
           </Pressable>
-
           <Text
             style={
               styles.headerTitle
@@ -494,7 +435,6 @@ export default function VolumeFreeModeScreen() {
           >
             Volume Free Mode
           </Text>
-
           <View
             style={
               styles.headerSpacer
@@ -503,7 +443,6 @@ export default function VolumeFreeModeScreen() {
         </View>
 
         {/* CONTENT */}
-
         <View
           style={[
             styles.readyContent,
@@ -524,7 +463,6 @@ export default function VolumeFreeModeScreen() {
               color={ACCENT}
             />
           </View>
-
           <Text
             style={
               styles.pageTitle
@@ -532,7 +470,6 @@ export default function VolumeFreeModeScreen() {
           >
             Volume Free Mode
           </Text>
-
           <Text
             style={
               styles.pageDescription
@@ -544,7 +481,6 @@ export default function VolumeFreeModeScreen() {
           </Text>
 
           {/* LIVE FEEDBACK */}
-
           <View
             style={
               styles.infoCard
@@ -557,7 +493,6 @@ export default function VolumeFreeModeScreen() {
             >
               LIVE FEEDBACK
             </Text>
-
             <View
               style={
                 styles.infoRow
@@ -574,7 +509,6 @@ export default function VolumeFreeModeScreen() {
                   color={ACCENT}
                 />
               </View>
-
               <View
                 style={
                   styles.infoText
@@ -587,7 +521,6 @@ export default function VolumeFreeModeScreen() {
                 >
                   Volume Level
                 </Text>
-
                 <Text
                   style={
                     styles.infoDescription
@@ -598,51 +531,9 @@ export default function VolumeFreeModeScreen() {
                 </Text>
               </View>
             </View>
-
-            <View
-              style={
-                styles.infoRow
-              }
-            >
-              <View
-                style={
-                  styles.infoIcon
-                }
-              >
-                <Ionicons
-                  name="analytics-outline"
-                  size={20}
-                  color={ACCENT}
-                />
-              </View>
-
-              <View
-                style={
-                  styles.infoText
-                }
-              >
-                <Text
-                  style={
-                    styles.infoName
-                  }
-                >
-                  Consistency
-                </Text>
-
-                <Text
-                  style={
-                    styles.infoDescription
-                  }
-                >
-                  Observe how steady your
-                  vocal volume remains.
-                </Text>
-              </View>
-            </View>
           </View>
 
           {/* NOTE */}
-
           <View
             style={
               styles.noTargetCard
@@ -653,7 +544,6 @@ export default function VolumeFreeModeScreen() {
               size={20}
               color={ACCENT}
             />
-
             <Text
               style={
                 styles.noTargetText
@@ -667,7 +557,6 @@ export default function VolumeFreeModeScreen() {
         </View>
 
         {/* START BUTTON */}
-
         <View
           style={[
             styles.bottomAction,
@@ -704,7 +593,6 @@ export default function VolumeFreeModeScreen() {
                   size={19}
                   color={WHITE}
                 />
-
                 <Text
                   style={
                     styles.startButtonText
@@ -723,7 +611,6 @@ export default function VolumeFreeModeScreen() {
   /* =======================================================
      EXERCISE SCREEN
      ======================================================= */
-
   return (
     <SafeAreaView
       style={[
@@ -734,8 +621,8 @@ export default function VolumeFreeModeScreen() {
         },
       ]}
     >
-      {/* HEADER */}
 
+      {/* HEADER */}
       <View
         style={[
           styles.header,
@@ -759,7 +646,6 @@ export default function VolumeFreeModeScreen() {
             color={BROWN}
           />
         </Pressable>
-
         <Text
           style={
             styles.headerTitle
@@ -767,7 +653,6 @@ export default function VolumeFreeModeScreen() {
         >
           Volume Free Mode
         </Text>
-
         <View
           style={
             styles.headerSpacer
@@ -776,7 +661,6 @@ export default function VolumeFreeModeScreen() {
       </View>
 
       {/* MAIN */}
-
       <View
         style={[
           styles.exerciseContent,
@@ -786,8 +670,8 @@ export default function VolumeFreeModeScreen() {
           },
         ]}
       >
-        {/* TOP INFO */}
 
+        {/* TOP INFO */}
         <View
           style={
             styles.exerciseTopRow
@@ -801,7 +685,6 @@ export default function VolumeFreeModeScreen() {
             >
               FREE PRACTICE
             </Text>
-
             <Text
               style={
                 styles.exerciseSubtitle
@@ -810,7 +693,6 @@ export default function VolumeFreeModeScreen() {
               Explore your natural volume
             </Text>
           </View>
-
           <View
             style={
               styles.timeBadge
@@ -821,7 +703,6 @@ export default function VolumeFreeModeScreen() {
               size={16}
               color={ACCENT}
             />
-
             <Text
               style={
                 styles.timeText
@@ -833,7 +714,6 @@ export default function VolumeFreeModeScreen() {
         </View>
 
         {/* MAIN VOLUME CARD */}
-
         <View
           style={[
             styles.volumeCard,
@@ -848,7 +728,6 @@ export default function VolumeFreeModeScreen() {
           >
             CURRENT VOLUME
           </Text>
-
           <Text
             style={[
               styles.volumeValue,
@@ -860,7 +739,6 @@ export default function VolumeFreeModeScreen() {
               ? liveVolume.toFixed(1)
               : '--'}
           </Text>
-
           <Text
             style={
               styles.volumeUnit
@@ -868,7 +746,6 @@ export default function VolumeFreeModeScreen() {
           >
             dBFS
           </Text>
-
           <View
             style={
               styles.micCircle
@@ -884,7 +761,6 @@ export default function VolumeFreeModeScreen() {
               color={WHITE}
             />
           </View>
-
           <Text
             style={
               styles.volumeHint
@@ -896,98 +772,7 @@ export default function VolumeFreeModeScreen() {
           </Text>
         </View>
 
-        {/* CONSISTENCY */}
-
-        <View
-          style={
-            styles.consistencyCard
-          }
-        >
-          <View
-            style={
-              styles.consistencyHeader
-            }
-          >
-            <View>
-              <Text
-                style={
-                  styles.consistencyTitle
-                }
-              >
-                Volume Consistency
-              </Text>
-
-              <Text
-                style={
-                  styles.consistencySub
-                }
-              >
-                Live stability
-              </Text>
-            </View>
-
-            <Text
-              style={
-                styles.consistencyValue
-              }
-            >
-              {liveVolume !== null
-                ? Math.round(
-                    liveStability,
-                  )
-                : '--'}
-              {liveVolume !== null
-                ? '%'
-                : ''}
-            </Text>
-          </View>
-
-          <View
-            style={
-              styles.progressTrack
-            }
-          >
-            <View
-              style={[
-                styles.progressValue,
-                {
-                  width: `${Math.min(
-                    100,
-                    Math.max(
-                      0,
-                      liveStability,
-                    ),
-                  )}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <View
-            style={
-              styles.progressLabels
-            }
-          >
-            <Text
-              style={
-                styles.progressLabel
-              }
-            >
-              Fluctuating
-            </Text>
-
-            <Text
-              style={
-                styles.progressLabel
-              }
-            >
-              Steady
-            </Text>
-          </View>
-        </View>
-
         {/* VISUALIZER */}
-
         <View
           style={
             styles.visualizerCard
@@ -1006,7 +791,6 @@ export default function VolumeFreeModeScreen() {
               >
                 Your Volume
               </Text>
-
               <Text
                 style={
                   styles.visualizerSub
@@ -1015,7 +799,6 @@ export default function VolumeFreeModeScreen() {
                 Live volume pattern
               </Text>
             </View>
-
             <View
               style={
                 styles.visualizerMic
@@ -1028,13 +811,11 @@ export default function VolumeFreeModeScreen() {
               />
             </View>
           </View>
-
           <VolumeVisualizer
             liveHistory={
               liveHistory
             }
           />
-
           <View
             style={
               styles.visualizerLabels
@@ -1047,7 +828,6 @@ export default function VolumeFreeModeScreen() {
             >
               QUIET
             </Text>
-
             <Text
               style={
                 styles.visualizerLabel
@@ -1059,7 +839,6 @@ export default function VolumeFreeModeScreen() {
         </View>
 
         {/* FREE MODE MESSAGE */}
-
         <View
           style={
             styles.freeModeMessage
@@ -1070,7 +849,6 @@ export default function VolumeFreeModeScreen() {
             size={19}
             color={ACCENT}
           />
-
           <Text
             style={
               styles.freeModeMessageText
@@ -1084,7 +862,6 @@ export default function VolumeFreeModeScreen() {
       </View>
 
       {/* STOP BUTTON */}
-
       <View
         style={[
           styles.bottomAction,
@@ -1112,7 +889,6 @@ export default function VolumeFreeModeScreen() {
             size={18}
             color={WHITE}
           />
-
           <Text
             style={
               styles.startButtonText
@@ -1137,13 +913,11 @@ const styles = StyleSheet.create({
   },
 
   /* HEADER */
-
   header: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   backButton: {
     width: 36,
     height: 36,
@@ -1152,7 +926,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -1160,19 +933,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: BROWN,
   },
-
   headerSpacer: {
     width: 36,
   },
 
   /* READY */
-
   readyContent: {
     flex: 1,
     alignItems: 'center',
     paddingTop: 20,
   },
-
   modeIcon: {
     width: 72,
     height: 72,
@@ -1181,7 +951,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   pageTitle: {
     marginTop: 12,
     fontSize: 27,
@@ -1189,7 +958,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     textAlign: 'center',
   },
-
   pageDescription: {
     marginTop: 6,
     maxWidth: 330,
@@ -1198,7 +966,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   infoCard: {
     width: '100%',
     marginTop: 20,
@@ -1208,20 +975,17 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 16,
   },
-
   infoTitle: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
     color: MUTED,
   },
-
   infoRow: {
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   infoIcon: {
     width: 42,
     height: 42,
@@ -1230,25 +994,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   infoText: {
     flex: 1,
     marginLeft: 11,
   },
-
   infoName: {
     fontSize: 13,
     fontWeight: '800',
     color: DARK,
   },
-
   infoDescription: {
     marginTop: 2,
     fontSize: 11,
     lineHeight: 16,
     color: MUTED,
   },
-
   noTargetCard: {
     width: '100%',
     marginTop: 12,
@@ -1258,7 +1018,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   noTargetText: {
     flex: 1,
     marginLeft: 9,
@@ -1268,12 +1027,10 @@ const styles = StyleSheet.create({
   },
 
   /* BOTTOM ACTION */
-
   bottomAction: {
     backgroundColor: LIGHT,
     paddingTop: 8,
   },
-
   startButton: {
     minHeight: 51,
     borderRadius: 16,
@@ -1283,7 +1040,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
-
   stopButton: {
     minHeight: 51,
     borderRadius: 16,
@@ -1293,7 +1049,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
-
   startButtonText: {
     fontSize: 14,
     fontWeight: '800',
@@ -1301,33 +1056,28 @@ const styles = StyleSheet.create({
   },
 
   /* EXERCISE */
-
   exerciseContent: {
     flex: 1,
     justifyContent: 'space-between',
     paddingTop: 5,
   },
-
   exerciseTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   modeLabel: {
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1,
     color: MUTED,
   },
-
   exerciseSubtitle: {
     marginTop: 2,
     fontSize: 12,
     fontWeight: '700',
     color: DARK,
   },
-
   timeBadge: {
     minHeight: 36,
     paddingHorizontal: 11,
@@ -1339,7 +1089,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
   },
-
   timeText: {
     fontSize: 12,
     fontWeight: '800',
@@ -1347,7 +1096,6 @@ const styles = StyleSheet.create({
   },
 
   /* VOLUME CARD */
-
   volumeCard: {
     minHeight: 190,
     borderRadius: 22,
@@ -1357,18 +1105,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   volumeCardSmall: {
     minHeight: 155,
   },
-
   volumeLabel: {
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1,
     color: MUTED,
   },
-
   volumeValue: {
     marginTop: 2,
     fontSize: 42,
@@ -1376,18 +1121,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: BROWN,
   },
-
   volumeValueSmall: {
     fontSize: 34,
     lineHeight: 38,
   },
-
   volumeUnit: {
     marginTop: -1,
     fontSize: 10,
     color: MUTED,
   },
-
   micCircle: {
     marginTop: 7,
     width: 55,
@@ -1397,7 +1139,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   volumeHint: {
     marginTop: 6,
     fontSize: 10,
@@ -1405,7 +1146,6 @@ const styles = StyleSheet.create({
   },
 
   /* CONSISTENCY */
-
   consistencyCard: {
     backgroundColor: WHITE,
     borderRadius: 17,
@@ -1413,31 +1153,26 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 13,
   },
-
   consistencyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   consistencyTitle: {
     fontSize: 13,
     fontWeight: '800',
     color: DARK,
   },
-
   consistencySub: {
     marginTop: 1,
     fontSize: 9,
     color: MUTED,
   },
-
   consistencyValue: {
     fontSize: 22,
     fontWeight: '900',
     color: ACCENT,
   },
-
   progressTrack: {
     marginTop: 8,
     width: '100%',
@@ -1446,26 +1181,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0E4E7',
     overflow: 'hidden',
   },
-
   progressValue: {
     height: '100%',
     borderRadius: 4,
     backgroundColor: ACCENT,
   },
-
   progressLabels: {
     marginTop: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
   progressLabel: {
     fontSize: 8,
     color: MUTED,
   },
 
   /* VISUALIZER CARD */
-
   visualizerCard: {
     backgroundColor: WHITE,
     borderRadius: 17,
@@ -1473,25 +1204,21 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 12,
   },
-
   visualizerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   visualizerTitle: {
     fontSize: 12,
     fontWeight: '800',
     color: DARK,
   },
-
   visualizerSub: {
     marginTop: 1,
     fontSize: 9,
     color: MUTED,
   },
-
   visualizerMic: {
     width: 34,
     height: 34,
@@ -1500,7 +1227,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   visualizer: {
     marginTop: 8,
     height: 75,
@@ -1514,7 +1240,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingBottom: 4,
   },
-
   actualBars: {
     position: 'absolute',
     left: 4,
@@ -1525,14 +1250,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-
   actualBar: {
     width: 4,
     minHeight: 4,
     borderRadius: 2,
     backgroundColor: ACCENT,
   },
-
   centerLine: {
     position: 'absolute',
     left: 0,
@@ -1541,7 +1264,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F0DDE2',
   },
-
   visualizerPlaceholder: {
     position: 'absolute',
     left: 0,
@@ -1551,13 +1273,11 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   visualizerLabels: {
     marginTop: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
   visualizerLabel: {
     fontSize: 8,
     fontWeight: '700',
@@ -1565,7 +1285,6 @@ const styles = StyleSheet.create({
   },
 
   /* MESSAGE */
-
   freeModeMessage: {
     minHeight: 43,
     paddingHorizontal: 12,
@@ -1574,7 +1293,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   freeModeMessageText: {
     flex: 1,
     marginLeft: 8,

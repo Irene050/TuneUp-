@@ -275,7 +275,7 @@ function median(
  * evaluated against test recordings and expert validation.
  */
 
-const PITCH_TOLERANCE_PCT = 6;
+const PITCH_TOLERANCE_PCT = 5.0;
 
 function calculatePitchAccuracy(
   detectedHz: number,
@@ -403,33 +403,79 @@ export function measureBreathControl(
     return 0;
   }
 
-  const { onsetIndex, offsetIndex, durationSeconds } =
-    detectOnsetOffset(samples, 0.005, sampleRate);
+  const {
+    onsetIndex,
+    offsetIndex,
+    durationSeconds,
+  } = detectOnsetOffset(
+    samples,
+    0.005,
+    sampleRate
+  );
 
-  if (durationSeconds <= 0 || offsetIndex < onsetIndex) {
+  if (
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds <= 0 ||
+    offsetIndex < onsetIndex
+  ) {
     return 0;
   }
 
-  const durationScore = Math.min(
-    durationSeconds / targetDurationSec,
-    1
-  ) * 100;
+  // Duration reaches 100 only when the target is reached.
+  const durationScore = clampScore(
+    Math.min(
+      durationSeconds / targetDurationSec,
+      1
+    ) * 100
+  );
 
   const exhaleSamples = samples.subarray(
     onsetIndex,
     offsetIndex + 1
   );
 
-  const stabilityScore = calcRMSConsistency(
+  const rawConsistency = calcRMSConsistency(
     exhaleSamples,
     50,
     sampleRate
   );
 
-  return clampScore(
-    durationScore * 0.5 +
-    stabilityScore * 0.5
+  const consistencyScore = Number.isFinite(
+    rawConsistency
+  )
+    ? Math.max(0, Math.min(100, rawConsistency))
+    : 0;
+
+  // Stronger penalty for inconsistent sound.
+  const strictConsistencyScore = Math.max(
+    0,
+    Math.min(
+      100,
+      ((consistencyScore - 40) / 60) * 100
+    )
   );
+
+  // Consistency is more important than duration.
+  const finalScore =
+    durationScore * 0.4 +
+    strictConsistencyScore * 0.6;
+
+  const score = clampScore(finalScore);
+
+  console.log('🌬️ BREATH CONTROL ASSESSMENT:', {
+    durationSeconds: Number(
+      durationSeconds.toFixed(2)
+    ),
+    targetDurationSec,
+    durationScore,
+    rawConsistency: consistencyScore,
+    strictConsistencyScore: Math.round(
+      strictConsistencyScore
+    ),
+    finalScore: score,
+  });
+
+  return score;
 }
 
 // ============================================================
@@ -464,14 +510,10 @@ function measurePitch(
       '❌ Pitch tracking failed:',
       error
     );
-
     return 0;
   }
 
-  if (
-    !Array.isArray(frames) ||
-    frames.length === 0
-  ) {
+  if (!Array.isArray(frames) || frames.length === 0) {
     return 0;
   }
 
@@ -480,23 +522,25 @@ function measurePitch(
     0.8
   );
 
-  if (
-    !Array.isArray(voicedFrames) ||
-    voicedFrames.length === 0
-  ) {
+  if (!Array.isArray(voicedFrames)) {
     return 0;
   }
 
   const validFrames = voicedFrames.filter(
     frame =>
-      isValidFrequency(frame.frequency)
+      isValidFrequency(frame.frequency) &&
+      Number.isFinite(frame.clarity)
   );
 
-  if (validFrames.length === 0) {
+  // Reject recordings with insufficient voiced evidence.
+  if (validFrames.length < 5) {
+    console.warn(
+      '⚠️ Pitch assessment: insufficient valid frames.',
+      { validFrameCount: validFrames.length }
+    );
     return 0;
   }
 
-  // FIX: score pitch deviation as a percentage.
   const accuracyValues = validFrames.map(
     frame =>
       calculatePitchAccuracy(
@@ -515,33 +559,49 @@ function measurePitch(
     frame => frame.frequency
   );
 
-  const stability = calcLiveStability(
-    frequencies
+  const stability = clampScore(
+    calcLiveStability(frequencies)
   );
 
-  const clarityValues = validFrames
-    .map(frame => frame.clarity)
-    .filter(value => Number.isFinite(value));
-
-  if (clarityValues.length === 0) {
-    return 0;
-  }
-
   const clarity =
-    clarityValues.reduce(
-      (sum, value) => sum + value,
+    validFrames.reduce(
+      (sum, frame) => sum + frame.clarity,
       0
-    ) / clarityValues.length;
+    ) / validFrames.length;
 
   const clarityScore = clampScore(
     clarity * 100
   );
 
-  return clampScore(
-    accuracy * 0.60 +
-    stability * 0.20 +
-    clarityScore * 0.20
-  );
+  // Pitch accuracy has the greatest influence.
+  const finalScore =
+    accuracy * 0.75 +
+    stability * 0.15 +
+    clarityScore * 0.10;
+
+  const score = clampScore(finalScore);
+
+  console.log('🎵 PITCH ASSESSMENT BREAKDOWN:', {
+    targetFrequency: Number(
+      targetFrequency.toFixed(2)
+    ),
+    validFrames: validFrames.length,
+    averageAccuracy: Math.round(accuracy),
+    stability,
+    clarityScore,
+    weightedAccuracy: Math.round(
+      accuracy * 0.75
+    ),
+    weightedStability: Math.round(
+      stability * 0.15
+    ),
+    weightedClarity: Math.round(
+      clarityScore * 0.10
+    ),
+    finalScore: score,
+  });
+
+  return score;
 }
 
 // ============================================================
@@ -664,7 +724,7 @@ function measureTone(
     return 0;
   }
 
-  return clampScore(smoothness);
+  return clampScore(smoothness * 0.98);
 }
 
 // ============================================================
@@ -675,92 +735,93 @@ function measureVolume(
   samples: Float32Array,
   sampleRate: number
 ): number {
-  if (
-    !isValidSampleRate(sampleRate) ||
-    samples.length === 0
-  ) {
-    console.log('[Volume Debug] Invalid input:', {
-      sampleRate,
-      sampleCount: samples.length,
-    });
+  if (!isValidSampleRate(sampleRate) || samples.length === 0) {
     return 0;
   }
 
-  const rmsValues = calcRMSWindows(
-    samples,
-    50,
-    sampleRate
-  );
+  const rmsValues = calcRMSWindows(samples, 50, sampleRate);
 
-  if (
-    !Array.isArray(rmsValues) ||
-    rmsValues.length === 0
-  ) {
-    console.log('[Volume Debug] No RMS windows');
-    return 0;
-  }
+  if (rmsValues.length < 2) return 0;
+
+  const maxRms = Math.max(...rmsValues);
+
+  if (!Number.isFinite(maxRms) || maxRms <= 0) return 0;
+
+  // Ignore silence and very quiet background windows.
+  const silenceThreshold = Math.max(0.002, maxRms * 0.08);
 
   const dbValues = toDbArray(rmsValues);
 
-  if (
-    !Array.isArray(dbValues) ||
-    dbValues.length === 0
-  ) {
-    console.log('[Volume Debug] No dB values');
-    return 0;
+  // Keep the original window positions so gaps remain identifiable.
+  const activeWindows = rmsValues.map((rms, index) => ({
+    rms,
+    db: dbValues[index],
+    active: rms >= silenceThreshold &&
+      Number.isFinite(dbValues[index]),
+  }));
+
+  const activeDbValues = activeWindows
+    .filter(window => window.active)
+    .map(window => window.db);
+
+  if (activeDbValues.length < 2) return 0;
+
+  // Measure smoothness only across consecutive active windows.
+  const smoothnessRuns: number[][] = [];
+  let currentRun: number[] = [];
+
+  for (const window of activeWindows) {
+    if (window.active) {
+      currentRun.push(window.db);
+    } else {
+      if (currentRun.length >= 2) {
+        smoothnessRuns.push(currentRun);
+      }
+      currentRun = [];
+    }
   }
 
-  const finiteDbValues = dbValues.filter(
-    value => Number.isFinite(value)
+  if (currentRun.length >= 2) {
+    smoothnessRuns.push(currentRun);
+  }
+
+  const runScores = smoothnessRuns.map(run => ({
+    score: calcDerivativeSmoothness(run),
+    weight: run.length - 1,
+  }));
+
+  const totalWeight = runScores.reduce(
+    (sum, run) => sum + run.weight,
+    0
   );
 
-  if (finiteDbValues.length === 0) {
-    console.log('[Volume Debug] No finite dB values');
-    return 0;
-  }
-
   const derivativeSmoothness =
-    calcDerivativeSmoothness(finiteDbValues);
+    totalWeight > 0
+      ? runScores.reduce(
+          (sum, run) => sum + run.score * run.weight,
+          0
+        ) / totalWeight
+      : 0;
 
   const volumeConsistency =
-    calcVolumeConsistency(finiteDbValues);
+    calcVolumeConsistency(activeDbValues);
 
+  // Keep both measures; don't add an arbitrary score bonus.
   const finalScore = clampScore(
     derivativeSmoothness * 0.5 +
     volumeConsistency * 0.5
   );
 
-  console.log('[Volume Debug] Input:', {
-    sampleCount: samples.length,
-    sampleRate,
-    durationSec: samples.length / sampleRate,
-    peak: calculatePeak(samples),
-    overallRMS: calcRMS(samples),
-  });
-
-  console.log('[Volume Debug] RMS:', {
-    count: rmsValues.length,
-    min: Math.min(...rmsValues),
-    max: Math.max(...rmsValues),
-    firstTen: rmsValues.slice(0, 10),
-  });
-
-  console.log('[Volume Debug] dB:', {
-    count: finiteDbValues.length,
-    min: Math.min(...finiteDbValues),
-    max: Math.max(...finiteDbValues),
-    firstTen: finiteDbValues.slice(0, 10),
-  });
-
-  console.log('[Volume Debug] Scores:', {
-    derivativeSmoothness,
+  console.log('Volume assessment diagnostics:', {
+    totalWindows: rmsValues.length,
+    activeWindows: activeDbValues.length,
+    derivativeSmoothness: Math.round(derivativeSmoothness),
     volumeConsistency,
     finalScore,
   });
 
   return finalScore;
 }
-
 
 // ============================================================
 // AGILITY
@@ -990,11 +1051,38 @@ function measureAgility(
     Math.min(speedRatio, 1) * 100
   );
 
-  return clampScore(
+  const finalScore = clampScore(
     patternAccuracy * 0.60 +
     withinNoteStability * 0.20 +
     speedScore * 0.20
   );
+
+  console.log('🎵 AGILITY ASSESSMENT BREAKDOWN', {
+    targetNoteCount: targetNotes.length,
+    successfullyScoredNotes: noteAccuracies.length,
+    patternAccuracy: Math.round(patternAccuracy),
+    withinNoteStability: Math.round(withinNoteStability),
+    detectedTransitions: transitions.length,
+    expectedTransitions,
+    speedScore: Math.round(speedScore),
+    weightedAccuracy: Math.round(patternAccuracy * 0.60),
+    weightedStability: Math.round(
+      withinNoteStability * 0.20
+    ),
+    weightedSpeed: Math.round(speedScore * 0.20),
+    finalScore,
+  });
+
+  console.log('🎵 AGILITY PER-NOTE ACCURACY', {
+    noteAccuracies: noteAccuracies.map(
+      score => Math.round(score)
+    ),
+    noteStabilities: noteStabilities.map(
+      score => Math.round(score)
+    ),
+  });
+
+  return finalScore;
 }
 
 // ============================================================

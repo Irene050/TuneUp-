@@ -448,14 +448,18 @@ export function useAudioRecorder(
               // COPY NATIVE BUFFER IMMEDIATELY
               // ==================================================
 
-              const samples =
-                new Float32Array(
-                  channelData.length
-                );
-
-              samples.set(
-                channelData
+                const frameLength = Math.min(
+                Math.max(0, numFrames),
+                channelData.length,
               );
+
+              if (frameLength === 0) {
+                return;
+              }
+
+              const samples = new Float32Array(frameLength);
+
+              samples.set(channelData.subarray(0, frameLength));
 
               // ==================================================
               // ALWAYS STORE RAW AUDIO

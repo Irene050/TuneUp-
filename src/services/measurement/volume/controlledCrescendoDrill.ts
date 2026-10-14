@@ -33,43 +33,16 @@ interface MeasureOptions {
   volumeIncreaseThreshold?: number;
 }
 
-const DEFAULT_WINDOW_MS = 50;
-
-const DEFAULT_TARGET_RANGE: [number, number] = [
-  40,
-  50,
-];
-
-const DEFAULT_DURATION_SECONDS = 4;
-
-const DEFAULT_REPETITIONS = 2;
-
-const DEFAULT_VOLUME_INCREASE_THRESHOLD = 10;
-
 export function measureControlledCrescendo(
   samples: Float32Array,
   sampleRate = 44100,
   options: MeasureOptions = {},
 ): ControlledCrescendoMeasurement {
-  const windowMs =
-    options.windowMs ??
-    DEFAULT_WINDOW_MS;
-
-  const targetRange =
-    options.targetRange ??
-    DEFAULT_TARGET_RANGE;
-
-  const expectedDurationSeconds =
-    options.expectedDurationSeconds ??
-    DEFAULT_DURATION_SECONDS;
-
-  const repetitions =
-    options.repetitions ??
-    DEFAULT_REPETITIONS;
-
-  const volumeIncreaseThreshold =
-    options.volumeIncreaseThreshold ??
-    DEFAULT_VOLUME_INCREASE_THRESHOLD;
+  const windowMs = options.windowMs ?? 50;
+  const targetRange = options.targetRange ?? [40, 50];
+  const expectedDurationSeconds = options.expectedDurationSeconds ?? 4;
+  const repetitions = options.repetitions ?? 2;
+  const volumeIncreaseThreshold = options.volumeIncreaseThreshold ?? 10;
 
   if (
     samples.length === 0 ||
@@ -79,252 +52,131 @@ export function measureControlledCrescendo(
     repetitions <= 0 ||
     volumeIncreaseThreshold < 0
   ) {
-    return createEmptyMeasurement(
-      targetRange,
-    );
+    return createEmptyMeasurement(targetRange);
   }
 
-  const rmsValues =
-    calcRMSWindows(
-      samples,
-      windowMs,
-      sampleRate,
-    );
-
+  const rmsValues = calcRMSWindows(samples, windowMs, sampleRate);
   if (rmsValues.length === 0) {
-    return createEmptyMeasurement(
-      targetRange,
-    );
+    return createEmptyMeasurement(targetRange);
   }
 
-  /*
-   * The DSP utility returns dBFS values.
-   *
-   * The existing TuneUp! volume-analysis convention
-   * represents volume magnitude as positive dB values,
-   * so retain the existing absolute-value conversion.
-   */
-  const dbValues =
-    toDbArray(rmsValues)
-      .filter(Number.isFinite)
-      .map((db) => Math.abs(db));
+  // Keep the existing positive dB convention used by the exercise targets.
+  // Higher values now correctly represent louder audio.
+  const SILENCE_FLOOR_DBFS = -60;
 
-  if (dbValues.length === 0) {
-    return createEmptyMeasurement(
-      targetRange,
+  const dbValues = toDbArray(rmsValues)
+    .filter(
+      (db) => Number.isFinite(db) && db > SILENCE_FLOOR_DBFS,
     );
+
+  if (dbValues.length < 2) {
+    return createEmptyMeasurement(targetRange);
   }
 
-  /*
-   * expectedDurationSeconds already represents the
-   * TOTAL recording duration.
-   *
-   * The screen passes:
-   *
-   * durationSec × repetitions
-   *
-   * Therefore repetitions must NOT be multiplied here
-   * a second time.
-   */
-  const expectedWindowCount =
-    Math.max(
-      1,
-      Math.floor(
-        (
-          expectedDurationSeconds *
-          1000
-        ) /
-          windowMs,
-      ),
-    );
+  const expectedWindowCount = Math.max(
+    1,
+    Math.floor((expectedDurationSeconds * 1000) / windowMs),
+  );
 
-  const effectiveValues =
-    dbValues.slice(
-      0,
-      expectedWindowCount,
-    );
-
-  if (effectiveValues.length === 0) {
-    return createEmptyMeasurement(
-      targetRange,
-    );
+  const effectiveValues = dbValues.slice(0, expectedWindowCount);
+  if (effectiveValues.length < 2) {
+    return createEmptyMeasurement(targetRange);
   }
 
-  const derivativeValues =
-    calculateDerivatives(
-      effectiveValues,
-    );
+  const derivativeValues = calculateDerivatives(effectiveValues);
+  const meanDerivative = average(derivativeValues);
+  const derivativeVariance = variance(derivativeValues);
 
-  const meanDerivative =
-    average(
-      derivativeValues,
-    );
+  // Score how consistently volume rises, not how small the derivative is.
+  const positiveChanges = derivativeValues.filter((value) => value > 0);
+  const positiveRatio =
+    derivativeValues.length > 0
+      ? positiveChanges.length / derivativeValues.length
+      : 0;
 
-  const derivativeVariance =
-    variance(
-      derivativeValues,
-    );
+  const meanAbsoluteChange =
+    derivativeValues.length > 0
+      ? average(derivativeValues.map((value) => Math.abs(value)))
+      : 0;
 
-  const smoothness =
-    calculateSmoothness(
-      derivativeValues,
-    );
+  const smoothness = clamp(
+    positiveRatio * 70 +
+      (meanAbsoluteChange > 0 ? 30 : 0) -
+      Math.min(30, Math.sqrt(Math.max(0, derivativeVariance)) * 3),
+    0,
+    100,
+  );
 
-  /*
-   * Divide the recorded values into repetitions
-   * so each crescendo can be evaluated separately.
-   */
-  const repetitionWindowCount =
-    Math.max(
-      1,
-      Math.floor(
-        effectiveValues.length /
-          repetitions,
-      ),
-    );
+  const repetitionWindowCount = Math.max(
+    1,
+    Math.floor(effectiveValues.length / repetitions),
+  );
 
-  const repetitionValues =
-    Array.from(
-      {
-        length: repetitions,
-      },
-      (_, index) => {
-        const start =
-          index *
-          repetitionWindowCount;
+  const repetitionValues = Array.from(
+    { length: repetitions },
+    (_, index) => {
+      const start = index * repetitionWindowCount;
+      const end =
+        index === repetitions - 1
+          ? effectiveValues.length
+          : Math.min(start + repetitionWindowCount, effectiveValues.length);
 
-        const end =
-          index ===
-          repetitions - 1
-            ? effectiveValues.length
-            : Math.min(
-                start +
-                  repetitionWindowCount,
-                effectiveValues.length,
-              );
+      return effectiveValues.slice(start, end);
+    },
+  ).filter((values) => values.length > 1);
 
-        return effectiveValues.slice(
-          start,
-          end,
-        );
-      },
-    ).filter(
-      (values) =>
-        values.length > 0,
-    );
+  const repetitionSmoothness = repetitionValues.map((values) => {
+    const changes = calculateDerivatives(values);
+    if (changes.length === 0) return 0;
 
-  const repetitionSmoothness =
-    repetitionValues.map(
-      (values) =>
-        calculateSmoothness(
-          calculateDerivatives(
-            values,
-          ),
-        ),
-    );
+    const risingRatio =
+      changes.filter((value) => value > 0).length / changes.length;
 
-  const minDb =
-    Math.min(
-      ...effectiveValues,
-    );
+    return clamp(risingRatio * 100, 0, 100);
+  });
 
-  const maxDb =
-    Math.max(
-      ...effectiveValues,
-    );
-
-  const startDb =
-    effectiveValues[0] ??
-    0;
-
-  const endDb =
-    effectiveValues[
-      effectiveValues.length - 1
-    ] ?? 0;
-
-  const averageDb =
-    average(
-      effectiveValues,
-    );
-
-  /*
-   * A controlled crescendo must:
-   *
-   * 1. Finish within the configured target range.
-   * 2. Increase by at least the configured
-   *    volume-increase threshold.
-   *
-   * targetRange[0] is the minimum acceptable
-   * ending loudness.
-   *
-   * targetRange[1] is the maximum acceptable
-   * ending loudness.
-   */
-  const achievedVolumeIncrease =
-    endDb - startDb;
+  const minDb = Math.min(...effectiveValues);
+  const maxDb = Math.max(...effectiveValues);
+  const startDb = effectiveValues[0];
+  const endDb = effectiveValues[effectiveValues.length - 1];
+  const averageDb = average(effectiveValues);
+  const achievedVolumeIncrease = endDb - startDb;
 
   const targetReached =
     endDb >= targetRange[0] &&
     endDb <= targetRange[1] &&
-    achievedVolumeIncrease >=
-      volumeIncreaseThreshold;
+    achievedVolumeIncrease >= volumeIncreaseThreshold;
 
   const actualDurationSeconds =
-    (
-      effectiveValues.length *
-      windowMs
-    ) / 1000;
+    (effectiveValues.length * windowMs) / 1000;
 
-  const overallMeasurementQuality =
-    clamp(
-      (
-        effectiveValues.length /
-        expectedWindowCount
-      ) *
-        100,
-      0,
-      100,
-    );
+  const overallMeasurementQuality = clamp(
+    (effectiveValues.length / expectedWindowCount) * 100,
+    0,
+    100,
+  );
 
   return {
-    dbValues:
-      effectiveValues,
-
+    dbValues: effectiveValues,
     repetitionValues,
-
-    validWindowCount:
-      effectiveValues.length,
-
-    durationSeconds:
-      actualDurationSeconds,
-
+    validWindowCount: effectiveValues.length,
+    durationSeconds: actualDurationSeconds,
     minDb,
-
     maxDb,
-
     startDb,
-
     endDb,
-
     averageDb,
-
     derivativeValues,
-
     meanDerivative,
-
     derivativeVariance,
-
     smoothness,
-
     targetRange,
-
     targetReached,
-
     repetitionSmoothness,
-
     overallMeasurementQuality,
   };
 }
+
 
 function calculateDerivatives(
   values: number[],
@@ -447,37 +299,21 @@ function createEmptyMeasurement(
 ): ControlledCrescendoMeasurement {
   return {
     dbValues: [],
-
     repetitionValues: [],
-
     validWindowCount: 0,
-
     durationSeconds: 0,
-
     minDb: 0,
-
     maxDb: 0,
-
     startDb: 0,
-
     endDb: 0,
-
     averageDb: 0,
-
     derivativeValues: [],
-
     meanDerivative: 0,
-
     derivativeVariance: 0,
-
     smoothness: 0,
-
     targetRange,
-
     targetReached: false,
-
     repetitionSmoothness: [],
-
     overallMeasurementQuality: 0,
   };
 }

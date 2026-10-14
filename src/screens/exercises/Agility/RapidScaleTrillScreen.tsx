@@ -41,7 +41,6 @@ import {
 } from 'react-native-audio-api';
 
 // COLORS AND CONFIGURATION
-
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -55,6 +54,7 @@ const MAX_RECORDING_BUFFER_SECONDS = 20;
 const COUNTDOWN_SECONDS = 3;
 const MIN_RECORDING_SECONDS = 0.25;
 const MIN_RECORDING_RMS = 0.001;
+
 type Phase =
   | 'instructions'
   | 'reference'
@@ -62,6 +62,7 @@ type Phase =
   | 'recording'
   | 'processing'
   | 'results';
+
 type RapidScaleTrillResult = {
   overall: number;
   pitchScore: number;
@@ -82,9 +83,8 @@ type RapidScaleTrillResult = {
 // COMPONENT
 
 export default function RapidScaleTrillScreen() {
-
-  // USER AND TIER
-
+  
+// USER AND TIER
   const currentUserId = auth.currentUser?.uid ?? null;
   const [tier, setTier] = useState<Tier | null>(null);
   const [tierLoading, setTierLoading] = useState(true);
@@ -129,7 +129,7 @@ export default function RapidScaleTrillScreen() {
     [activeTier],
   );
   const [config, setConfig] = useState(baseConfig);
-
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] = useState(true);
   const targetSequenceDurationSeconds =
     config.frequencies.length * config.noteDurationSec;
   const targetDurationSeconds = Math.max(
@@ -138,9 +138,8 @@ export default function RapidScaleTrillScreen() {
   );
   const expectedTargetNoteCount =
     config.frequencies.length * config.repetitions;
-
-  // SCREEN STATE
-
+  
+// SCREEN STATE
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(
     COUNTDOWN_SECONDS,
@@ -149,16 +148,13 @@ export default function RapidScaleTrillScreen() {
   const [result, setResult] =
     useState<RapidScaleTrillResult | null>(null);
   const [referencePlaying, setReferencePlaying] = useState(false);
-
   // Pink highlight follows target timing, not detected pitch.
-
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
   const [activeExerciseNoteIndex, setActiveExerciseNoteIndex] =
     useState<number | null>(null);
-
-  // AUDIO AND RECORDING REFS
-
+  
+// AUDIO AND RECORDING REFS
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<AudioRecorder | null>(null);
   const samplesRef = useRef<Float32Array>(
@@ -174,12 +170,10 @@ export default function RapidScaleTrillScreen() {
   const countdownRunRef = useRef(0);
   const referencePlayingRef = useRef(false);
   const referenceRunRef = useRef(0);
-
   // Prevents saving the same attempt more than once.
-
   const savedAttemptRef = useRef(false);
-
-  // ADAPTIVE DIFFICULTY SCALING
+  
+// ADAPTIVE DIFFICULTY SCALING
   //
   // Only completed exercises from the same template and tier
   // influence continuous ADS.
@@ -192,8 +186,10 @@ export default function RapidScaleTrillScreen() {
       if (tierLoading || !tier) {
         return;
       }
+      setIsLoadingAdaptiveParams(true);
       if (!currentUserId) {
         setConfig(baseConfig);
+        setIsLoadingAdaptiveParams(false);
         return;
       }
       try {
@@ -258,6 +254,10 @@ export default function RapidScaleTrillScreen() {
         if (!cancelled) {
           setConfig(baseConfig);
         }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
       }
     };
     void loadAdaptiveParameters();
@@ -265,9 +265,8 @@ export default function RapidScaleTrillScreen() {
       cancelled = true;
     };
   }, [currentUserId, tier, tierLoading, baseConfig]);
-
-  // STOP RECORDING
-
+  
+// STOP RECORDING
   const stopRecording = useCallback(() => {
     if (recordingTimerRef.current !== null) {
       clearInterval(recordingTimerRef.current);
@@ -288,18 +287,16 @@ export default function RapidScaleTrillScreen() {
       }
     }
   }, []);
-
-  // CANCEL REFERENCE PLAYBACK
-
+  
+// CANCEL REFERENCE PLAYBACK
   const cancelReferencePlayback = useCallback(() => {
     referenceRunRef.current += 1;
     referencePlayingRef.current = false;
     setReferencePlaying(false);
     setActiveReferenceNoteIndex(null);
   }, []);
-
-  // CLEANUP
-
+  
+// CLEANUP
   useEffect(() => {
     return () => {
       countdownRunRef.current += 1;
@@ -317,9 +314,8 @@ export default function RapidScaleTrillScreen() {
       }
     };
   }, [stopRecording]);
-
-  // MICROPHONE PERMISSION
-
+  
+// MICROPHONE PERMISSION
   const requestMicrophonePermission =
     async (): Promise<boolean> => {
       try {
@@ -334,9 +330,8 @@ export default function RapidScaleTrillScreen() {
         return false;
       }
     };
-
-  // PLAY REFERENCE SEQUENCE
-
+  
+// PLAY REFERENCE SEQUENCE
   const playReference = async () => {
     if (referencePlayingRef.current) {
       return;
@@ -390,9 +385,8 @@ export default function RapidScaleTrillScreen() {
       }
     }
   };
-
-  // BEGIN EXERCISE
-
+  
+// BEGIN EXERCISE
   const beginExercise = async () => {
     const permission = await requestMicrophonePermission();
     if (!permission) {
@@ -408,9 +402,8 @@ export default function RapidScaleTrillScreen() {
     setActiveReferenceNoteIndex(null);
     setPhase('reference');
   };
-
-  // COUNTDOWN
-
+  
+// COUNTDOWN
   const startCountdown = async () => {
     if (referencePlayingRef.current) {
       return;
@@ -436,8 +429,8 @@ export default function RapidScaleTrillScreen() {
     }
     await startRecording();
   };
-
-  // PROCESS RECORDING
+  
+// PROCESS RECORDING
   // Declared before startRecording so both timer and button
   // can invoke the same guarded processing operation.
   const showZeroScoreResult = (feedback: string, durationMs: number) => {
@@ -578,9 +571,8 @@ export default function RapidScaleTrillScreen() {
       processingRef.current = false;
     }
   };
-
-  // START RECORDING
-
+  
+// START RECORDING
   const startRecording = async () => {
     try {
       processingRef.current = false;
@@ -679,9 +671,8 @@ export default function RapidScaleTrillScreen() {
       setPhase('instructions');
     }
   };
-
-  // RESET
-
+  
+// RESET
   const resetExercise = () => {
     countdownRunRef.current += 1;
     cancelReferencePlayback();
@@ -700,9 +691,8 @@ export default function RapidScaleTrillScreen() {
     setActiveExerciseNoteIndex(null);
     setPhase('instructions');
   };
-
-  // INSTRUCTIONS
-
+  
+// INSTRUCTIONS
   const renderInstructions = () => (
     <ExerciseScreen
       title="Rapid Scale Trill"
@@ -751,9 +741,8 @@ export default function RapidScaleTrillScreen() {
       onStart={beginExercise}
     />
   );
-
-  // REFERENCE
-
+  
+// REFERENCE
   const renderReference = () => (
     <View style={styles.content}>
       <Pressable
@@ -841,9 +830,8 @@ export default function RapidScaleTrillScreen() {
       </Pressable>
     </View>
   );
-
-  // COUNTDOWN
-
+  
+// COUNTDOWN
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
@@ -864,7 +852,8 @@ export default function RapidScaleTrillScreen() {
       </Text>
     </View>
   );
-  // RECORDING
+  
+// RECORDING
   const renderRecording = () => {
     const progress = Math.min(
       recordingTime / targetDurationSeconds,
@@ -966,9 +955,8 @@ export default function RapidScaleTrillScreen() {
       </View>
     );
   };
-
-  // PROCESSING
-
+  
+// PROCESSING
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
@@ -986,9 +974,8 @@ export default function RapidScaleTrillScreen() {
       </Text>
     </View>
   );
-
-  // RESULTS
-
+  
+// RESULTS
   const renderResults = () => {
     if (!result) {
       return null;
@@ -1143,8 +1130,27 @@ export default function RapidScaleTrillScreen() {
       </View>
     );
   };
+  
+// MAIN RENDER
 
-  // MAIN RENDER
+  if (tierLoading || isLoadingAdaptiveParams) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="flash-outline" size={32} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingSubtitle}>
+          Loading your difficulty level and preparing your vocal exercise.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.preparingSpinner}
+        />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -1197,6 +1203,40 @@ function MetricRow({
 // STYLES
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+    maxWidth: 285,
+  },
+  preparingSpinner: {
+    marginTop: 24,
+  },
   screen: {
     flex: 1,
     backgroundColor: WHITE,

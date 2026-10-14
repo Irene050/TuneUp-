@@ -1,5 +1,5 @@
-import type { SteadyAirflowParams } from '@/constants/exercises/breathControl';
 
+import type { SteadyAirflowParams } from '@/constants/exercises/breathControl';
 import type { SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 
 export interface SteadyAirflowScoreResult {
@@ -20,52 +20,47 @@ export function scoreSteadyAirflow(
     };
   }
 
-  /*
-   * ---------------------------------------------------
-   * DURATION SCORE
-   * ---------------------------------------------------
-   *
-   * A longer target duration represents greater
-   * sustained-airflow difficulty.
-   */
-
   const durationScore =
     params.durationSec > 0
-      ? Math.min(
-          measurement.durationSec /
-            params.durationSec,
-          1,
-        ) * 100
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (measurement.durationSec /
+              (params.durationSec * 1.25)) *
+              100,
+          ),
+        )
       : 0;
 
-  /*
-   * ---------------------------------------------------
-   * STABILITY SCORE
-   * ---------------------------------------------------
-   */
+  const stabilityScore = Number.isFinite(
+    measurement.stabilityPct,
+  )
+    ? Math.max(
+        0,
+        Math.min(100, measurement.stabilityPct),
+      )
+    : 0;
 
-  const stabilityScore =
-    measurement.stabilityPct;
-
-  /*
-   * ---------------------------------------------------
-   * FINAL SCORE
-   * ---------------------------------------------------
-   *
-   * Duration and airflow stability are both relevant
-   * to this exercise.
-   */
-
+  // Stability is weighted more heavily than duration.
   const score = Math.round(
     durationScore * 0.4 +
       stabilityScore * 0.6,
   );
 
   const passed =
-    measurement.durationSec >=
-      params.durationSec &&
-    stabilityScore >=
-      params.stabilityThreshold;
+    measurement.durationSec >= params.durationSec &&
+    stabilityScore >= params.stabilityThreshold &&
+    score >= 75;
+
+  console.log('🌬️ STEADY AIRFLOW SCORE DEBUG:', {
+    actualDurationSec: measurement.durationSec,
+    targetDurationSec: params.durationSec,
+    durationScore,
+    stabilityScore,
+    finalScore: score,
+    passed,
+  });
 
   return {
     score,
