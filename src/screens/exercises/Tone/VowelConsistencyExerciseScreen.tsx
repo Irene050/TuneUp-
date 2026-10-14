@@ -1108,42 +1108,16 @@ export default function VowelConsistencyExerciseScreen({
         )
       : '--';
 
-  if (loadingParams) {
+  if (loadingParams || !params || !tier) {
     return (
-      <View style={styles.centerScreen}>
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="options-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text
-          style={styles.phaseTitle}
-        >
-          Preparing Exercise
-        </Text>
-
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Adjusting the exercise to
-          your recent performance.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={
-            styles.processingIndicator
-          }
-        />
-      </View>
+      <ExerciseProcessingScreen
+        icon="cloud-outline"
+        title="Preparing Your Exercise"
+        message="Adjusting the exercise to your current difficulty level"
+      />
     );
   }
+
 
   if (phase === 'instructions') {
     const preparationSteps: ExercisePreparationStep[] = [
@@ -1515,12 +1489,22 @@ export default function VowelConsistencyExerciseScreen({
   }
 
   if (phase === 'processing') {
+    const isFinalRep =
+      currentRepetition >= repetitions;
+
     return (
       <ExerciseProcessingScreen
-        title="Vowel Consistency"
         icon="analytics-outline"
-        message="Checking vowel consistency across the recording."
-        onBack={goBack}
+        title={
+          isFinalRep
+            ? 'Analyzing Your Results'
+            : 'Analyzing Your Vowel'
+        }
+        message={
+          isFinalRep
+            ? 'Calculating your overall tone consistency score'
+            : `Processing repetition ${currentRepetition}`
+        }
       />
     );
   }

@@ -1127,8 +1127,9 @@ const target = useMemo(
       );
     }, [clearTimers]);
 
+  
   // ============================================================
-  // LOADING
+  // PREPARING EXERCISE
   // ============================================================
 
   if (
@@ -1136,42 +1137,33 @@ const target = useMemo(
     isLoadingAdaptiveParams
   ) {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
+      <View style={styles.centerScreen}>
+        <View style={styles.largeIconCircle}>
           <Ionicons
-            name="musical-note-outline"
-            size={34}
+            name="options-outline"
+            size={44}
             color={BROWN}
           />
         </View>
 
-        <Text
-          style={styles.phaseTitle}
-        >
-          Preparing Exercise
+        <Text style={styles.processingTitle}>
+          Preparing Your Exercise
         </Text>
 
-        <Text
-          style={styles.phaseSubtitle}
-        >
+        <Text style={styles.processingSubtitle}>
           Adjusting the exercise to your
-          current progress.
+          current difficulty level
         </Text>
 
         <ActivityIndicator
-          size="small"
+          size="large"
           color={BROWN}
-          style={{
-            marginTop: 24,
-          }}
+          style={styles.spinner}
         />
       </View>
     );
   }
+
 
   // ============================================================
   // INSTRUCTIONS — SHARED
@@ -1895,12 +1887,42 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
+  
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
+  },
+
+  largeIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  processingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  processingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  spinner: {
+    marginTop: 28,
   },
 
   iconCircle: {
