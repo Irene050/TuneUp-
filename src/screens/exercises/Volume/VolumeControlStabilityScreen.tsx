@@ -691,7 +691,7 @@ export default function VolumeControlStabilityScreen({
               <Ionicons
                 name={referencePlaying ? 'volume-high' : 'play'}
                 size={17}
-                color={COLORS.WHITE}
+                color={COLORS.BROWN}
               />
 
               <Text style={styles.referenceButtonText}>
@@ -1267,6 +1267,7 @@ const styles = StyleSheet.create({
   /* REFERENCE NOTE */
 
   referenceCard: {
+    marginTop: 12,
     padding: 13,
     borderRadius: 16,
     borderWidth: 1,
@@ -1292,7 +1293,7 @@ const styles = StyleSheet.create({
   },
   referenceNote: {
     marginTop: 2,
-    color: COLORS.ACCENT,
+    color: COLORS.BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
@@ -1316,7 +1317,7 @@ const styles = StyleSheet.create({
     marginTop: 11,
     paddingHorizontal: 12,
     borderRadius: 13,
-    backgroundColor: COLORS.ACCENT,
+    backgroundColor: '#FCD6DD',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1324,7 +1325,7 @@ const styles = StyleSheet.create({
   },
 
   referenceButtonText: {
-    color: COLORS.WHITE,
+    color: COLORS.BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
@@ -1345,6 +1346,7 @@ const styles = StyleSheet.create({
   /* INFORMATION CARD */
 
   infoCard: {
+    marginTop: 12,
     padding: 13,
     borderRadius: 16,
     borderWidth: 1,
