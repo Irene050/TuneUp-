@@ -64,8 +64,6 @@ export function measureFrequencyZoneStability(
         ? meanAbsoluteDeviation / mean
         : 1;
 
-    // Every 1% of relative pitch variation
-    // removes 5 points from pitch stability.
     pitchStabilityPct = Math.max(
       0,
       Math.min(
@@ -94,8 +92,6 @@ export function measureFrequencyZoneStability(
         )
       : 0;
 
-  // Actual pitch stability matters more than
-  // remaining in the same broad frequency zone.
   const stabilityPct =
     pitchStabilityPct * 0.7 +
     zoneStabilityPct * 0.3;

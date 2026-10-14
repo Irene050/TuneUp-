@@ -3,9 +3,6 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
-
-// note matching params
-
 export interface NoteMatchingParams {
   tolerancePct: number;
   minClarity: number;
@@ -38,8 +35,6 @@ export const NOTE_MATCHING_PARAMS: Record<
     repetitions: 5,
   },
 };
-
-// scale accuracy params
 
 export interface ScaleAccuracyParams {
   tolerancePct: number;
@@ -78,8 +73,6 @@ export const SCALE_ACCURACY_PARAMS: Record<
   },
 };
 
-// interval recognition params
-
 export interface IntervalRecognitionParams {
   tolerancePct: number;
   minClarity: number;
@@ -113,7 +106,6 @@ export const INTERVAL_RECOGNITION_PARAMS: Record<
   },
 };
 
-// susatined note stability params
 export interface SustainedNoteStabilityParams {
   durationSec: number;
   stabilityThresholdCents: number;
@@ -146,8 +138,6 @@ export const SUSTAINED_NOTE_STABILITY_PARAMS: Record<
     repetitions: 5,
   },
 };
-
-// melodic pattern matching params
 
 export interface MelodicPatternMatchingParams {
   noteCount: number;

@@ -105,12 +105,6 @@ interface DetectedNote {
   end: number;
 }
 
-/**
- * Converts the raw recording into usable pitch frames.
- *
- * Low-clarity frames are discarded before attempting
- * to detect note transitions.
- */
 function getPitchFrames(
   samples: Float32Array,
   sampleRate: number,
@@ -144,12 +138,6 @@ function getPitchFrames(
     }));
 }
 
-/**
- * Groups pitch frames into stable notes.
- *
- * Unlike the old implementation, this does NOT require
- * silence between two notes.
- */
 function detectNotes(
   frames: PitchPoint[],
 ): DetectedNote[] {
@@ -231,10 +219,6 @@ function detectNotes(
         currentMidi - lastMidi,
       );
 
-    /*
-     * Small pitch movement is considered normal
-     * vibrato / natural singing variation.
-     */
     if (
       semitoneDifference <
       NOTE_CHANGE_SEMITONES
@@ -243,10 +227,6 @@ function detectNotes(
       continue;
     }
 
-    /*
-     * A sufficiently large pitch movement means
-     * the singer probably moved to another note.
-     */
     if (
       currentFrames.length >=
       MIN_NOTE_FRAMES
@@ -255,21 +235,11 @@ function detectNotes(
       currentFrames.push(frame);
       continue;
     }
-
-    /*
-     * Current note was too short to be reliable.
-     * Start building the new note instead.
-     */
     currentFrames = [frame];
   }
 
   flushCurrentNote();
 
-  /*
-   * Remove accidental duplicate notes that can occur
-   * when the pitch detector briefly jumps and then
-   * returns to the original pitch.
-   */
   const cleaned: DetectedNote[] = [];
 
   for (const note of notes) {
@@ -317,18 +287,6 @@ function detectNotes(
   return cleaned;
 }
 
-/**
- * Builds root -> target interval attempts.
- *
- * Example:
- *
- * C4 G4 C4 G4
- *
- * becomes:
- *
- * Attempt 1: C4 -> G4
- * Attempt 2: C4 -> G4
- */
 function buildAttempts(
   notes: DetectedNote[],
   expectedRepetitions: number,
@@ -581,22 +539,16 @@ export function measureIntervalRecognition(
     return {
       freq1:
         aggregateFreq1,
-
       freq2:
         aggregateFreq2,
-
       detectedRatio:
         aggregateRatio,
-
       hasFirstNote: true,
       hasSecondNote: true,
-
       firstNoteClarity:
         aggregateFirstClarity,
-
       secondNoteClarity:
         aggregateSecondClarity,
-
       attempts,
     };
   } catch (error) {

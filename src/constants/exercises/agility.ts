@@ -3,12 +3,6 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
-/**
- * Arpeggio Speed Drill
- *
- * Controls the target arpeggio notes, playback timing,
- * and pitch tolerance for each difficulty tier.
- */
 export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
   Tier,
   {
@@ -67,12 +61,6 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
   },
 };
 
-/**
- * Quick Interval Jump
- *
- * Defines the target frequency sequence and
- * accuracy requirement for each tier.
- */
 export const QUICK_INTERVAL_JUMP_PARAMS: Record<
   Tier,
   {
@@ -122,13 +110,6 @@ export const QUICK_INTERVAL_JUMP_PARAMS: Record<
   },
 };
 
-/**
- * Rapid Note Transition
- *
- * Controls the generated note range, number of notes,
- * target transition speed, repetitions, and accuracy
- * requirements for each difficulty tier.
- */
 export const RAPID_NOTE_TRANSITION_PARAMS: Record<
   Tier,
   {
@@ -180,13 +161,6 @@ export const RAPID_NOTE_TRANSITION_PARAMS: Record<
   },
 };
 
-/**
- * Rapid Scale Trill
- *
- * Defines the repeating scale/trill pattern,
- * playback speed, repetitions, and accuracy
- * requirement for each difficulty tier.
- */
 export const RAPID_SCALE_TRILL_PARAMS: Record<
   Tier,
   {

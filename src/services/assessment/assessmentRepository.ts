@@ -18,18 +18,10 @@ import type {
   AssessmentResult,
 } from '@/services/assessment/assessmentModule';
 
-// ============================================================
-// TYPES
-// ============================================================
-
 export type SavedAssessmentResult =
   AssessmentResult & {
     id: string;
   };
-
-// ============================================================
-// SAVE ASSESSMENT
-// ============================================================
 
 export async function saveAssessment(
   result: AssessmentResult
@@ -82,10 +74,6 @@ export async function saveAssessment(
   return assessmentDoc.id;
 }
 
-// ============================================================
-// MAP FIRESTORE DOCUMENT → SAVED ASSESSMENT
-// ============================================================
-
 function toSavedAssessment(
   documentSnapshot: QueryDocumentSnapshot<DocumentData>
 ): SavedAssessmentResult {
@@ -113,10 +101,6 @@ function toSavedAssessment(
   };
 }
 
-// ============================================================
-// GET RECENT ASSESSMENTS (NEWEST FIRST)
-// ============================================================
-
 export async function getRecentAssessments(
   count: number = 2
 ): Promise<SavedAssessmentResult[]> {
@@ -143,10 +127,6 @@ export async function getRecentAssessments(
 
   return snapshot.docs.map(toSavedAssessment);
 }
-
-// ============================================================
-// GET LATEST ASSESSMENT
-// ============================================================
 
 export async function getLatestAssessment(): Promise<SavedAssessmentResult | null> {
   const [latest] = await getRecentAssessments(1);

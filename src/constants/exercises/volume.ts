@@ -1,15 +1,7 @@
-// ============================================================
-// VOLUME EXERCISE CONSTANTS
-// ============================================================
-
 export type Tier =
   | 'beginner'
   | 'intermediate'
   | 'advanced';
-
-// ============================================================
-// 1. DYNAMIC RANGE EXERCISE
-// ============================================================
 
 export interface DynamicRangeParams {
   durationSec: number;
@@ -48,10 +40,6 @@ export const DYNAMIC_RANGE_PARAMS: Record<
   },
 };
 
-// ============================================================
-// 2. CONTROLLED CRESCENDO DRILL
-// ============================================================
-
 export interface ControlledCrescendoParams {
   durationSec: number;
   repetitions: number;
@@ -88,10 +76,6 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
     volumeIncreaseThreshold: 15,
   },
 };
-
-// ============================================================
-// 3. CONTROLLED DECRESCENDO DRILL
-// ============================================================
 
 export interface ControlledDecrescendoParams {
   durationSec: number;
@@ -130,10 +114,6 @@ export const CONTROLLED_DECRESCENDO_PARAMS: Record<
   },
 };
 
-// ============================================================
-// 4. VOLUME BAND TARGETING
-// ============================================================
-
 export interface VolumeBandTargetingParams {
   durationSec: number;
   repetitions: number;
@@ -170,10 +150,6 @@ export const VOLUME_BAND_TARGETING_PARAMS: Record<
     consistencyThreshold: 85,
   },
 };
-
-// ============================================================
-// 5. VOLUME CONTROL STABILITY
-// ============================================================
 
 export interface VolumeControlStabilityParams {
   durationSec: number;

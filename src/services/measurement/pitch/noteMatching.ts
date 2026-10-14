@@ -53,7 +53,6 @@ export function measureNoteMatching(
     };
   }
 
-  // Analyze pitch across the complete recording.
   const frames =
     trackPitchOverTime(
       samples,
@@ -74,7 +73,6 @@ export function measureNoteMatching(
     };
   }
 
-  // Keep only reasonably reliable pitch frames.
   const voiced =
     filterByClarity(
       frames,

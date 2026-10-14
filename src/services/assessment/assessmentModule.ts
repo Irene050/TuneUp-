@@ -34,10 +34,6 @@ import {
   detectOnsetOffset,
 } from '@/utils/dsp/onsetOffset';
 
-// ============================================================
-// TYPES
-// ============================================================
-
 export type ComponentId =
   | 'breathControl'
   | 'pitch'
@@ -94,10 +90,6 @@ export interface AssessmentAudioBundle {
   sampleRate: number;
 }
 
-// ============================================================
-// ASSESSMENT CONFIGURATION
-// ============================================================
-
 export const ASSESSMENT_DURATION = {
   breathControl: 10,
   pitch: 5,
@@ -106,10 +98,6 @@ export const ASSESSMENT_DURATION = {
   agility: 8,
   comfortableNote: 4,
 } as const;
-
-// ============================================================
-// VOCAL RANGE DETECTION CONFIGURATION
-// ============================================================
 
 const COMFORTABLE_NOTE_MIN_HZ = 60;
 const COMFORTABLE_NOTE_MAX_HZ = 1200;
@@ -127,10 +115,6 @@ const MAX_AUTOCORRELATION_AGREEMENT_CENTS = 100;
 const MIN_AUTOCORRELATION_AGREEMENT_RATIO = 0.50;
 
 const MIN_RANGE_EVIDENCE_SCORE = 0.48;
-
-// ============================================================
-// GENERAL HELPERS
-// ============================================================
 
 function clampScore(score: number): number {
   if (!Number.isFinite(score)) {
@@ -157,10 +141,6 @@ function classifyBand(
   return 'goodFoundation';
 }
 
-// ============================================================
-// SAFE NUMBER HELPERS
-// ============================================================
-
 function isValidFrequency(
   frequency: number
 ): boolean {
@@ -178,10 +158,6 @@ function isValidSampleRate(
     sampleRate > 0
   );
 }
-
-// ============================================================
-// FREQUENCY HELPERS
-// ============================================================
 
 function centsDifference(
   frequencyA: number,
@@ -259,22 +235,6 @@ function median(
   return valid[middle];
 }
 
-// ============================================================
-// PITCH ACCURACY
-// ============================================================
-
-/*
- * Measures pitch accuracy using percentage deviation from
- * the target frequency instead of subtracting cents directly
- * from a percentage score.
- *
- * A matching frequency receives 100.
- * Increasing deviation lowers the score.
- *
- * The 6% tolerance is a provisional parameter and should be
- * evaluated against test recordings and expert validation.
- */
-
 const PITCH_TOLERANCE_PCT = 5.0;
 
 function calculatePitchAccuracy(
@@ -300,10 +260,6 @@ function calculatePitchAccuracy(
     Math.max(0, accuracy)
   );
 }
-
-// ============================================================
-// TARGET NOTE GENERATION
-// ============================================================
 
 export function computeTargetNotes(
   lowHz: number,
@@ -385,10 +341,6 @@ export function computeTargetNotes(
   };
 }
 
-// ============================================================
-// BREATH CONTROL
-// ============================================================
-
 export function measureBreathControl(
   samples: Float32Array,
   sampleRate: number,
@@ -421,7 +373,6 @@ export function measureBreathControl(
     return 0;
   }
 
-  // Duration reaches 100 only when the target is reached.
   const durationScore = clampScore(
     Math.min(
       durationSeconds / targetDurationSec,
@@ -446,7 +397,6 @@ export function measureBreathControl(
     ? Math.max(0, Math.min(100, rawConsistency))
     : 0;
 
-  // Stronger penalty for inconsistent sound.
   const strictConsistencyScore = Math.max(
     0,
     Math.min(
@@ -455,7 +405,6 @@ export function measureBreathControl(
     )
   );
 
-  // Consistency is more important than duration.
   const finalScore =
     durationScore * 0.4 +
     strictConsistencyScore * 0.6;
@@ -477,10 +426,6 @@ export function measureBreathControl(
 
   return score;
 }
-
-// ============================================================
-// PITCH
-// ============================================================
 
 function measurePitch(
   samples: Float32Array,
@@ -532,7 +477,6 @@ function measurePitch(
       Number.isFinite(frame.clarity)
   );
 
-  // Reject recordings with insufficient voiced evidence.
   if (validFrames.length < 5) {
     console.warn(
       '⚠️ Pitch assessment: insufficient valid frames.',
@@ -573,7 +517,6 @@ function measurePitch(
     clarity * 100
   );
 
-  // Pitch accuracy has the greatest influence.
   const finalScore =
     accuracy * 0.75 +
     stability * 0.15 +
@@ -603,10 +546,6 @@ function measurePitch(
 
   return score;
 }
-
-// ============================================================
-// TONE
-// ============================================================
 
 function measureTone(
   samples: Float32Array,
@@ -727,10 +666,6 @@ function measureTone(
   return clampScore(smoothness * 0.98);
 }
 
-// ============================================================
-// VOLUME
-// ============================================================
-
 function measureVolume(
   samples: Float32Array,
   sampleRate: number
@@ -747,12 +682,10 @@ function measureVolume(
 
   if (!Number.isFinite(maxRms) || maxRms <= 0) return 0;
 
-  // Ignore silence and very quiet background windows.
   const silenceThreshold = Math.max(0.002, maxRms * 0.08);
 
   const dbValues = toDbArray(rmsValues);
 
-  // Keep the original window positions so gaps remain identifiable.
   const activeWindows = rmsValues.map((rms, index) => ({
     rms,
     db: dbValues[index],
@@ -766,7 +699,6 @@ function measureVolume(
 
   if (activeDbValues.length < 2) return 0;
 
-  // Measure smoothness only across consecutive active windows.
   const smoothnessRuns: number[][] = [];
   let currentRun: number[] = [];
 
@@ -806,7 +738,6 @@ function measureVolume(
   const volumeConsistency =
     calcVolumeConsistency(activeDbValues);
 
-  // Keep both measures; don't add an arbitrary score bonus.
   const finalScore = clampScore(
     derivativeSmoothness * 0.5 +
     volumeConsistency * 0.5
@@ -822,10 +753,6 @@ function measureVolume(
 
   return finalScore;
 }
-
-// ============================================================
-// AGILITY
-// ============================================================
 
 function measureAgility(
   samples: Float32Array,
@@ -986,7 +913,6 @@ function measureAgility(
       continue;
     }
 
-    // FIX: use the same percentage-based pitch scoring.
     const accuracy = calculatePitchAccuracy(
       detectedMedian,
       targetFrequency
@@ -1084,10 +1010,6 @@ function measureAgility(
 
   return finalScore;
 }
-
-// ============================================================
-// AUDIO SIGNAL HELPERS
-// ============================================================
 
 function calculatePeak(
   samples: Float32Array
@@ -1196,10 +1118,6 @@ function applyHannWindow(
 
   return output;
 }
-
-// ============================================================
-// AUTOCORRELATION PITCH DETECTOR
-// ============================================================
 
 interface AutocorrelationResult {
   frequency: number;
@@ -1338,10 +1256,6 @@ function detectFundamentalByAutocorrelation(
   };
 }
 
-// ============================================================
-// AUTOCORRELATION MULTI-WINDOW ANALYSIS
-// ============================================================
-
 function analyzeAutocorrelationWindows(
   samples: Float32Array,
   sampleRate: number
@@ -1428,10 +1342,6 @@ function analyzeAutocorrelationWindows(
   return results;
 }
 
-// ============================================================
-// RANGE CANDIDATE SUPPORT
-// ============================================================
-
 interface RangeCandidate {
   frequency: number;
   pitchySupport: number;
@@ -1484,10 +1394,6 @@ function getCandidateMedian(
   return median(matching);
 }
 
-// ============================================================
-// COMFORTABLE NOTE DETECTION
-// ============================================================
-
 interface ComfortableNoteMeasurement {
   frequency: number;
   clarity: number;
@@ -1522,8 +1428,6 @@ function detectComfortableNote(
     return null;
   }
 
-  // STEP 1 — WAVEFORM VALIDATION
-
   const peak = calculatePeak(samples);
   const overallRms = calcRMS(samples);
 
@@ -1551,8 +1455,6 @@ function detectComfortableNote(
 
     return null;
   }
-
-  // STEP 2 — PITCHY ANALYSIS
 
   let pitchyFrames: ReturnType<
     typeof trackPitchOverTime
@@ -1644,8 +1546,6 @@ function detectComfortableNote(
     }
   );
 
-  // STEP 3 — OCTAVE-AWARE PITCHY CANDIDATES
-
   const pitchyCandidates = [
     pitchyMedian / 2,
     pitchyMedian,
@@ -1655,8 +1555,6 @@ function detectComfortableNote(
       frequency >= COMFORTABLE_NOTE_MIN_HZ &&
       frequency <= COMFORTABLE_NOTE_MAX_HZ
   );
-
-  // STEP 4 — AUTOCORRELATION
 
   const autocorrelationResults =
     analyzeAutocorrelationWindows(
@@ -1714,8 +1612,6 @@ function detectComfortableNote(
 
     return null;
   }
-
-  // STEP 5 — SELECT BEST OCTAVE-AWARE CANDIDATE
 
   const candidates: RangeCandidate[] =
     pitchyCandidates.map(
@@ -1806,8 +1702,6 @@ function detectComfortableNote(
     return null;
   }
 
-  // STEP 6 — FINAL PITCH CLUSTER
-
   const selectedPitchyFrequencies =
     pitchyFrequencies.filter(
       frequency =>
@@ -1851,8 +1745,6 @@ function detectComfortableNote(
     return null;
   }
 
-  // STEP 7 — FINAL CONSISTENCY CHECK
-
   const finalPitchySupport =
     calculateFrequencySupport(
       pitchyFrequencies,
@@ -1884,8 +1776,6 @@ function detectComfortableNote(
     return null;
   }
 
-  // STEP 8 — FINAL FREQUENCY VALIDATION
-
   if (
     finalFrequency < COMFORTABLE_NOTE_MIN_HZ ||
     finalFrequency > COMFORTABLE_NOTE_MAX_HZ
@@ -1899,8 +1789,6 @@ function detectComfortableNote(
 
     return null;
   }
-
-  // STEP 9 — CLARITY
 
   const selectedClarityFrames =
     validPitchyFrames.filter(
@@ -1937,8 +1825,6 @@ function detectComfortableNote(
     return null;
   }
 
-  // STEP 10 — FINAL STABILITY
-
   const finalPitchyFrequencyValues =
     selectedPitchyFrequencies.length > 0
       ? selectedPitchyFrequencies
@@ -1954,8 +1840,6 @@ function detectComfortableNote(
   const stabilityPct = clampScore(
     finalPitchyConsistency * 100
   );
-
-  // STEP 11 — FINAL LOGGING
 
   console.log(
     '🎵 COMFORTABLE NOTE ANALYSIS:',
@@ -1987,10 +1871,6 @@ function detectComfortableNote(
     confidence: autoConfidence,
   };
 }
-
-// ============================================================
-// VOCAL RANGE
-// ============================================================
 
 export function getVocalRange(
   audio: AssessmentAudioBundle
@@ -2077,10 +1957,6 @@ export function getVocalRange(
   };
 }
 
-// ============================================================
-// VOCAL RANGE FROM HUMS
-// ============================================================
-
 export function detectVocalRangeFromHums(
   lowestComfortableNoteSamples: Float32Array,
   highestComfortableNoteSamples: Float32Array,
@@ -2097,10 +1973,6 @@ export function detectVocalRangeFromHums(
     sampleRate,
   });
 }
-
-// ============================================================
-// SAFE METRIC EXECUTION
-// ============================================================
 
 function safeMetric(
   name: string,
@@ -2127,10 +1999,6 @@ function safeMetric(
     return 0;
   }
 }
-
-// ============================================================
-// RUN ASSESSMENT
-// ============================================================
 
 export function runAssessment(
   audio: AssessmentAudioBundle,
@@ -2193,8 +2061,6 @@ export function runAssessment(
     audio.highestComfortableNoteSamples.length
   );
 
-  // STEP 1 — VOCAL RANGE FIRST
-
   console.log(
     '🧪 Detecting vocal range first...'
   );
@@ -2208,8 +2074,6 @@ export function runAssessment(
     '-',
     vocalRange.highHz
   );
-
-  // STEP 2 — GENERATE TARGET NOTES
 
   const targetNotes = computeTargetNotes(
     vocalRange.lowHz,
@@ -2225,8 +2089,6 @@ export function runAssessment(
       ),
     }
   );
-
-  // STEP 3 — COMPONENT SCORES
 
   const breathScore = safeMetric(
     'Breath control',
@@ -2287,8 +2149,6 @@ export function runAssessment(
     }
   );
 
-  // SCORE ARRAY
-
   const scores: ComponentScore[] = [
     {
       componentId: 'breathControl',
@@ -2312,8 +2172,6 @@ export function runAssessment(
     },
   ];
 
-  // RECOMMENDATIONS
-
   const recommendations = Object.fromEntries(
     scores.map(score => [
       score.componentId,
@@ -2323,8 +2181,6 @@ export function runAssessment(
     ComponentId,
     RecommendationBand
   >;
-
-  // RESULT
 
   const result: AssessmentResult = {
     vocalRange,
@@ -2342,10 +2198,6 @@ export function runAssessment(
 
   return result;
 }
-
-// ============================================================
-// COMPARE ASSESSMENTS
-// ============================================================
 
 export function compareAssessments(
   previous: AssessmentResult,

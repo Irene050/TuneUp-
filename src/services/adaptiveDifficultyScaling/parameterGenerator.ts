@@ -62,17 +62,11 @@ import {
   calculateAdjustedParameterBounds,
 } from './adaptiveDifficultyScaling';
 
-/*
- * =====================================================
- * SUSTAINED EXHALE
- * =====================================================
- */
 
 export interface GenerateSustainedExhaleParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateSustainedExhaleParams({
   tier,
   recentScores,
@@ -100,17 +94,10 @@ export function generateSustainedExhaleParams({
   };
 }
 
-/*
- * =====================================================
- * SUSTAINED SSSS
- * =====================================================
- */
-
 export interface GenerateSustainedSSSSParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateSustainedSSSSParams({
   tier,
   recentScores,
@@ -138,25 +125,10 @@ export function generateSustainedSSSSParams({
   };
 }
 
-/*
- * =====================================================
- * DIAPHRAGMATIC BREATHING
- * =====================================================
- *
- * Continuous ADS adjusts exhalation duration.
- *
- * Higher scores increase the exhalation target.
- * Lower scores decrease the exhalation target.
- *
- * The adaptive range is ±20% of the
- * current tier's default value.
- */
-
 export interface GenerateDiaphragmaticBreathingParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateDiaphragmaticBreathingParams({
   tier,
   recentScores,
@@ -190,17 +162,10 @@ export function generateDiaphragmaticBreathingParams({
   };
 }
 
-/*
- * =====================================================
- * STEADY AIRFLOW MAINTENANCE
- * =====================================================
- */
-
 export interface GenerateSteadyAirflowParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateSteadyAirflowParams({
   tier,
   recentScores,
@@ -234,32 +199,10 @@ export function generateSteadyAirflowParams({
   };
 }
 
-/*
- * =====================================================
- * CONTROLLED BREATH RELEASE
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - pulse count
- * - pulse interval
- *
- * Higher scores:
- * - increase pulse count
- * - decrease pulse interval
- *
- * Lower scores:
- * - decrease pulse count
- * - increase pulse interval
- *
- * Each parameter is allowed to move within
- * ±20% of the current tier's default value.
- */
-
 export interface GenerateControlledBreathReleaseParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateControlledBreathReleaseParams({
   tier,
   recentScores,
@@ -319,35 +262,10 @@ export function generateControlledBreathReleaseParams({
   };
 }
 
-/*
- * =====================================================
- * NOTE MATCHING
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - pitch tolerance
- * - minimum clarity
- * - minimum voiced frames
- *
- * Higher scores:
- * - decrease pitch tolerance
- * - increase minimum clarity
- * - increase minimum voiced frames
- *
- * Lower scores:
- * - increase pitch tolerance
- * - decrease minimum clarity
- * - decrease minimum voiced frames
- *
- * Each parameter is allowed to move within
- * ±20% of the current tier's default value.
- */
-
 export interface GenerateNoteMatchingParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateNoteMatchingParams({
   tier,
   recentScores,
@@ -432,23 +350,10 @@ export function generateNoteMatchingParams({
   };
 }
 
-/*
- * =====================================================
- * SCALE ACCURACY DRILL
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - pitch tolerance
- * - minimum clarity
- * - note count
- * - required scale accuracy
- */
-
 export interface GenerateScaleAccuracyParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateScaleAccuracyParams({
   tier,
   recentScores,
@@ -557,32 +462,10 @@ export function generateScaleAccuracyParams({
   };
 }
 
-/*
- * =====================================================
- * SUSTAINED NOTE STABILITY
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - sustained duration
- * - pitch stability threshold
- * - minimum clarity
- *
- * Higher scores:
- * - increase duration
- * - decrease allowed pitch variation
- * - increase minimum clarity
- *
- * Lower scores:
- * - decrease duration
- * - increase allowed pitch variation
- * - decrease minimum clarity
- */
-
 export interface GenerateSustainedNoteStabilityParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateSustainedNoteStabilityParams({
   tier,
   recentScores,
@@ -669,38 +552,10 @@ export function generateSustainedNoteStabilityParams({
   };
 }
 
-/*
- * =====================================================
- * INTERVAL RECOGNITION TASK
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - pitch tolerance
- * - minimum clarity
- * - total recording duration
- *
- * The number of repetitions remains fixed at
- * the current tier's configured value.
- *
- * Higher scores:
- * - decrease pitch tolerance
- * - increase minimum clarity
- * - decrease total recording duration
- *
- * Lower scores:
- * - increase pitch tolerance
- * - decrease minimum clarity
- * - increase total recording duration
- *
- * Each adaptive parameter is allowed to move
- * within ±20% of the current tier's default value.
- */
-
 export interface GenerateIntervalRecognitionParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateIntervalRecognitionParams({
   tier,
   recentScores,
@@ -785,35 +640,10 @@ export function generateIntervalRecognitionParams({
   };
 }
 
-/*
- * =====================================================
- * MELODIC PATTERN MATCHING
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - pattern note count
- * - pitch tolerance
- * - minimum clarity
- *
- * Higher scores:
- * - increase the number of notes
- * - decrease pitch tolerance
- * - increase minimum clarity
- *
- * Lower scores:
- * - decrease the number of notes
- * - increase pitch tolerance
- * - decrease minimum clarity
- *
- * Each adaptive parameter is allowed to move
- * within ±20% of the current tier's default value.
- */
-
 export interface GenerateMelodicPatternMatchingParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateMelodicPatternMatchingParams({
   tier,
   recentScores,
@@ -897,39 +727,10 @@ export function generateMelodicPatternMatchingParams({
   };
 }
 
-/*
- * =====================================================
- * VOWEL CONSISTENCY EXERCISE
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - vowel duration
- * - repetitions
- * - smoothness threshold
- *
- * The vowel and resonance type count remain
- * determined by the current difficulty tier.
- *
- * Higher scores:
- * - increase duration
- * - increase repetitions
- * - increase smoothness requirement
- *
- * Lower scores:
- * - decrease duration
- * - decrease repetitions
- * - decrease smoothness requirement
- *
- * Each adaptive numeric parameter is allowed
- * to move within ±20% of the current tier's
- * default value.
- */
-
 export interface GenerateVowelConsistencyParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateVowelConsistencyParams({
   tier,
   recentScores,
@@ -1024,47 +825,15 @@ export function generateVowelConsistencyParams({
       Number(
         generatedSmoothnessThreshold.toFixed(2),
       ),
-
-    // Resonance type count is kept at the
-    // tier-defined value because this exercise
-    // does not currently measure resonance types.
     resonanceTypeCount:
       baseParams.resonanceTypeCount,
   };
 }
 
-/*
- * =====================================================
- * WAVEFORM SMOOTHNESS DRILL
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - duration
- * - smoothness threshold
- *
- * Higher scores:
- * - decrease duration
- * - increase smoothness requirement
- *
- * Lower scores:
- * - increase duration
- * - decrease smoothness requirement
- *
- * Note:
- * - repetitions is retained from the base exercise
- *   configuration but is not adapted because this
- *   exercise uses one continuous hold.
- * - amplitudeVariancePct is retained from the base
- *   configuration but is not adapted because it is
- *   currently used only as a displayed reference,
- *   not as a scoring threshold.
- */
-
 export interface GenerateWaveformSmoothnessParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateWaveformSmoothnessParams({
   tier,
   recentScores,
@@ -1123,33 +892,10 @@ export function generateWaveformSmoothnessParams({
   };
 }
 
-/*
- * =====================================================
- * FREQUENCY ZONE STABILITY
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - duration
- * - stability threshold
- *
- * Higher scores:
- * - increase duration
- * - increase stability requirement
- *
- * Lower scores:
- * - decrease duration
- * - decrease stability requirement
- *
- * Frequency-band classification remains fixed because
- * the exercise measures consistency within the detected
- * low, mid, or high frequency band.
- */
-
 export interface GenerateFrequencyZoneStabilityParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateFrequencyZoneStabilityParams({
   tier,
   recentScores,
@@ -1209,38 +955,11 @@ export function generateFrequencyZoneStabilityParams({
       ),
   };
 }
-/*
- * =====================================================
- * TONE CONSISTENCY EXERCISE
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - interval
- * - repetitions
- * - consistency threshold
- *
- * Higher scores:
- * - decrease interval
- * - increase repetitions
- * - increase consistency requirement
- *
- * Lower scores:
- * - increase interval
- * - decrease repetitions
- * - decrease consistency requirement
- *
- * Note:
- * - variancePct is retained from the base exercise
- *   configuration but is not adapted because it is
- *   currently not used by the measurement, scoring,
- *   or exercise screen.
- */
 
 export interface GenerateToneConsistencyParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateToneConsistencyParams({
   tier,
   recentScores,
@@ -1324,46 +1043,15 @@ export function generateToneConsistencyParams({
       Number(
         generatedConsistencyThreshold.toFixed(2),
       ),
-
-    // Retained at the tier-defined value because
-    // variancePct is not currently used by this
-    // exercise's measurement or scoring.
     variancePct:
       baseParams.variancePct,
   };
 }
 
-/*
- * =====================================================
- * STEADY TONE HOLDING
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - duration
- * - repetitions
- * - quality threshold
- *
- * Higher scores:
- * - decrease duration
- * - increase repetitions
- * - increase quality requirement
- *
- * Lower scores:
- * - increase duration
- * - decrease repetitions
- * - decrease quality requirement
- *
- * Note:
- * - variancePct is retained from the base exercise
- *   configuration because it is not currently used
- *   by the measurement or scoring logic.
- */
-
 export interface GenerateSteadyToneHoldingParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateSteadyToneHoldingParams({
   tier,
   recentScores,
@@ -1454,54 +1142,10 @@ export function generateSteadyToneHoldingParams({
   };
 }
 
-/*
- * =====================================================
- * DYNAMIC RANGE
- * =====================================================
- *
- * Continuous ADS adjusts:
- * - duration
- * - repetitions
- * - target dB range
- *
- * The exercise consists of three phases:
- * 1. Soft → Loud
- * 2. Loud
- * 3. Loud → Soft
- *
- * Therefore, the generated durationSec represents
- * the duration of each phase. The total recording
- * duration is durationSec × 3.
- *
- * Higher scores:
- * - increase the ramp duration
- *   so the singer must control the volume transition
- *   over a longer period
- * - increase repetitions
- * - move the target range toward a more demanding
- *   volume range
- *
- * Lower scores:
- * - decrease the ramp duration
- * - decrease repetitions
- * - move the target range toward an easier range
- *
- * The following parameters remain fixed at their
- * tier-defined values because they are currently
- * not used by the measurement or scorer:
- * - rangeAccuracyThreshold
- * - rampConsistencyThreshold
- *
- * The audio-analysis window is also intentionally
- * excluded because it is a DSP configuration rather
- * than an exercise-difficulty parameter.
- */
-
 export interface GenerateDynamicRangeParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateDynamicRangeParams({
   tier,
   recentScores,
@@ -1509,21 +1153,6 @@ export function generateDynamicRangeParams({
   const baseParams =
     DYNAMIC_RANGE_PARAMS[tier];
 
-  /*
-   * -----------------------------------------------------
-   * DURATION
-   * -----------------------------------------------------
-   *
-   * A longer controlled ramp increases the amount of
-   * time over which the singer must manage the volume
-   * transition.
-   *
-   * Higher scores -> longer ramp.
-   * Lower scores -> shorter ramp.
-   *
-   * The adaptive range is ±20% of the tier default.
-   */
-
   const durationRange = {
     min: baseParams.durationSec * 0.8,
     max: baseParams.durationSec * 1.2,
@@ -1541,18 +1170,6 @@ export function generateDynamicRangeParams({
       adjustedDuration.min +
       adjustedDuration.max
     ) / 2;
-
-  /*
-   * -----------------------------------------------------
-   * REPETITIONS
-   * -----------------------------------------------------
-   *
-   * Higher scores -> more repetitions.
-   * Lower scores -> fewer repetitions.
-   *
-   * Repetitions are discrete, so the generated value
-   * is rounded to the nearest whole number.
-   */
 
   const repetitionsRange = {
     min: baseParams.repetitions * 0.8,
@@ -1576,28 +1193,6 @@ export function generateDynamicRangeParams({
         ) / 2,
       ),
     );
-
-  /*
-   * -----------------------------------------------------
-   * TARGET dB RANGE
-   * -----------------------------------------------------
-   *
-   * The target range is represented as:
-   *
-   * [minimum dB, maximum dB]
-   *
-   * We adapt the lower and upper bounds together so
-   * the target range remains coherent.
-   *
-   * The target range itself is allowed to move within
-   * ±20% of the tier-defined range.
-   *
-   * Higher scores shift the target range upward,
-   * requiring stronger volume production.
-   *
-   * Lower scores shift the target range downward,
-   * reducing the required volume level.
-   */
 
   const targetMinRange = {
     min:
@@ -1649,12 +1244,6 @@ export function generateDynamicRangeParams({
       ).toFixed(2),
     );
 
-  /*
-   * Ensure the generated range remains valid.
-   *
-   * The maximum must always be greater than or equal
-   * to the minimum.
-   */
   const targetDbRange: [
     number,
     number,
@@ -1668,37 +1257,24 @@ export function generateDynamicRangeParams({
 
   return {
     ...baseParams,
-
     durationSec:
       Number(
         generatedDurationSec.toFixed(2),
       ),
-
     repetitions:
       generatedRepetitions,
-
     targetDbRange,
-
-    // These thresholds are retained at their
-    // tier-defined values because they are currently
-    // not consumed by the measurement or scorer.
     rangeAccuracyThreshold:
       baseParams.rangeAccuracyThreshold,
-
     rampConsistencyThreshold:
       baseParams.rampConsistencyThreshold,
   };
 }
 
-// ============================================================
-// CONTROLLED CRESCENDO
-// ============================================================
-
 export interface GenerateControlledCrescendoParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateControlledCrescendoParams({
   tier,
   recentScores,
@@ -1706,11 +1282,6 @@ export function generateControlledCrescendoParams({
   const baseParams =
     CONTROLLED_CRESCENDO_PARAMS[tier];
 
-  /*
-   * Duration:
-   * A longer crescendo is harder because the singer must
-   * maintain a controlled increase for a longer period.
-   */
   const durationRange = {
     min: baseParams.durationSec * 0.8,
     max: baseParams.durationSec * 1.2,
@@ -1729,11 +1300,6 @@ export function generateControlledCrescendoParams({
       adjustedDuration.max
     ) / 2;
 
-  /*
-   * Repetitions:
-   * More repetitions increase the amount of controlled
-   * volume work required.
-   */
   const repetitionsRange = {
     min: baseParams.repetitions * 0.8,
     max: baseParams.repetitions * 1.2,
@@ -1757,11 +1323,6 @@ export function generateControlledCrescendoParams({
       ),
     );
 
-  /*
-   * Target range:
-   * A higher target volume range requires greater dynamic
-   * control from the singer.
-   */
   const targetMinRange = {
     min:
       baseParams.targetDbRange[0] * 0.8,
@@ -1825,38 +1386,24 @@ export function generateControlledCrescendoParams({
 
   return {
     ...baseParams,
-
     durationSec:
       Number(
         generatedDurationSec.toFixed(2),
       ),
-
     repetitions:
       generatedRepetitions,
-
     targetDbRange,
-
-    /*
-     * These thresholds are scoring criteria rather than
-     * exercise parameters, so they remain fixed for the tier.
-     */
     smoothnessThreshold:
       baseParams.smoothnessThreshold,
-
     volumeIncreaseThreshold:
       baseParams.volumeIncreaseThreshold,
   };
 }
 
-// ============================================================
-// CONTROLLED DECRESCENDO
-// ============================================================
-
 export interface GenerateControlledDecrescendoParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateControlledDecrescendoParams({
   tier,
   recentScores,
@@ -1864,11 +1411,6 @@ export function generateControlledDecrescendoParams({
   const baseParams =
     CONTROLLED_DECRESCENDO_PARAMS[tier];
 
-  /*
-   * Duration:
-   * A longer decrescendo is harder because the singer must
-   * maintain a controlled decrease for a longer period.
-   */
   const durationRange = {
     min: baseParams.durationSec * 0.8,
     max: baseParams.durationSec * 1.2,
@@ -1887,11 +1429,6 @@ export function generateControlledDecrescendoParams({
       adjustedDuration.max
     ) / 2;
 
-  /*
-   * Repetitions:
-   * More repetitions increase the amount of controlled
-   * volume work required.
-   */
   const repetitionsRange = {
     min: baseParams.repetitions * 0.8,
     max: baseParams.repetitions * 1.2,
@@ -1915,11 +1452,6 @@ export function generateControlledDecrescendoParams({
       ),
     );
 
-  /*
-   * Target range:
-   * A higher target volume range requires greater volume
-   * control from the singer before performing the decrease.
-   */
   const targetMinRange = {
     min:
       baseParams.targetDbRange[0] * 0.8,
@@ -1981,14 +1513,6 @@ export function generateControlledDecrescendoParams({
     ),
   ];
 
-  /*
-   * Volume decrease threshold:
-   * A larger required decrease makes the decrescendo
-   * more demanding.
-   *
-   * Higher scores -> larger required decrease.
-   * Lower scores -> smaller required decrease.
-   */
   const volumeDecreaseThresholdRange = {
     min:
       baseParams.volumeDecreaseThreshold * 0.8,
@@ -2012,24 +1536,15 @@ export function generateControlledDecrescendoParams({
 
   return {
     ...baseParams,
-
     durationSec:
       Number(
         generatedDurationSec.toFixed(2),
       ),
-
     repetitions:
       generatedRepetitions,
-
     targetDbRange,
-
-    /*
-     * Smoothness remains fixed at the tier-defined value
-     * because it is a scoring criterion.
-     */
     smoothnessThreshold:
       baseParams.smoothnessThreshold,
-
     volumeDecreaseThreshold:
       Number(
         generatedVolumeDecreaseThreshold.toFixed(2),
@@ -2037,41 +1552,10 @@ export function generateControlledDecrescendoParams({
   };
 }
 
-// ============================================================
-// VOLUME BAND TARGETING
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - duration
-// - repetitions
-// - target dB range
-// - tolerance
-//
-// Higher scores:
-// - increase duration
-// - increase repetitions
-// - shift the target range upward
-// - decrease tolerance
-//
-// Lower scores:
-// - decrease duration
-// - decrease repetitions
-// - shift the target range downward
-// - increase tolerance
-//
-// Each adaptive parameter is allowed to move within
-// ±20% of the current tier's default value.
-//
-// The consistency threshold remains fixed at the
-// tier-defined value because it is a scoring criterion,
-// not an exercise-generation parameter.
-//
-
 export interface GenerateVolumeBandTargetingParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateVolumeBandTargetingParams({
   tier,
   recentScores,
@@ -2079,14 +1563,6 @@ export function generateVolumeBandTargetingParams({
   const baseParams =
     VOLUME_BAND_TARGETING_PARAMS[tier];
 
-  /*
-   * ---------------------------------------------------------
-   * DURATION
-   * ---------------------------------------------------------
-   *
-   * A longer holding period requires the singer to maintain
-   * volume control for longer.
-   */
   const durationRange = {
     min:
       baseParams.durationSec * 0.8,
@@ -2108,14 +1584,6 @@ export function generateVolumeBandTargetingParams({
       adjustedDuration.max
     ) / 2;
 
-  /*
-   * ---------------------------------------------------------
-   * REPETITIONS
-   * ---------------------------------------------------------
-   *
-   * More repetitions increase the amount of controlled
-   * volume work required.
-   */
   const repetitionsRange = {
     min:
       baseParams.repetitions * 0.8,
@@ -2142,16 +1610,6 @@ export function generateVolumeBandTargetingParams({
       ),
     );
 
-  /*
-   * ---------------------------------------------------------
-   * TARGET dB RANGE
-   * ---------------------------------------------------------
-   *
-   * Higher scores shift the target range upward,
-   * requiring stronger volume production.
-   *
-   * Lower scores shift the target range downward.
-   */
   const targetMinRange = {
     min:
       baseParams.targetDbRange[0] * 0.8,
@@ -2213,19 +1671,6 @@ export function generateVolumeBandTargetingParams({
     ),
   ];
 
-  /*
-   * ---------------------------------------------------------
-   * TOLERANCE
-   * ---------------------------------------------------------
-   *
-   * Smaller tolerance means the singer has to stay closer
-   * to the target volume band.
-   *
-   * Therefore:
-   *
-   * Higher scores -> smaller tolerance.
-   * Lower scores -> larger tolerance.
-   */
   const toleranceRange = {
     min:
       baseParams.toleranceDb * 0.8,
@@ -2249,83 +1694,32 @@ export function generateVolumeBandTargetingParams({
 
   return {
     ...baseParams,
-
     durationSec:
       Number(
         generatedDurationSec.toFixed(2),
       ),
-
     repetitions:
       generatedRepetitions,
-
     targetDbRange,
-
     toleranceDb:
       Number(
         generatedToleranceDb.toFixed(2),
       ),
-
-    /*
-     * This remains the tier-defined scoring criterion.
-     */
     consistencyThreshold:
       baseParams.consistencyThreshold,
   };
 }
 
-// ============================================================
-// VOLUME CONTROL STABILITY
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - duration
-// - repetitions
-// - stability threshold
-//
-// Higher scores:
-// - increase duration
-// - increase repetitions
-// - increase the required stability threshold
-//
-// Lower scores:
-// - decrease duration
-// - decrease repetitions
-// - decrease the required stability threshold
-//
-// The following parameters remain fixed at their
-// tier-defined values because they are currently
-// not consumed by the measurement or scorer:
-// - targetDbRange
-// - amplitudeVariancePct
-// - detectionThreshold
-//
-// Each adaptive numeric parameter is allowed to move
-// within ±20% of the current tier's default value.
-// ============================================================
-
 export interface GenerateVolumeControlStabilityParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateVolumeControlStabilityParams({
   tier,
   recentScores,
 }: GenerateVolumeControlStabilityParamsInput): VolumeControlStabilityParams {
   const baseParams =
     VOLUME_CONTROL_STABILITY_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * DURATION
-   * ---------------------------------------------------------
-   *
-   * A longer sustained-volume exercise requires the singer
-   * to maintain stable vocal output for a longer period.
-   *
-   * Higher scores -> longer duration.
-   * Lower scores -> shorter duration.
-   */
 
   const durationRange = {
     min:
@@ -2347,15 +1741,6 @@ export function generateVolumeControlStabilityParams({
       adjustedDuration.min +
       adjustedDuration.max
     ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * REPETITIONS
-   * ---------------------------------------------------------
-   *
-   * More repetitions increase the amount of sustained
-   * volume-control work required.
-   */
 
   const repetitionsRange = {
     min:
@@ -2382,18 +1767,6 @@ export function generateVolumeControlStabilityParams({
         ) / 2,
       ),
     );
-
-  /*
-   * ---------------------------------------------------------
-   * STABILITY THRESHOLD
-   * ---------------------------------------------------------
-   *
-   * A higher stability threshold requires the singer to
-   * maintain more consistent volume.
-   *
-   * Higher scores -> stricter stability requirement.
-   * Lower scores -> more attainable stability requirement.
-   */
 
   const stabilityThresholdRange = {
     min:
@@ -2418,85 +1791,29 @@ export function generateVolumeControlStabilityParams({
 
   return {
     ...baseParams,
-
     durationSec:
       Number(
         generatedDurationSec.toFixed(2),
       ),
-
     repetitions:
       generatedRepetitions,
-
     stabilityThreshold:
       Number(
         generatedStabilityThreshold.toFixed(2),
       ),
-
-    /*
-     * Retained at the tier-defined value because the
-     * current measurement/scoring implementation does
-     * not consume targetDbRange as a scoring criterion.
-     */
     targetDbRange:
       baseParams.targetDbRange,
-
-    /*
-     * Retained at the tier-defined value because
-     * amplitudeVariancePct is currently displayed as
-     * an exercise reference but is not used directly
-     * by the measurement/scorer.
-     */
     amplitudeVariancePct:
       baseParams.amplitudeVariancePct,
-
-    /*
-     * Signal-processing configuration is intentionally
-     * not adapted.
-     */
     detectionThreshold:
       baseParams.detectionThreshold,
   };
 }
 
-// ============================================================
-// RAPID NOTE TRANSITION
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - minimum note count
-// - maximum note count
-// - minimum transition speed
-// - maximum transition speed
-// - repetitions
-// - note duration
-//
-// Higher scores:
-// - increase the number of notes
-// - increase transition speed
-// - increase repetitions
-// - decrease note duration
-//
-// Lower scores:
-// - decrease the number of notes
-// - decrease transition speed
-// - decrease repetitions
-// - increase note duration
-//
-// The following parameters remain fixed at their
-// tier-defined values:
-// - accuracyThreshold
-// - minMidi
-// - maxMidi
-//
-// Each adaptive numeric parameter is allowed to move
-// within ±20% of the current tier's default value.
-// ============================================================
-
 export interface GenerateRapidNoteTransitionParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateRapidNoteTransitionParams({
   tier,
   recentScores,
@@ -2589,7 +1906,6 @@ export function generateRapidNoteTransitionParams({
   const generatedMaxSpeed =
     (adjustedMaxSpeed.min + adjustedMaxSpeed.max) / 2;
 
-  // Preserve the relationship minSpeed <= maxSpeed.
   const minSpeed = Math.min(
     generatedMinSpeed,
     generatedMaxSpeed,
@@ -2618,47 +1934,22 @@ export function generateRapidNoteTransitionParams({
     maxSpeed: Number(maxSpeed.toFixed(2)),
     repetitions: generatedRepetitions,
     noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
-
-    // Keep these values fixed at the configured tier values.
     accuracyThreshold: baseParams.accuracyThreshold,
     minMidi: baseParams.minMidi,
     maxMidi: baseParams.maxMidi,
   };
 }
 
-// ============================================================
-// RAPID SCALE TRILL
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - note duration
-//
-// The reference frequencies are transposed into the user's
-// assessed vocal range when a valid range is supplied.
-//
-// Higher scores:
-// - decrease note duration
-//
-// Lower scores:
-// - increase note duration
-//
-// The adaptive note duration is allowed to move
-// within ±20% of the current tier's default value.
-// ============================================================
-
 type RapidScaleTrillVocalRange = {
   lowHz: number;
   highHz: number;
 };
-
 function rapidScaleTrillHzToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
-
 function rapidScaleTrillMidiToHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
-
 function generateRapidScaleTrillFrequencies(
   baseFrequencies: readonly number[],
   vocalRange?: RapidScaleTrillVocalRange | null,
@@ -2690,14 +1981,10 @@ function generateRapidScaleTrillFrequencies(
     rapidScaleTrillHzToMidi(vocalRange.highHz),
   );
 
-  // Preserve the configured scale intervals by transposing the
-  // complete sequence rather than changing individual notes.
   const lowestAllowedShift = rangeMinMidi - baseMinMidi;
   const highestAllowedShift = rangeMaxMidi - baseMaxMidi;
 
   if (lowestAllowedShift > highestAllowedShift) {
-    // If the assessed range cannot fit the entire scale pattern,
-    // keep the configured pattern rather than distort its intervals.
     return [...baseFrequencies];
   }
 
@@ -2709,13 +1996,11 @@ function generateRapidScaleTrillFrequencies(
     rapidScaleTrillMidiToHz(midi + semitoneShift),
   );
 }
-
 export interface GenerateRapidScaleTrillParamsInput {
   tier: Tier;
   recentScores: number[];
   vocalRange?: RapidScaleTrillVocalRange | null;
 }
-
 export function generateRapidScaleTrillParams({
   tier,
   recentScores,
@@ -2723,21 +2008,6 @@ export function generateRapidScaleTrillParams({
 }: GenerateRapidScaleTrillParamsInput) {
   const baseParams =
     RAPID_SCALE_TRILL_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * NOTE DURATION
-   * ---------------------------------------------------------
-   *
-   * Shorter notes require faster and more precise
-   * execution of the rapid scale pattern.
-   *
-   * Higher scores -> shorter notes.
-   * Lower scores -> longer notes.
-   *
-   * The adaptive range is ±20% of the current
-   * tier's default note duration.
-   */
 
   const noteDurationRange = {
     min:
@@ -2759,12 +2029,6 @@ export function generateRapidScaleTrillParams({
       adjustedNoteDuration.min +
       adjustedNoteDuration.max
     ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * RETURN
-   * ---------------------------------------------------------
-   */
 
   return {
     ...baseParams,
@@ -2777,8 +2041,6 @@ export function generateRapidScaleTrillParams({
     label:
       baseParams.label,
 
-    // These retain the configured scale pattern, transposed
-    // to fit the user's assessed vocal range when available.
     frequencies:
       generateRapidScaleTrillFrequencies(
         baseParams.frequencies,
@@ -2790,56 +2052,16 @@ export function generateRapidScaleTrillParams({
   };
 }
 
-// ============================================================
-// ARPEGGIO SPEED DRILL
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - note duration
-// - gap duration
-//
-// Higher scores:
-// - decrease note duration
-// - decrease gap duration
-//
-// Lower scores:
-// - increase note duration
-// - increase gap duration
-//
-// The following parameters remain fixed at their
-// tier-defined values:
-// - name
-// - notes
-// - frequencies
-// - speedLabel
-//
-// Each adaptive numeric parameter is allowed to move
-// within ±20% of the current tier's default value.
-// ============================================================
-
 export interface GenerateArpeggioSpeedDrillParamsInput {
   tier: Tier;
   recentScores: number[];
 }
-
 export function generateArpeggioSpeedDrillParams({
   tier,
   recentScores,
 }: GenerateArpeggioSpeedDrillParamsInput) {
   const baseParams =
     ARPEGGIO_SPEED_DRILL_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * NOTE DURATION
-   * ---------------------------------------------------------
-   *
-   * Shorter notes require faster and more precise
-   * execution of the arpeggio.
-   *
-   * Higher scores -> shorter notes.
-   * Lower scores -> longer notes.
-   */
 
   const noteDurationRange = {
     min:
@@ -2861,18 +2083,6 @@ export function generateArpeggioSpeedDrillParams({
       adjustedNoteDuration.min +
       adjustedNoteDuration.max
     ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * GAP DURATION
-   * ---------------------------------------------------------
-   *
-   * A shorter gap reduces the recovery time between
-   * notes and requires more precise transitions.
-   *
-   * Higher scores -> shorter gaps.
-   * Lower scores -> longer gaps.
-   */
 
   const gapRange = {
     min:
@@ -2895,73 +2105,33 @@ export function generateArpeggioSpeedDrillParams({
       adjustedGap.max
     ) / 2;
 
-  /*
-   * ---------------------------------------------------------
-   * RETURN
-   * ---------------------------------------------------------
-   */
-
   return {
     ...baseParams,
-
     noteDurationSec:
       Number(
         generatedNoteDurationSec.toFixed(2),
       ),
-
     gapSec:
       Number(
         generatedGapSec.toFixed(2),
       ),
-
-    // Retained at the tier-defined values because
-    // these define the musical material of the exercise.
     name:
       baseParams.name,
-
     notes:
       baseParams.notes,
-
     frequencies:
       baseParams.frequencies,
-
     speedLabel:
       baseParams.speedLabel,
   };
 }
 
-// ============================================================
-// QUICK INTERVAL JUMP
-// ============================================================
-//
-// Continuous ADS adjusts:
-// - note duration
-// - gap duration
-//
-// Higher scores:
-// - decrease note duration
-// - decrease gap duration
-//
-// Lower scores:
-// - increase note duration
-// - increase gap duration
-//
-// Label, speed label, and accuracy threshold remain tier-defined.
-// Absolute reference pitches are generated from the latest assessed
-// vocal range when it is available; the tier's interval contour is kept.
-//
-// The adaptive timing parameters use the same
-// ±20% range applied by the other exercise generators.
-// ============================================================
-
 function quickIntervalFrequencyToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
-
 function quickIntervalMidiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
-
 function sequencesMatch(
   first: readonly number[],
   second: readonly number[],
@@ -2971,13 +2141,6 @@ function sequencesMatch(
     first.every((note, index) => note === second[index])
   );
 }
-
-/**
- * Reuses the tier's interval contour but generates absolute pitches
- * inside the vocal range from the user's latest assessment. When the
- * range is wide enough, exact semitone intervals are preserved; if the
- * range is narrower, the contour is proportionally fitted to that range.
- */
 function generateQuickIntervalJumpFrequencies(
   baseFrequencies: readonly number[],
   vocalRange?: { lowHz: number; highHz: number } | null,
@@ -2999,7 +2162,6 @@ function generateQuickIntervalJumpFrequencies(
     vocalRange.lowHz > 0 &&
     vocalRange.highHz > vocalRange.lowHz;
 
-  // Keep the configured sequence only if there is no usable assessment range.
   if (!hasValidVocalRange) {
     return [...baseFrequencies];
   }
@@ -3012,8 +2174,6 @@ function generateQuickIntervalJumpFrequencies(
   );
 
   if (highMidi < lowMidi) {
-    // A valid but very narrow measured range may not contain a full
-    // semitone. Use the closest MIDI pitch to its center for every note.
     const centerMidi = Math.round(
       quickIntervalFrequencyToMidi(
         Math.sqrt(vocalRange.lowHz * vocalRange.highHz),
@@ -3033,9 +2193,6 @@ function generateQuickIntervalJumpFrequencies(
   const baseSpan = Math.max(1, baseMaxMidi - baseMinMidi);
   const availableSpan = highMidi - lowMidi;
   const targetSpan = Math.min(baseSpan, availableSpan);
-
-  // Preserve the tier's interval pattern where possible. For a narrower
-  // assessed range, fit that pattern into the available semitones.
   const offsets = baseMidis.map((midi) =>
     Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
   );
@@ -3056,8 +2213,6 @@ function generateQuickIntervalJumpFrequencies(
     return [...baseFrequencies];
   }
 
-  // Prefer a sequence that does not simply reproduce the original absolute
-  // pitches, so the reference notes are not fixed to one register.
   const differentFromBase = candidateSequences.filter(
     (sequence) => !sequencesMatch(sequence, baseMidis),
   );
@@ -3069,13 +2224,11 @@ function generateQuickIntervalJumpFrequencies(
     Number(quickIntervalMidiToFrequency(midi).toFixed(3)),
   );
 }
-
 export interface GenerateQuickIntervalJumpParamsInput {
   tier: Tier;
   recentScores: number[];
   vocalRange?: { lowHz: number; highHz: number } | null;
 }
-
 export function generateQuickIntervalJumpParams({
   tier,
   recentScores,
@@ -3083,21 +2236,6 @@ export function generateQuickIntervalJumpParams({
 }: GenerateQuickIntervalJumpParamsInput) {
   const baseParams =
     QUICK_INTERVAL_JUMP_PARAMS[tier];
-
-  /*
-   * ---------------------------------------------------------
-   * NOTE DURATION
-   * ---------------------------------------------------------
-   *
-   * Shorter notes require faster and more precise
-   * interval transitions.
-   *
-   * Higher scores -> shorter notes.
-   * Lower scores -> longer notes.
-   *
-   * The current Quick Interval Jump screen uses
-   * 0.30 seconds as its reference-note duration.
-   */
 
   const baseNoteDurationSec = 0.30;
 
@@ -3118,21 +2256,6 @@ export function generateQuickIntervalJumpParams({
       adjustedNoteDuration.min +
       adjustedNoteDuration.max
     ) / 2;
-
-  /*
-   * ---------------------------------------------------------
-   * GAP DURATION
-   * ---------------------------------------------------------
-   *
-   * A shorter gap gives the singer less recovery time
-   * between interval jumps.
-   *
-   * Higher scores -> shorter gaps.
-   * Lower scores -> longer gaps.
-   *
-   * The current Quick Interval Jump screen uses
-   * 350 ms between reference notes.
-   */
 
   const baseGapSec = 0.35;
 
@@ -3161,43 +2284,23 @@ export function generateQuickIntervalJumpParams({
 
   return {
     ...baseParams,
-
     noteDurationSec:
       Number(
         generatedNoteDurationSec.toFixed(2),
       ),
-
     gapSec:
       Number(
         generatedGapSec.toFixed(2),
       ),
-
-    // Retained at the tier-defined values because
-    // these define the musical material and scoring
-    // requirement of the exercise.
     label:
       baseParams.label,
-
     frequencies,
-
     speedLabel:
       baseParams.speedLabel,
-
     accuracyThreshold:
       baseParams.accuracyThreshold,
   };
 }
-
-// ============================================================
-// ============================================================
-// VOCAL RUN ACCURACY TASK
-// ============================================================
-// Continuous ADS adjusts note duration using recent scores.
-// The reference-note sequence is also generated within the
-// latest assessed vocal range when that range is available.
-// Previous frequencies are supplied on retry to avoid repeating
-// the same sequence when another valid sequence is possible.
-// ============================================================
 
 export interface GenerateVocalRunAccuracyParamsInput {
   tier: Tier;
@@ -3208,15 +2311,12 @@ export interface GenerateVocalRunAccuracyParamsInput {
   } | null;
   previousFrequencies?: readonly number[];
 }
-
 function vocalRunFrequencyToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
-
 function vocalRunMidiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
-
 function areVocalRunSequencesEqual(
   first: readonly number[],
   second: readonly number[],
@@ -3226,7 +2326,6 @@ function areVocalRunSequencesEqual(
     first.every((note, index) => note === second[index])
   );
 }
-
 function generateVocalRunFrequencies(
   baseFrequencies: readonly number[],
   recentScores: number[],
@@ -3261,8 +2360,6 @@ function generateVocalRunFrequencies(
     vocalRange.lowHz > 0 &&
     vocalRange.highHz > vocalRange.lowHz;
 
-  // Use the assessment's actual range when available. Otherwise,
-  // allow a conservative four-semitone transposition in either direction.
   const lowMidi = hasValidVocalRange
     ? Math.ceil(vocalRunFrequencyToMidi(vocalRange.lowHz))
     : baseMinMidi - 4;
@@ -3283,8 +2380,6 @@ function generateVocalRunFrequencies(
       validScores.length
     : null;
 
-  // Scores gently adjust the melodic span: lower scores make the run
-  // narrower; high scores make it wider. The tier's base contour remains.
   const scoreSpanAdjustment =
     averageScore === null ? 0 : averageScore < 55 ? -1 : averageScore >= 85 ? 1 : 0;
   const targetSpan = Math.max(
@@ -3292,8 +2387,6 @@ function generateVocalRunFrequencies(
     Math.min(availableSpan, baseSpan + scoreSpanAdjustment),
   );
 
-  // Normalize the original contour to the target span so every generated
-  // note remains inside the available pitch range.
   const contourOffsets = baseMidis.map((midi) =>
     Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
   );
@@ -3326,9 +2419,6 @@ function generateVocalRunFrequencies(
       )
     : [];
 
-  // Prefer a sequence that differs from both the tier default and the
-  // previous attempt. If the vocal range is too narrow for that, prioritize
-  // avoiding the previous sequence whenever possible.
   const differentFromPrevious = candidateSequences.filter(
     (sequence) => !areVocalRunSequencesEqual(sequence, previousMidis),
   );
@@ -3347,7 +2437,6 @@ function generateVocalRunFrequencies(
     Number(vocalRunMidiToFrequency(midi).toFixed(3)),
   );
 }
-
 export function generateVocalRunAccuracyParams({
   tier,
   recentScores,

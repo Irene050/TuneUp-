@@ -5,8 +5,6 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
-// vowel consistency params
-
 export interface VowelConsistencyParams {
   vowel: VowelBand;
   durationRangeSec: [number, number];
@@ -44,8 +42,6 @@ export const VOWEL_CONSISTENCY_PARAMS: Record<
   },
 };
 
-// waveform smoothness params
-
 export interface WaveformSmoothnessParams {
   durationSec: number;
   repetitions: number;
@@ -75,8 +71,6 @@ export const WAVEFORM_SMOOTHNESS_PARAMS: Record<
   },
 };
 
-// frequency zone stability params
-
 export interface FrequencyZoneStabilityParams {
   durationSec: number;
   repetitions: number;
@@ -105,9 +99,6 @@ export const FREQUENCY_ZONE_STABILITY_PARAMS: Record<
     stabilityThreshold: 95,
   },
 };
-
-// tone consistency params
-// must have what note to sing
 
 export interface ToneConsistencyParams {
   intervalSec: number;
@@ -141,9 +132,6 @@ export const TONE_CONSISTENCY_PARAMS: Record<
     variancePct: 5,
   },
 };
-
-// steady tone holding params
-// must have what note to sing
 
 export interface SteadyToneHoldingParams {
   durationSec: number;

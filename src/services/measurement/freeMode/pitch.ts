@@ -58,7 +58,6 @@ export function measurePitchFreeModeFrame(
     };
   }
 
-  // Use the geometric mean as the reference pitch.
   const meanLogFrequency =
     history.reduce(
       (sum, value) => sum + Math.log2(value),
@@ -67,7 +66,6 @@ export function measurePitchFreeModeFrame(
 
   const referenceFrequency = 2 ** meanLogFrequency;
 
-  // Express pitch deviations in cents.
   const deviationsCents = history.map(
     (value) =>
       Math.abs(

@@ -70,8 +70,6 @@ export function measureDynamicRange(
     return createEmptyMeasurement();
   }
 
-  // Ignore silence and near-silence when evaluating the user's
-// vocal volume. Keep all windows for phase timing and analysis.
   const ACTIVE_VOICE_FLOOR_DBFS = -45;
 
   const activeDbValues = dbValues.filter(
@@ -165,20 +163,14 @@ const firstPhaseAverage = average(firstValues);
 const middlePhaseAverage = average(middleValues);
 const finalPhaseAverage = average(finalValues);
 
-// Dynamic Range should become louder in the middle
-// and quieter again in the final phase.
 const repetitionContrasts = firstValues.map(
   (first, index) => {
     const middle = middleValues[index];
     const final = finalValues[index];
 
-    // A positive contrast means the middle phase is
-    // louder than the average of the two soft phases.
     const contrast =
       middle - (first + final) / 2;
 
-    // Do not award range accuracy if either soft phase
-    // is as loud as, or louder than, the middle phase.
     if (middle <= first || middle <= final) {
       return 0;
     }
@@ -202,8 +194,6 @@ const repetitionScores = repetitionContrasts.map(
       return 100;
     }
 
-    // Give a reduced score for contrast beyond the
-    // intended target rather than rewarding it endlessly.
     return clamp(
       (targetMax / contrast) * 100,
       0,
@@ -217,20 +207,12 @@ const rangeAccuracy =
     ? average(repetitionScores)
     : 0;
 
-const inTargetWindowCount =
-  repetitionContrasts.filter(
-    (contrast) =>
-      contrast >= targetMin &&
-      contrast <= targetMax,
-  ).length;
-
 const risingSlope = average(risingSlopes);
 const fallingSlope = average(fallingSlopes);
 
 const risingConsistency = average(risingConsistencies);
 const fallingConsistency = average(fallingConsistencies);
 const peakAccuracy = average(peakAccuracies);
-
 
   const rampConsistency = clamp(
     risingConsistency * 0.4 +
@@ -331,11 +313,8 @@ function calculatePeakAccuracy(
   middle: number,
   final: number,
 ): number {
-  // dBFS values closer to zero represent louder sound.
   const middleRise = middle - first;
   const middleFall = middle - final;
-
-  // Both transitions should have a meaningful loudness difference.
   const riseScore = clamp((middleRise / 10) * 100, 0, 100);
   const fallScore = clamp((middleFall / 10) * 100, 0, 100);
 

@@ -26,19 +26,11 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Birthdate
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
-
-  // Gender dropdown
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
-
-  // Password visibility
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // Check whether the password fields match
   const passwordsMismatch =
     confirmPassword.length > 0 && password !== confirmPassword;
 
@@ -59,7 +51,6 @@ export default function RegisterScreen() {
   }
 
   async function handleRegister() {
-    // Validate required fields
     if (
       !firstName.trim() ||
       !lastName.trim() ||
@@ -76,7 +67,6 @@ export default function RegisterScreen() {
       return;
     }
 
-    // Validate password confirmation
     if (password !== confirmPassword) {
       Alert.alert(
         'Passwords do not match',
@@ -148,13 +138,11 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Register</Text>
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* TuneUp Logo */}
           <Image
             source={require('@/assets/images/tabIcons/tuneup-logo.png')}
             style={styles.logo}
@@ -162,7 +150,6 @@ export default function RegisterScreen() {
           />
 
           <View style={styles.form}>
-            {/* First Name / Last Name */}
             <View style={styles.row}>
               <View style={styles.halfInput}>
                 <Text style={styles.label}>First Name</Text>
@@ -189,7 +176,6 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            {/* Email */}
             <Text style={styles.label}>Email Address</Text>
 
             <TextInput
@@ -202,9 +188,7 @@ export default function RegisterScreen() {
               editable={!loading}
             />
 
-            {/* Birthdate / Gender */}
             <View style={styles.row}>
-              {/* Birthdate */}
               <View style={styles.halfInput}>
                 <Text style={styles.label}>Birthdate</Text>
 
@@ -225,7 +209,6 @@ export default function RegisterScreen() {
                 </Pressable>
               </View>
 
-              {/* Gender */}
               <View style={styles.halfInput}>
                 <Text style={styles.label}>Gender</Text>
 
@@ -289,7 +272,6 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            {/* Password */}
             <Text style={styles.label}>Password</Text>
 
             <View style={styles.passwordContainer}>
@@ -320,7 +302,6 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            {/* Confirm Password */}
             <Text style={styles.label}>Confirm Password</Text>
 
             <View style={styles.passwordContainer}>
@@ -360,14 +341,12 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            {/* Password mismatch message */}
             {passwordsMismatch && (
               <Text style={styles.passwordErrorText}>
                 Passwords do not match.
               </Text>
             )}
 
-            {/* Create Account */}
             <Pressable
               style={[
                 styles.registerButton,
@@ -388,7 +367,6 @@ export default function RegisterScreen() {
         </View>
       </ScrollView>
 
-      {/* Birthdate Calendar */}
       {showDatePicker && (
         <DateTimePicker
           value={selectedDate}
@@ -409,16 +387,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-
   scrollContent: {
     flexGrow: 1,
   },
-
   content: {
     flex: 1,
     paddingHorizontal: 26,
   },
-
   header: {
     height: 60,
     flexDirection: 'row',
@@ -429,16 +404,13 @@ const styles = StyleSheet.create({
     marginHorizontal: -26,
     paddingHorizontal: 26,
   },
-
   title: {
     fontSize: 14,
     color: '#3F2B2A',
   },
-
   headerSpacer: {
     width: 20,
   },
-
   logo: {
     width: 75,
     height: 75,
@@ -446,27 +418,22 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 35,
   },
-
   form: {
     width: '100%',
   },
-
   row: {
     flexDirection: 'row',
     gap: 10,
     width: '100%',
   },
-
   halfInput: {
     flex: 1,
   },
-
   label: {
     fontSize: 10,
     color: '#4A302F',
     marginBottom: 6,
   },
-
   input: {
     height: 42,
     backgroundColor: '#F5F3F3',
@@ -477,30 +444,24 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     justifyContent: 'center',
   },
-
   selectedText: {
     fontSize: 13,
     color: '#3F2B2A',
   },
-
   placeholderText: {
     fontSize: 13,
     color: '#A9A0A0',
   },
-
-  // Gender Dropdown
   genderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flex: 1,
   },
-
   dropdownArrow: {
     fontSize: 10,
     color: '#4A302F',
   },
-
   dropdown: {
     position: 'absolute',
     top: 48,
@@ -513,25 +474,20 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 5,
   },
-
   dropdownOption: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#EEEEEE',
   },
-
   dropdownText: {
     fontSize: 12,
     color: '#3F2B2A',
   },
-
-  // Password Inputs
   passwordContainer: {
     position: 'relative',
     width: '100%',
   },
-
   passwordInput: {
     height: 42,
     backgroundColor: '#F5F3F3',
@@ -544,18 +500,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-
   passwordInputError: {
     borderColor: '#D93025',
   },
-
   passwordErrorText: {
     color: '#D93025',
     fontSize: 11,
     marginTop: -8,
     marginBottom: 10,
   },
-
   eyeButton: {
     position: 'absolute',
     right: 8,
@@ -565,12 +518,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   eyeText: {
     fontSize: 16,
     color: '#8B7C7B',
   },
-
   registerButton: {
     width: 105,
     height: 34,
@@ -581,11 +532,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 18,
   },
-
   disabledButton: {
     opacity: 0.6,
   },
-
   buttonText: {
     fontSize: 10,
     fontFamily: 'FredokaBold',

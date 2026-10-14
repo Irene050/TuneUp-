@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './useAuth';
 
 import type {
-    ComponentProgressSummary,
-    ExerciseRecord,
+  ComponentProgressSummary,
+  ExerciseRecord,
 } from '@/services/progress/progressModule';
 
 import {
-    fetchAllExerciseRecords,
-    fetchAllProgress,
+  fetchAllExerciseRecords,
+  fetchAllProgress,
 } from '@/services/progress/progressRepo';
 
 export function useProgress() {

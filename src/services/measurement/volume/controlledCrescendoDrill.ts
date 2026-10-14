@@ -1,5 +1,3 @@
-// src/services/measurement/volume/controlledCrescendoDrill.ts
-
 import {
   calcRMSWindows,
   toDbArray,
@@ -60,8 +58,6 @@ export function measureControlledCrescendo(
     return createEmptyMeasurement(targetRange);
   }
 
-  // Keep the existing positive dB convention used by the exercise targets.
-  // Higher values now correctly represent louder audio.
   const SILENCE_FLOOR_DBFS = -60;
 
   const dbValues = toDbArray(rmsValues)
@@ -86,8 +82,6 @@ export function measureControlledCrescendo(
   const derivativeValues = calculateDerivatives(effectiveValues);
   const meanDerivative = average(derivativeValues);
   const derivativeVariance = variance(derivativeValues);
-
-  // Score how consistently volume rises, not how small the derivative is.
   const positiveChanges = derivativeValues.filter((value) => value > 0);
   const positiveRatio =
     derivativeValues.length > 0
@@ -200,43 +194,6 @@ function calculateDerivatives(
 
   return derivatives.filter(
     Number.isFinite,
-  );
-}
-
-function calculateSmoothness(
-  derivatives: number[],
-): number {
-  if (derivatives.length === 0) {
-    return 0;
-  }
-
-  const meanDerivative =
-    average(
-      derivatives,
-    );
-
-  const derivativeVariance =
-    variance(
-      derivatives,
-    );
-
-  /*
-   * A crescendo requires an overall positive
-   * volume progression.
-   */
-  if (meanDerivative <= 0) {
-    return 0;
-  }
-
-  return clamp(
-    100 -
-      (
-        derivativeVariance /
-        meanDerivative
-      ) *
-        100,
-    0,
-    100,
   );
 }
 
