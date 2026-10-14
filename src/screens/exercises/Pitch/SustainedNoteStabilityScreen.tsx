@@ -88,6 +88,7 @@ interface Props {
 
 type Phase =
   | 'instructions'
+  | 'preparing'
   | 'countdown'
   | 'playing'
   | 'recording'
@@ -939,6 +940,21 @@ export default function SustainedNoteStabilityScreen({
       liveFrequencies,
     );
 
+  if (phase === 'preparing') {
+    return (
+      <ExerciseCountdownScreen
+        icon="radio-outline"
+        title="Prepare for Exercise"
+        currentRep={1}
+        repetitions={params.repetitions}
+        countdown={0}
+        promptTitle="Get Comfortable"
+        prompt={`You will hear a reference note. Sing the same note and hold it steadily for ${params.durationSec} seconds. You will complete ${params.repetitions} repetitions.`}
+        onBack={() => setPhase('instructions')}
+      />
+    );
+  }
+
   if (
     phase ===
     'instructions'
@@ -1177,9 +1193,7 @@ export default function SustainedNoteStabilityScreen({
             style={
               styles.startButton
             }
-            onPress={
-              startCountdown
-            }
+            onPress={() => setPhase('preparing')}
             disabled={
               isLoadingAdaptiveParams
             }
@@ -1219,6 +1233,8 @@ export default function SustainedNoteStabilityScreen({
       </View>
     );
   }
+
+
 
   if (
     phase === 'countdown'

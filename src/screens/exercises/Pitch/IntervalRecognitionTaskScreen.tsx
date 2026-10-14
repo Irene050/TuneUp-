@@ -1299,6 +1299,40 @@ export default function IntervalRecognitionTaskScreen({
       liveFrequencies,
     );
 
+  
+  // ============================================================
+  // PREPARING EXERCISE
+  // ============================================================
+
+  if (phase === 'instructions' && isLoadingAdaptiveParams) {
+    return (
+      <View style={styles.centerScreen}>
+        <View style={styles.largeIconCircle}>
+          <Ionicons
+            name="options-outline"
+            size={44}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.processingTitle}>
+          Preparing Your Exercise
+        </Text>
+
+        <Text style={styles.processingSubtitle}>
+          Adjusting the exercise to your current difficulty level
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
+
   // ==========================================================
   // INSTRUCTIONS
   // ==========================================================
@@ -2539,17 +2573,47 @@ export default function IntervalRecognitionTaskScreen({
 // ============================================================
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: WHITE,
-  },
-
+  
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
+  },
+
+  largeIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+
+  processingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+
+  processingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  spinner: {
+    marginTop: 28,
+  },
+
+  screen: {
+    flex: 1,
+    backgroundColor: WHITE,
   },
 
   content: {
