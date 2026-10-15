@@ -22,8 +22,7 @@ import {
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseResultsScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -216,6 +215,7 @@ function TargetBandMeter({
   targetRange: [number, number];
 }) {
   const currentPosition = normalizeBandPosition(liveDb);
+
   const targetMin = Math.min(targetRange[0], targetRange[1]);
   const targetMax = Math.max(targetRange[0], targetRange[1]);
 
@@ -225,13 +225,16 @@ function TargetBandMeter({
       normalizeBandPosition(targetMin)) *
     100;
 
+  const status = getLiveStatus(liveDb, targetRange);
+  const statusColor = getStatusColor(status);
+
   return (
     <View style={styles.card}>
       <View style={styles.rowBetween}>
         <View style={styles.flex}>
           <Text style={styles.cardTitle}>Target Volume</Text>
           <Text style={styles.mutedSmall}>
-            Move into the pink band and hold steady.
+            Adjust your voice to reach the pink band.
           </Text>
         </View>
 
@@ -258,8 +261,18 @@ function TargetBandMeter({
               { left: `${currentPosition * 100}%` },
             ]}
           >
-            <View style={styles.markerDot} />
-            <View style={styles.markerStem} />
+            <View
+              style={[
+                styles.markerDot,
+                { backgroundColor: statusColor },
+              ]}
+            />
+            <View
+              style={[
+                styles.markerStem,
+                { backgroundColor: statusColor },
+              ]}
+            />
           </View>
         )}
       </View>
@@ -268,8 +281,49 @@ function TargetBandMeter({
         <Text style={styles.scaleText}>30</Text>
         <Text style={styles.scaleText}>40</Text>
         <Text style={styles.scaleText}>55</Text>
-        <Text style={styles.scaleText}>70 dB</Text>
+        <Text style={styles.scaleText}>70</Text>
       </View>
+
+      <View style={styles.bandGuide}>
+        <View style={styles.guideItem}>
+          <View
+            style={[
+              styles.guideDot,
+              { backgroundColor: '#8D7A7D' },
+            ]}
+          />
+          <Text style={styles.guideText}>Too soft</Text>
+        </View>
+
+        <View style={styles.guideItem}>
+          <View
+            style={[
+              styles.guideDot,
+              { backgroundColor: ACCENT },
+            ]}
+          />
+          <Text style={styles.guideText}>Target band</Text>
+        </View>
+
+        <View style={styles.guideItem}>
+          <View
+            style={[
+              styles.guideDot,
+              { backgroundColor: COLORS.ERROR },
+            ]}
+          />
+          <Text style={styles.guideText}>Too loud</Text>
+        </View>
+      </View>
+
+      <Text
+        style={[
+          styles.bandStatus,
+          { color: statusColor },
+        ]}
+      >
+        {getStatusMessage(status)}
+      </Text>
     </View>
   );
 }
@@ -1324,119 +1378,164 @@ export default function VolumeBandTargeting({
      ACTIVE EXERCISE
   ========================================================= */
 
-  if (phase === 'exercise') {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ExerciseListeningScreen
-          icon="options-outline"
-          title="Volume Band Targeting"
-          currentRep={currentRep}
-          repetitions={params.repetitions}
-          elapsed={Math.floor(currentRepElapsed / 1000)}
-          targetDuration={exerciseDurationSec}
-          promptTitle="Hold the zone"
-          prompt={`Sing ${referenceNote.name} on “Ah.” Move your volume into the ${targetRangeText} target band and keep it steady.`}
-          progress={progress * 100}
-          onBack={cancelAndLeave}
-          liveContent={
-            <ScrollView
-              style={styles.activeScroll}
-              contentContainerStyle={styles.liveContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-            >
-              <ReferenceNoteButton
-                playing={referencePlaying}
-                label={`Replay ${referenceNote.name}`}
-                onPress={() => void playReferenceNote()}
-              />
+if (phase === 'exercise') {
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.activeScreen}>
+        {/* Header */}
 
-              {referencePlaybackError && (
-                <Text style={styles.playbackError}>
-                  {referencePlaybackError}
-                </Text>
-              )}
+      <View style={styles.activeHeader}>
+        <Pressable
+          style={styles.backButton}
+          onPress={cancelAndLeave}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={22} color={BROWN} />
+        </Pressable>
 
-              <View
-                style={[
-                  styles.liveCard,
-                  { borderColor: statusColor },
-                ]}
-              >
-                <View style={styles.liveCardHeader}>
-                  <View style={styles.liveIconCircle}>
-                    <Ionicons
-                      name="volume-medium-outline"
-                      size={19}
-                      color={ACCENT}
-                    />
-                  </View>
+        <View style={styles.activeHeaderCopy}>
+          <Text style={styles.activeCategory}>VOLUME CONTROL</Text>
+          <Text style={styles.activeTitle}>
+            Volume Band Targeting
+          </Text>
+        </View>
 
-                  <View style={styles.flex}>
-                    <Text style={styles.cardTitle}>Your Live Volume</Text>
-                    <Text style={styles.mutedSmall}>
-                      Relative microphone level
-                    </Text>
-                  </View>
-                </View>
+        <View style={styles.activeIconCircle}>
+          <Ionicons
+            name="options-outline"
+            size={22}
+            color={BROWN}
+          />
+        </View>
+      </View>
 
-                <View style={styles.liveVolumeRow}>
-                  <Text style={styles.liveVolume}>
-                    {liveDb > 0 ? formatDb(liveDb) : '--'}
-                  </Text>
-                  <Text style={styles.liveUnit}>relative level</Text>
-                </View>
+        {/* Exercise instructions */}
+        <View style={styles.activePromptBlock}>
+          <Text style={styles.activePromptTitle}>Hold the zone</Text>
+          <Text style={styles.activePrompt}>
+            Sing {referenceNote.name} on “Ah”. Move your voice into the
+            {' '}{targetRangeText} target band and keep it steady.
+          </Text>
+        </View>
 
-                <View
-                  style={[
-                    styles.statusBadge,
-                    { backgroundColor: `${statusColor}18` },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: statusColor },
-                    ]}
-                  />
+        {/* Live meter and voice history */}
+        <ScrollView
+          style={styles.activeScroll}
+          contentContainerStyle={styles.liveContent}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          <TargetBandMeter
+            liveDb={liveDb}
+            targetRange={params.targetDbRange}
+          />
 
-                  <Text
-                    style={[
-                      styles.statusText,
-                      { color: statusColor },
-                    ]}
-                  >
-                    {getStatusMessage(status)}
-                  </Text>
-                </View>
-
-                <Text style={styles.helperText}>
-                  Relative microphone level, not calibrated acoustic dB SPL.
-                </Text>
+          <View
+            style={[
+              styles.liveCard,
+              { borderColor: statusColor },
+            ]}
+          >
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveIconCircle}>
+                <Ionicons
+                  name="volume-medium-outline"
+                  size={19}
+                  color={ACCENT}
+                />
               </View>
 
-              <TargetBandMeter
-                liveDb={liveDb}
-                targetRange={params.targetDbRange}
-              />
-
-              <StabilityHistory
-                history={liveHistory}
-                targetRange={params.targetDbRange}
-              />
-
-              {!isRecording && (
-                <Text style={styles.waitingText}>
-                  Starting microphone...
+              <View style={styles.flex}>
+                <Text style={styles.cardTitle}>Your Live Volume</Text>
+                <Text style={styles.mutedSmall}>
+                  Relative microphone level
                 </Text>
-              )}
-            </ScrollView>
-          }
-        />
-      </SafeAreaView>
-    );
-  }
+              </View>
+            </View>
+
+            <View style={styles.liveVolumeRow}>
+              <Text style={styles.liveVolume}>
+                {liveDb > 0 ? formatDb(liveDb) : '--'}
+              </Text>
+              <Text style={styles.liveUnit}>relative level</Text>
+            </View>
+
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: `${statusColor}18` },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: statusColor },
+                ]}
+              />
+
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: statusColor },
+                ]}
+              >
+                {getStatusMessage(status)}
+              </Text>
+            </View>
+
+            <Text style={styles.helperText}>
+              Relative microphone level, not calibrated acoustic dB SPL.
+            </Text>
+          </View>
+
+          <StabilityHistory
+            history={liveHistory}
+            targetRange={params.targetDbRange}
+          />
+
+          {!isRecording && (
+            <Text style={styles.waitingText}>
+              Starting microphone...
+            </Text>
+          )}
+        </ScrollView>
+
+        {/* Repetition and timer fixed at the bottom */}
+        <View style={styles.bottomRepCard}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.repLabel}>Repetition</Text>
+            <Text style={styles.repValue}>
+              {currentRep} of {params.repetitions}
+            </Text>
+          </View>
+
+          <View style={styles.repTrack}>
+            <View
+              style={[
+                styles.repProgress,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
+
+          <View style={styles.rowBetween}>
+            <Text style={styles.mutedSmall}>
+              Keep your volume steady
+            </Text>
+            <Text style={styles.repTimer}>
+              {Math.max(
+                0,
+                exerciseDurationSec -
+                  Math.floor(currentRepElapsed / 1000),
+              )}s left
+            </Text>
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
 
   /* =========================================================
      RESULTS
@@ -1545,24 +1644,7 @@ export default function VolumeBandTargeting({
         onRetry={startExercise}
         onExit={() => router.back()}
       >
-        {passed && !noVoiceDetected && (
-          <Pressable
-            style={styles.nextButton}
-            onPress={() =>
-              router.replace('/exercises/volume' as any)
-            }
-          >
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={ACCENT}
-            />
-
-            <Text style={styles.nextButtonText}>
-              Next Exercise
-            </Text>
-          </Pressable>
-        )}
+        <></>
       </ExerciseResultsScreen>
     </SafeAreaView>
   );
@@ -1727,6 +1809,108 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 
+/* ACTIVE SCREEN LAYOUT */
+
+backButton: {
+  width: 42,
+  height: 42,
+  borderRadius: 14,
+  backgroundColor: LIGHT_PINK,
+  borderWidth: 1,
+  borderColor: BORDER,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+activeHeaderCopy: {
+  position: 'absolute',
+  left: 50,
+  right: 50,
+  alignItems: 'center',
+},
+
+activeCategory: {
+  color: ACCENT,
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 10,
+  letterSpacing: 0.8,
+  textAlign: 'center',
+},
+
+activeTitle: {
+  marginTop: 2,
+  color: BROWN,
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 17,
+  textAlign: 'center',
+},
+
+activeIconCircle: {
+  width: 42,
+  height: 42,
+  borderRadius: 14,
+  backgroundColor: PINK,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+repCard: {
+  marginTop: 8,
+  padding: 13,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: BORDER,
+  backgroundColor: LIGHT_PINK,
+  gap: 9,
+},
+
+repLabel: {
+  color: SOFT_TEXT,
+  fontFamily: 'FredokaRegular',
+  fontSize: 12,
+},
+
+repValue: {
+  color: BROWN,
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 12,
+},
+
+repTrack: {
+  height: 7,
+  borderRadius: 5,
+  backgroundColor: '#F1E3E7',
+  overflow: 'hidden',
+},
+
+repProgress: {
+  height: '100%',
+  borderRadius: 5,
+  backgroundColor: ACCENT,
+},
+
+repTimer: {
+  color: ACCENT,
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 11,
+},
+
+activePromptTitle: {
+  color: BROWN,
+  fontFamily: 'FredokaBold',
+  fontSize: 20,
+  textAlign: 'center',
+},
+
+activePrompt: {
+  marginTop: 4,
+  color: MUTED,
+  fontFamily: 'FredokaRegular',
+  fontSize: 12,
+  lineHeight: 18,
+  textAlign: 'center',
+  marginBottom: 4,
+},
   /* INFORMATION CARD */
 
   infoCard: {
@@ -1849,6 +2033,39 @@ const styles = StyleSheet.create({
     fontSize: 9,
   },
 
+  bandGuide: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 14,
+    gap: 5,
+  },
+
+  guideItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+
+  guideDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+
+  guideText: {
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+  },
+
+  bandStatus: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+  },
+
   /* VOICE HISTORY */
 
   history: {
@@ -1905,17 +2122,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     textAlign: 'center',
-  },
-
-  /* ACTIVE EXERCISE */
-
-  activeScroll: {
-    flex: 1,
-    width: '100%',
-  },
-
-  liveContent: {
-    paddingBottom: 22,
   },
 
   liveCard: {
@@ -2044,22 +2250,43 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  nextButton: {
-    minHeight: 48,
-    marginTop: 12,
-    paddingHorizontal: 18,
-    borderRadius: 25,
-    borderWidth: 1.5,
-    borderColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
+activeScreen: {
+  flex: 1,
+  backgroundColor: WHITE,
+  paddingHorizontal: 20,
+  paddingTop: 18,
+},
 
-  nextButtonText: {
-    color: ACCENT,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-  },
+activeHeader: {
+  position: 'relative',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingVertical: 10,
+}, 
+activePromptBlock: {
+  alignItems: 'center',
+  marginTop: 20,
+  marginBottom: 8,
+},
+activeScroll: {
+  flex: 1,
+  width: '100%',
+  minHeight: 0,
+},
+
+liveContent: {
+  paddingBottom: 12,
+},
+
+bottomRepCard: {
+  marginTop: 12,
+  marginBottom: 8,
+  padding: 14,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: BORDER,
+  backgroundColor: LIGHT_PINK,
+  gap: 9,
+},
 });
