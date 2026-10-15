@@ -36,8 +36,7 @@ export function measureScaleAccuracyDrill(
     index < noteSegments.length;
     index++
   ) {
-    const segment =
-      noteSegments[index];
+    const segment = noteSegments[index];
 
     console.log(
       `🎵 ANALYZING SEGMENT ${index + 1}:`,
@@ -50,10 +49,7 @@ export function measureScaleAccuracyDrill(
       }
     );
 
-    if (
-      !segment ||
-      segment.length === 0
-    ) {
+    if (!segment || segment.length === 0) {
       console.warn(
         `⚠️ SEGMENT ${index + 1} IS EMPTY`
       );
@@ -65,12 +61,11 @@ export function measureScaleAccuracyDrill(
     let frames;
 
     try {
-      frames =
-        trackPitchOverTime(
-          segment,
-          30,
-          sampleRate
-        );
+      frames = trackPitchOverTime(
+        segment,
+        30,
+        sampleRate
+      );
     } catch (error) {
       console.error(
         `❌ trackPitchOverTime FAILED ON SEGMENT ${index + 1}:`,
@@ -88,7 +83,7 @@ export function measureScaleAccuracyDrill(
 
     if (!Array.isArray(frames)) {
       console.error(
-        `❌ trackPitchOverTime DID NOT RETURN AN ARRAY`
+        '❌ trackPitchOverTime DID NOT RETURN AN ARRAY'
       );
 
       detectedFreqs.push(0);
@@ -98,11 +93,10 @@ export function measureScaleAccuracyDrill(
     let voicedFrames;
 
     try {
-      voicedFrames =
-        filterByClarity(
-          frames,
-          minClarity
-        );
+      voicedFrames = filterByClarity(
+        frames,
+        minClarity
+      );
     } catch (error) {
       console.error(
         `❌ filterByClarity FAILED ON SEGMENT ${index + 1}:`,
@@ -126,36 +120,26 @@ export function measureScaleAccuracyDrill(
       continue;
     }
 
-    const validFrequencies =
-      voicedFrames
-        .map(
-          frame =>
-            frame.frequency
-        )
-        .filter(
-          frequency =>
-            Number.isFinite(
-              frequency
-            ) &&
-            frequency > 0
-        );
+    const validFrequencies = voicedFrames
+      .map(frame => frame.frequency)
+      .filter(
+        frequency =>
+          Number.isFinite(frequency) &&
+          frequency > 0
+      );
 
-    if (
-      validFrequencies.length === 0
-    ) {
+    if (validFrequencies.length === 0) {
       detectedFreqs.push(0);
       continue;
     }
 
-    const sorted =
-      [...validFrequencies].sort(
-        (a, b) => a - b
-      );
+    const sorted = [...validFrequencies].sort(
+      (a, b) => a - b
+    );
 
-    const middle =
-      Math.floor(
-        sorted.length / 2
-      );
+    const middle = Math.floor(
+      sorted.length / 2
+    );
 
     const median =
       sorted.length % 2 === 0
@@ -166,23 +150,15 @@ export function measureScaleAccuracyDrill(
         : sorted[middle];
 
     detectedFreqs.push(
-      Number.isFinite(median)
-        ? median
-        : 0
+      Number.isFinite(median) ? median : 0
     );
 
-    for (
-      const frame of voicedFrames
-    ) {
+    for (const frame of voicedFrames) {
       if (
-        Number.isFinite(
-          frame.clarity
-        ) &&
+        Number.isFinite(frame.clarity) &&
         frame.clarity > 0
       ) {
-        clarityValues.push(
-          frame.clarity
-        );
+        clarityValues.push(frame.clarity);
       }
     }
   }
@@ -215,36 +191,39 @@ export function measureScaleAccuracyDrill(
     );
 
     transitionSmoothness =
-      detectedFreqs.length <= 1
-        ? 100
-        : 0;
+      detectedFreqs.length <= 1 ? 100 : 0;
   }
+
+  // Round transition smoothness to 1 decimal place.
+  transitionSmoothness = Number(
+    transitionSmoothness.toFixed(1)
+  );
 
   const averageClarity =
     clarityValues.length > 0
       ? clarityValues.reduce(
-          (sum, value) =>
-            sum + value,
+          (sum, value) => sum + value,
           0
-        ) /
-        clarityValues.length
+        ) / clarityValues.length
       : 0;
 
-  const voicedNotes =
-    detectedFreqs.filter(
-      frequency =>
-        Number.isFinite(
-          frequency
-        ) &&
-        frequency > 0
-    ).length;
+  // Round average clarity to 1 decimal place.
+  const roundedAverageClarity = Number(
+    averageClarity.toFixed(1)
+  );
+
+  const voicedNotes = detectedFreqs.filter(
+    frequency =>
+      Number.isFinite(frequency) &&
+      frequency > 0
+  ).length;
 
   console.log(
     '✅ SCALE MEASUREMENT COMPLETE:',
     {
       detectedFreqs,
       transitionSmoothness,
-      averageClarity,
+      averageClarity: roundedAverageClarity,
       voicedNotes,
     }
   );
@@ -253,7 +232,7 @@ export function measureScaleAccuracyDrill(
     detectedFreqs,
     targetFreqs,
     transitionSmoothness,
-    averageClarity,
+    averageClarity: roundedAverageClarity,
     voicedNotes,
   };
 }

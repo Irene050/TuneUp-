@@ -50,7 +50,7 @@ export function scoreSteadyToneHolding(
 
   const score = Math.round(
     quality * 0.7 +
-      durationScore * 0.3,
+      durationScore * 0.3 * 0.96,
   );
 
   return {

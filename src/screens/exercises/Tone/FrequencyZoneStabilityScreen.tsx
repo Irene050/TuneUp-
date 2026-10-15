@@ -641,46 +641,43 @@ export default function FrequencyZoneStabilityScreen({
       setErrorMessage(null);
       beginCountdown();
     }, [beginCountdown]);
-  const handleRest =
-    useCallback(() => {
-      let value = REST_SECONDS;
-      setRestCountdown(value);
+  
+const handleRest = useCallback(() => {
+  let value = REST_SECONDS;
+  setRestCountdown(value);
+
+  if (restTimerRef.current) {
+    clearInterval(restTimerRef.current);
+  }
+
+  restTimerRef.current = setInterval(() => {
+    value -= 1;
+
+    if (!mountedRef.current) {
+      return;
+    }
+
+    if (value <= 0) {
       if (restTimerRef.current) {
-        clearInterval(
-          restTimerRef.current,
-        );
+        clearInterval(restTimerRef.current);
+        restTimerRef.current = null;
       }
-      restTimerRef.current =
-        setInterval(() => {
-          value -= 1;
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
-          if (value <= 0) {
-            if (
-              restTimerRef.current
-            ) {
-              clearInterval(
-                restTimerRef.current,
-              );
-              restTimerRef.current =
-                null;
-            }
-            repetitionRef.current += 1;
-            setRepetition(
-              repetitionRef.current,
-            );
-            setElapsedMs(0);
-            elapsedRef.current = 0;
-            pitchHistoryRef.current = [];
-            beginCountdown();
-            return;
-          }
-          setRestCountdown(value);
-        }, 1000);
-    }, [beginCountdown]);
+
+      repetitionRef.current += 1;
+      setRepetition(repetitionRef.current);
+      setElapsedMs(0);
+      elapsedRef.current = 0;
+      pitchHistoryRef.current = [];
+
+      // Skip the countdown and start the next repetition.
+      void startRecordingPhase();
+      return;
+    }
+
+    setRestCountdown(value);
+  }, 1000);
+}, [startRecordingPhase]);
+
   useEffect(() => {
     if (phase === 'rest') {
       handleRest();

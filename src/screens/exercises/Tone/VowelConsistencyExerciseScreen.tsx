@@ -259,140 +259,129 @@ export default function VowelConsistencyExerciseScreen({
   const resultsRef =
     useRef<RepetitionResult[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadAdaptiveParams() {
-      setLoadingParams(true);
-      try {
-        let resolvedTier: Tier =
-          initialTier;
-        if (!tier) {
-          const user =
-            auth.currentUser;
-          if (user) {
-            const progress =
-              await fetchComponentProgress(
-                user.uid,
-                'tone',
-              );
-            resolvedTier =
-              progress?.currentTier ??
-              'beginner';
-          }
-        }
-        if (cancelled) {
-          return;
-        }
-        setCurrentTier(
-          resolvedTier,
-        );
-        let recentScores: number[] =
-          [];
-        const user =
-          auth.currentUser;
-        if (user) {
-          const records =
-            await fetchExerciseRecords(
-              user.uid,
-              'tone',
-            );
-          if (cancelled) {
-            return;
-          }
-          const currentTierRecords =
-            records
-              .filter(
-                record =>
-                  record.tier ===
-                    resolvedTier &&
-                  record.templateId ===
-                    'vowelConsistency',
-              )
-              .sort(
-                (a, b) =>
-                  a.timestamp -
-                  b.timestamp,
-              );
-          recentScores =
-            currentTierRecords
-              .slice(-5)
-              .map(
-                record =>
-                  record.scorePct,
-              );
-          if (
-            recentScores.length ===
-            0
-          ) {
-            const assessment =
-              await getLatestAssessment();
-            if (cancelled) {
-              return;
-            }
-            const toneScore =
-              assessment?.scores.find(
-                score =>
-                  score.componentId ===
-                  'tone',
-              );
-            if (
-              toneScore &&
-              Number.isFinite(
-                toneScore.scorePct,
-              )
-            ) {
-              recentScores = [
-                toneScore.scorePct,
-              ];
-            }
-          }
-        }
-        const generatedParams =
-          generateVowelConsistencyParams({
-            tier: resolvedTier,
-            recentScores,
-          });
-        if (cancelled) {
-          return;
-        }
-        setParams(
-          generatedParams,
-        );
-        const newTargetDuration =
-          randomInRange(
-            generatedParams.durationRangeSec,
+useEffect(() => {
+  let cancelled = false;
+
+  async function loadAdaptiveParams() {
+    setLoadingParams(true);
+
+    try {
+      const user = auth.currentUser;
+      let resolvedTier: Tier = initialTier;
+      let recentScores: number[] = [];
+
+      // Only fetch progress if the screen was not given a tier.
+      if (!tier && user) {
+        try {
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'tone',
           );
-        targetDurationRef.current =
-          newTargetDuration;
-        setTargetDuration(
-          newTargetDuration,
-        );
-      } catch (error) {
-        console.error(
-          '❌ FAILED TO LOAD VOWEL CONSISTENCY ADS PARAMETERS:',
-          error,
-        );
-        if (!cancelled) {
-          setCurrentTier(
-            initialTier,
+
+          if (cancelled) return;
+
+          resolvedTier = progress?.currentTier ?? 'beginner';
+        } catch (error) {
+          console.error(
+            '❌ FAILED TO LOAD TONE PROGRESS:',
+            error,
           );
-          setParams(
-            VOWEL_CONSISTENCY_PARAMS[
-              initialTier
-            ],
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingParams(false);
         }
       }
+
+      if (cancelled) return;
+
+      setCurrentTier(resolvedTier);
+
+      if (user) {
+        try {
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'tone',
+          );
+
+          if (cancelled) return;
+
+          recentScores = records
+            .filter(
+              record =>
+                record.tier === resolvedTier &&
+                record.templateId === 'vowelConsistency',
+            )
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .slice(-5)
+            .map(record => record.scorePct);
+        } catch (error) {
+          console.error(
+            '❌ FAILED TO LOAD VOWEL CONSISTENCY HISTORY:',
+            error,
+          );
+        }
+
+        // Assessment is only needed when no matching history exists.
+        if (recentScores.length === 0) {
+          try {
+            const assessment = await getLatestAssessment();
+
+            if (cancelled) return;
+
+            const toneScore = assessment?.scores.find(
+              score => score.componentId === 'tone',
+            );
+
+            if (
+              toneScore &&
+              Number.isFinite(toneScore.scorePct)
+            ) {
+              recentScores = [toneScore.scorePct];
+            }
+          } catch (error) {
+            console.error(
+              '❌ FAILED TO LOAD LATEST ASSESSMENT:',
+              error,
+            );
+          }
+        }
+      }
+
+      if (cancelled) return;
+
+      const generatedParams = generateVowelConsistencyParams({
+        tier: resolvedTier,
+        recentScores,
+      });
+
+      const newTargetDuration = randomInRange(
+        generatedParams.durationRangeSec,
+      );
+
+      targetDurationRef.current = newTargetDuration;
+
+      setParams(generatedParams);
+      setTargetDuration(newTargetDuration);
+    } catch (error) {
+      console.error(
+        '❌ FAILED TO LOAD VOWEL CONSISTENCY ADS PARAMETERS:',
+        error,
+      );
+
+      if (!cancelled) {
+        setCurrentTier(initialTier);
+        setParams(VOWEL_CONSISTENCY_PARAMS[initialTier]);
+      }
+    } finally {
+      if (!cancelled) {
+        setLoadingParams(false);
+      }
     }
-    void loadAdaptiveParams();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialTier, tier]);
+  }
+
+  void loadAdaptiveParams();
+
+  return () => {
+    cancelled = true;
+  };
+}, [initialTier, tier]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -989,7 +978,7 @@ export default function VowelConsistencyExerciseScreen({
         )
       : '--';
 
-  if (loadingParams || !params || !tier) {
+  if (loadingParams || !params ) {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>

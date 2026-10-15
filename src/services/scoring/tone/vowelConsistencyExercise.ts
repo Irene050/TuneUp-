@@ -49,7 +49,7 @@ export function scoreVowelConsistencyExercise(
   const score = Math.round(
     inBand
       ? smoothnessPoints
-      : smoothnessPoints * 0.75,
+      : smoothnessPoints * 0.75 * 0.96,
   );
 
   const passed =

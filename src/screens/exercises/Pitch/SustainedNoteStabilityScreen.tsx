@@ -774,88 +774,65 @@ export default function SustainedNoteStabilityScreen({
       [beginRecording],
     );
 
-  const startCountdown =
-    useCallback(() => {
-      const generated =
-        getRandomPitchNote(
-          currentTier,
-        );
+const startCountdown = useCallback(() => {
+  if (isLoadingAdaptiveParams) {
+    return;
+  }
 
-      setTargetNote(
-        generated,
-      );
+  if (countdownTimerRef.current) {
+    clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = null;
+  }
 
-      setResult(null);
-      setErrorMessage(null);
+  const generated = getRandomPitchNote(currentTier);
 
-      setCurrentRep(1);
-      currentRepRef.current = 1;
+  setTargetNote(generated);
+  setResult(null);
+  setErrorMessage(null);
 
-      measurementsRef.current =
-        [];
+  setCurrentRep(1);
+  currentRepRef.current = 1;
 
-      setLiveFrame(null);
-      setLiveFrequencies([]);
+  measurementsRef.current = [];
+  pitchHistoryRef.current = [];
 
-      pitchHistoryRef.current =
-        [];
+  setLiveFrame(null);
+  setLiveFrequencies([]);
 
-      elapsedRef.current = 0;
-      setElapsedMs(0);
+  elapsedRef.current = 0;
+  setElapsedMs(0);
 
-      processingRef.current =
-        false;
+  processingRef.current = false;
+  stopRequestedRef.current = false;
+  recordingRef.current = false;
 
-      stopRequestedRef.current =
-        false;
+  let value = 3;
 
-      recordingRef.current =
-        false;
+  setCountdown(value);
+  setPhase('countdown');
 
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-      }
+  countdownTimerRef.current = setInterval(() => {
+    value -= 1;
 
-      setCountdown(3);
-      setPhase('countdown');
+    if (value > 0) {
+      setCountdown(value);
+      return;
+    }
 
-      let value = 3;
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
 
-      countdownTimerRef.current =
-        setInterval(() => {
-          value -= 1;
+    setCountdown(0);
 
-          if (value <= 0) {
-            if (
-              countdownTimerRef.current
-            ) {
-              clearInterval(
-                countdownTimerRef.current,
-              );
-
-              countdownTimerRef.current =
-                null;
-            }
-
-            playTargetAndRecord(
-              generated,
-            );
-
-            return;
-          }
-
-          setCountdown(
-            value,
-          );
-        }, 1000);
-    }, [
-      currentTier,
-      playTargetAndRecord,
-    ]);
+    void playTargetAndRecord(generated);
+  }, 1000);
+}, [
+  currentTier,
+  isLoadingAdaptiveParams,
+  playTargetAndRecord,
+]);
 
   const retry =
     useCallback(() => {
@@ -940,20 +917,36 @@ export default function SustainedNoteStabilityScreen({
       liveFrequencies,
     );
 
-  if (phase === 'preparing') {
-    return (
-      <ExerciseCountdownScreen
-        icon="radio-outline"
-        title="Prepare for Exercise"
-        currentRep={1}
-        repetitions={params.repetitions}
-        countdown={0}
-        promptTitle="Get Comfortable"
-        prompt={`You will hear a reference note. Sing the same note and hold it steadily for ${params.durationSec} seconds. You will complete ${params.repetitions} repetitions.`}
-        onBack={() => setPhase('instructions')}
+  if (
+  phase === 'preparing' ||
+  (phase === 'instructions' && isLoadingAdaptiveParams)
+) {
+  return (
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <Ionicons
+          name="musical-notes-outline"
+          size={34}
+          color={BROWN}
+        />
+      </View>
+
+      <Text style={styles.title}>
+        Preparing Your Exercise
+      </Text>
+
+      <Text style={styles.phaseSubtitle}>
+        Setting up your personalized exercise...
+      </Text>
+
+      <ActivityIndicator
+        size="large"
+        color={BROWN}
+        style={{ marginTop: 20 }}
       />
-    );
-  }
+    </View>
+  );
+}
 
   if (
     phase ===
@@ -1193,7 +1186,7 @@ export default function SustainedNoteStabilityScreen({
             style={
               styles.startButton
             }
-            onPress={() => setPhase('preparing')}
+            onPress={startCountdown}
             disabled={
               isLoadingAdaptiveParams
             }

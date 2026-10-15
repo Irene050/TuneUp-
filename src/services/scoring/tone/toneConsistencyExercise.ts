@@ -65,7 +65,7 @@ export function scoreToneConsistencyExercise(
     );
 
   const score = Math.round(
-    clampScore(consistency),
+    clampScore(consistency * 0.96),
   );
 
   return {
