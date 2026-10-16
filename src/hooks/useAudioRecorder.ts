@@ -256,17 +256,8 @@ export function useAudioRecorder(
           return;
         }
 
-        console.log(
-          "🎤 REQUESTING MICROPHONE..."
-        );
-
         const permission =
           await AudioManager.requestRecordingPermissions();
-
-        console.log(
-          "🎤 MICROPHONE PERMISSION:",
-          permission
-        );
 
         if (
           permission !==
@@ -301,7 +292,6 @@ export function useAudioRecorder(
         lastLiveAnalysisRef.current = 0;
         resetLiveDetection();
 
-
         const recorder =
           new AudioRecorder();
 
@@ -331,14 +321,6 @@ export function useAudioRecorder(
             numFrames,
             when,
           }) => {
-            console.log("🎧 ACTUAL AUDIO BUFFER:", {
-              requestedSampleRate: DEFAULT_SAMPLE_RATE,
-              actualBufferSampleRate: buffer.sampleRate,
-              bufferLength: buffer.length,
-              bufferDuration: buffer.duration,
-              channelCount: buffer.numberOfChannels,
-              numFrames,
-            });
             try {
               const channelData =
                 buffer.getChannelData(0);
@@ -372,15 +354,6 @@ export function useAudioRecorder(
                   samples,
                   DEFAULT_SAMPLE_RATE
                 );
-
-              console.log(
-                "🎙️ RAW MIC:",
-                {
-                  when,
-                  numFrames,
-                  ...signal,
-                }
-              );
 
               const now =
                 Date.now();
@@ -570,24 +543,6 @@ export function useAudioRecorder(
                   }
                 );
 
-                console.log(
-                  "⚠️ LIVE PITCH REJECTED:",
-                  {
-                    pitch:
-                      detectedPitch,
-                    note:
-                      detectedNote,
-                    clarity:
-                      detectedClarity,
-                    volumeDb:
-                      signal.db,
-                    validVolume,
-                    validPitch,
-                    validClarity,
-                    validNote,
-                  }
-                );
-
                 return;
               }
 
@@ -635,10 +590,6 @@ export function useAudioRecorder(
 
           sessionActiveRef.current =
             true;
-
-          console.log(
-            "🎧 AUDIO SESSION ACTIVATED"
-          );
         } catch (error) {
           console.error(
             "❌ FAILED TO ACTIVATE AUDIO SESSION:",
@@ -702,10 +653,6 @@ export function useAudioRecorder(
 
           setIsRecording(true);
 
-          console.log(
-            "🎤 MICROPHONE STARTED"
-          );
-
         } catch (error) {
           console.error(
             "❌ FAILED TO START MICROPHONE:",
@@ -758,13 +705,8 @@ export function useAudioRecorder(
         
         stoppingRef.current = true;
 
-        console.log(
-          "🛑 STOPPING RECORDER..."
-        );
-
         try {
           const result = await recorder.stop();
-          console.log("🛑 RECORDER STOP RESULT:", result);
         } catch (error) {
           console.error("❌ FAILED TO STOP RECORDER:", error);
         }
@@ -780,7 +722,6 @@ export function useAudioRecorder(
         ) {
           try {
             await AudioManager.setAudioSessionActivity(false);
-            console.log("🎧 AUDIO SESSION DEACTIVATED");
           } catch (error) {
             console.warn("⚠️ FAILED TO DEACTIVATE AUDIO SESSION:", error);
           }
@@ -811,14 +752,17 @@ export function useAudioRecorder(
         const finalSignal = analyzeAudioSignal(fullBuffer, DEFAULT_SAMPLE_RATE);
         const durationSeconds = fullBuffer.length / DEFAULT_SAMPLE_RATE;
 
-        console.log("🛑 RECORDING STOPPED");
-
-        console.log("🎧 FINAL AUDIO SIGNAL:",
-          {
-            ...finalSignal,
-            durationSeconds,
-          }
-        );
+        console.log("[AudioRecorder] Recording summary", {
+          sampleRate: DEFAULT_SAMPLE_RATE,
+          durationSeconds: Number(durationSeconds.toFixed(2)),
+          sampleCount: fullBuffer.length,
+          rms: Number(finalSignal.rms.toFixed(4)),
+          volumeDb: Number.isFinite(finalSignal.db)
+            ? Number(finalSignal.db.toFixed(2))
+            : finalSignal.db,
+          peak: Number(finalSignal.peak.toFixed(4)),
+          dcOffset: Number(finalSignal.dcOffset.toFixed(4)),
+        });
 
         try {
           onStopRef.current?.(

@@ -138,11 +138,6 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Register</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-
           <Image
             source={require('@/assets/images/tabIcons/tuneup-logo.png')}
             style={styles.logo}
@@ -391,6 +386,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   content: {
+    marginTop: 50,
     flex: 1,
     paddingHorizontal: 26,
   },

@@ -3,17 +3,68 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
+export const RAPID_NOTE_TRANSITION_PARAMS: Record<
+  Tier,
+    {
+      minNotes: number;
+      maxNotes: number;
+      minSpeed: number;
+      maxSpeed: number;
+      repetitions: number;
+      accuracyThreshold: number;
+      minMidi: number;
+      maxMidi: number;
+      noteDurationSec: number;
+    }
+> = {
+  beginner: {
+    minNotes: 4,
+    maxNotes: 6,
+    minSpeed: 2,
+    maxSpeed: 3,
+    repetitions: 2,
+    accuracyThreshold: 60,
+    minMidi: 60,
+    maxMidi: 72,
+    noteDurationSec: 0.35,
+  },
+
+  intermediate: {
+    minNotes: 5,
+    maxNotes: 7,
+    minSpeed: 3,
+    maxSpeed: 4,
+    repetitions: 3,
+    accuracyThreshold: 70,
+    minMidi: 57,
+    maxMidi: 76,
+    noteDurationSec: 0.35,
+  },
+
+  advanced: {
+    minNotes: 6,
+    maxNotes: 8,
+    minSpeed: 4,
+    maxSpeed: 6,
+    repetitions: 4,
+    accuracyThreshold: 80,
+    minMidi: 55,
+    maxMidi: 79,
+    noteDurationSec: 0.35,
+  },
+};
+
 export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
   Tier,
-  {
-    name: string;
-    notes: string[];
-    frequencies: number[];
-    speedLabel: string;
-    noteDurationSec: number;
-    gapSec: number;
-    pitchTolerancePercent: number;
-  }
+    {
+      name: string;
+      notes: string[];
+      frequencies: number[];
+      speedLabel: string;
+      noteDurationSec: number;
+      gapSec: number;
+      pitchTolerancePercent: number;
+    }
 > = {
   beginner: {
     name: 'C Major',
@@ -63,12 +114,12 @@ export const ARPEGGIO_SPEED_DRILL_PARAMS: Record<
 
 export const QUICK_INTERVAL_JUMP_PARAMS: Record<
   Tier,
-  {
-    label: string;
-    frequencies: number[];
-    speedLabel: string;
-    accuracyThreshold: number;
-  }
+    {
+      label: string;
+      frequencies: number[];
+      speedLabel: string;
+      accuracyThreshold: number;
+    }
 > = {
   beginner: {
     label: 'Beginner',
@@ -110,67 +161,16 @@ export const QUICK_INTERVAL_JUMP_PARAMS: Record<
   },
 };
 
-export const RAPID_NOTE_TRANSITION_PARAMS: Record<
-  Tier,
-  {
-    minNotes: number;
-    maxNotes: number;
-    minSpeed: number;
-    maxSpeed: number;
-    repetitions: number;
-    accuracyThreshold: number;
-    minMidi: number;
-    maxMidi: number;
-    noteDurationSec: number;
-  }
-> = {
-  beginner: {
-    minNotes: 4,
-    maxNotes: 6,
-    minSpeed: 2,
-    maxSpeed: 3,
-    repetitions: 2,
-    accuracyThreshold: 60,
-    minMidi: 60,
-    maxMidi: 72,
-    noteDurationSec: 0.35,
-  },
-
-  intermediate: {
-    minNotes: 5,
-    maxNotes: 7,
-    minSpeed: 3,
-    maxSpeed: 4,
-    repetitions: 3,
-    accuracyThreshold: 70,
-    minMidi: 57,
-    maxMidi: 76,
-    noteDurationSec: 0.35,
-  },
-
-  advanced: {
-    minNotes: 6,
-    maxNotes: 8,
-    minSpeed: 4,
-    maxSpeed: 6,
-    repetitions: 4,
-    accuracyThreshold: 80,
-    minMidi: 55,
-    maxMidi: 79,
-    noteDurationSec: 0.35,
-  },
-};
-
 export const RAPID_SCALE_TRILL_PARAMS: Record<
   Tier,
-  {
-    label: string;
-    frequencies: number[];
-    speedLabel: string;
-    accuracyThreshold: number;
-    noteDurationSec: number;
-    repetitions: number;
-  }
+    {
+      label: string;
+      frequencies: number[];
+      speedLabel: string;
+      accuracyThreshold: number;
+      noteDurationSec: number;
+      repetitions: number;
+    }
 > = {
   beginner: {
     label: 'Beginner',
@@ -239,15 +239,15 @@ export const RAPID_SCALE_TRILL_PARAMS: Record<
 
 export const VOCAL_RUN_ACCURACY_PARAMS: Record<
   Tier,
-  {
-    label: string;
-    frequencies: number[];
-    speedLabel: string;
-    accuracyThreshold: number;
-    noteDurationSec: number;
-    repetitions: number;
-    gapSec: number;
-  }
+    {
+      label: string;
+      frequencies: number[];
+      speedLabel: string;
+      accuracyThreshold: number;
+      noteDurationSec: number;
+      repetitions: number;
+      gapSec: number;
+    }
 > = {
   beginner: {
     label: 'Beginner',

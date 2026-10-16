@@ -1,9 +1,9 @@
 import {
-    Fredoka_300Light,
-    Fredoka_400Regular,
-    Fredoka_500Medium,
-    Fredoka_600SemiBold,
-    Fredoka_700Bold,
+  Fredoka_300Light,
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
 } from '@expo-google-fonts/fredoka';
 import { useFonts } from 'expo-font';
 import { router, Slot, usePathname } from 'expo-router';
@@ -52,6 +52,7 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
+    marginTop: 48,
     position: 'absolute',
     top: 40,
     left: 16,
