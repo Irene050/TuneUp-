@@ -1,11 +1,13 @@
+
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +18,22 @@ import {
 } from 'react-native';
 
 import { registerUser } from '@/services/firebase/authService';
+
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const WHITE = '#FFFFFF';
+const RED = '#FF5A5F';
+const MUTED = '#8E7770';
+
+type AlertType = 'success' | 'error' | 'info';
+
+type AlertDetails = {
+  title: string;
+  message: string;
+  type: AlertType;
+  buttonLabel?: string;
+  onConfirm?: () => void;
+};
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
@@ -31,8 +49,17 @@ export default function RegisterScreen() {
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [alert, setAlert] = useState<AlertDetails | null>(null);
+
   const passwordsMismatch =
     confirmPassword.length > 0 && password !== confirmPassword;
+
+  function closeAlert() {
+    const onConfirm = alert?.onConfirm;
+
+    setAlert(null);
+    onConfirm?.();
+  }
 
   function handleDateChange(event: any, date?: Date) {
     if (Platform.OS === 'android') {
@@ -60,18 +87,21 @@ export default function RegisterScreen() {
       !password ||
       !confirmPassword
     ) {
-      Alert.alert(
-        'Missing information',
-        'Please complete all fields.',
-      );
+      setAlert({
+        title: 'Missing Information',
+        message: 'Please complete all fields.',
+        type: 'info',
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert(
-        'Passwords do not match',
-        'Please make sure both password fields contain the same password.',
-      );
+      setAlert({
+        title: 'Passwords Do Not Match',
+        message:
+          'Please make sure both password fields contain the same password.',
+        type: 'error',
+      });
       return;
     }
 
@@ -85,16 +115,13 @@ export default function RegisterScreen() {
         gender: gender.trim(),
       });
 
-      Alert.alert(
-        'Account Created',
-        'Your account has been successfully created.',
-        [
-          {
-            text: 'Continue',
-            onPress: () => router.replace('/dashboard'),
-          },
-        ],
-      );
+      setAlert({
+        title: 'Account Created!',
+        message: 'Your account has been successfully created.',
+        type: 'success',
+        buttonLabel: 'Continue',
+        onConfirm: () => router.replace('/dashboard'),
+      });
     } catch (error: any) {
       let message = 'Unable to create your account.';
 
@@ -112,8 +139,7 @@ export default function RegisterScreen() {
           break;
 
         case 'auth/network-request-failed':
-          message =
-            'Network error. Please check your connection.';
+          message = 'Network error. Please check your connection.';
           break;
 
         default:
@@ -122,7 +148,11 @@ export default function RegisterScreen() {
           }
       }
 
-      Alert.alert('Registration failed', message);
+      setAlert({
+        title: 'Registration Failed',
+        message,
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -231,37 +261,18 @@ export default function RegisterScreen() {
 
                 {showGenderDropdown && (
                   <View style={styles.dropdown}>
-                    <Pressable
-                      style={styles.dropdownOption}
-                      onPress={() => {
-                        setGender('Male');
-                        setShowGenderDropdown(false);
-                      }}
-                    >
-                      <Text style={styles.dropdownText}>Male</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.dropdownOption}
-                      onPress={() => {
-                        setGender('Female');
-                        setShowGenderDropdown(false);
-                      }}
-                    >
-                      <Text style={styles.dropdownText}>Female</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.dropdownOption}
-                      onPress={() => {
-                        setGender('Non-binary');
-                        setShowGenderDropdown(false);
-                      }}
-                    >
-                      <Text style={styles.dropdownText}>
-                        Non-binary
-                      </Text>
-                    </Pressable>
+                    {['Male', 'Female', 'Non-binary'].map((option) => (
+                      <Pressable
+                        key={option}
+                        style={styles.dropdownOption}
+                        onPress={() => {
+                          setGender(option);
+                          setShowGenderDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{option}</Text>
+                      </Pressable>
+                    ))}
                   </View>
                 )}
               </View>
@@ -318,9 +329,7 @@ export default function RegisterScreen() {
               <Pressable
                 style={styles.eyeButton}
                 onPress={() =>
-                  setShowConfirmPassword(
-                    (previous) => !previous,
-                  )
+                  setShowConfirmPassword((previous) => !previous)
                 }
                 disabled={loading}
                 accessibilityRole="button"
@@ -351,11 +360,9 @@ export default function RegisterScreen() {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#4A302F" />
+                <ActivityIndicator color={BROWN} />
               ) : (
-                <Text style={styles.buttonText}>
-                  Create Account
-                </Text>
+                <Text style={styles.buttonText}>Create Account</Text>
               )}
             </Pressable>
           </View>
@@ -366,21 +373,91 @@ export default function RegisterScreen() {
         <DateTimePicker
           value={selectedDate}
           mode="date"
-          display={
-            Platform.OS === 'ios' ? 'spinner' : 'calendar'
-          }
+          display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
           maximumDate={new Date()}
           onChange={handleDateChange}
         />
       )}
+
+      <TuneUpAlertModal alert={alert} onClose={closeAlert} />
     </KeyboardAvoidingView>
+  );
+}
+
+function TuneUpAlertModal({
+  alert,
+  onClose,
+}: {
+  alert: AlertDetails | null;
+  onClose: () => void;
+}) {
+  if (!alert) return null;
+
+  const { title, message, type, buttonLabel = 'OK' } = alert;
+
+  const iconName =
+    type === 'success'
+      ? 'checkmark-circle-outline'
+      : type === 'error'
+        ? 'alert-circle-outline'
+        : 'information-circle-outline';
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={alertStyles.overlay}>
+        <View style={alertStyles.card}>
+          {type === 'info' ? (
+            <Ionicons
+              name={iconName}
+              size={38}
+              color={BROWN}
+              style={alertStyles.standaloneIcon}
+            />
+          ) : (
+            <View
+              style={[
+                alertStyles.iconCircle,
+                type === 'error' && alertStyles.errorIconCircle,
+                type === 'success' && alertStyles.successIconCircle,
+              ]}
+            >
+              <Ionicons
+                name={iconName}
+                size={38}
+                color={type === 'error' ? RED : BROWN}
+              />
+            </View>
+          )}
+
+          <Text style={alertStyles.title}>{title}</Text>
+
+          <Text style={alertStyles.message}>{message}</Text>
+
+          <Pressable
+            style={({ pressed }) => [
+              alertStyles.button,
+              pressed && alertStyles.buttonPressed,
+            ]}
+            onPress={onClose}
+          >
+            <Text style={alertStyles.buttonText}>{buttonLabel}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: WHITE,
   },
   scrollContent: {
     flexGrow: 1,
@@ -463,7 +540,7 @@ const styles = StyleSheet.create({
     top: 48,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: WHITE,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#E5E5E5',
@@ -535,5 +612,80 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'FredokaBold',
     color: '#4A302F',
+  },
+});
+
+const alertStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(45, 29, 25, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    paddingHorizontal: 26,
+    paddingTop: 30,
+    paddingBottom: 24,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: BROWN,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  errorIconCircle: {
+    backgroundColor: '#FFF0F0',
+  },
+  successIconCircle: {
+    backgroundColor: PINK,
+  },
+  standaloneIcon: {
+    marginBottom: 18,
+  },
+  title: {
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    color: BROWN,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  message: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  button: {
+    width: '100%',
+    minHeight: 46,
+    borderRadius: 23,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 16,
+    color: BROWN,
   },
 });

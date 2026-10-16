@@ -13,9 +13,7 @@ export default function RootLayout() {
   const pathname = usePathname();
 
   const showBackButton =
-    pathname === '/register' ||
-    pathname === '/forgot-password' ||
-    pathname === '/reset-password';
+    pathname === '/register'
 
   const [fontsLoaded] = useFonts({
     FredokaLight: Fredoka_300Light,
