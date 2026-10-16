@@ -2,12 +2,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const BROWN = '#4E2F1F';
@@ -38,16 +38,6 @@ type ComponentConfig = {
   exercises: Exercise[];
   freeMode?: boolean;
   freeModeDescription?: string;
-};
-
-const COLORS = {
-  brown: '#4E2F1F',
-  pink: '#FCD6DD',
-  lightPink: '#FFF8FA',
-  white: '#FFFFFF',
-  muted: '#A58F84',
-  border: '#F2DDE5',
-  gray: '#F2F2F2',
 };
 
 const COMPONENTS: Record<ExerciseComponent, ComponentConfig> = {

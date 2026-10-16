@@ -444,13 +444,6 @@ export default function ProgressScreen() {
         ? 'Last 7 Days'
         : 'Last 30 Days';
 
-  const compareLabel =
-    period === 'daily'
-      ? 'previous 24 hours'
-      : period === 'weekly'
-        ? 'previous 7 days'
-        : 'previous 30 days';
-
   // ==========================================================
   // ASSESSMENT SUMMARY
   // ==========================================================
@@ -1119,7 +1112,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: LIGHT_PINK,
     marginBottom: 12,
   },
 
@@ -1139,7 +1132,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: LIGHT_PINK,
   },
 
   componentHeader: {
@@ -1249,7 +1242,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: LIGHT_PINK,
     borderWidth: 1,
-    borderColor: '#E8D4DB',
+    borderColor: LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

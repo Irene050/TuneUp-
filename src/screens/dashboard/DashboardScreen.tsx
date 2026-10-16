@@ -455,7 +455,7 @@ export default function DashboardScreen() {
           {/* SUMMARY */}
           <View style={styles.progressIntro}>
             <View style={styles.progressIconCircle}>
-              <Ionicons name="trending-up" size={23} color={BROWN} />
+              <Ionicons name="trending-up" size={30} color={BROWN} />
             </View>
 
             <View style={styles.progressIntroText}>
@@ -673,13 +673,6 @@ const styles = StyleSheet.create({
     padding: 20,
     flexDirection: 'row',
     marginBottom: 18,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 7,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
     elevation: 4,
   },
 
@@ -687,7 +680,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -735,12 +728,12 @@ const styles = StyleSheet.create({
     minHeight: 86,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: "#fff2f5",
     borderRadius: 18,
     padding: 16,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: LIGHT_PINK,
   },
 
   rangeIcon: {
@@ -876,11 +869,11 @@ const styles = StyleSheet.create({
   },
 
   progressCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: "#fff2f5",
     borderRadius: 22,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: "#fff2f5",
     marginBottom: 20,
   },
 
@@ -893,7 +886,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

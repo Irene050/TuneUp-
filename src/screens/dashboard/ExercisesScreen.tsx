@@ -136,22 +136,27 @@ const exercises: Exercise[] = [
   {
     name: 'Dynamic Range Exercise',
     category: 'Volume',
+    templateId: 'dynamic-range',
   },
   {
     name: 'Controlled Crescendo Drill',
     category: 'Volume',
+    templateId: 'controlled-crescendo',
   },
   {
     name: 'Controlled Decrescendo Drill',
     category: 'Volume',
+    templateId: 'controlled-decrescendo',
   },
   {
     name: 'Volume Band Targeting',
     category: 'Volume',
+    templateId: 'volume-band-targeting',
   },
   {
     name: 'Volume Control Stability',
     category: 'Volume',
+    templateId: 'volume-control-stability',
   },
   // AGILITY
   {
@@ -393,20 +398,16 @@ export default function ExercisesScreen() {
       return;
     }
     // VOLUME
-    if (exercise.category === 'Volume') {
-      const volumeRoutes: Record<string, string> = {
-        'Dynamic Range Exercise': 'dynamic-range',
-        'Controlled Crescendo Drill': 'controlled-crescendo',
-        'Controlled Decrescendo Drill': 'controlled-decrescendo',
-        'Volume Band Targeting': 'volume-band-targeting',
-        'Volume Control Stability': 'volume-control-stability',
-      };
-      const exerciseParam = volumeRoutes[exercise.name];
-      if (exerciseParam) {
-        router.push(
-          `/exercises/volume?exercise=${exerciseParam}` as any,
-        );
-      }
+    if (
+      exercise.category === 'Volume' &&
+      exercise.templateId
+    ) {
+      router.push({
+        pathname: '/exercises/volume',
+        params: {
+          templateId: exercise.templateId,
+        },
+      } as any);
       return;
     }
     // AGILITY
