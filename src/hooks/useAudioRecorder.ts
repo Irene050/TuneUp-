@@ -292,8 +292,9 @@ export function useAudioRecorder(
         lastLiveAnalysisRef.current = 0;
         resetLiveDetection();
 
-        const recorder =
-          new AudioRecorder();
+        const recorder = new AudioRecorder({
+          androidInputPreset: 'voiceCommunication',
+        });
 
         recorder.onError(
           (error) => {
