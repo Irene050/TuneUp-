@@ -39,10 +39,6 @@ import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeCon
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
-/* =========================================================
-   CONFIGURATION
-========================================================= */
-
 const CURRENT_TIER: Tier = 'beginner';
 
 const DEFAULT_VOLUME_CONTROL_STABILITY =
@@ -53,20 +49,12 @@ const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
 
-/* =========================================================
-   TYPES
-========================================================= */
-
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 
 type MeasurementResult =
   ReturnType<typeof measureVolumeControlStability>;
 
 type ScoreResult = ReturnType<typeof scoreVolumeControlStability>;
-
-/* =========================================================
-   COLORS
-========================================================= */
 
 const COLORS = {
   BROWN: '#4E2F1F',
@@ -80,10 +68,6 @@ const COLORS = {
   SUCCESS: '#278451',
   SUCCESS_BG: '#EFF8F2',
 };
-
-/* =========================================================
-   COMPONENT
-========================================================= */
 
 export default function VolumeControlStabilityScreen({
   tier,
@@ -138,10 +122,6 @@ export default function VolumeControlStabilityScreen({
   const mountedRef = useRef(true);
   const exerciseStartedAtRef = useRef<number | null>(null);
   const recordingFinishedRef = useRef(false);
-
-  /* =========================================================
-     LOAD ADAPTIVE PARAMETERS
-  ========================================================= */
 
   useEffect(() => {
     let cancelled = false;
@@ -233,10 +213,6 @@ export default function VolumeControlStabilityScreen({
     };
   }, []);
 
-  /* =========================================================
-     REFERENCE NOTE
-  ========================================================= */
-
   const playReferenceNote = useCallback(async () => {
     if (referencePlaying) {
       return;
@@ -267,10 +243,6 @@ export default function VolumeControlStabilityScreen({
       }
     }
   }, [referencePlaying]);
-
-  /* =========================================================
-     AUDIO RECORDER
-  ========================================================= */
 
   const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: (frame) => {
@@ -373,10 +345,6 @@ export default function VolumeControlStabilityScreen({
     },
   });
 
-  /* =========================================================
-     START RECORDING
-  ========================================================= */
-
   const beginRecording = useCallback(async () => {
     try {
       recordingFinishedRef.current = false;
@@ -409,10 +377,6 @@ export default function VolumeControlStabilityScreen({
     }
   }, [startRecording, totalExerciseSeconds]);
 
-  /* =========================================================
-     COUNTDOWN
-  ========================================================= */
-
   useEffect(() => {
     if (phase !== 'countdown') {
       return;
@@ -436,10 +400,6 @@ export default function VolumeControlStabilityScreen({
       clearInterval(interval);
     };
   }, [phase, beginRecording]);
-
-  /* =========================================================
-     EXERCISE TIMER
-  ========================================================= */
 
   useEffect(() => {
     if (phase !== 'exercise') {
@@ -472,10 +432,6 @@ export default function VolumeControlStabilityScreen({
       clearInterval(interval);
     };
   }, [phase, stopRecording, totalExerciseSeconds]);
-
-  /* =========================================================
-     START / RESET
-  ========================================================= */
 
   const startExercise = useCallback(() => {
     if (!paramsReady || !hasPlayedReference || isStarting) {
@@ -540,10 +496,6 @@ export default function VolumeControlStabilityScreen({
     router.back();
   }, [phase, stopRecording]);
 
-  /* =========================================================
-     PREPARING
-  ========================================================= */
-
   if (!paramsReady) {
     return (
       <View style={styles.preparingScreen}>
@@ -572,10 +524,6 @@ export default function VolumeControlStabilityScreen({
       </View>
     );
   }
-
-  /* =========================================================
-     DIRECTIONS
-  ========================================================= */
 
   if (phase === 'directions') {
     return (
@@ -724,10 +672,6 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  /* =========================================================
-     COUNTDOWN
-  ========================================================= */
-
   if (phase === 'countdown') {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -742,10 +686,6 @@ export default function VolumeControlStabilityScreen({
       </SafeAreaView>
     );
   }
-
-  /* =========================================================
-     ACTIVE EXERCISE
-  ========================================================= */
 
   if (phase === 'exercise') {
     const elapsedTotal = Math.max(
@@ -1021,10 +961,6 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  /* =========================================================
-     RESULTS
-  ========================================================= */
-
   const finalScore = score?.overallScore ?? 0;
   const stabilityScore = measurement?.stability ?? 0;
   const durationScore = measurement?.durationScore ?? 0;
@@ -1131,10 +1067,6 @@ export default function VolumeControlStabilityScreen({
     </SafeAreaView>
   );
 }
-
-/* =========================================================
-   STYLES
-========================================================= */
 
 const styles = StyleSheet.create({
   safeArea: {
