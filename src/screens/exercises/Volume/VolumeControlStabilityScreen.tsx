@@ -14,44 +14,28 @@ import {
   Text,
   View,
 } from 'react-native';
-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
 } from '@/constants/exercises/volume';
-
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-
-import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-
+import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
 import { measureVolumeControlStability } from '@/services/measurement/volume/volumeControlStability';
-import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
-
-import {
-  generateVolumeControlStabilityParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
-
-import { auth } from '@/services/firebase/config';
-
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-
+import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
@@ -60,11 +44,11 @@ import { createMusicalNote } from '@/utils/music/notes';
 ========================================================= */
 
 const CURRENT_TIER: Tier = 'beginner';
+
 const DEFAULT_VOLUME_CONTROL_STABILITY =
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
 const NOTE = 'C4';
-
 const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
@@ -73,17 +57,29 @@ const COUNTDOWN_SECONDS = 3;
    TYPES
 ========================================================= */
 
-type Phase =
-  | 'directions'
-  | 'countdown'
-  | 'exercise'
-  | 'results';
+type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 
 type MeasurementResult =
   ReturnType<typeof measureVolumeControlStability>;
 
-type ScoreResult =
-  ReturnType<typeof scoreVolumeControlStability>;
+type ScoreResult = ReturnType<typeof scoreVolumeControlStability>;
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLORS = {
+  BROWN: '#4E2F1F',
+  PINK: '#FCD6DD',
+  LIGHT_PINK: '#FFF8FA',
+  BORDER: '#F2DDE5',
+  ACCENT: '#D86C89',
+  MUTED: '#8E7770',
+  SOFT_TEXT: '#765D63',
+  WHITE: '#FFFFFF',
+  SUCCESS: '#278451',
+  SUCCESS_BG: '#EFF8F2',
+};
 
 /* =========================================================
    COMPONENT
@@ -95,7 +91,6 @@ export default function VolumeControlStabilityScreen({
   tier?: Tier;
 }) {
   const [phase, setPhase] = useState<Phase>('directions');
-
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
 
   const [remainingSeconds, setRemainingSeconds] = useState(
@@ -150,6 +145,7 @@ export default function VolumeControlStabilityScreen({
 
   useEffect(() => {
     let cancelled = false;
+
     const loadParameters = async () => {
       try {
         const user = auth.currentUser;
@@ -196,11 +192,13 @@ export default function VolumeControlStabilityScreen({
             }
           }
         }
+
         const generatedParams =
           generateVolumeControlStabilityParams({
             tier: selectedTier,
             recentScores,
           });
+
         if (cancelled) {
           return;
         }
@@ -213,6 +211,7 @@ export default function VolumeControlStabilityScreen({
           'Failed to load Volume Control Stability parameters:',
           error,
         );
+
         if (!cancelled) {
           setResolvedTier(tier ?? CURRENT_TIER);
           setExerciseParams(DEFAULT_VOLUME_CONTROL_STABILITY);
@@ -260,9 +259,7 @@ export default function VolumeControlStabilityScreen({
 
       if (mountedRef.current) {
         setHasPlayedReference(false);
-        setReferenceError(
-          'Unable to play the C4 reference note.',
-        );
+        setReferenceError('Unable to play the C4 reference note.');
       }
     } finally {
       if (mountedRef.current) {
@@ -275,10 +272,7 @@ export default function VolumeControlStabilityScreen({
      AUDIO RECORDER
   ========================================================= */
 
-  const {
-    startRecording,
-    stopRecording,
-  } = useAudioRecorder({
+  const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: (frame) => {
       if (!mountedRef.current || phase !== 'exercise') {
         return;
@@ -290,6 +284,7 @@ export default function VolumeControlStabilityScreen({
           : -60;
 
       setLiveVolume(db);
+
       const isVoiced =
         Number.isFinite(frame.pitch) &&
         frame.pitch > 0 &&
@@ -297,12 +292,14 @@ export default function VolumeControlStabilityScreen({
         frame.clarity >= 0.45 &&
         typeof frame.note === 'string' &&
         frame.note !== '--';
+
       setLivePitch(isVoiced ? frame.pitch : null);
       setLiveNote(
         isVoiced && typeof frame.note === 'string'
           ? frame.note
           : '--',
       );
+
       if (!isVoiced) {
         setLiveStability(0);
         return;
@@ -335,25 +332,18 @@ export default function VolumeControlStabilityScreen({
           0,
         ) / amplitudes.length;
 
-      const coefficientOfVariation =
-        Math.sqrt(variance) / mean;
+      const coefficientOfVariation = Math.sqrt(variance) / mean;
 
       setLiveStability(
         Math.max(
           0,
-          Math.min(
-            100,
-            100 - coefficientOfVariation * 100,
-          ),
+          Math.min(100, 100 - coefficientOfVariation * 100),
         ),
       );
     },
 
     onStop: (samples, sampleRate) => {
-      if (
-        !mountedRef.current ||
-        recordingFinishedRef.current
-      ) {
+      if (!mountedRef.current || recordingFinishedRef.current) {
         return;
       }
 
@@ -366,16 +356,14 @@ export default function VolumeControlStabilityScreen({
         repetitions,
       );
 
-      const scored = scoreVolumeControlStability(
-        measured,
-        {
-          passingScore: targetStability,
-        },
-      );
+      const scored = scoreVolumeControlStability(measured, {
+        passingScore: targetStability,
+      });
 
       setMeasurement(measured);
       setScore(scored);
       setPhase('results');
+
       void saveCompletedExercise(
         'volume',
         'volumeControlStability',
@@ -490,17 +478,14 @@ export default function VolumeControlStabilityScreen({
   ========================================================= */
 
   const startExercise = useCallback(() => {
-    if (
-      !paramsReady ||
-      !hasPlayedReference ||
-      isStarting
-    ) {
+    if (!paramsReady || !hasPlayedReference || isStarting) {
       return;
     }
 
     setIsStarting(true);
     setMeasurement(null);
     setScore(null);
+
     liveHistoryRef.current = [];
     setLiveVolume(-60);
     setLiveStability(0);
@@ -526,6 +511,7 @@ export default function VolumeControlStabilityScreen({
     setScore(null);
     setLiveVolume(-60);
     setLiveStability(0);
+
     liveHistoryRef.current = [];
     setRemainingSeconds(totalExerciseSeconds);
     setCountdown(COUNTDOWN_SECONDS);
@@ -554,8 +540,8 @@ export default function VolumeControlStabilityScreen({
     router.back();
   }, [phase, stopRecording]);
 
- /* =========================================================
-   PREPARING
+  /* =========================================================
+     PREPARING
   ========================================================= */
 
   if (!paramsReady) {
@@ -661,9 +647,7 @@ export default function VolumeControlStabilityScreen({
                   REFERENCE NOTE
                 </Text>
 
-                <Text style={styles.referenceNote}>
-                  {NOTE}
-                </Text>
+                <Text style={styles.referenceNote}>{NOTE}</Text>
               </View>
 
               <View style={styles.noteIconCircle}>
@@ -724,9 +708,7 @@ export default function VolumeControlStabilityScreen({
                 />
               </View>
 
-              <Text style={styles.infoTitle}>
-                What to focus on
-              </Text>
+              <Text style={styles.infoTitle}>What to focus on</Text>
             </View>
 
             <Text style={styles.referenceInstruction}>
@@ -782,9 +764,7 @@ export default function VolumeControlStabilityScreen({
       elapsedTotal % Math.max(1, durationSeconds);
 
     const liveVolumeDisplay =
-      liveVolume > -60
-        ? Math.round(liveVolume + 70)
-        : '--';
+      liveVolume > -60 ? Math.round(liveVolume + 70) : '--';
 
     const clampedStability = Math.max(
       0,
@@ -792,8 +772,7 @@ export default function VolumeControlStabilityScreen({
     );
 
     const meetsLiveTarget =
-      voiceDetected &&
-      liveStability >= targetStability;
+      voiceDetected && liveStability >= targetStability;
 
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -802,17 +781,13 @@ export default function VolumeControlStabilityScreen({
           title="Volume Control Stability"
           currentRep={currentRep}
           repetitions={repetitions}
-          elapsed={Math.min(
-            durationSeconds,
-            currentRepElapsed,
-          )}
+          elapsed={Math.min(durationSeconds, currentRepElapsed)}
           targetDuration={durationSeconds}
           promptTitle="Keep your voice steady"
           prompt={`Sing ${NOTE} on “Ah” at a comfortable volume. Avoid sudden loudness changes until the timer ends.`}
           progress={Math.min(
             100,
-            (elapsedTotal /
-              Math.max(1, totalExerciseSeconds)) *
+            (elapsedTotal / Math.max(1, totalExerciseSeconds)) *
               100,
           )}
           onBack={cancelAndLeave}
@@ -867,9 +842,7 @@ export default function VolumeControlStabilityScreen({
                     {liveVolumeDisplay}
                   </Text>
 
-                  <Text style={styles.liveUnit}>
-                    / 70 level
-                  </Text>
+                  <Text style={styles.liveUnit}>/ 70 level</Text>
                 </View>
 
                 <View style={styles.statusBadge}>
@@ -927,9 +900,7 @@ export default function VolumeControlStabilityScreen({
                   <View
                     style={[
                       styles.stabilityFill,
-                      {
-                        width: `${clampedStability}%`,
-                      },
+                      { width: `${clampedStability}%` },
                     ]}
                   />
 
@@ -947,17 +918,13 @@ export default function VolumeControlStabilityScreen({
                 </View>
 
                 <View style={styles.scaleRow}>
-                  <Text style={styles.scaleText}>
-                    Less steady
-                  </Text>
+                  <Text style={styles.scaleText}>Less steady</Text>
 
                   <Text style={styles.scaleText}>
                     Target: {Math.round(targetStability)}%
                   </Text>
 
-                  <Text style={styles.scaleText}>
-                    More steady
-                  </Text>
+                  <Text style={styles.scaleText}>More steady</Text>
                 </View>
 
                 <View style={styles.tipInline}>
@@ -999,8 +966,7 @@ export default function VolumeControlStabilityScreen({
                   <View
                     style={[
                       styles.noteStatusBadge,
-                      voiceDetected &&
-                        styles.noteStatusBadgeActive,
+                      voiceDetected && styles.noteStatusBadgeActive,
                     ]}
                   >
                     <View
@@ -1017,8 +983,7 @@ export default function VolumeControlStabilityScreen({
                     <Text
                       style={[
                         styles.noteStatusText,
-                        voiceDetected &&
-                          styles.statusTextSuccess,
+                        voiceDetected && styles.statusTextSuccess,
                       ]}
                     >
                       {voiceDetected ? 'DETECTED' : 'LISTENING'}
@@ -1063,8 +1028,7 @@ export default function VolumeControlStabilityScreen({
   const finalScore = score?.overallScore ?? 0;
   const stabilityScore = measurement?.stability ?? 0;
   const durationScore = measurement?.durationScore ?? 0;
-  const voicedCoverage =
-    measurement?.voicedCoveragePercent ?? 0;
+  const voicedCoverage = measurement?.voicedCoveragePercent ?? 0;
   const resultPassed = score?.passed ?? false;
 
   return (
@@ -1078,9 +1042,7 @@ export default function VolumeControlStabilityScreen({
         score={Math.round(finalScore)}
         scoreSuffix="/100"
         resultIcon={
-          resultPassed
-            ? 'checkmark-circle'
-            : 'refresh-circle'
+          resultPassed ? 'checkmark-circle' : 'refresh-circle'
         }
         scoreMessage={
           resultPassed ? 'Exercise passed' : 'Keep practicing'
@@ -1116,9 +1078,7 @@ export default function VolumeControlStabilityScreen({
                         0,
                         Math.min(
                           70,
-                          Math.round(
-                            measurement.averageDb + 70,
-                          ),
+                          Math.round(measurement.averageDb + 70),
                         ),
                       )}/70 relative level`
                     : '--',
@@ -1138,17 +1098,12 @@ export default function VolumeControlStabilityScreen({
                 key={item.label}
                 style={[
                   styles.resultRow,
-                  index === rows.length - 1 &&
-                    styles.lastResultRow,
+                  index === rows.length - 1 && styles.lastResultRow,
                 ]}
               >
-                <Text style={styles.resultLabel}>
-                  {item.label}
-                </Text>
+                <Text style={styles.resultLabel}>{item.label}</Text>
 
-                <Text style={styles.resultValue}>
-                  {item.value}
-                </Text>
+                <Text style={styles.resultValue}>{item.value}</Text>
               </View>
             ))}
           </View>
@@ -1163,9 +1118,7 @@ export default function VolumeControlStabilityScreen({
               router.replace('/exercises/volume' as any)
             }
           >
-            <Text style={styles.nextButtonText}>
-              Next Exercise
-            </Text>
+            <Text style={styles.nextButtonText}>Next Exercise</Text>
 
             <Ionicons
               name="arrow-forward"
@@ -1178,23 +1131,6 @@ export default function VolumeControlStabilityScreen({
     </SafeAreaView>
   );
 }
-
-/* =========================================================
-   COLORS
-========================================================= */
-
-const COLORS = {
-  BROWN: '#4E2F1F',
-  PINK: '#FCD6DD',
-  LIGHT_PINK: '#FFF8FA',
-  BORDER: '#F2DDE5',
-  ACCENT: '#D86C89',
-  MUTED: '#8E7770',
-  SOFT_TEXT: '#765D63',
-  WHITE: '#FFFFFF',
-  SUCCESS: '#278451',
-  SUCCESS_BG: '#EFF8F2',
-};
 
 /* =========================================================
    STYLES
@@ -1274,6 +1210,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.BORDER,
     backgroundColor: COLORS.WHITE,
   },
+
   referenceTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1291,12 +1228,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
   },
+
   referenceNote: {
     marginTop: 2,
     color: COLORS.BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
+
   noteIconCircle: {
     width: 42,
     height: 42,
@@ -1305,6 +1244,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.LIGHT_PINK,
   },
+
   referenceInstruction: {
     marginTop: 7,
     color: COLORS.SOFT_TEXT,
@@ -1312,6 +1252,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+
   referenceButton: {
     minHeight: 43,
     marginTop: 11,
@@ -1329,12 +1270,14 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
+
   referenceReadyRow: {
     marginTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
   },
+
   referenceReadyText: {
     flex: 1,
     color: COLORS.SUCCESS,
@@ -1501,6 +1444,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+
   stabilityValue: {
     color: COLORS.ACCENT,
     fontFamily: 'FredokaBold',

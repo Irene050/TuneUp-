@@ -22,7 +22,7 @@ import {
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -37,10 +37,6 @@ import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTa
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
-/* =========================================================
-   CONSTANTS
-========================================================= */
-
 const COLORS = {
   BROWN: '#4E2F1F',
   PINK: '#FCD6DD',
@@ -51,7 +47,6 @@ const COLORS = {
   SOFT_TEXT: '#765D63',
   WHITE: '#FFFFFF',
   SUCCESS: '#278451',
-  SUCCESS_BG: '#EFF8F2',
   ERROR: '#A05D6C',
 };
 
@@ -78,10 +73,6 @@ const LIVE_LEVEL_OFFSET = 70;
 
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 type VoiceStatus = 'low' | 'inside' | 'high' | 'none';
-
-/* =========================================================
-   HELPERS
-========================================================= */
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -135,20 +126,16 @@ function getStatusMessage(status: VoiceStatus): string {
 function getStatusColor(status: VoiceStatus): string {
   switch (status) {
     case 'inside':
-      return COLORS.ACCENT;
+      return ACCENT;
     case 'low':
       return '#8D7A7D';
     case 'high':
-      return '#A05D6C';
+      return COLORS.ERROR;
     default:
-      return COLORS.MUTED;
+      return MUTED;
   }
 }
 
-/**
- * Volume Band Targeting measures loudness, not pitch.
- * Pitch and clarity are deliberately not required here.
- */
 function isUsableVoiceFrame(
   frame: LiveAudioFrame | null | undefined,
 ): frame is LiveAudioFrame {
@@ -159,10 +146,6 @@ function isUsableVoiceFrame(
   );
 }
 
-/**
- * Converts relative microphone dBFS to the displayed volume scale.
- * This is not calibrated acoustic dB SPL.
- */
 function getLiveDisplayLevel(
   frame: LiveAudioFrame | null | undefined,
 ): number {
@@ -173,9 +156,6 @@ function getLiveDisplayLevel(
   return clamp(frame.volume + LIVE_LEVEL_OFFSET, 0, 70);
 }
 
-/**
- * Rejects recordings containing only silence or very low-level input.
- */
 function hasSufficientRecordedSignal(samples: Float32Array): boolean {
   if (!samples || samples.length === 0) {
     return false;
@@ -203,10 +183,6 @@ function hasSufficientRecordedSignal(samples: Float32Array): boolean {
   return rms >= 0.002 && peak >= 0.01 && activeRatio >= 0.01;
 }
 
-/* =========================================================
-   TARGET BAND METER
-========================================================= */
-
 function TargetBandMeter({
   liveDb,
   targetRange,
@@ -215,10 +191,8 @@ function TargetBandMeter({
   targetRange: [number, number];
 }) {
   const currentPosition = normalizeBandPosition(liveDb);
-
   const targetMin = Math.min(targetRange[0], targetRange[1]);
   const targetMax = Math.max(targetRange[0], targetRange[1]);
-
   const bandLeft = normalizeBandPosition(targetMin) * 100;
   const bandWidth =
     (normalizeBandPosition(targetMax) -
@@ -316,21 +290,12 @@ function TargetBandMeter({
         </View>
       </View>
 
-      <Text
-        style={[
-          styles.bandStatus,
-          { color: statusColor },
-        ]}
-      >
+      <Text style={[styles.bandStatus, { color: statusColor }]}>
         {getStatusMessage(status)}
       </Text>
     </View>
   );
 }
-
-/* =========================================================
-   LIVE VOICE HISTORY
-========================================================= */
 
 function StabilityHistory({
   history,
@@ -340,14 +305,13 @@ function StabilityHistory({
   targetRange: [number, number];
 }) {
   const visibleHistory = history.slice(-30);
-
-  const bars = Array.from({ length: 30 }, (_, index) => {
-    return visibleHistory[index] ?? null;
-  });
+  const bars = Array.from(
+    { length: 30 },
+    (_, index) => visibleHistory[index] ?? null,
+  );
 
   const targetMin = Math.min(targetRange[0], targetRange[1]);
   const targetMax = Math.max(targetRange[0], targetRange[1]);
-
   const targetTop = (1 - normalizeBandPosition(targetMax)) * 100;
   const targetHeight =
     (normalizeBandPosition(targetMax) -
@@ -419,10 +383,6 @@ function StabilityHistory({
   );
 }
 
-/* =========================================================
-   REFERENCE NOTE BUTTON
-========================================================= */
-
 function ReferenceNoteButton({
   playing,
   onPress,
@@ -453,10 +413,6 @@ function ReferenceNoteButton({
     </Pressable>
   );
 }
-
-/* =========================================================
-   MAIN SCREEN
-========================================================= */
 
 export default function VolumeBandTargeting({
   tier: tierProp,
@@ -489,12 +445,11 @@ export default function VolumeBandTargeting({
   const [referencePlaybackError, setReferencePlaybackError] =
     useState<string | null>(null);
   const [hasPlayedReference, setHasPlayedReference] = useState(false);
-
   const [referenceNote, setReferenceNote] = useState(() =>
     createMusicalNote(60),
   );
-
   const [referenceNoteReady, setReferenceNoteReady] = useState(false);
+
   const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
 
@@ -513,11 +468,9 @@ export default function VolumeBandTargeting({
 
   const exerciseDurationSec =
     params.durationSec + REP_DURATION_EXTENSION_SEC;
-
   const totalDurationMs =
     exerciseDurationSec * params.repetitions * 1000;
 
-  // Recording lifecycle guards.
   const finishingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const recordingFinishedRef = useRef(false);
@@ -533,10 +486,6 @@ export default function VolumeBandTargeting({
   useEffect(() => {
     resolvedTierRef.current = resolvedTier;
   }, [resolvedTier]);
-
-  /* ---------------------------------------------------------
-     ADAPTIVE PARAMETER LOADING
-  --------------------------------------------------------- */
 
   useEffect(() => {
     let active = true;
@@ -575,11 +524,8 @@ export default function VolumeBandTargeting({
             .filter(Number.isFinite);
         }
 
-        // Assessment scores are used only when no matching exercise
-        // history exists for this template and tier.
         if (recentScores.length === 0 && user) {
           const assessment = await getLatestAssessment();
-
           const assessmentScore = assessment?.scores.find(
             (item) => item.componentId === 'volume',
           )?.scorePct;
@@ -601,10 +547,8 @@ export default function VolumeBandTargeting({
 
         setResolvedTier(nextTier);
         resolvedTierRef.current = nextTier;
-
         setParams(generated);
         paramsRef.current = generated;
-
         setParametersReady(true);
       } catch (error) {
         console.error('VOLUME BAND PARAMETER LOAD ERROR:', error);
@@ -617,10 +561,8 @@ export default function VolumeBandTargeting({
 
         setResolvedTier(fallbackTier);
         resolvedTierRef.current = fallbackTier;
-
         setParams(fallbackParams);
         paramsRef.current = fallbackParams;
-
         setParametersReady(true);
       }
     };
@@ -631,10 +573,6 @@ export default function VolumeBandTargeting({
       active = false;
     };
   }, [tierProp]);
-
-  /* ---------------------------------------------------------
-     REFERENCE NOTE
-  --------------------------------------------------------- */
 
   useEffect(() => {
     let active = true;
@@ -647,7 +585,6 @@ export default function VolumeBandTargeting({
         const lowHz = Number(
           vocalRange?.lowHz ?? assessment?.vocalRangeLowHz,
         );
-
         const highHz = Number(
           vocalRange?.highHz ?? assessment?.vocalRangeHighHz,
         );
@@ -661,18 +598,15 @@ export default function VolumeBandTargeting({
           const lowMidi = Math.ceil(
             69 + 12 * Math.log2(lowHz / 440),
           );
-
           const highMidi = Math.floor(
             69 + 12 * Math.log2(highHz / 440),
           );
 
           if (lowMidi <= highMidi) {
             const midpointHz = Math.sqrt(lowHz * highHz);
-
             const midpointMidi = Math.round(
               69 + 12 * Math.log2(midpointHz / 440),
             );
-
             const selectedMidi = clamp(
               midpointMidi,
               lowMidi,
@@ -680,14 +614,7 @@ export default function VolumeBandTargeting({
             );
 
             if (active) {
-              const selectedNote = createMusicalNote(selectedMidi);
-
-              console.log(
-                '[VolumeBandTargeting] Selected reference note:',
-                selectedNote,
-              );
-
-              setReferenceNote(selectedNote);
+              setReferenceNote(createMusicalNote(selectedMidi));
             }
           }
         }
@@ -710,14 +637,8 @@ export default function VolumeBandTargeting({
     };
   }, []);
 
-  /**
-   * Plays the reference note through the existing shared player.
-   * The shared notePlayer utility is intentionally unchanged.
-   */
   const playReferenceNote = async (): Promise<boolean> => {
-    if (referencePlaying) {
-      return false;
-    }
+    if (referencePlaying) return false;
 
     setReferencePlaybackError(null);
 
@@ -731,30 +652,15 @@ export default function VolumeBandTargeting({
     );
 
     if (!Number.isFinite(frequency) || frequency <= 0) {
-      console.error(
-        '[VolumeBandTargeting] Invalid reference note frequency:',
-        {
-          referenceNote,
-          frequency,
-        },
-      );
-
       setHasPlayedReference(false);
       setReferencePlaybackError(
         'The reference note has an invalid frequency. Please reload the exercise.',
       );
-
       return false;
     }
 
     try {
       setReferencePlaying(true);
-
-      console.log('[VolumeBandTargeting] Playing reference note:', {
-        note: referenceNote.name,
-        frequencyHz: frequency,
-        durationSec: REFERENCE_NOTE_DURATION_SEC,
-      });
 
       await playSingleNote(
         frequency,
@@ -762,11 +668,6 @@ export default function VolumeBandTargeting({
       );
 
       setHasPlayedReference(true);
-
-      console.log(
-        '[VolumeBandTargeting] Reference-note playback call completed.',
-      );
-
       return true;
     } catch (error) {
       console.error(
@@ -785,10 +686,6 @@ export default function VolumeBandTargeting({
     }
   };
 
-  /* ---------------------------------------------------------
-     AUDIO RECORDER
-  --------------------------------------------------------- */
-
   const {
     startRecording,
     stopRecording,
@@ -805,11 +702,9 @@ export default function VolumeBandTargeting({
 
       if (!isUsableVoiceFrame(frame)) {
         setLiveFrame(null);
-
         setLiveHistory((previous) =>
           [...previous, 0].slice(-HISTORY_LIMIT),
         );
-
         return;
       }
 
@@ -824,9 +719,7 @@ export default function VolumeBandTargeting({
     },
 
     onStop: (samples, sampleRate) => {
-      if (recordingFinishedRef.current) {
-        return;
-      }
+      if (recordingFinishedRef.current) return;
 
       recordingFinishedRef.current = true;
       recordingStartedAtRef.current = null;
@@ -842,11 +735,9 @@ export default function VolumeBandTargeting({
       if (!shouldProcessResultRef.current) {
         finishingRef.current = false;
         stopRequestedRef.current = false;
-
         setRecordingNotice(
           'The recording stopped before the exercise finished. Please try again.',
         );
-
         setPhase('directions');
         return;
       }
@@ -854,7 +745,6 @@ export default function VolumeBandTargeting({
       shouldProcessResultRef.current = false;
 
       const currentParams = paramsRef.current;
-
       const currentExerciseDurationSec =
         currentParams.durationSec + REP_DURATION_EXTENSION_SEC;
 
@@ -869,19 +759,15 @@ export default function VolumeBandTargeting({
         setTargetReached(false);
         setPassed(false);
         setMeasurementQuality(0);
-
         setRepScores(
           Array.from(
             { length: currentParams.repetitions },
             () => 0,
           ),
         );
-
         setLiveHistory([]);
-
         finishingRef.current = false;
         stopRequestedRef.current = false;
-
         setPhase('results');
         return;
       }
@@ -910,7 +796,6 @@ export default function VolumeBandTargeting({
         setTargetReached(result.targetReached);
         setPassed(result.passed);
         setMeasurementQuality(result.measurementQuality);
-
         setRepScores(
           measurement.repConsistency.map((value) =>
             Math.round(value),
@@ -923,20 +808,15 @@ export default function VolumeBandTargeting({
           resolvedTierRef.current,
           result.overallScore,
         ).catch((error) => {
-          console.error(
-            'VOLUME BAND PROGRESS SAVE ERROR:',
-            error,
-          );
+          console.error('VOLUME BAND PROGRESS SAVE ERROR:', error);
         });
 
         setPhase('results');
       } catch (error) {
         console.error('VOLUME BAND MEASUREMENT ERROR:', error);
-
         setRecordingNotice(
           'The recording could not be measured. Please try the exercise again.',
         );
-
         setPhase('directions');
       } finally {
         setLiveFrame(null);
@@ -951,19 +831,13 @@ export default function VolumeBandTargeting({
   const stopRecordingRef = useRef(stopRecording);
   stopRecordingRef.current = stopRecording;
 
-  /* ---------------------------------------------------------
-     RECORDING DURATION TIMER
-  --------------------------------------------------------- */
-
   useEffect(() => {
     if (phase !== 'exercise') return;
 
     const timer = setInterval(() => {
       const startedAt = recordingStartedAtRef.current;
 
-      if (startedAt === null || finishingRef.current) {
-        return;
-      }
+      if (startedAt === null || finishingRef.current) return;
 
       const nextElapsed = Math.min(
         Date.now() - startedAt,
@@ -998,7 +872,6 @@ export default function VolumeBandTargeting({
             setRecordingNotice(
               'The recording could not be finalized. Please try again.',
             );
-
             setPhase('directions');
           }
         })();
@@ -1007,10 +880,6 @@ export default function VolumeBandTargeting({
 
     return () => clearInterval(timer);
   }, [phase, totalDurationMs]);
-
-  /* ---------------------------------------------------------
-     BEGIN RECORDING
-  --------------------------------------------------------- */
 
   const beginRecording = async () => {
     finishingRef.current = false;
@@ -1029,10 +898,7 @@ export default function VolumeBandTargeting({
           stopRequestedRef.current = true;
 
           void stopRecordingRef.current().catch((error) => {
-            console.error(
-              'VOLUME BAND CANCEL STOP ERROR:',
-              error,
-            );
+            console.error('VOLUME BAND CANCEL STOP ERROR:', error);
           });
         }
 
@@ -1054,14 +920,9 @@ export default function VolumeBandTargeting({
       setRecordingNotice(
         'The microphone could not start. Please check microphone permission and try again.',
       );
-
       setPhase('directions');
     }
   };
-
-  /* ---------------------------------------------------------
-     START EXERCISE
-  --------------------------------------------------------- */
 
   const startExercise = () => {
     if (
@@ -1088,14 +949,12 @@ export default function VolumeBandTargeting({
     setCountdown(PREPARATION_COUNTDOWN_SECONDS);
     setLiveFrame(null);
     setLiveHistory([]);
-
     setScore(0);
     setAverageDb(0);
     setConsistency(0);
     setTargetReached(false);
     setPassed(false);
     setMeasurementQuality(0);
-
     setRepScores(
       Array.from({ length: params.repetitions }, () => 0),
     );
@@ -1106,10 +965,6 @@ export default function VolumeBandTargeting({
 
     setPhase('countdown');
   };
-
-  /* ---------------------------------------------------------
-     COUNTDOWN TIMER
-  --------------------------------------------------------- */
 
   useEffect(() => {
     if (phase !== 'countdown') return;
@@ -1125,10 +980,6 @@ export default function VolumeBandTargeting({
 
     return () => clearTimeout(timeout);
   }, [phase, countdown]);
-
-  /* ---------------------------------------------------------
-     CANCEL / EXIT
-  --------------------------------------------------------- */
 
   const cancelAndLeave = () => {
     cancelledRecordingRef.current = true;
@@ -1150,10 +1001,6 @@ export default function VolumeBandTargeting({
     router.back();
   };
 
-  /* ---------------------------------------------------------
-     LIVE DISPLAY VALUES
-  --------------------------------------------------------- */
-
   const currentRep = Math.min(
     params.repetitions,
     Math.floor(elapsedMs / (exerciseDurationSec * 1000)) + 1,
@@ -1173,19 +1020,11 @@ export default function VolumeBandTargeting({
   const statusColor = getStatusColor(status);
   const targetRangeText = formatTargetRange(params.targetDbRange);
 
-  /* =========================================================
-     PREPARING
-  ========================================================= */
-
   if (!parametersReady || !referenceNoteReady) {
     return (
       <SafeAreaView style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={32}
-            color={BROWN}
-          />
+          <Ionicons name="options-outline" size={32} color={BROWN} />
         </View>
 
         <Text style={styles.preparingTitle}>
@@ -1205,10 +1044,6 @@ export default function VolumeBandTargeting({
       </SafeAreaView>
     );
   }
-
-  /* =========================================================
-     DIRECTIONS
-  ========================================================= */
 
   if (phase === 'directions') {
     const startDisabled =
@@ -1317,12 +1152,6 @@ export default function VolumeBandTargeting({
                 </Text>
               </View>
             )}
-
-            {referencePlaybackError && (
-              <Text style={styles.playbackError}>
-                {referencePlaybackError}
-              </Text>
-            )}
           </View>
 
           <TargetBandMeter
@@ -1355,10 +1184,6 @@ export default function VolumeBandTargeting({
     );
   }
 
-  /* =========================================================
-     COUNTDOWN
-  ========================================================= */
-
   if (phase === 'countdown') {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1374,172 +1199,162 @@ export default function VolumeBandTargeting({
     );
   }
 
-  /* =========================================================
-     ACTIVE EXERCISE
-  ========================================================= */
+  if (phase === 'exercise') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.activeScreen}>
+          <View style={styles.activeHeader}>
+            <Pressable
+              style={styles.backButton}
+              onPress={cancelAndLeave}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color={BROWN} />
+            </Pressable>
 
-if (phase === 'exercise') {
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.activeScreen}>
-        {/* Header */}
-
-      <View style={styles.activeHeader}>
-        <Pressable
-          style={styles.backButton}
-          onPress={cancelAndLeave}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={22} color={BROWN} />
-        </Pressable>
-
-        <View style={styles.activeHeaderCopy}>
-          <Text style={styles.activeCategory}>VOLUME CONTROL</Text>
-          <Text style={styles.activeTitle}>
-            Volume Band Targeting
-          </Text>
-        </View>
-
-        <View style={styles.activeIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={22}
-            color={BROWN}
-          />
-        </View>
-      </View>
-
-        {/* Exercise instructions */}
-        <View style={styles.activePromptBlock}>
-          <Text style={styles.activePromptTitle}>Hold the zone</Text>
-          <Text style={styles.activePrompt}>
-            Sing {referenceNote.name} on “Ah”. Move your voice into the
-            {' '}{targetRangeText} target band and keep it steady.
-          </Text>
-        </View>
-
-        {/* Live meter and voice history */}
-        <ScrollView
-          style={styles.activeScroll}
-          contentContainerStyle={styles.liveContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
-          <TargetBandMeter
-            liveDb={liveDb}
-            targetRange={params.targetDbRange}
-          />
-
-          <View
-            style={[
-              styles.liveCard,
-              { borderColor: statusColor },
-            ]}
-          >
-            <View style={styles.liveCardHeader}>
-              <View style={styles.liveIconCircle}>
-                <Ionicons
-                  name="volume-medium-outline"
-                  size={19}
-                  color={ACCENT}
-                />
-              </View>
-
-              <View style={styles.flex}>
-                <Text style={styles.cardTitle}>Your Live Volume</Text>
-                <Text style={styles.mutedSmall}>
-                  Relative microphone level
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.liveVolumeRow}>
-              <Text style={styles.liveVolume}>
-                {liveDb > 0 ? formatDb(liveDb) : '--'}
+            <View style={styles.activeHeaderCopy}>
+              <Text style={styles.activeCategory}>
+                VOLUME CONTROL
               </Text>
-              <Text style={styles.liveUnit}>relative level</Text>
+              <Text style={styles.activeTitle}>
+                Volume Band Targeting
+              </Text>
             </View>
+
+            <View style={styles.activeIconCircle}>
+              <Ionicons
+                name="options-outline"
+                size={22}
+                color={BROWN}
+              />
+            </View>
+          </View>
+
+          <View style={styles.activePromptBlock}>
+            <Text style={styles.activePromptTitle}>Hold the zone</Text>
+            <Text style={styles.activePrompt}>
+              Sing {referenceNote.name} on “Ah”. Move your voice into
+              the {` ${targetRangeText}`} target band and keep it steady.
+            </Text>
+          </View>
+
+          <ScrollView
+            style={styles.activeScroll}
+            contentContainerStyle={styles.liveContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <TargetBandMeter
+              liveDb={liveDb}
+              targetRange={params.targetDbRange}
+            />
 
             <View
               style={[
-                styles.statusBadge,
-                { backgroundColor: `${statusColor}18` },
+                styles.liveCard,
+                { borderColor: statusColor },
               ]}
             >
+              <View style={styles.liveCardHeader}>
+                <View style={styles.liveIconCircle}>
+                  <Ionicons
+                    name="volume-medium-outline"
+                    size={19}
+                    color={ACCENT}
+                  />
+                </View>
+
+                <View style={styles.flex}>
+                  <Text style={styles.cardTitle}>Your Live Volume</Text>
+                  <Text style={styles.mutedSmall}>
+                    Relative microphone level
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.liveVolumeRow}>
+                <Text style={styles.liveVolume}>
+                  {liveDb > 0 ? formatDb(liveDb) : '--'}
+                </Text>
+                <Text style={styles.liveUnit}>relative level</Text>
+              </View>
+
               <View
                 style={[
-                  styles.statusDot,
-                  { backgroundColor: statusColor },
-                ]}
-              />
-
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: statusColor },
+                  styles.statusBadge,
+                  { backgroundColor: `${statusColor}18` },
                 ]}
               >
-                {getStatusMessage(status)}
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: statusColor },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.statusText,
+                    { color: statusColor },
+                  ]}
+                >
+                  {getStatusMessage(status)}
+                </Text>
+              </View>
+
+              <Text style={styles.helperText}>
+                Relative microphone level, not calibrated acoustic dB SPL.
               </Text>
             </View>
 
-            <Text style={styles.helperText}>
-              Relative microphone level, not calibrated acoustic dB SPL.
-            </Text>
-          </View>
-
-          <StabilityHistory
-            history={liveHistory}
-            targetRange={params.targetDbRange}
-          />
-
-          {!isRecording && (
-            <Text style={styles.waitingText}>
-              Starting microphone...
-            </Text>
-          )}
-        </ScrollView>
-
-        {/* Repetition and timer fixed at the bottom */}
-        <View style={styles.bottomRepCard}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.repLabel}>Repetition</Text>
-            <Text style={styles.repValue}>
-              {currentRep} of {params.repetitions}
-            </Text>
-          </View>
-
-          <View style={styles.repTrack}>
-            <View
-              style={[
-                styles.repProgress,
-                { width: `${progress * 100}%` },
-              ]}
+            <StabilityHistory
+              history={liveHistory}
+              targetRange={params.targetDbRange}
             />
-          </View>
 
-          <View style={styles.rowBetween}>
-            <Text style={styles.mutedSmall}>
-              Keep your volume steady
-            </Text>
-            <Text style={styles.repTimer}>
-              {Math.max(
-                0,
-                exerciseDurationSec -
-                  Math.floor(currentRepElapsed / 1000),
-              )}s left
-            </Text>
+            {!isRecording && (
+              <Text style={styles.waitingText}>
+                Starting microphone...
+              </Text>
+            )}
+          </ScrollView>
+
+          <View style={styles.bottomRepCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.repLabel}>Repetition</Text>
+              <Text style={styles.repValue}>
+                {currentRep} of {params.repetitions}
+              </Text>
+            </View>
+
+            <View style={styles.repTrack}>
+              <View
+                style={[
+                  styles.repProgress,
+                  { width: `${progress * 100}%` },
+                ]}
+              />
+            </View>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.mutedSmall}>
+                Keep your volume steady
+              </Text>
+              <Text style={styles.repTimer}>
+                {Math.max(
+                  0,
+                  exerciseDurationSec -
+                    Math.floor(currentRepElapsed / 1000),
+                )}
+                s left
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-  /* =========================================================
-     RESULTS
-  ========================================================= */
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1577,7 +1392,6 @@ if (phase === 'exercise') {
                 <Text style={styles.resultLabel}>
                   Repetition {index + 1}
                 </Text>
-
                 <Text style={styles.resultValue}>
                   {noVoiceDetected ? '—' : `${repScore}%`}
                 </Text>
@@ -1586,7 +1400,6 @@ if (phase === 'exercise') {
 
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Average Volume</Text>
-
               <Text style={styles.resultValue}>
                 {noVoiceDetected
                   ? 'No input'
@@ -1596,15 +1409,11 @@ if (phase === 'exercise') {
 
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Target Band</Text>
-
-              <Text style={styles.resultValue}>
-                {targetRangeText}
-              </Text>
+              <Text style={styles.resultValue}>{targetRangeText}</Text>
             </View>
 
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Consistency</Text>
-
               <Text style={styles.resultValue}>
                 {noVoiceDetected ? '—' : `${consistency}%`}
               </Text>
@@ -1612,7 +1421,6 @@ if (phase === 'exercise') {
 
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Band Compliance</Text>
-
               <Text style={styles.resultValue}>
                 {noVoiceDetected
                   ? 'No input'
@@ -1627,7 +1435,6 @@ if (phase === 'exercise') {
                 <Text style={styles.resultLabel}>
                   Measurement quality
                 </Text>
-
                 <Text style={styles.mutedSmall}>
                   {noVoiceDetected
                     ? 'No usable microphone signal was detected. This attempt was not scored or saved.'
@@ -1650,30 +1457,21 @@ if (phase === 'exercise') {
   );
 }
 
-/* =========================================================
-   STYLES
-========================================================= */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: WHITE,
   },
-
   flex: {
     flex: 1,
     minWidth: 0,
   },
-
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
   },
-
-  /* PREPARING */
-
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1681,7 +1479,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   preparingIconCircle: {
     width: 76,
     height: 76,
@@ -1691,14 +1488,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
     color: BROWN,
     textAlign: 'center',
   },
-
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -1708,13 +1503,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     maxWidth: 285,
   },
-
   preparingSpinner: {
     marginTop: 24,
   },
-
-  /* REFERENCE NOTE */
-
   referenceCard: {
     marginTop: 12,
     padding: 14,
@@ -1724,32 +1515,27 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     gap: 9,
   },
-
   referenceTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
-
   referenceCopy: {
     flex: 1,
   },
-
   eyebrow: {
     color: MUTED,
     fontFamily: 'FredokaSemiBold',
     fontSize: 10,
     letterSpacing: 0.7,
   },
-
   referenceNote: {
     marginTop: 2,
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 29,
   },
-
   referenceIconCircle: {
     width: 44,
     height: 44,
@@ -1758,14 +1544,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   referenceInstruction: {
     color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
   },
-
   referenceButton: {
     minHeight: 44,
     paddingHorizontal: 12,
@@ -1776,19 +1560,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
   referenceButtonText: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
-
   referenceReadyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
   },
-
   referenceReadyText: {
     flex: 1,
     color: COLORS.SUCCESS,
@@ -1796,7 +1577,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
-
   playbackError: {
     marginTop: 6,
     color: COLORS.ERROR,
@@ -1804,115 +1584,124 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
-
   disabled: {
     opacity: 0.6,
   },
-
-/* ACTIVE SCREEN LAYOUT */
-
-backButton: {
-  width: 42,
-  height: 42,
-  borderRadius: 14,
-  backgroundColor: LIGHT_PINK,
-  borderWidth: 1,
-  borderColor: BORDER,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-activeHeaderCopy: {
-  position: 'absolute',
-  left: 50,
-  right: 50,
-  alignItems: 'center',
-},
-
-activeCategory: {
-  color: ACCENT,
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 10,
-  letterSpacing: 0.8,
-  textAlign: 'center',
-},
-
-activeTitle: {
-  marginTop: 2,
-  color: BROWN,
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 17,
-  textAlign: 'center',
-},
-
-activeIconCircle: {
-  width: 42,
-  height: 42,
-  borderRadius: 14,
-  backgroundColor: PINK,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-repCard: {
-  marginTop: 8,
-  padding: 13,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: BORDER,
-  backgroundColor: LIGHT_PINK,
-  gap: 9,
-},
-
-repLabel: {
-  color: SOFT_TEXT,
-  fontFamily: 'FredokaRegular',
-  fontSize: 12,
-},
-
-repValue: {
-  color: BROWN,
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 12,
-},
-
-repTrack: {
-  height: 7,
-  borderRadius: 5,
-  backgroundColor: '#F1E3E7',
-  overflow: 'hidden',
-},
-
-repProgress: {
-  height: '100%',
-  borderRadius: 5,
-  backgroundColor: ACCENT,
-},
-
-repTimer: {
-  color: ACCENT,
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 11,
-},
-
-activePromptTitle: {
-  color: BROWN,
-  fontFamily: 'FredokaBold',
-  fontSize: 20,
-  textAlign: 'center',
-},
-
-activePrompt: {
-  marginTop: 4,
-  color: MUTED,
-  fontFamily: 'FredokaRegular',
-  fontSize: 12,
-  lineHeight: 18,
-  textAlign: 'center',
-  marginBottom: 4,
-},
-  /* INFORMATION CARD */
-
+  activeScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+  },
+  activeHeader: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeHeaderCopy: {
+    position: 'absolute',
+    left: 50,
+    right: 50,
+    alignItems: 'center',
+  },
+  activeCategory: {
+    color: ACCENT,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
+  activeTitle: {
+    marginTop: 2,
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 17,
+    textAlign: 'center',
+  },
+  activeIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activePromptBlock: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  activePromptTitle: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    textAlign: 'center',
+  },
+  activePrompt: {
+    marginTop: 4,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  activeScroll: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+  },
+  liveContent: {
+    paddingBottom: 12,
+  },
+  bottomRepCard: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: LIGHT_PINK,
+    gap: 9,
+  },
+  repLabel: {
+    color: SOFT_TEXT,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+  },
+  repValue: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+  },
+  repTrack: {
+    height: 7,
+    borderRadius: 5,
+    backgroundColor: '#F1E3E7',
+    overflow: 'hidden',
+  },
+  repProgress: {
+    height: '100%',
+    borderRadius: 5,
+    backgroundColor: ACCENT,
+  },
+  repTimer: {
+    color: ACCENT,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 11,
+  },
   infoCard: {
     marginTop: 12,
     padding: 13,
@@ -1921,13 +1710,11 @@ activePrompt: {
     borderColor: BORDER,
     backgroundColor: LIGHT_PINK,
   },
-
   infoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-
   infoIconCircle: {
     width: 30,
     height: 30,
@@ -1936,13 +1723,11 @@ activePrompt: {
     justifyContent: 'center',
     backgroundColor: WHITE,
   },
-
   infoTitle: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
   },
-
   infoText: {
     marginTop: 8,
     color: SOFT_TEXT,
@@ -1950,9 +1735,6 @@ activePrompt: {
     fontSize: 12,
     lineHeight: 18,
   },
-
-  /* SHARED CARDS */
-
   mutedSmall: {
     marginTop: 3,
     color: MUTED,
@@ -1960,7 +1742,6 @@ activePrompt: {
     fontSize: 10,
     lineHeight: 15,
   },
-
   card: {
     marginTop: 12,
     padding: 13,
@@ -1969,21 +1750,16 @@ activePrompt: {
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   cardTitle: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
   },
-
   targetRange: {
     color: ACCENT,
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
   },
-
-  /* TARGET METER */
-
   meter: {
     position: 'relative',
     height: 38,
@@ -1993,7 +1769,6 @@ activePrompt: {
     backgroundColor: '#F5E9EC',
     overflow: 'hidden',
   },
-
   targetBand: {
     position: 'absolute',
     top: 5,
@@ -2003,7 +1778,6 @@ activePrompt: {
     borderWidth: 1,
     borderColor: '#E6A3B3',
   },
-
   marker: {
     position: 'absolute',
     top: 0,
@@ -2012,7 +1786,6 @@ activePrompt: {
     marginLeft: -1.5,
     alignItems: 'center',
   },
-
   markerDot: {
     marginTop: 8,
     width: 12,
@@ -2020,19 +1793,16 @@ activePrompt: {
     borderRadius: 6,
     backgroundColor: ACCENT,
   },
-
   markerStem: {
     flex: 1,
     width: 3,
     backgroundColor: ACCENT,
   },
-
   scaleText: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 9,
   },
-
   bandGuide: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2040,34 +1810,27 @@ activePrompt: {
     marginTop: 14,
     gap: 5,
   },
-
   guideItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-
   guideDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
   },
-
   guideText: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
   },
-
   bandStatus: {
     marginTop: 10,
     textAlign: 'center',
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
   },
-
-  /* VOICE HISTORY */
-
   history: {
     position: 'relative',
     height: 115,
@@ -2077,7 +1840,6 @@ activePrompt: {
     backgroundColor: '#FFF9FB',
     overflow: 'hidden',
   },
-
   historyTarget: {
     position: 'absolute',
     left: 0,
@@ -2085,7 +1847,6 @@ activePrompt: {
     backgroundColor: '#FADFE5',
     opacity: 0.85,
   },
-
   historyBars: {
     position: 'absolute',
     top: 0,
@@ -2097,14 +1858,12 @@ activePrompt: {
     alignItems: 'flex-end',
     gap: 2,
   },
-
   historyBar: {
     flex: 1,
     minWidth: 2,
     backgroundColor: ACCENT,
     borderRadius: 5,
   },
-
   historyEmpty: {
     position: 'absolute',
     top: 0,
@@ -2115,7 +1874,6 @@ activePrompt: {
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-
   historyEmptyText: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
@@ -2123,7 +1881,6 @@ activePrompt: {
     lineHeight: 16,
     textAlign: 'center',
   },
-
   liveCard: {
     marginTop: 12,
     padding: 14,
@@ -2132,14 +1889,12 @@ activePrompt: {
     borderWidth: 1.5,
     alignItems: 'center',
   },
-
   liveCardHeader: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
   },
-
   liveIconCircle: {
     width: 34,
     height: 34,
@@ -2148,13 +1903,11 @@ activePrompt: {
     justifyContent: 'center',
     backgroundColor: WHITE,
   },
-
   liveVolumeRow: {
     marginTop: 5,
     flexDirection: 'row',
     alignItems: 'baseline',
   },
-
   liveVolume: {
     color: BROWN,
     fontFamily: 'FredokaBold',
@@ -2162,14 +1915,12 @@ activePrompt: {
     lineHeight: 49,
     includeFontPadding: false,
   },
-
   liveUnit: {
     marginLeft: 6,
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
   },
-
   statusBadge: {
     marginTop: 7,
     paddingHorizontal: 12,
@@ -2179,18 +1930,15 @@ activePrompt: {
     alignItems: 'center',
     gap: 6,
   },
-
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
   },
-
   statusText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
   },
-
   helperText: {
     marginTop: 8,
     color: MUTED,
@@ -2199,7 +1947,6 @@ activePrompt: {
     lineHeight: 15,
     textAlign: 'center',
   },
-
   waitingText: {
     marginTop: 10,
     textAlign: 'center',
@@ -2207,9 +1954,6 @@ activePrompt: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
   },
-
-  /* RESULTS */
-
   resultCard: {
     width: '100%',
     paddingHorizontal: 13,
@@ -2219,7 +1963,6 @@ activePrompt: {
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   resultRow: {
     minHeight: 42,
     paddingVertical: 7,
@@ -2230,18 +1973,15 @@ activePrompt: {
     borderBottomColor: '#F4E9EC',
     gap: 12,
   },
-
   lastResultRow: {
     borderBottomWidth: 0,
   },
-
   resultLabel: {
     flex: 1,
     color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
   },
-
   resultValue: {
     flexShrink: 1,
     color: BROWN,
@@ -2249,44 +1989,4 @@ activePrompt: {
     fontSize: 12,
     textAlign: 'right',
   },
-
-activeScreen: {
-  flex: 1,
-  backgroundColor: WHITE,
-  paddingHorizontal: 20,
-  paddingTop: 18,
-},
-
-activeHeader: {
-  position: 'relative',
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingVertical: 10,
-}, 
-activePromptBlock: {
-  alignItems: 'center',
-  marginTop: 20,
-  marginBottom: 8,
-},
-activeScroll: {
-  flex: 1,
-  width: '100%',
-  minHeight: 0,
-},
-
-liveContent: {
-  paddingBottom: 12,
-},
-
-bottomRepCard: {
-  marginTop: 12,
-  marginBottom: 8,
-  padding: 14,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: BORDER,
-  backgroundColor: LIGHT_PINK,
-  gap: 9,
-},
 });

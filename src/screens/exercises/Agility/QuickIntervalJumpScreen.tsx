@@ -1,9 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-
 import { router } from 'expo-router';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import {
   ActivityIndicator,
   Pressable,
@@ -12,43 +9,29 @@ import {
   Text,
   View,
 } from 'react-native';
-
 import {
   AudioContext,
   AudioManager,
   AudioRecorder,
 } from 'react-native-audio-api';
 
-import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
-
 import {
   QUICK_INTERVAL_JUMP_PARAMS,
   type Tier,
 } from '@/constants/exercises/agility';
-
-import { auth } from '@/services/firebase/config';
-
+import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
+import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
-
+import { auth } from '@/services/firebase/config';
 import { measureQuickIntervalJump } from '@/services/measurement/agility/quickIntervalJump';
-
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
-
-import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-
-// ============================================================
-// COLORS
-
-// ============================================================
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -57,20 +40,11 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
-// ============================================================
-// CONFIG
-
-// ============================================================
 const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
 const MAX_RECORDING_SECONDS = 15;
 const MAX_SAMPLE_COUNT = SAMPLE_RATE * MAX_RECORDING_SECONDS;
 const COUNTDOWN_SECONDS = 3;
-
-// ============================================================
-// TYPES
-
-// ============================================================
 
 type Phase =
   | 'instructions'
@@ -95,14 +69,19 @@ type ExerciseResult = {
   durationMs: number;
 };
 
-// ============================================================
-// HELPERS
+type QuickIntervalJumpSettings = {
+  noteDurationSec: number;
+  gapSec: number;
+  repetitions: number;
+  accuracyTarget: number;
+};
 
-// ============================================================
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-function getQuickIntervalJumpSettings(tier: Tier) {
+const getQuickIntervalJumpSettings = (
+  tier: Tier,
+): QuickIntervalJumpSettings => {
   switch (tier) {
     case 'beginner':
       return {
@@ -125,20 +104,8 @@ function getQuickIntervalJumpSettings(tier: Tier) {
         repetitions: 5,
         accuracyTarget: 80,
       };
-    default:
-      return {
-        noteDurationSec: 0.3,
-        gapSec: 0.1,
-        repetitions: 5,
-        accuracyTarget: 80,
-      };
   }
-}
-
-// ============================================================
-// COMPONENT
-
-// ============================================================
+};
 
 export default function QuickIntervalJumpScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
@@ -156,10 +123,6 @@ export default function QuickIntervalJumpScreen() {
     useState<number | null>(null);
   const [result, setResult] = useState<ExerciseResult | null>(null);
 
-  // ----------------------------------------------------------
-  // REFS
-
-  // ----------------------------------------------------------
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<AudioRecorder | null>(null);
   const samplesRef = useRef<number[]>([]);
@@ -168,24 +131,16 @@ export default function QuickIntervalJumpScreen() {
     useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
   const mountedRef = useRef(true);
-  // Incrementing these tokens invalidates pending asynchronous work.
   const countdownTokenRef = useRef(0);
   const playbackTokenRef = useRef(0);
   const referencePlayingRef = useRef(false);
 
-  // ----------------------------------------------------------
-  // CURRENT TIER CONFIGURATION
+  const { noteDurationSec, gapSec, repetitions, accuracyTarget } =
+    getQuickIntervalJumpSettings(tier);
 
-  // ----------------------------------------------------------
-  const baseConfig = QUICK_INTERVAL_JUMP_PARAMS[tier];
-  const {
-    noteDurationSec,
-    gapSec,
-    repetitions,
-    accuracyTarget,
-  } = getQuickIntervalJumpSettings(tier);
-  const totalTargetNoteCount =
-    adaptiveConfig.frequencies.length * repetitions;
+  const notesPerRepetition = adaptiveConfig.frequencies.length;
+  const totalTargetNoteCount = notesPerRepetition * repetitions;
+
   const recordingDurationSec = Math.min(
     MAX_RECORDING_SECONDS,
     Math.max(
@@ -194,32 +149,34 @@ export default function QuickIntervalJumpScreen() {
         Math.max(0, totalTargetNoteCount - 1) * gapSec,
     ),
   );
+
   const repetitionDurationSec =
-    adaptiveConfig.frequencies.length * (noteDurationSec + gapSec);
+    notesPerRepetition * noteDurationSec +
+    Math.max(0, notesPerRepetition - 1) * gapSec +
+    gapSec;
 
-  // ==========================================================
-  // LOAD COMPONENT TIER
-
-  // ==========================================================
   useEffect(() => {
     let cancelled = false;
+
     const loadComponentTier = async () => {
       const user = auth.currentUser;
+
       if (!user) {
-        if (!cancelled) {
-          setTier('beginner');
-          setTierLoading(false);
-        }
+        setTier('beginner');
+        setTierLoading(false);
         return;
       }
+
       try {
         const progress = await fetchComponentProgress(
           user.uid,
           'agility',
         );
+
         if (cancelled) {
           return;
         }
+
         const savedTier = progress?.currentTier;
         const validTier: Tier =
           savedTier === 'beginner' ||
@@ -227,12 +184,11 @@ export default function QuickIntervalJumpScreen() {
           savedTier === 'advanced'
             ? savedTier
             : 'beginner';
+
         setTier(validTier);
       } catch (error) {
-        console.warn(
-          'Failed to load agility component tier:',
-          error,
-        );
+        console.warn('Failed to load agility component tier:', error);
+
         if (!cancelled) {
           setTier('beginner');
         }
@@ -242,181 +198,182 @@ export default function QuickIntervalJumpScreen() {
         }
       }
     };
+
     void loadComponentTier();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // ==========================================================
-  // LOAD ADAPTIVE PARAMETERS
-
-  // ==========================================================
   useEffect(() => {
+    if (tierLoading) {
+      return;
+    }
+
     let cancelled = false;
+
     const loadAdaptiveParameters = async () => {
-      if (tierLoading) {
-        return;
-      }
       setIsLoadingAdaptiveParams(true);
-      const currentBaseParams = {
+
+      const baseParams = {
         ...QUICK_INTERVAL_JUMP_PARAMS[tier],
-        accuracyThreshold: getQuickIntervalJumpSettings(tier).accuracyTarget,
+        accuracyThreshold: accuracyTarget,
       };
-      setAdaptiveConfig(currentBaseParams);
+
+      setAdaptiveConfig(baseParams);
+
       const user = auth.currentUser;
+
       if (!user) {
-        if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
-        }
+        setIsLoadingAdaptiveParams(false);
         return;
       }
+
+      let recentScores: number[] = [];
+      let vocalRange: { lowHz: number; highHz: number } | null = null;
+
       try {
-        // Score history is optional for pitch personalization. If this
-        // request fails, the assessed vocal range can still be used.
-        let recentScores: number[] = [];
-        try {
-          const records = await fetchExerciseRecords(
-            user.uid,
-            'agility',
-          );
-          recentScores = records
-            .filter(
-              (exercise) =>
-                exercise.templateId === 'quickIntervalJump' &&
-                exercise.tier === tier,
-            )
-            .slice(-5)
-            .map((exercise) => exercise.scorePct);
-        } catch (recordsError) {
-          console.warn(
-            'Could not load Quick Interval Jump score history:',
-            recordsError,
-          );
-        }
+        const records = await fetchExerciseRecords(user.uid, 'agility');
+
         if (cancelled) {
           return;
         }
-        // Personalize reference pitches to the user's latest assessed range.
-        let vocalRange: { lowHz: number; highHz: number } | null = null;
-        try {
-          const latestAssessment = await getLatestAssessment();
-          if (cancelled) {
-            return;
-          }
-          const lowHz =
-            latestAssessment?.vocalRange?.lowHz ??
-            latestAssessment?.vocalRangeLowHz;
-          const highHz =
-            latestAssessment?.vocalRange?.highHz ??
-            latestAssessment?.vocalRangeHighHz;
-          if (
-            typeof lowHz === 'number' &&
-            Number.isFinite(lowHz) &&
-            lowHz > 0 &&
-            typeof highHz === 'number' &&
-            Number.isFinite(highHz) &&
-            highHz > lowHz
-          ) {
-            vocalRange = { lowHz, highHz };
-          } else {
-            console.info(
-              'No valid vocal range found in the latest assessment; using the default Quick Interval Jump sequence.',
-            );
-          }
-        } catch (assessmentError) {
-          console.warn(
-            'Could not load the latest assessment vocal range:',
-            assessmentError,
-          );
-        }
+
+        recentScores = records
+          .filter(
+            (record) =>
+              record.templateId === 'quickIntervalJump' &&
+              record.tier === tier,
+          )
+          .slice(-5)
+          .map((record) => record.scorePct);
+      } catch (error) {
+        console.warn(
+          'Could not load Quick Interval Jump score history:',
+          error,
+        );
+      }
+
+      try {
+        const assessment = await getLatestAssessment();
+
         if (cancelled) {
           return;
         }
+
+        const lowHz =
+          assessment?.vocalRange?.lowHz ??
+          assessment?.vocalRangeLowHz;
+
+        const highHz =
+          assessment?.vocalRange?.highHz ??
+          assessment?.vocalRangeHighHz;
+
+        if (
+          typeof lowHz === 'number' &&
+          Number.isFinite(lowHz) &&
+          lowHz > 0 &&
+          typeof highHz === 'number' &&
+          Number.isFinite(highHz) &&
+          highHz > lowHz
+        ) {
+          vocalRange = { lowHz, highHz };
+        }
+      } catch (error) {
+        console.warn(
+          'Could not load the latest assessment vocal range:',
+          error,
+        );
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      try {
         const generatedParams = generateQuickIntervalJumpParams({
           tier,
           recentScores,
           vocalRange,
         });
-        if (!cancelled) {
-          setAdaptiveConfig({ ...generatedParams, accuracyThreshold: accuracyTarget });
-        }
+
+        setAdaptiveConfig({
+          ...generatedParams,
+          accuracyThreshold: accuracyTarget,
+        });
       } catch (error) {
         console.warn(
           'Failed to generate Quick Interval Jump adaptive parameters:',
           error,
         );
-        if (!cancelled) {
-          setAdaptiveConfig(currentBaseParams);
-        }
+        setAdaptiveConfig(baseParams);
       } finally {
         if (!cancelled) {
           setIsLoadingAdaptiveParams(false);
         }
       }
     };
+
     void loadAdaptiveParameters();
+
     return () => {
       cancelled = true;
     };
-  }, [tier, tierLoading]);
+  }, [tier, tierLoading, accuracyTarget]);
 
-  // ==========================================================
-  // MICROPHONE PERMISSION
-
-  // ==========================================================
   const requestMicrophonePermission =
     useCallback(async (): Promise<boolean> => {
       try {
         const permission =
           await AudioManager.requestRecordingPermissions();
+
         return permission === 'Granted';
       } catch (error) {
-        console.warn(
-          'Microphone permission request failed:',
-          error,
-        );
+        console.warn('Microphone permission request failed:', error);
         return false;
       }
     }, []);
 
-  // ==========================================================
-  // STOP RECORDING
-
-  // ==========================================================
   const stopRecording = useCallback(() => {
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
+
     recordingStartRef.current = null;
+
     const recorder = recorderRef.current;
-    if (recorder) {
-      try {
-        recorder.clearOnAudioReady();
-      } catch {}
-      try {
-        void recorder.stop();
-      } catch {}
-      recorderRef.current = null;
+
+    if (!recorder) {
+      return;
     }
+
+    try {
+      recorder.clearOnAudioReady();
+    } catch {}
+
+    try {
+      void recorder.stop();
+    } catch {}
+
+    recorderRef.current = null;
   }, []);
 
-  // ==========================================================
-  // CLEANUP
-
-  // ==========================================================
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
-      // Invalidate asynchronous countdowns and reference playback.
       countdownTokenRef.current += 1;
       playbackTokenRef.current += 1;
       referencePlayingRef.current = false;
+
       stopRecording();
+
       const context = audioContextRef.current;
       audioContextRef.current = null;
+
       if (context) {
         try {
           void context.close();
@@ -425,10 +382,6 @@ export default function QuickIntervalJumpScreen() {
     };
   }, [stopRecording]);
 
-  // ==========================================================
-  // REFERENCE PLAYBACK
-
-  // ==========================================================
   const playReference = async () => {
     if (
       referencePlayingRef.current ||
@@ -437,25 +390,28 @@ export default function QuickIntervalJumpScreen() {
     ) {
       return;
     }
+
     referencePlayingRef.current = true;
     setIsPlayingReference(true);
+
     const playbackToken = ++playbackTokenRef.current;
+
     try {
       const context =
         audioContextRef.current ??
         new AudioContext({ sampleRate: SAMPLE_RATE });
+
       audioContextRef.current = context;
+
       await context.resume();
+
       if (
         !mountedRef.current ||
         playbackToken !== playbackTokenRef.current
       ) {
         return;
       }
-      // These timings are intentionally derived from the tier.
-      // QUICK_INTERVAL_JUMP_PARAMS does not define timing fields.
-      const { noteDurationSec, gapSec } =
-        getQuickIntervalJumpSettings(tier);
+
       for (const [index, frequency] of adaptiveConfig.frequencies.entries()) {
         if (
           !mountedRef.current ||
@@ -463,25 +419,32 @@ export default function QuickIntervalJumpScreen() {
         ) {
           break;
         }
+
         const oscillator = context.createOscillator();
         const gain = context.createGain();
+
         oscillator.frequency.value = frequency;
         gain.gain.value = 0.12;
+
         oscillator.connect(gain);
         gain.connect(context.destination);
+
         const startTime = context.currentTime;
+
         oscillator.start(startTime);
-        setActiveReferenceNoteIndex(index);
         oscillator.stop(startTime + noteDurationSec);
-        // Keep the highlight active only while this reference tone plays.
+
+        setActiveReferenceNoteIndex(index);
+
         await sleep(noteDurationSec * 1000);
+
         if (
           mountedRef.current &&
           playbackToken === playbackTokenRef.current
         ) {
           setActiveReferenceNoteIndex(null);
         }
-        // Leave the target sequence unhighlighted during the gap.
+
         await sleep(gapSec * 1000);
       }
     } catch (error) {
@@ -489,6 +452,7 @@ export default function QuickIntervalJumpScreen() {
     } finally {
       if (playbackToken === playbackTokenRef.current) {
         referencePlayingRef.current = false;
+
         if (mountedRef.current) {
           setIsPlayingReference(false);
           setActiveReferenceNoteIndex(null);
@@ -497,32 +461,26 @@ export default function QuickIntervalJumpScreen() {
     }
   };
 
-  // ==========================================================
-  // BEGIN EXERCISE
-
-  // ==========================================================
   const beginExercise = async () => {
     if (tierLoading || isLoadingAdaptiveParams) {
       return;
     }
+
     const permission = await requestMicrophonePermission();
+
     if (!mountedRef.current) {
       return;
     }
+
     if (!permission) {
-      console.warn(
-        'Microphone permission was not granted.',
-      );
+      console.warn('Microphone permission was not granted.');
       return;
     }
+
     setResult(null);
     setPhase('reference');
   };
 
-  // ==========================================================
-  // START COUNTDOWN
-
-  // ==========================================================
   const startCountdown = async () => {
     if (
       phase !== 'reference' ||
@@ -532,213 +490,77 @@ export default function QuickIntervalJumpScreen() {
     ) {
       return;
     }
+
     const countdownToken = ++countdownTokenRef.current;
-    // Invalidate any previous reference playback operation.
+
     playbackTokenRef.current += 1;
+
     setCountdown(COUNTDOWN_SECONDS);
     setRecordingTime(0);
     setResult(null);
     samplesRef.current = [];
     processingRef.current = false;
     setPhase('countdown');
-    for (
-      let value = COUNTDOWN_SECONDS;
-      value >= 1;
-      value--
-    ) {
+
+    for (let value = COUNTDOWN_SECONDS; value >= 1; value--) {
       if (
         !mountedRef.current ||
         countdownToken !== countdownTokenRef.current
       ) {
         return;
       }
+
       setCountdown(value);
       await sleep(1000);
     }
+
     if (
       !mountedRef.current ||
       countdownToken !== countdownTokenRef.current
     ) {
       return;
     }
+
     await startRecording(countdownToken);
   };
 
-  // ==========================================================
-  // START RECORDING
-
-  // ==========================================================
-  const startRecording = async (countdownToken: number) => {
-    if (
-      !mountedRef.current ||
-      countdownToken !== countdownTokenRef.current
-    ) {
-      return;
-    }
-    try {
-      processingRef.current = false;
-      samplesRef.current = [];
-      const recorder = new AudioRecorder();
-      recorderRef.current = recorder;
-      const callbackResult = recorder.onAudioReady(
-        {
-          sampleRate: SAMPLE_RATE,
-          bufferLength: BUFFER_SIZE,
-          channelCount: 1,
-        },
-        ({ buffer, numFrames }) => {
-          try {
-            // Ignore frames after cancellation or recorder shutdown.
-            if (
-              recorderRef.current !== recorder ||
-              processingRef.current
-            ) {
-              return;
-            }
-            const channelData = buffer.getChannelData(0);
-            const frameCount = Math.min(
-              numFrames,
-              channelData.length,
-            );
-            // Never retain more than ten seconds of PCM samples.
-            const remaining =
-              MAX_SAMPLE_COUNT - samplesRef.current.length;
-            const samplesToCopy = Math.min(
-              frameCount,
-              Math.max(0, remaining),
-            );
-            for (let i = 0; i < samplesToCopy; i++) {
-              samplesRef.current.push(channelData[i]);
-            }
-          } catch (error) {
-            console.warn(
-              'Could not read microphone audio buffer:',
-              error,
-            );
-          }
-        },
-      );
-      if (callbackResult.status === 'error') {
-        console.warn(
-          'Could not initialize microphone recording:',
-          callbackResult.message,
-        );
-        try {
-          recorder.clearOnAudioReady();
-        } catch {}
-        if (recorderRef.current === recorder) {
-          recorderRef.current = null;
-        }
-        if (mountedRef.current) {
-          setPhase('instructions');
-        }
-        return;
-      }
-      if (
-        !mountedRef.current ||
-        countdownToken !== countdownTokenRef.current
-      ) {
-        try {
-          recorder.clearOnAudioReady();
-          void recorder.stop();
-        } catch {}
-        if (recorderRef.current === recorder) {
-          recorderRef.current = null;
-        }
-        return;
-      }
-      const startResult = await recorder.start();
-      if (startResult.status === 'error') {
-        console.warn(
-          'Could not start recorder:',
-          startResult.message,
-        );
-        try {
-          recorder.clearOnAudioReady();
-          void recorder.stop();
-        } catch {}
-        if (recorderRef.current === recorder) {
-          recorderRef.current = null;
-        }
-        if (mountedRef.current) {
-          setPhase('instructions');
-        }
-        return;
-      }
-      if (
-        !mountedRef.current ||
-        countdownToken !== countdownTokenRef.current
-      ) {
-        try {
-          recorder.clearOnAudioReady();
-          void recorder.stop();
-        } catch {}
-        if (recorderRef.current === recorder) {
-          recorderRef.current = null;
-        }
-        return;
-      }
-      recordingStartRef.current = Date.now();
-      setRecordingTime(0);
-      setPhase('recording');
-      recordingTimerRef.current = setInterval(() => {
-        const start = recordingStartRef.current;
-        if (start === null || !mountedRef.current) {
-          return;
-        }
-        const elapsed = (Date.now() - start) / 1000;
-        setRecordingTime(
-          Math.min(elapsed, recordingDurationSec),
-        );
-        if (elapsed >= recordingDurationSec) {
-          void processRecording();
-        }
-      }, 100);
-    } catch (error) {
-      console.warn('Recording failed:', error);
-      stopRecording();
-      if (mountedRef.current) {
-        setPhase('instructions');
-      }
-    }
-  };
-
-  // ==========================================================
-  // PROCESS RECORDING
-
-  // ==========================================================
   const processRecording = async () => {
-    if (
-      processingRef.current ||
-      !mountedRef.current
-    ) {
+    if (processingRef.current || !mountedRef.current) {
       return;
     }
+
     processingRef.current = true;
-    // Prevent a delayed countdown from starting another recording.
     countdownTokenRef.current += 1;
+
     stopRecording();
     setPhase('processing');
+
     await sleep(250);
+
     if (!mountedRef.current) {
+      processingRef.current = false;
       return;
     }
+
     try {
       const samples = new Float32Array(samplesRef.current);
-      const repeatedTargetFrequencies = Array.from(
+      const targetFrequencies = Array.from(
         { length: repetitions },
         () => adaptiveConfig.frequencies,
       ).flat();
+
       const measurement = measureQuickIntervalJump(
         samples,
         SAMPLE_RATE,
-        repeatedTargetFrequencies,
+        targetFrequencies,
       );
+
       const scored = scoreQuickIntervalJump(measurement);
       const finalScore = Math.round(scored.overall);
       const accuracyScore =
         (scored.pitchScore + scored.intervalScore) / 2;
       const passed = accuracyScore >= accuracyTarget;
+
       const feedback =
         passed === scored.passed
           ? scored.feedback
@@ -746,10 +568,6 @@ export default function QuickIntervalJumpScreen() {
             ? `You met the ${accuracyTarget}% accuracy target for the ${tier} level. Keep practicing smooth, precise interval jumps.`
             : `Aim for at least ${accuracyTarget}% accuracy for the ${tier} level. Sing each repeated sequence in order and focus on precise interval jumps.`;
 
-      // --------------------------------------------------------
-      // SAVE EXERCISE PROGRESS
-
-      // --------------------------------------------------------
       try {
         await saveCompletedExercise(
           'agility',
@@ -757,26 +575,24 @@ export default function QuickIntervalJumpScreen() {
           tier,
           finalScore,
         );
-        // The save service may handle errors internally, so this
-        // message confirms only that the save call returned.
-        console.log(
-          'Quick Interval Jump save call completed:',
-          {
-            componentId: 'agility',
-            templateId: 'quickIntervalJump',
-            tier,
-            scorePct: finalScore,
-          },
-        );
-      } catch (saveError) {
+
+        console.log('Quick Interval Jump progress save call completed:', {
+          componentId: 'agility',
+          templateId: 'quickIntervalJump',
+          tier,
+          scorePct: finalScore,
+        });
+      } catch (error) {
         console.error(
           'Failed to save Quick Interval Jump progress:',
-          saveError,
+          error,
         );
       }
+
       if (!mountedRef.current) {
         return;
       }
+
       setResult({
         overall: scored.overall,
         pitchScore: scored.pitchScore,
@@ -787,18 +603,15 @@ export default function QuickIntervalJumpScreen() {
         noteCount: measurement.noteCount,
         correctNoteCount: measurement.correctNoteCount,
         transitionCount: measurement.transitionCount,
-        correctTransitionCount:
-          measurement.correctTransitionCount,
-        averageTransitionTimeMs:
-          measurement.averageTransitionTimeMs,
+        correctTransitionCount: measurement.correctTransitionCount,
+        averageTransitionTimeMs: measurement.averageTransitionTimeMs,
         durationMs: measurement.durationMs,
       });
+
       setPhase('results');
     } catch (error) {
-      console.warn(
-        'Quick Interval Jump processing failed:',
-        error,
-      );
+      console.warn('Quick Interval Jump processing failed:', error);
+
       if (mountedRef.current) {
         setPhase('instructions');
       }
@@ -807,19 +620,143 @@ export default function QuickIntervalJumpScreen() {
     }
   };
 
-  // ==========================================================
-  // RESET
+  const startRecording = async (countdownToken: number) => {
+    if (
+      !mountedRef.current ||
+      countdownToken !== countdownTokenRef.current
+    ) {
+      return;
+    }
 
-  // ==========================================================
+    try {
+      processingRef.current = false;
+      samplesRef.current = [];
+
+      const recorder = new AudioRecorder();
+      recorderRef.current = recorder;
+
+      const callbackResult = recorder.onAudioReady(
+        {
+          sampleRate: SAMPLE_RATE,
+          bufferLength: BUFFER_SIZE,
+          channelCount: 1,
+        },
+        ({ buffer, numFrames }) => {
+          if (
+            recorderRef.current !== recorder ||
+            processingRef.current
+          ) {
+            return;
+          }
+
+          try {
+            const channelData = buffer.getChannelData(0);
+            const frameCount = Math.min(
+              numFrames,
+              channelData.length,
+            );
+            const remaining =
+              MAX_SAMPLE_COUNT - samplesRef.current.length;
+            const samplesToCopy = Math.min(
+              frameCount,
+              Math.max(0, remaining),
+            );
+
+            for (let index = 0; index < samplesToCopy; index++) {
+              samplesRef.current.push(channelData[index]);
+            }
+          } catch (error) {
+            console.warn('Could not read microphone audio buffer:', error);
+          }
+        },
+      );
+
+      if (callbackResult.status === 'error') {
+        console.warn(
+          'Could not initialize microphone recording:',
+          callbackResult.message,
+        );
+
+        stopRecording();
+
+        if (mountedRef.current) {
+          setPhase('instructions');
+        }
+
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        countdownToken !== countdownTokenRef.current
+      ) {
+        stopRecording();
+        return;
+      }
+
+      const startResult = await recorder.start();
+
+      if (startResult.status === 'error') {
+        console.warn('Could not start recorder:', startResult.message);
+
+        stopRecording();
+
+        if (mountedRef.current) {
+          setPhase('instructions');
+        }
+
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        countdownToken !== countdownTokenRef.current ||
+        recorderRef.current !== recorder
+      ) {
+        stopRecording();
+        return;
+      }
+
+      recordingStartRef.current = Date.now();
+      setRecordingTime(0);
+      setPhase('recording');
+
+      recordingTimerRef.current = setInterval(() => {
+        const start = recordingStartRef.current;
+
+        if (start === null || !mountedRef.current) {
+          return;
+        }
+
+        const elapsed = (Date.now() - start) / 1000;
+
+        setRecordingTime(Math.min(elapsed, recordingDurationSec));
+
+        if (elapsed >= recordingDurationSec) {
+          void processRecording();
+        }
+      }, 100);
+    } catch (error) {
+      console.warn('Recording failed:', error);
+      stopRecording();
+
+      if (mountedRef.current) {
+        setPhase('instructions');
+      }
+    }
+  };
+
   const resetExercise = () => {
-    // Cancel any pending countdown or reference playback.
     countdownTokenRef.current += 1;
     playbackTokenRef.current += 1;
     referencePlayingRef.current = false;
+
     setIsPlayingReference(false);
     setActiveReferenceNoteIndex(null);
+
     processingRef.current = false;
     stopRecording();
+
     samplesRef.current = [];
     setResult(null);
     setRecordingTime(0);
@@ -827,10 +764,6 @@ export default function QuickIntervalJumpScreen() {
     setPhase('instructions');
   };
 
-  // ==========================================================
-  // INSTRUCTIONS
-
-  // ==========================================================
   const renderInstructions = () => (
     <ExerciseScreen
       title="Quick Interval Jump"
@@ -854,24 +787,13 @@ export default function QuickIntervalJumpScreen() {
       summary={[
         { label: 'DIFFICULTY', value: adaptiveConfig.label },
         { label: 'SPEED', value: adaptiveConfig.speedLabel },
-        {
-          label: 'NOTES',
-          value: String(adaptiveConfig.frequencies.length),
-        },
-        {
-          label: 'REPETITIONS',
-          value: String(repetitions),
-        },
-        {
-          label: 'ACCURACY TARGET',
-          value: `${accuracyTarget}%`,
-        },
+        { label: 'NOTES', value: String(notesPerRepetition) },
+        { label: 'REPETITIONS', value: String(repetitions) },
+        { label: 'ACCURACY TARGET', value: `${accuracyTarget}%` },
       ]}
       tip="Focus on accurate interval jumps first. Smoothness and speed should develop naturally."
       tier={tier}
-      startDisabled={
-        tierLoading || isLoadingAdaptiveParams
-      }
+      startDisabled={tierLoading || isLoadingAdaptiveParams}
       startLabel={
         tierLoading || isLoadingAdaptiveParams
           ? 'Preparing Exercise...'
@@ -882,10 +804,6 @@ export default function QuickIntervalJumpScreen() {
     />
   );
 
-  // ==========================================================
-  // REFERENCE
-
-  // ==========================================================
   const renderReference = () => (
     <View style={styles.content}>
       <View style={styles.iconCircle}>
@@ -895,33 +813,32 @@ export default function QuickIntervalJumpScreen() {
           color={BROWN}
         />
       </View>
-      <Text style={styles.phaseTitle}>
-        Listen to the Reference
-      </Text>
+
+      <Text style={styles.phaseTitle}>Listen to the Reference</Text>
       <Text style={styles.phaseSubtitle}>
-        Listen carefully to the note sequence, then sing the
-        same interval jumps.
+        Listen carefully to the note sequence, then sing the same interval
+        jumps.
       </Text>
+
       <View style={styles.referenceCard}>
-        <Text style={styles.referenceLabel}>
-          REFERENCE SEQUENCE
-        </Text>
+        <Text style={styles.referenceLabel}>REFERENCE SEQUENCE</Text>
+
         <View style={styles.noteSequence}>
-          {adaptiveConfig.frequencies.map(
-            (frequency, index) => (
+          {adaptiveConfig.frequencies.map((frequency, index) => {
+            const isActive = activeReferenceNoteIndex === index;
+
+            return (
               <View
                 key={`${frequency}-${index}`}
                 style={[
                   styles.notePill,
-                  activeReferenceNoteIndex === index &&
-                    styles.referenceNotePlaying,
+                  isActive && styles.referenceNotePlaying,
                 ]}
               >
                 <Text
                   style={[
                     styles.noteNumber,
-                    activeReferenceNoteIndex === index &&
-                      styles.referenceNotePlayingText,
+                    isActive && styles.referenceNotePlayingText,
                   ]}
                 >
                   {index + 1}
@@ -929,20 +846,21 @@ export default function QuickIntervalJumpScreen() {
                 <Text
                   style={[
                     styles.noteText,
-                    activeReferenceNoteIndex === index &&
-                      styles.referenceNotePlayingText,
+                    isActive && styles.referenceNotePlayingText,
                   ]}
                 >
                   {frequencyToNoteName(frequency)}
                 </Text>
               </View>
-            ),
-          )}
+            );
+          })}
         </View>
+
         <Text style={styles.referenceHint}>
           Listen to the complete pattern before starting.
         </Text>
       </View>
+
       <Pressable
         style={[
           styles.startButton,
@@ -952,23 +870,15 @@ export default function QuickIntervalJumpScreen() {
         onPress={() => void playReference()}
       >
         {isPlayingReference ? (
-          <ActivityIndicator
-            size="small"
-            color={WHITE}
-          />
+          <ActivityIndicator size="small" color={WHITE} />
         ) : (
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
+          <Ionicons name="play" size={18} color={WHITE} />
         )}
         <Text style={styles.startButtonText}>
-          {isPlayingReference
-            ? 'Playing Reference...'
-            : 'Play Reference'}
+          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
         </Text>
       </Pressable>
+
       <Pressable
         style={[
           styles.doneButton,
@@ -977,114 +887,88 @@ export default function QuickIntervalJumpScreen() {
         disabled={isPlayingReference}
         onPress={() => void startCountdown()}
       >
-        <Text style={styles.doneButtonText}>
-          I'm Ready
-        </Text>
+        <Text style={styles.doneButtonText}>I'm Ready</Text>
       </Pressable>
     </View>
   );
 
-  // ==========================================================
-  // COUNTDOWN
-
-  // ==========================================================
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={BROWN}
-        />
+        <Ionicons name="flash-outline" size={34} color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>
-        Get Ready
-      </Text>
-      <Text style={styles.countdownText}>
-        {countdown}
-      </Text>
+      <Text style={styles.phaseTitle}>Get Ready</Text>
+      <Text style={styles.countdownText}>{countdown}</Text>
       <Text style={styles.phaseSubtitle}>
         Prepare for the interval jumps.
       </Text>
     </View>
   );
 
-  // ==========================================================
-  // RECORDING
-
-  // ==========================================================
   const renderRecording = () => {
-    const progress = Math.min(
-      recordingTime / recordingDurationSec,
-      1,
-    );
+    const progress = Math.min(recordingTime / recordingDurationSec, 1);
     const noteSlotDurationSec = noteDurationSec + gapSec;
     const noteIndexByTime = Math.floor(
       recordingTime / noteSlotDurationSec,
     );
     const timeWithinNoteSlot =
       recordingTime - noteIndexByTime * noteSlotDurationSec;
+
     const activeRecordingNoteIndex =
       noteIndexByTime < totalTargetNoteCount &&
       timeWithinNoteSlot < noteDurationSec
-        ? noteIndexByTime % adaptiveConfig.frequencies.length
+        ? noteIndexByTime % notesPerRepetition
         : null;
+
     const currentRepetition = Math.min(
       Math.floor(recordingTime / repetitionDurationSec) + 1,
       repetitions,
     );
+
     return (
       <View style={styles.content}>
         <View style={styles.recordingIcon}>
-          <Ionicons
-            name="mic"
-            size={34}
-            color={BROWN}
-          />
+          <Ionicons name="mic" size={34} color={BROWN} />
         </View>
-        <Text style={styles.recordingTitle}>
-          Jump Between Notes
-        </Text>
+
+        <Text style={styles.recordingTitle}>Jump Between Notes</Text>
         <Text style={styles.recordingSubtitle}>
-          Sing each target note clearly and make each interval
-          change precise.
+          Sing each target note clearly and make each interval change
+          precise.
         </Text>
+
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingBadgeText}>
-            RECORDING
-          </Text>
+          <Text style={styles.recordingBadgeText}>RECORDING</Text>
         </View>
+
         <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>
-            RECORDING TIME
-          </Text>
+          <Text style={styles.liveLabel}>RECORDING TIME</Text>
           <Text style={styles.liveCurrentNote}>
             {recordingTime.toFixed(1)}s
           </Text>
+
           <View style={styles.liveDivider} />
+
           <View style={styles.liveStats}>
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Target Notes
-              </Text>
-              <Text style={styles.liveStatValue}>
-                {adaptiveConfig.frequencies.length}
-              </Text>
+              <Text style={styles.liveStatLabel}>Target Notes</Text>
+              <Text style={styles.liveStatValue}>{notesPerRepetition}</Text>
             </View>
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Repetition
-              </Text>
+              <Text style={styles.liveStatLabel}>Repetition</Text>
               <Text style={styles.liveStatValue}>
                 {currentRepetition}/{repetitions}
               </Text>
             </View>
           </View>
         </View>
+
         <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s / {recordingDurationSec.toFixed(1)}s
+          Recording Time: {recordingTime.toFixed(1)}s /{' '}
+          {recordingDurationSec.toFixed(1)}s
         </Text>
+
         <View style={styles.timerTrack}>
           <View
             style={[
@@ -1093,90 +977,114 @@ export default function QuickIntervalJumpScreen() {
             ]}
           />
         </View>
+
         <View style={styles.referenceCard}>
-          <Text style={styles.cardTitle}>
-            Sing This Sequence
-          </Text>
+          <Text style={styles.cardTitle}>Sing This Sequence</Text>
           <Text style={styles.referenceLabel}>
             SING THE PINK NOTE WHEN IT LIGHTS UP
           </Text>
+
           <View style={styles.noteSequence}>
-            {adaptiveConfig.frequencies.map(
-              (frequency, index) => (
+            {adaptiveConfig.frequencies.map((frequency, index) => {
+              const isActive = activeRecordingNoteIndex === index;
+
+              return (
                 <View
                   key={`${frequency}-${index}`}
                   style={[
                     styles.notePill,
-                    activeRecordingNoteIndex === index &&
-                      styles.referenceNotePlaying,
+                    isActive && styles.referenceNotePlaying,
                   ]}
                 >
-                  <Text style={[
+                  <Text
+                    style={[
                       styles.noteNumber,
-                      activeRecordingNoteIndex === index &&
-                        styles.referenceNotePlayingText,
-                    ]}>
+                      isActive && styles.referenceNotePlayingText,
+                    ]}
+                  >
                     {index + 1}
                   </Text>
-                  <Text style={[
+                  <Text
+                    style={[
                       styles.noteText,
-                      activeRecordingNoteIndex === index &&
-                        styles.referenceNotePlayingText,
-                    ]}>
+                      isActive && styles.referenceNotePlayingText,
+                    ]}
+                  >
                     {frequencyToNoteName(frequency)}
                   </Text>
                 </View>
-              ),
-            )}
+              );
+            })}
           </View>
         </View>
+
         <Pressable
           style={styles.finishButton}
           onPress={() => void processRecording()}
         >
-          <Ionicons
-            name="stop"
-            size={18}
-            color={BROWN}
-          />
-          <Text style={styles.finishButtonText}>
-            Finish Recording
-          </Text>
+          <Ionicons name="stop" size={18} color={BROWN} />
+          <Text style={styles.finishButtonText}>Finish Recording</Text>
         </Pressable>
       </View>
     );
   };
 
-  // ==========================================================
-  // PROCESSING
-
-  // ==========================================================
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-        />
+        <ActivityIndicator size="large" color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>
-        Analyzing Your Singing
-      </Text>
+      <Text style={styles.phaseTitle}>Analyzing Your Singing</Text>
       <Text style={styles.phaseSubtitle}>
-        Measuring pitch accuracy, interval accuracy, and
-        transition speed.
+        Measuring pitch accuracy, interval accuracy, and transition speed.
       </Text>
     </View>
   );
 
-  // ==========================================================
-  // RESULTS
+  const renderScoreRow = (
+    label: string,
+    score: number,
+    isLast = false,
+  ) => (
+    <View style={isLast ? styles.scoreRowLast : styles.scoreRow}>
+      <View style={styles.scoreRowHeader}>
+        <Text style={styles.scoreRowLabel}>{label}</Text>
+        <Text style={styles.scoreRowValue}>{Math.round(score)}%</Text>
+      </View>
+      <View style={styles.progressBackground}>
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${Math.min(100, Math.max(0, score))}%`,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
 
-  // ==========================================================
+  const renderMetricRow = (
+    label: string,
+    value: string,
+    isLast = false,
+  ) => (
+    <View
+      style={[
+        styles.metricRow,
+        isLast && styles.metricRowLast,
+      ]}
+    >
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+
   const renderResults = () => {
     if (!result) {
       return null;
     }
+
     return (
       <View style={styles.resultsContent}>
         <View
@@ -1193,188 +1101,84 @@ export default function QuickIntervalJumpScreen() {
             color={BROWN}
           />
         </View>
+
         <Text style={styles.resultTitle}>
           {result.passed ? 'Great Job!' : 'Keep Practicing!'}
         </Text>
         <Text style={styles.resultSubtitle}>
           Quick Interval Jump Result
         </Text>
+
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>
-            OVERALL SCORE
-          </Text>
+          <Text style={styles.scoreLabel}>OVERALL SCORE</Text>
           <Text style={styles.scoreValue}>
             {Math.round(result.overall)}
           </Text>
-          <Text style={styles.scoreDescription}>
-            out of 100
-          </Text>
+          <Text style={styles.scoreDescription}>out of 100</Text>
         </View>
+
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>
             Performance Breakdown
           </Text>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Pitch Accuracy
-              </Text>
-              <Text style={styles.scoreRowValue}>
-                {Math.round(result.pitchScore)}%
-              </Text>
-            </View>
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      100,
-                      Math.max(0, result.pitchScore),
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Interval Accuracy
-              </Text>
-              <Text style={styles.scoreRowValue}>
-                {Math.round(result.intervalScore)}%
-              </Text>
-            </View>
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      100,
-                      Math.max(0, result.intervalScore),
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <View style={styles.scoreRowLast}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
-                Transition Speed
-              </Text>
-              <Text style={styles.scoreRowValue}>
-                {Math.round(result.speedScore)}%
-              </Text>
-            </View>
-            <View style={styles.progressBackground}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(
-                      100,
-                      Math.max(0, result.speedScore),
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
+          {renderScoreRow('Pitch Accuracy', result.pitchScore)}
+          {renderScoreRow('Interval Accuracy', result.intervalScore)}
+          {renderScoreRow('Transition Speed', result.speedScore, true)}
         </View>
+
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
-            Performance Metrics
-          </Text>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
-              Correct Notes
-            </Text>
-            <Text style={styles.metricValue}>
-              {result.correctNoteCount}/{result.noteCount}
-            </Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
-              Correct Jumps
-            </Text>
-            <Text style={styles.metricValue}>
-              {result.correctTransitionCount}/
-              {result.transitionCount}
-            </Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
-              Average Transition
-            </Text>
-            <Text style={styles.metricValue}>
-              {result.averageTransitionTimeMs > 0
-                ? result.averageTransitionTimeMs.toFixed(0)
-                : '0'}{' '}
-              ms
-            </Text>
-          </View>
-          <View style={[styles.metricRow, styles.metricRowLast]}>
-            <Text style={styles.metricLabel}>
-              Duration
-            </Text>
-            <Text style={styles.metricValue}>
-              {(result.durationMs / 1000).toFixed(1)}s
-            </Text>
-          </View>
+          <Text style={styles.resultCardTitle}>Performance Metrics</Text>
+          {renderMetricRow(
+            'Correct Notes',
+            `${result.correctNoteCount}/${result.noteCount}`,
+          )}
+          {renderMetricRow(
+            'Correct Jumps',
+            `${result.correctTransitionCount}/${result.transitionCount}`,
+          )}
+          {renderMetricRow(
+            'Average Transition',
+            `${result.averageTransitionTimeMs > 0 ? result.averageTransitionTimeMs.toFixed(0) : '0'} ms`,
+          )}
+          {renderMetricRow(
+            'Duration',
+            `${(result.durationMs / 1000).toFixed(1)}s`,
+            true,
+          )}
         </View>
+
         <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={20}
-            color={BROWN}
-          />
-          <Text style={styles.tipText}>
-            {result.feedback}
-          </Text>
+          <Ionicons name="bulb-outline" size={20} color={BROWN} />
+          <Text style={styles.tipText}>{result.feedback}</Text>
         </View>
-        <Pressable
-          style={styles.startButton}
-          onPress={resetExercise}
-        >
-          <Ionicons
-            name="refresh"
-            size={18}
-            color={WHITE}
-          />
-          <Text style={styles.startButtonText}>
-            Try Again
-          </Text>
+
+        <Pressable style={styles.startButton} onPress={resetExercise}>
+          <Ionicons name="refresh" size={18} color={WHITE} />
+          <Text style={styles.startButtonText}>Try Again</Text>
         </Pressable>
+
         <Pressable
           style={styles.doneButton}
-          onPress={() =>
-            router.replace('/dashboard?tab=exercises')
-          }
+          onPress={() => router.replace('/dashboard?tab=exercises')}
         >
-          <Text style={styles.doneButtonText}>
-            Done
-          </Text>
+          <Text style={styles.doneButtonText}>Done</Text>
         </Pressable>
       </View>
     );
   };
 
-  // ==========================================================
-  // MAIN RENDER
-
-  // ==========================================================
   if (tierLoading || isLoadingAdaptiveParams) {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
           <Ionicons name="options-outline" size={32} color={BROWN} />
         </View>
-        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+        <Text style={styles.preparingTitle}>
+          Preparing Your Exercise
+        </Text>
         <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+          Adjusting the exercise to your current difficulty level and
+          preparing your vocal range.
         </Text>
         <ActivityIndicator
           size="large"
@@ -1389,9 +1193,7 @@ export default function QuickIntervalJumpScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={
-        phase === 'results'
-          ? styles.resultsWrapper
-          : undefined
+        phase === 'results' ? styles.resultsWrapper : undefined
       }
       showsVerticalScrollIndicator={false}
     >
@@ -1404,11 +1206,6 @@ export default function QuickIntervalJumpScreen() {
     </ScrollView>
   );
 }
-
-// ============================================================
-// STYLES
-
-// ============================================================
 
 const styles = StyleSheet.create({
   preparingScreen: {

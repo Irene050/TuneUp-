@@ -1,3 +1,19 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
 import {
   DYNAMIC_RANGE_PARAMS,
   type DynamicRangeParams,
@@ -31,27 +47,8 @@ import {
 import {
   scoreDynamicRange,
 } from '@/services/scoring/volume/dynamicRangeExercise';
-import {
-  playSingleNote,
-} from '@/utils/music/notePlayer';
-import {
-  createMusicalNote,
-} from '@/utils/music/notes';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -68,19 +65,13 @@ const PHASES_PER_REPETITION = 3;
 const WINDOW_MS = 50;
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 
-type Phase =
-  | 'directions'
-  | 'countdown'
-  | 'exercise'
-  | 'results';
+type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 
 interface DynamicRangeExerciseProps {
   tier?: Tier;
 }
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
+/* Helpers */
 
 function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
@@ -103,9 +94,7 @@ function referenceHeight(index: number): number {
   return 0.18 + (1 - distance) * 0.72;
 }
 
-/* =========================================================
-   DYNAMIC RANGE VISUALIZER
-   ========================================================= */
+/* Dynamic range visualizer */
 
 function DynamicRangeVisualizer({
   liveHistory,
@@ -141,17 +130,13 @@ function DynamicRangeVisualizer({
       <View style={styles.centerLine} />
 
       <View style={styles.targetMarker}>
-        <Text style={styles.targetMarkerText}>
-          TARGET
-        </Text>
+        <Text style={styles.targetMarkerText}>TARGET</Text>
       </View>
     </View>
   );
 }
 
-/* =========================================================
-   MAIN SCREEN
-   ========================================================= */
+/* Main screen */
 
 export default function DynamicRangeExercise({
   tier,
@@ -161,10 +146,9 @@ export default function DynamicRangeExercise({
   const [resolvedTier, setResolvedTier] =
     useState<Tier>(initialTier);
 
-  const [params, setParams] =
-    useState<DynamicRangeParams>(
-      DYNAMIC_RANGE_PARAMS[initialTier],
-    );
+  const [params, setParams] = useState<DynamicRangeParams>(
+    DYNAMIC_RANGE_PARAMS[initialTier],
+  );
 
   const [referenceNote, setReferenceNote] = useState(() =>
     createMusicalNote(60),
@@ -180,8 +164,7 @@ export default function DynamicRangeExercise({
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
 
-  const [liveHistory, setLiveHistory] =
-    useState<number[]>([]);
+  const [liveHistory, setLiveHistory] = useState<number[]>([]);
 
   const [score, setScore] = useState(0);
   const [rangeAccuracy, setRangeAccuracy] = useState(0);
@@ -207,9 +190,7 @@ export default function DynamicRangeExercise({
   // Duration of one complete Soft → Loud → Soft pattern.
   const totalSeconds = rampSeconds * PHASES_PER_REPETITION;
 
-  /* =======================================================
-     LOAD REFERENCE NOTE FROM ASSESSMENT
-     ======================================================= */
+  /* Load reference note from assessment */
 
   useEffect(() => {
     let cancelled = false;
@@ -273,9 +254,7 @@ export default function DynamicRangeExercise({
     };
   }, []);
 
-  /* =======================================================
-     INVALIDATE COUNTDOWN WHEN SCREEN UNMOUNTS
-     ======================================================= */
+  /* Invalidate countdown when screen unmounts */
 
   useEffect(() => {
     return () => {
@@ -284,9 +263,7 @@ export default function DynamicRangeExercise({
     };
   }, []);
 
-  /* =======================================================
-     ADAPTIVE DIFFICULTY SCALING
-     ======================================================= */
+  /* Adaptive difficulty scaling */
 
   useEffect(() => {
     let cancelled = false;
@@ -301,11 +278,10 @@ export default function DynamicRangeExercise({
         const user = auth.currentUser;
 
         if (!tier && user) {
-          const componentProgress =
-            await fetchComponentProgress(
-              user.uid,
-              'volume',
-            );
+          const componentProgress = await fetchComponentProgress(
+            user.uid,
+            'volume',
+          );
 
           if (
             componentProgress?.currentTier === 'beginner' ||
@@ -336,13 +312,10 @@ export default function DynamicRangeExercise({
             .slice(-5)
             .map((record) => Number(record.scorePct ?? 0));
 
-          /*
-           * Use the assessment only as a cold-start fallback.
-           * Do not mix assessment scores with existing exercise history.
-           */
+          // Use assessment only as a cold-start fallback.
+          // Do not mix assessment scores with existing exercise history.
           if (referenceScores.length === 0) {
-            const latestAssessment =
-              await getLatestAssessment();
+            const latestAssessment = await getLatestAssessment();
 
             const assessmentScore =
               latestAssessment?.scores.find(
@@ -379,7 +352,6 @@ export default function DynamicRangeExercise({
         const fallbackTier = tier ?? 'beginner';
 
         setResolvedTier(fallbackTier);
-
         setParams(
           generateDynamicRangeParams({
             tier: fallbackTier,
@@ -400,12 +372,10 @@ export default function DynamicRangeExercise({
     };
   }, [tier]);
 
-  /* =======================================================
-     REFERENCE NOTE PLAYBACK
-     ======================================================= */
+  /* Reference note playback */
 
   const playReferenceNote = useCallback(async () => {
-    // The ref prevents rapid repeated taps before React rerenders.
+    // Prevent rapid repeated taps before React rerenders.
     if (referencePlayingRef.current) {
       return;
     }
@@ -420,10 +390,7 @@ export default function DynamicRangeExercise({
         REFERENCE_NOTE_DURATION_SEC,
       );
     } catch (error) {
-      console.error(
-        'Unable to play reference note:',
-        error,
-      );
+      console.error('Unable to play reference note:', error);
 
       setReferencePlaybackError(
         'Unable to play the reference note. Please try again.',
@@ -434,9 +401,7 @@ export default function DynamicRangeExercise({
     }
   }, [referenceNote]);
 
-  /* =======================================================
-     AUDIO RECORDER
-     ======================================================= */
+  /* Audio recorder */
 
   const {
     startRecording,
@@ -444,11 +409,7 @@ export default function DynamicRangeExercise({
     isRecording,
   } = useAudioRecorder({
     onFrame: (frame) => {
-      /*
-       * Only accept frames during an active recording attempt.
-       * This prevents stale frames from updating the UI after
-       * cancellation or completion.
-       */
+      // Ignore stale frames after cancellation or completion.
       if (!acceptFramesRef.current) {
         return;
       }
@@ -470,9 +431,7 @@ export default function DynamicRangeExercise({
       // Stop accepting live frames as soon as recording stops.
       acceptFramesRef.current = false;
 
-      /*
-       * Manual cancellation must never save an exercise.
-       */
+      // Manual cancellation must never save an exercise.
       if (!shouldSaveResultRef.current) {
         setSeconds(0);
         setRep(1);
@@ -482,9 +441,7 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      /*
-       * Clear this before processing to prevent duplicate saves.
-       */
+      // Clear before processing to prevent duplicate saves.
       shouldSaveResultRef.current = false;
 
       try {
@@ -520,9 +477,7 @@ export default function DynamicRangeExercise({
         setScore(Math.round(result.overallScore));
         setPassed(result.passed);
 
-        /*
-         * Only a naturally completed recording reaches this branch.
-         */
+        // Only a naturally completed recording reaches this branch.
         void saveCompletedExercise(
           'volume',
           'dynamicRange',
@@ -532,15 +487,9 @@ export default function DynamicRangeExercise({
 
         setPhase('results');
       } catch (error) {
-        console.error(
-          'Unable to measure Dynamic Range:',
-          error,
-        );
+        console.error('Unable to measure Dynamic Range:', error);
 
-        /*
-         * Do not save a failed measurement as a valid exercise.
-         * Return to directions so the user can retry.
-         */
+        // Do not save a failed measurement as a valid exercise.
         setPhase('directions');
       } finally {
         setSeconds(0);
@@ -552,9 +501,7 @@ export default function DynamicRangeExercise({
     },
   });
 
-  /* =======================================================
-     EXERCISE TIMER
-     ======================================================= */
+  /* Exercise timer */
 
   useEffect(() => {
     if (phase !== 'exercise' || !isRecording) {
@@ -564,9 +511,7 @@ export default function DynamicRangeExercise({
     const interval = setInterval(() => {
       setSeconds((previous) => {
         if (previous >= totalSeconds - 1) {
-          /*
-           * Advance to the next repetition.
-           */
+          // Advance to the next repetition.
           if (rep < repetitions) {
             setRep((current) => current + 1);
             setLiveHistory([]);
@@ -575,9 +520,7 @@ export default function DynamicRangeExercise({
             return 0;
           }
 
-          /*
-           * Mark completion before stopping the recorder.
-           */
+          // Mark completion before stopping the recorder.
           if (!finishingRef.current) {
             finishingRef.current = true;
             shouldSaveResultRef.current = true;
@@ -614,9 +557,7 @@ export default function DynamicRangeExercise({
     stopRecording,
   ]);
 
-  /* =======================================================
-     CURRENT INSTRUCTION
-     ======================================================= */
+  /* Current instruction */
 
   let instructionTitle = 'SOFT → LOUD';
   let instructionPrompt = 'Gradually increase your volume.';
@@ -632,9 +573,7 @@ export default function DynamicRangeExercise({
   const secondsUntilChange =
     rampSeconds - (seconds % rampSeconds);
 
-  /* =======================================================
-     RESET EXERCISE
-     ======================================================= */
+  /* Reset exercise */
 
   const resetExercise = () => {
     setRep(1);
@@ -653,9 +592,7 @@ export default function DynamicRangeExercise({
     shouldSaveResultRef.current = false;
   };
 
-  /* =======================================================
-     START / RETRY
-     ======================================================= */
+  /* Start and retry */
 
   const startExercise = async () => {
     const runId = ++countdownRunIdRef.current;
@@ -682,10 +619,7 @@ export default function DynamicRangeExercise({
     }
 
     try {
-      /*
-       * Enable frame acceptance before starting recording,
-       * so the first valid frames are not discarded.
-       */
+      // Accept frames before recording starts so initial frames are kept.
       acceptFramesRef.current = true;
       setPhase('exercise');
 
@@ -709,9 +643,7 @@ export default function DynamicRangeExercise({
     void startExercise();
   };
 
-  /* =======================================================
-     STOP / CANCEL INCOMPLETE EXERCISE
-     ======================================================= */
+  /* Stop or cancel an incomplete exercise */
 
   const stopIncompleteExercise = async (
     navigateBack = false,
@@ -746,9 +678,7 @@ export default function DynamicRangeExercise({
     }
   };
 
-  /* =======================================================
-     PREPARING SCREEN
-     ======================================================= */
+  /* Preparing screen */
 
   if (loadingParams) {
     return (
@@ -779,9 +709,7 @@ export default function DynamicRangeExercise({
     );
   }
 
-  /* =======================================================
-     DIRECTIONS
-     ======================================================= */
+  /* Directions */
 
   if (phase === 'directions') {
     return (
@@ -826,13 +754,10 @@ export default function DynamicRangeExercise({
         onBack={() => router.back()}
         onStart={startExercise}
       >
-        {/* Reference note card */}
         <View style={styles.referenceCard}>
           <View style={styles.referenceTopRow}>
             <View style={styles.referenceCopy}>
-              <Text style={styles.eyebrow}>
-                REFERENCE NOTE
-              </Text>
+              <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
 
               <Text style={styles.referenceNote}>
                 {referenceNote.name}
@@ -864,10 +789,7 @@ export default function DynamicRangeExercise({
             disabled={referencePlaying}
           >
             {referencePlaying ? (
-              <ActivityIndicator
-                size="small"
-                color={BROWN}
-              />
+              <ActivityIndicator size="small" color={BROWN} />
             ) : (
               <Ionicons
                 name="play"
@@ -890,7 +812,6 @@ export default function DynamicRangeExercise({
           )}
         </View>
 
-        {/* Pattern preview */}
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>
             Follow this pattern
@@ -914,26 +835,16 @@ export default function DynamicRangeExercise({
           </View>
 
           <View style={styles.previewLabels}>
-            <Text style={styles.previewLabel}>
-              Soft
-            </Text>
-
-            <Text style={styles.previewLabel}>
-              Loud
-            </Text>
-
-            <Text style={styles.previewLabel}>
-              Soft
-            </Text>
+            <Text style={styles.previewLabel}>Soft</Text>
+            <Text style={styles.previewLabel}>Loud</Text>
+            <Text style={styles.previewLabel}>Soft</Text>
           </View>
         </View>
       </ExerciseScreen>
     );
   }
 
-  /* =======================================================
-     COUNTDOWN
-     ======================================================= */
+  /* Countdown */
 
   if (phase === 'countdown') {
     return (
@@ -948,11 +859,7 @@ export default function DynamicRangeExercise({
           }}
           activeOpacity={0.85}
         >
-          <Ionicons
-            name="close"
-            size={22}
-            color={BROWN}
-          />
+          <Ionicons name="close" size={22} color={BROWN} />
 
           <Text style={styles.countdownCancelText}>
             Cancel
@@ -966,9 +873,7 @@ export default function DynamicRangeExercise({
             </Text>
           </View>
 
-          <Text style={styles.countdownTitle}>
-            Get Ready
-          </Text>
+          <Text style={styles.countdownTitle}>Get Ready</Text>
 
           <Text style={styles.countdownPrompt}>
             Recording starts when the countdown ends.
@@ -983,9 +888,7 @@ export default function DynamicRangeExercise({
     );
   }
 
-  /* =======================================================
-     LIVE EXERCISE
-     ======================================================= */
+  /* Live exercise */
 
   if (phase === 'exercise') {
     const progress = Math.min(
@@ -1007,11 +910,7 @@ export default function DynamicRangeExercise({
           </View>
 
           <View style={styles.micCircle}>
-            <Ionicons
-              name="mic"
-              size={20}
-              color={BROWN}
-            />
+            <Ionicons name="mic" size={20} color={BROWN} />
           </View>
         </View>
 
@@ -1029,28 +928,16 @@ export default function DynamicRangeExercise({
           <View style={styles.legendItem}>
             <View style={styles.actualDot} />
 
-            <Text style={styles.legendText}>
-              Your voice
-            </Text>
+            <Text style={styles.legendText}>Your voice</Text>
           </View>
         </View>
 
-        <DynamicRangeVisualizer
-          liveHistory={liveHistory}
-        />
+        <DynamicRangeVisualizer liveHistory={liveHistory} />
 
         <View style={styles.visualizerLabels}>
-          <Text style={styles.visualizerLabel}>
-            SOFT
-          </Text>
-
-          <Text style={styles.visualizerLabel}>
-            LOUD
-          </Text>
-
-          <Text style={styles.visualizerLabel}>
-            SOFT
-          </Text>
+          <Text style={styles.visualizerLabel}>SOFT</Text>
+          <Text style={styles.visualizerLabel}>LOUD</Text>
+          <Text style={styles.visualizerLabel}>SOFT</Text>
         </View>
 
         <View style={styles.voiceRow}>
@@ -1067,14 +954,11 @@ export default function DynamicRangeExercise({
           </View>
 
           <Text style={styles.voiceValue}>
-            {liveFrame &&
-            Number.isFinite(liveFrame.volume)
+            {liveFrame && Number.isFinite(liveFrame.volume)
               ? liveFrame.volume.toFixed(1)
               : '--'}
 
-            <Text style={styles.voiceUnit}>
-              {' '}dBFS
-            </Text>
+            <Text style={styles.voiceUnit}> dBFS</Text>
           </Text>
         </View>
 
@@ -1108,9 +992,7 @@ export default function DynamicRangeExercise({
           <View style={styles.sessionDivider} />
 
           <View style={styles.sessionPart}>
-            <Text style={styles.sessionLabel}>
-              ELAPSED
-            </Text>
+            <Text style={styles.sessionLabel}>ELAPSED</Text>
 
             <Text style={styles.sessionValue}>
               {Math.floor(seconds / 60)}:
@@ -1135,11 +1017,7 @@ export default function DynamicRangeExercise({
           }}
           activeOpacity={0.85}
         >
-          <Ionicons
-            name="stop"
-            size={16}
-            color={BROWN}
-          />
+          <Ionicons name="stop" size={16} color={BROWN} />
 
           <Text style={styles.stopButtonText}>
             Stop Exercise
@@ -1167,17 +1045,11 @@ export default function DynamicRangeExercise({
     );
   }
 
-  /* =======================================================
-     RESULTS
-     ======================================================= */
+  /* Results */
 
   return (
     <ExerciseResultsScreen
-      title={
-        passed
-          ? 'Exercise Passed'
-          : 'Needs More Practice'
-      }
+      title={passed ? 'Exercise Passed' : 'Needs More Practice'}
       subtitle={
         passed
           ? 'Great job! You controlled your vocal volume.'
@@ -1224,12 +1096,9 @@ export default function DynamicRangeExercise({
   );
 }
 
-/* =========================================================
-   SCREEN-SPECIFIC STYLES
-   ========================================================= */
+/* Styles */
 
 const styles = StyleSheet.create({
-  /* Preparing */
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,

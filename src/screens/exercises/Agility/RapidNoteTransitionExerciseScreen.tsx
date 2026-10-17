@@ -21,40 +21,22 @@ import {
   type Tier,
 } from '@/constants/exercises/agility';
 import {
-  LiveAudioFrame,
   useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-import {
-  generateRapidNoteTransitionParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
+import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import {
-  measureRapidNoteTransition,
-} from '@/services/measurement/agility/rapidNoteTransitionExercise';
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
-import {
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-import {
-  scoreRapidNoteTransition,
-} from '@/services/scoring/agility/rapidNoteTransitionExercise';
+import { measureRapidNoteTransition } from '@/services/measurement/agility/rapidNoteTransitionExercise';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import { fetchExerciseRecords } from '@/services/progress/progressRepo';
+import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTransitionExercise';
 import {
   disposeNotePlayer,
   playNoteSequence,
   type NoteToPlay,
 } from '@/utils/music/notePlayer';
-import {
-  createMusicalNote,
-} from '@/utils/music/notes';
-
-// ============================================================
-// COLORS AND CONFIGURATION
-// ============================================================
+import { createMusicalNote } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -67,11 +49,11 @@ const BORDER = '#F2DDE5';
 const GUIDE_GREEN = '#4F9B67';
 const GUIDE_YELLOW = '#D9A72E';
 const GUIDE_RED = '#D64F5A';
+
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
 
-// Keep exercise targets aligned with the approved manuscript template.
 const RAPID_NOTE_TRANSITION_TEMPLATE: Record<
   Tier,
   {
@@ -108,10 +90,6 @@ const RAPID_NOTE_TRANSITION_TEMPLATE: Record<
     accuracyThreshold: 80,
   },
 };
-
-// ============================================================
-// TYPES
-// ============================================================
 
 type Screen =
   | 'instructions'
@@ -163,24 +141,15 @@ type ExerciseResult = {
   attempts: AttemptResult[];
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-function getRandomInteger(
-  min: number,
-  max: number,
-): number {
-  return (
-    Math.floor(Math.random() * (max - min + 1)) +
-    min
-  );
+function getRandomInteger(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function clampScore(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
+
   return Math.min(100, Math.max(0, value));
 }
 
@@ -188,17 +157,32 @@ function frequencyToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
 
-// UI-only note comparison for the live staff guide. Scoring remains unchanged.
-
 function noteNameToMidi(noteName: string | undefined): number | null {
-  if (!noteName) return null;
+  if (!noteName) {
+    return null;
+  }
+
   const match = noteName.trim().match(/^([A-G])([#b]?)(-?\d+)$/i);
-  if (!match) return null;
-  const semitones: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+  if (!match) {
+    return null;
+  }
+
+  const semitones: Record<string, number> = {
+    C: 0,
+    D: 2,
+    E: 4,
+    F: 5,
+    G: 7,
+    A: 9,
+    B: 11,
+  };
+
   const letter = match[1].toUpperCase();
   const accidental = match[2];
   const octave = Number(match[3]);
   const offset = accidental === '#' ? 1 : accidental === 'b' ? -1 : 0;
+
   return (octave + 1) * 12 + semitones[letter] + offset;
 }
 
@@ -206,26 +190,36 @@ function getGuideFeedbackColor(
   targetNote: string,
   liveNote: string | undefined,
 ): string | null {
-  if (!liveNote || liveNote === '--') return null;
+  if (!liveNote || liveNote === '--') {
+    return null;
+  }
+
   const targetMidi = noteNameToMidi(targetNote);
   const liveMidi = noteNameToMidi(liveNote);
-  if (targetMidi === null || liveMidi === null) return null;
+
+  if (targetMidi === null || liveMidi === null) {
+    return null;
+  }
+
   const difference = Math.abs(targetMidi - liveMidi);
-  if (difference === 0) return GUIDE_GREEN;
-  if (difference === 1) return GUIDE_YELLOW;
+
+  if (difference === 0) {
+    return GUIDE_GREEN;
+  }
+
+  if (difference === 1) {
+    return GUIDE_YELLOW;
+  }
+
   return GUIDE_RED;
 }
 
-function average(
-  values: number[],
-): number {
+function average(values: number[]): number {
   if (values.length === 0) {
     return 0;
   }
-  return (
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length
-  );
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function generateExerciseSequence(
@@ -235,62 +229,112 @@ function generateExerciseSequence(
   noteDurationSeconds: number,
 ): ExerciseSequence {
   const midiNotes: number[] = [];
+
   for (let index = 0; index < noteCount; index += 1) {
     let midi = getRandomInteger(minMidi, maxMidi);
 
-    // Avoid identical consecutive notes.
-    if (
-      index > 0 &&
-      midi === midiNotes[index - 1]
-    ) {
-      if (midi === maxMidi) {
-        midi -= 1;
-      } else {
-        midi += 1;
-      }
+    if (index > 0 && midi === midiNotes[index - 1]) {
+      midi = midi === maxMidi ? midi - 1 : midi + 1;
     }
+
     midiNotes.push(midi);
   }
+
   const musicalNotes = midiNotes.map(createMusicalNote);
+
   return {
     notes: musicalNotes.map(note => ({
       frequencyHz: note.frequency,
       durationSec: noteDurationSeconds,
     })),
-    frequencies: musicalNotes.map(
-      note => note.frequency,
-    ),
+    frequencies: musicalNotes.map(note => note.frequency),
     names: musicalNotes.map(note => note.name),
   };
 }
 
-// ============================================================
-// COMPONENT
-// ============================================================
+function createFailedAttempt(repetition: number): AttemptResult {
+  return {
+    repetition,
+    overall: 0,
+    pitchScore: 0,
+    sequenceScore: 0,
+    speedScore: 0,
+    passed: false,
+    feedback:
+      'We could not detect enough usable notes for this repetition, so it received 0%. Sing clearly near the microphone in a quiet area.',
+    transitionCount: 0,
+    transitionsPerSecond: 0,
+    averageTransitionTimeMs: 0,
+  };
+}
+
+function buildExerciseResult(
+  attempts: AttemptResult[],
+  accuracyThreshold: number,
+  forceFail = false,
+): ExerciseResult {
+  const overall = Math.round(
+    average(attempts.map(attempt => attempt.overall)),
+  );
+  const pitchScore = Math.round(
+    average(attempts.map(attempt => attempt.pitchScore)),
+  );
+  const sequenceScore = Math.round(
+    average(attempts.map(attempt => attempt.sequenceScore)),
+  );
+  const speedScore = Math.round(
+    average(attempts.map(attempt => attempt.speedScore)),
+  );
+  const transitionCount = Math.round(
+    average(attempts.map(attempt => attempt.transitionCount)),
+  );
+  const transitionsPerSecond = average(
+    attempts.map(attempt => attempt.transitionsPerSecond),
+  );
+  const averageTransitionTimeMs = average(
+    attempts.map(attempt => attempt.averageTransitionTimeMs),
+  );
+
+  const passed =
+    !forceFail &&
+    overall >= accuracyThreshold &&
+    pitchScore >= 60 &&
+    sequenceScore >= 60;
+
+  const feedback = forceFail
+    ? `You completed all ${attempts.length} repetitions. One or more attempts could not be analyzed, so those attempts received 0%. Check your microphone and try again in a quiet area.`
+    : passed
+      ? `You completed all ${attempts.length} repetitions and met the ${accuracyThreshold}% exercise goal. Keep practicing for smoother, more consistent transitions.`
+      : `You completed all ${attempts.length} repetitions. Your average score was ${overall}%, below the ${accuracyThreshold}% exercise goal. Focus on accurate notes before increasing speed.`;
+
+  return {
+    overall,
+    pitchScore,
+    sequenceScore,
+    speedScore,
+    passed,
+    feedback,
+    transitionCount,
+    transitionsPerSecond,
+    averageTransitionTimeMs,
+    attempts,
+  };
+}
 
 export default function RapidNoteTransitionExerciseScreen({
   tier = 'beginner',
 }: Props) {
-
-  // ----------------------------------------------------------
-  // BASE PARAMETERS
-  // ----------------------------------------------------------
-
   const baseParams = useMemo(
     () => RAPID_NOTE_TRANSITION_PARAMS[tier],
     [tier],
   );
 
-  // ----------------------------------------------------------
-  // ADAPTIVE PARAMETERS
-  // ----------------------------------------------------------
-
-  const [adaptiveParams, setAdaptiveParams] =
-    useState(baseParams);
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
-    useState(true);
-  const [assessedVocalRangeHz, setAssessedVocalRangeHz] =
-    useState<{ lowHz: number; highHz: number } | null>(null);
+  const [adaptiveParams, setAdaptiveParams] = useState(baseParams);
+  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] = useState(true);
+  const [assessedVocalRangeHz, setAssessedVocalRangeHz] = useState<{
+    lowHz: number;
+    highHz: number;
+  } | null>(null);
   const [exerciseConfigVersion, setExerciseConfigVersion] = useState(0);
 
   useEffect(() => {
@@ -301,6 +345,7 @@ export default function RapidNoteTransitionExerciseScreen({
 
       try {
         const user = auth.currentUser;
+
         if (!user) {
           if (!cancelled) {
             setAdaptiveParams(baseParams);
@@ -309,16 +354,13 @@ export default function RapidNoteTransitionExerciseScreen({
           return;
         }
 
-        const exerciseRecords = await fetchExerciseRecords(
-          user.uid,
-          'agility',
-        );
+        const exerciseRecords = await fetchExerciseRecords(user.uid, 'agility');
+
         if (cancelled) {
           return;
         }
 
-        // Use only this exercise's records at the current tier.
-        const matchingExerciseRecords = exerciseRecords
+        const matchingRecords = exerciseRecords
           .filter(
             record =>
               record.templateId === 'rapidNoteTransition' &&
@@ -326,11 +368,13 @@ export default function RapidNoteTransitionExerciseScreen({
           )
           .sort((a, b) => a.timestamp - b.timestamp);
 
-        // The latest assessment provides the pitch limits for note generation.
-        // Score history remains the preferred ADS input when it exists.
-        let latestAssessment: Awaited<ReturnType<typeof getLatestAssessment>> | null = null;
+        let latestAssessment:
+          | Awaited<ReturnType<typeof getLatestAssessment>>
+          | null = null;
+
         try {
           latestAssessment = await getLatestAssessment();
+
           if (cancelled) {
             return;
           }
@@ -342,7 +386,7 @@ export default function RapidNoteTransitionExerciseScreen({
             latestAssessment?.vocalRange?.highHz ??
             latestAssessment?.vocalRangeHighHz;
 
-          if (
+          const validRange =
             typeof lowHz === 'number' &&
             Number.isFinite(lowHz) &&
             lowHz > 0 &&
@@ -350,67 +394,47 @@ export default function RapidNoteTransitionExerciseScreen({
             Number.isFinite(highHz) &&
             highHz > lowHz &&
             Math.floor(frequencyToMidi(highHz)) -
-              Math.ceil(frequencyToMidi(lowHz)) >= 2
-          ) {
-            setAssessedVocalRangeHz({ lowHz, highHz });
-            console.log('Rapid Note Transition vocal range from assessment:', {
-              lowHz,
-              highHz,
-            });
-          } else {
-            setAssessedVocalRangeHz(null);
-            console.info(
-              'No valid vocal range was found in the latest assessment; using the tier pitch range.',
-            );
-          }
-        } catch (assessmentError) {
-          setAssessedVocalRangeHz(null);
-          console.warn(
-            'Could not load the latest assessment vocal range; using the tier pitch range:',
-            assessmentError,
+              Math.ceil(frequencyToMidi(lowHz)) >=
+              2;
+
+          setAssessedVocalRangeHz(
+            validRange ? { lowHz, highHz } : null,
           );
+        } catch (error) {
+          setAssessedVocalRangeHz(null);
+          console.warn('Could not load assessment vocal range:', error);
         }
 
         if (cancelled) {
           return;
         }
 
-        let recentScores = matchingExerciseRecords
+        let recentScores = matchingRecords
           .slice(-5)
           .map(record => record.scorePct);
 
-        // The Agility assessment is only the cold-start ADS fallback.
-        if (matchingExerciseRecords.length === 0) {
-          const agilityScore =
-            latestAssessment?.scores.find(
-              score => score.componentId === 'agility',
-            )?.scorePct;
+        if (matchingRecords.length === 0) {
+          const assessmentScore = latestAssessment?.scores.find(
+            score => score.componentId === 'agility',
+          )?.scorePct;
+
           if (
-            typeof agilityScore === 'number' &&
-            Number.isFinite(agilityScore)
+            typeof assessmentScore === 'number' &&
+            Number.isFinite(assessmentScore)
           ) {
-            recentScores = [agilityScore];
+            recentScores = [assessmentScore];
           }
         }
 
-        const generatedParams =
+        setAdaptiveParams(
           generateRapidNoteTransitionParams({
             tier,
             recentScores,
-          });
-
-        console.log('Rapid Note Transition ADS parameters:', {
-          tier,
-          recentScores,
-          baseParams,
-          generatedParams,
-        });
-        setAdaptiveParams(generatedParams);
-      } catch (error) {
-        console.error(
-          'Failed to load Rapid Note Transition ADS parameters:',
-          error,
+          }),
         );
+      } catch (error) {
+        console.error('Failed to load adaptive parameters:', error);
+
         if (!cancelled) {
           setAdaptiveParams(baseParams);
         }
@@ -422,20 +446,15 @@ export default function RapidNoteTransitionExerciseScreen({
     };
 
     void loadAdaptiveParams();
+
     return () => {
       cancelled = true;
     };
   }, [baseParams, tier]);
 
-  // ----------------------------------------------------------
-  // EXERCISE CONFIGURATION
-  // ----------------------------------------------------------
-
   const exerciseConfig = useMemo(() => {
     const template = RAPID_NOTE_TRANSITION_TEMPLATE[tier];
 
-    // Adaptive parameters can adjust practice difficulty, but never leave
-    // the note-count or speed limits specified for the selected tier.
     const minNotes = Math.max(
       template.minNotes,
       Math.min(template.maxNotes, Math.ceil(adaptiveParams.minNotes)),
@@ -452,61 +471,49 @@ export default function RapidNoteTransitionExerciseScreen({
     );
     const maxSpeed = Math.max(
       minSpeed,
-      Math.min(template.maxSpeed, Math.max(template.minSpeed, adaptiveParams.maxSpeed)),
+      Math.min(
+        template.maxSpeed,
+        Math.max(template.minSpeed, adaptiveParams.maxSpeed),
+      ),
     );
     const targetSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed);
-
-    // Match the total note beat (sound + short gap) to the target notes/sec.
     const noteDurationSec = Math.max(
       0.05,
       1 / targetSpeed - REFERENCE_NOTE_GAP_SECONDS,
     );
 
-    // Round inward so generated notes stay inside the assessed Hz limits.
     const assessedMinMidi = assessedVocalRangeHz
       ? Math.ceil(frequencyToMidi(assessedVocalRangeHz.lowHz))
       : adaptiveParams.minMidi;
     const assessedMaxMidi = assessedVocalRangeHz
       ? Math.floor(frequencyToMidi(assessedVocalRangeHz.highHz))
       : adaptiveParams.maxMidi;
-    const hasUsableAssessedRange = assessedMaxMidi - assessedMinMidi >= 2;
-    const minMidi = hasUsableAssessedRange
-      ? assessedMinMidi
-      : adaptiveParams.minMidi;
-    const maxMidi = hasUsableAssessedRange
-      ? assessedMaxMidi
-      : adaptiveParams.maxMidi;
+    const hasUsableRange = assessedMaxMidi - assessedMinMidi >= 2;
 
     return {
       noteCount,
       targetSpeed,
-      // Repetition count and accuracy targets stay exact to the manuscript.
       repetitions: template.repetitions,
       accuracyThreshold: template.accuracyThreshold,
       noteDurationSec,
       sequence: generateExerciseSequence(
-        minMidi,
-        maxMidi,
+        hasUsableRange ? assessedMinMidi : adaptiveParams.minMidi,
+        hasUsableRange ? assessedMaxMidi : adaptiveParams.maxMidi,
         noteCount,
         noteDurationSec,
       ),
     };
   }, [adaptiveParams, assessedVocalRangeHz, tier, exerciseConfigVersion]);
 
-  // ----------------------------------------------------------
-  // SCREEN STATE
-  // ----------------------------------------------------------
-
-  const [screenState, setScreenState] =
-    useState<Screen>('instructions');
+  const [screenState, setScreenState] = useState<Screen>('instructions');
   const screenRef = useRef<Screen>('instructions');
+
   const setScreen = useCallback((nextScreen: Screen) => {
     screenRef.current = nextScreen;
     setScreenState(nextScreen);
   }, []);
-  const screen = screenState;
 
-  // Keep the full results summary visible after the screen changes.
+  const screen = screenState;
   const scrollViewRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
@@ -514,26 +521,23 @@ export default function RapidNoteTransitionExerciseScreen({
       return;
     }
 
-    const scrollToResultsTop = setTimeout(() => {
+    const timeout = setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: 0, animated: false });
     }, 50);
 
-    return () => clearTimeout(scrollToResultsTop);
+    return () => clearTimeout(timeout);
   }, [screen]);
 
-  const [countdown, setCountdown] =
-    useState(COUNTDOWN_SECONDS);
-  const [elapsedSeconds, setElapsedSeconds] =
-    useState(0);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [playReferenceOnNextRender, setPlayReferenceOnNextRender] =
     useState(false);
-
-  // Current note highlighted on the staff while the reference plays.
   const [activeGuideNoteIndex, setActiveGuideNoteIndex] =
     useState<number | null>(null);
   const guideNoteDurationSeconds = Math.max(
     0.05,
-    exerciseConfig.sequence.notes[0]?.durationSec ?? exerciseConfig.noteDurationSec,
+    exerciseConfig.sequence.notes[0]?.durationSec ??
+      exerciseConfig.noteDurationSec,
   );
   const guideBeatDurationSeconds =
     guideNoteDurationSeconds + REFERENCE_NOTE_GAP_SECONDS;
@@ -554,70 +558,46 @@ export default function RapidNoteTransitionExerciseScreen({
         ? activeGuideNoteIndex
         : null;
 
-  // Record one planned note sequence plus a short response buffer.
-  // The prior 5-second minimum caused the guide to loop through the sequence
-  // multiple times inside each single repetition.
   const recordingDurationSeconds = Math.min(
     MAX_RECORDING_SECONDS,
     Math.max(2, recordingSequenceDurationSeconds + 0.75),
   );
-  const [currentRepetition, setCurrentRepetition] =
-    useState(1);
-  const [attemptResults, setAttemptResults] =
-    useState<AttemptResult[]>([]);
-  const [liveTransitionCount, setLiveTransitionCount] =
-    useState(0);
-  const [liveTransitionSpeed, setLiveTransitionSpeed] =
-    useState(0);
-  const [livePitch, setLivePitch] =
-    useState<LiveState>({
-      pitch: 0,
-      note: '--',
-      clarity: 0,
-    });
-  const [result, setResult] =
-    useState<ExerciseResult | null>(null);
+
+  const [currentRepetition, setCurrentRepetition] = useState(1);
+  const [attemptResults, setAttemptResults] = useState<AttemptResult[]>([]);
+  const [liveTransitionCount, setLiveTransitionCount] = useState(0);
+  const [liveTransitionSpeed, setLiveTransitionSpeed] = useState(0);
+  const [livePitch, setLivePitch] = useState<LiveState>({
+    pitch: 0,
+    note: '--',
+    clarity: 0,
+  });
+  const [result, setResult] = useState<ExerciseResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // ----------------------------------------------------------
-  // REFS
-  // ----------------------------------------------------------
-
   const mountedRef = useRef(true);
-  const countdownTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingStartRef = useRef<number | null>(null);
   const previousPitchRef = useRef(0);
   const transitionCountRef = useRef(0);
   const finishingRef = useRef(false);
-  // Prevent multiple stop callbacks from counting one recording more than once.
   const recordingStopHandledRef = useRef(false);
   const playingSequenceRef = useRef(false);
   const referenceStartedRef = useRef(false);
-
-  // Keep completed attempts available to async callbacks.
   const attemptResultsRef = useRef<AttemptResult[]>([]);
-
-  // ----------------------------------------------------------
-  // TIMER CLEANUP
-  // ----------------------------------------------------------
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
   }, []);
-
-  // ----------------------------------------------------------
-  // RESET LIVE STATE
-  // ----------------------------------------------------------
 
   const resetLiveState = useCallback(() => {
     previousPitchRef.current = 0;
@@ -628,126 +608,96 @@ export default function RapidNoteTransitionExerciseScreen({
     setLiveTransitionSpeed(0);
     setElapsedSeconds(0);
     setActiveGuideNoteIndex(null);
-    setLivePitch({
-      pitch: 0,
-      note: '--',
-      clarity: 0,
-    });
+    setLivePitch({ pitch: 0, note: '--', clarity: 0 });
   }, []);
 
-  // ----------------------------------------------------------
-  // LIVE AUDIO FRAME
-  // ----------------------------------------------------------
+  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
+    if (!mountedRef.current || screenRef.current !== 'recording') {
+      return;
+    }
 
-  const handleLiveFrame = useCallback(
-    (frame: LiveAudioFrame) => {
-      if (
-        !mountedRef.current ||
-        screenRef.current !== 'recording'
-      ) {
-        return;
-      }
-      setLivePitch({
-        pitch: frame.pitch,
-        note: frame.note || '--',
-        clarity: frame.clarity,
-      });
-      if (
-        !Number.isFinite(frame.pitch) ||
-        frame.pitch <= 0
-      ) {
-        return;
-      }
-      const previousPitch = previousPitchRef.current;
-      if (
-        previousPitch > 0 &&
-        Number.isFinite(previousPitch)
-      ) {
-        const semitoneChange =
-          12 * Math.log2(frame.pitch / previousPitch);
-        if (
-          Number.isFinite(semitoneChange) &&
-          Math.abs(semitoneChange) >= 1
-        ) {
-          transitionCountRef.current += 1;
-          setLiveTransitionCount(
-            transitionCountRef.current,
-          );
-        }
-      }
-      previousPitchRef.current = frame.pitch;
-      if (recordingStartRef.current !== null) {
-        const elapsed =
-          (Date.now() - recordingStartRef.current) / 1000;
-        if (elapsed > 0) {
-          setLiveTransitionSpeed(
-            transitionCountRef.current / elapsed,
-          );
-        }
-      }
-    },
-    [],
-  );
+    setLivePitch({
+      pitch: frame.pitch,
+      note: frame.note || '--',
+      clarity: frame.clarity,
+    });
 
-  // ----------------------------------------------------------
-  // PROCESS COMPLETED RECORDING
-  // ----------------------------------------------------------
+    if (!Number.isFinite(frame.pitch) || frame.pitch <= 0) {
+      return;
+    }
+
+    const previousPitch = previousPitchRef.current;
+
+    if (previousPitch > 0 && Number.isFinite(previousPitch)) {
+      const semitoneChange = 12 * Math.log2(frame.pitch / previousPitch);
+
+      if (Number.isFinite(semitoneChange) && Math.abs(semitoneChange) >= 1) {
+        transitionCountRef.current += 1;
+        setLiveTransitionCount(transitionCountRef.current);
+      }
+    }
+
+    previousPitchRef.current = frame.pitch;
+
+    if (recordingStartRef.current !== null) {
+      const elapsed = (Date.now() - recordingStartRef.current) / 1000;
+
+      if (elapsed > 0) {
+        setLiveTransitionSpeed(transitionCountRef.current / elapsed);
+      }
+    }
+  }, []);
 
   const handleRecordingStop = useCallback(
-    async (
-      samples: Float32Array,
-      sampleRate: number,
-    ) => {
-      // Accept completion only for the currently active recording.
-      // Delayed or duplicate stop callbacks must not become another repetition.
-      if (screenRef.current !== 'recording' || recordingStopHandledRef.current) {
-        console.log('Ignored stale or duplicate Rapid Note Transition stop callback.');
+    async (samples: Float32Array, sampleRate: number) => {
+      if (
+        screenRef.current !== 'recording' ||
+        recordingStopHandledRef.current
+      ) {
         return;
       }
+
       recordingStopHandledRef.current = true;
       clearTimers();
+
       if (!mountedRef.current) {
         return;
       }
+
       setScreen('processing');
+
+      let attempt: AttemptResult;
+
       try {
-        if (!samples || samples.length === 0) {
-          throw new Error(
-            'No audio samples were recorded. Please try this repetition again.',
-          );
+        if (!samples?.length) {
+          throw new Error('No audio samples were recorded.');
         }
-        if (
-          !Number.isFinite(sampleRate) ||
-          sampleRate <= 0
-        ) {
-          throw new Error(
-            'The recording has an invalid sample rate. Please try again.',
-          );
+
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+          throw new Error('The recording has an invalid sample rate.');
         }
+
         const measurement = measureRapidNoteTransition(
           samples,
           sampleRate,
           exerciseConfig.sequence.frequencies,
         );
 
-        // Do not score an attempt with no usable transitions.
         if (
           measurement.detectedPitches.length < 2 ||
           measurement.detectedNotes.length < 2 ||
           measurement.transitionCount < 1
         ) {
-          throw new Error(
-            'Not enough clear note transitions were detected. Please try this repetition again in a quiet area.',
-          );
+          throw new Error('Not enough clear note transitions were detected.');
         }
 
-        // Keep the existing per-attempt scoring service unchanged.
         const scored = scoreRapidNoteTransition(
           measurement,
           exerciseConfig.targetSpeed,
           exerciseConfig.accuracyThreshold,
         );
-        const repetitionResult: AttemptResult = {
+
+        attempt = {
           repetition: currentRepetition,
           overall: clampScore(scored.overall),
           pitchScore: clampScore(scored.pitchScore),
@@ -756,216 +706,58 @@ export default function RapidNoteTransitionExerciseScreen({
           passed: scored.passed,
           feedback: scored.feedback,
           transitionCount: measurement.transitionCount,
-          transitionsPerSecond:
-            measurement.transitionsPerSecond,
-          averageTransitionTimeMs:
-            measurement.averageTransitionTimeMs,
+          transitionsPerSecond: measurement.transitionsPerSecond,
+          averageTransitionTimeMs: measurement.averageTransitionTimeMs,
         };
-        const updatedAttempts = [
-          ...attemptResultsRef.current,
-          repetitionResult,
-        ];
-        attemptResultsRef.current = updatedAttempts;
-        setAttemptResults(updatedAttempts);
-        console.log(
-          `Rapid Note Transition repetition ${currentRepetition}/${exerciseConfig.repetitions} completed:`,
-          repetitionResult,
-        );
-        if (!mountedRef.current) {
-          return;
-        }
-
-        // ----------------------------------------------------
-        // MORE REPETITIONS REMAIN
-        // ----------------------------------------------------
-
-        if (
-          currentRepetition <
-          exerciseConfig.repetitions
-        ) {
-          const nextRepetition = currentRepetition + 1;
-          setCurrentRepetition(nextRepetition);
-
-          // Reset per-attempt recording and live state.
-          resetLiveState();
-          referenceStartedRef.current = false;
-          playingSequenceRef.current = false;
-          setErrorMessage('');
-          console.log(
-            `Preparing repetition ${nextRepetition}/${exerciseConfig.repetitions}`,
-          );
-
-          // Each repetition listens to the reference first, then counts down.
-          setPlayReferenceOnNextRender(true);
-          return;
-        }
-
-        // ----------------------------------------------------
-        // ALL REPETITIONS COMPLETED
-        // ----------------------------------------------------
-
-        const overall = Math.round(
-          average(updatedAttempts.map(item => item.overall)),
-        );
-        const pitchScore = Math.round(
-          average(updatedAttempts.map(item => item.pitchScore)),
-        );
-        const sequenceScore = Math.round(
-          average(updatedAttempts.map(item => item.sequenceScore)),
-        );
-        const speedScore = Math.round(
-          average(updatedAttempts.map(item => item.speedScore)),
-        );
-        const transitionCount = Math.round(
-          average(
-            updatedAttempts.map(item => item.transitionCount),
-          ),
-        );
-        const transitionsPerSecond = average(
-          updatedAttempts.map(
-            item => item.transitionsPerSecond,
-          ),
-        );
-        const averageTransitionTimeMs = average(
-          updatedAttempts.map(
-            item => item.averageTransitionTimeMs,
-          ),
-        );
-
-        // The tier's configured accuracy goal is used for the
-        // aggregate exercise result.
-        const passed =
-          overall >= exerciseConfig.accuracyThreshold &&
-          pitchScore >= 60 &&
-          sequenceScore >= 60;
-        const feedback = passed
-          ? `You completed all ${exerciseConfig.repetitions} repetitions and met the ${exerciseConfig.accuracyThreshold}% exercise goal. Keep practicing for smoother, more consistent transitions.`
-          : `You completed all ${exerciseConfig.repetitions} repetitions. Your average score was ${overall}%, below the ${exerciseConfig.accuracyThreshold}% exercise goal. Focus on accurate notes before increasing speed.`;
-        const finalResult: ExerciseResult = {
-          overall,
-          pitchScore,
-          sequenceScore,
-          speedScore,
-          passed,
-          feedback,
-          transitionCount,
-          transitionsPerSecond,
-          averageTransitionTimeMs,
-          attempts: updatedAttempts,
-        };
-        setResult(finalResult);
-        try {
-          await saveCompletedExercise(
-            'agility',
-            'rapidNoteTransition',
-            tier,
-            finalResult.overall,
-          );
-        } catch (error) {
-          console.error(
-            'Failed to save Rapid Note Transition result:',
-            error,
-          );
-        }
-        if (!mountedRef.current) {
-          return;
-        }
-        setResult(finalResult);
-        setScreen('results');
       } catch (error) {
-        // Keep the caught processing issue available in the developer console
-        // without triggering the red React Native error toast over the Results screen.
-        const processingErrorMessage =
-          error instanceof Error ? error.message : String(error);
         console.log(
           'Rapid Note Transition attempt could not be scored:',
-          processingErrorMessage,
+          error instanceof Error ? error.message : String(error),
         );
-        if (!mountedRef.current) {
-          return;
-        }
+        attempt = createFailedAttempt(currentRepetition);
+      }
 
-        // Count an unscorable recording as a zero-score attempt, then continue
-        // the prescribed set so one weak recording doesn't skip the remaining reps.
-        const failureFeedback =
-          'We could not detect enough usable notes for this repetition, so it received 0%. Sing clearly near the microphone in a quiet area.';
-        const failedAttempt: AttemptResult = {
-          repetition: currentRepetition,
-          overall: 0,
-          pitchScore: 0,
-          sequenceScore: 0,
-          speedScore: 0,
-          passed: false,
-          feedback: failureFeedback,
-          transitionCount: 0,
-          transitionsPerSecond: 0,
-          averageTransitionTimeMs: 0,
-        };
-        const updatedAttempts = [
-          ...attemptResultsRef.current,
-          failedAttempt,
-        ];
-        attemptResultsRef.current = updatedAttempts;
-        setAttemptResults(updatedAttempts);
+      const updatedAttempts = [...attemptResultsRef.current, attempt];
+      attemptResultsRef.current = updatedAttempts;
+      setAttemptResults(updatedAttempts);
 
-        if (currentRepetition < exerciseConfig.repetitions) {
-          setCurrentRepetition(currentRepetition + 1);
-          resetLiveState();
-          referenceStartedRef.current = false;
-          playingSequenceRef.current = false;
-          setErrorMessage('');
-          setPlayReferenceOnNextRender(true);
-          return;
-        }
+      if (!mountedRef.current) {
+        return;
+      }
 
-        const overall = Math.round(
-          average(updatedAttempts.map(attempt => attempt.overall)),
-        );
-        const pitchScore = Math.round(
-          average(updatedAttempts.map(attempt => attempt.pitchScore)),
-        );
-        const sequenceScore = Math.round(
-          average(updatedAttempts.map(attempt => attempt.sequenceScore)),
-        );
-        const speedScore = Math.round(
-          average(updatedAttempts.map(attempt => attempt.speedScore)),
-        );
-        const finalResult: ExerciseResult = {
-          overall,
-          pitchScore,
-          sequenceScore,
-          speedScore,
-          passed: false,
-          feedback: `You completed all ${exerciseConfig.repetitions} repetitions. One or more attempts could not be analyzed, so those attempts received 0%. Check your microphone and try again in a quiet area.`,
-          transitionCount: Math.round(
-            average(updatedAttempts.map(attempt => attempt.transitionCount)),
-          ),
-          transitionsPerSecond: average(
-            updatedAttempts.map(attempt => attempt.transitionsPerSecond),
-          ),
-          averageTransitionTimeMs: average(
-            updatedAttempts.map(attempt => attempt.averageTransitionTimeMs),
-          ),
-          attempts: updatedAttempts,
-        };
-        setResult(finalResult);
+      if (currentRepetition < exerciseConfig.repetitions) {
+        setCurrentRepetition(currentRepetition + 1);
+        resetLiveState();
+        referenceStartedRef.current = false;
+        playingSequenceRef.current = false;
         setErrorMessage('');
-        try {
-          await saveCompletedExercise(
-            'agility',
-            'rapidNoteTransition',
-            tier,
-            finalResult.overall,
-          );
-        } catch (saveError) {
-          console.log(
-            'Rapid Note Transition failed to save its final result:',
-            saveError instanceof Error ? saveError.message : String(saveError),
-          );
-        }
-        if (!mountedRef.current) {
-          return;
-        }
+        setPlayReferenceOnNextRender(true);
+        return;
+      }
+
+      const hasFailedAttempt = updatedAttempts.some(
+        item => item.feedback === createFailedAttempt(item.repetition).feedback,
+      );
+      const finalResult = buildExerciseResult(
+        updatedAttempts,
+        exerciseConfig.accuracyThreshold,
+        hasFailedAttempt,
+      );
+
+      setResult(finalResult);
+
+      try {
+        await saveCompletedExercise(
+          'agility',
+          'rapidNoteTransition',
+          tier,
+          finalResult.overall,
+        );
+      } catch (error) {
+        console.error('Failed to save exercise result:', error);
+      }
+
+      if (mountedRef.current) {
         setScreen('results');
       }
     },
@@ -975,15 +767,12 @@ export default function RapidNoteTransitionExerciseScreen({
       exerciseConfig.accuracyThreshold,
       exerciseConfig.repetitions,
       exerciseConfig.sequence.frequencies,
+      exerciseConfig.targetSpeed,
       resetLiveState,
       setScreen,
       tier,
     ],
   );
-
-  // ----------------------------------------------------------
-  // AUDIO RECORDER
-  // ----------------------------------------------------------
 
   const {
     startRecording,
@@ -994,42 +783,39 @@ export default function RapidNoteTransitionExerciseScreen({
     onStop: handleRecordingStop,
   });
 
-  // ----------------------------------------------------------
-  // PLAY REFERENCE AND RECORD ONE REPETITION
-  // ----------------------------------------------------------
-
   const startStaffGuidePlayback = useCallback(async () => {
     const noteCount = exerciseConfig.sequence.names.length;
+
     if (noteCount === 0) {
       setActiveGuideNoteIndex(null);
       return;
     }
 
-    // Update only when a note begins or ends; don't rerender the whole screen
-    // 40 times per second. These waits use the same duration and gap as audio.
     for (let index = 0; index < noteCount; index += 1) {
-      if (!mountedRef.current) {
-        return;
-      }
-      if (screenRef.current !== 'listening') {
+      if (
+        !mountedRef.current ||
+        screenRef.current !== 'listening'
+      ) {
         setActiveGuideNoteIndex(null);
         return;
       }
 
       setActiveGuideNoteIndex(index);
+
       await new Promise<void>(resolve =>
         setTimeout(resolve, guideNoteDurationSeconds * 1000),
       );
 
-      if (!mountedRef.current) {
-        return;
-      }
-      if (screenRef.current !== 'listening') {
+      if (
+        !mountedRef.current ||
+        screenRef.current !== 'listening'
+      ) {
         setActiveGuideNoteIndex(null);
         return;
       }
 
       setActiveGuideNoteIndex(null);
+
       if (index < noteCount - 1 && REFERENCE_NOTE_GAP_SECONDS > 0) {
         await new Promise<void>(resolve =>
           setTimeout(resolve, REFERENCE_NOTE_GAP_SECONDS * 1000),
@@ -1038,89 +824,73 @@ export default function RapidNoteTransitionExerciseScreen({
     }
 
     setActiveGuideNoteIndex(null);
-  }, [exerciseConfig.sequence.names.length, guideNoteDurationSeconds, setActiveGuideNoteIndex]);
+  }, [
+    exerciseConfig.sequence.names.length,
+    guideNoteDurationSeconds,
+  ]);
 
-  const playReferenceSequence = useCallback(
-    async () => {
-      if (
-        playingSequenceRef.current ||
-        referenceStartedRef.current
-      ) {
+  const playReferenceSequence = useCallback(async () => {
+    if (playingSequenceRef.current || referenceStartedRef.current) {
+      return;
+    }
+
+    referenceStartedRef.current = true;
+    playingSequenceRef.current = true;
+    clearTimers();
+
+    try {
+      if (!mountedRef.current) {
         return;
       }
 
-      referenceStartedRef.current = true;
-      playingSequenceRef.current = true;
-      clearTimers();
+      resetLiveState();
+      setScreen('listening');
 
-      try {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        resetLiveState();
-        console.log(
-          `Playing reference for repetition ${currentRepetition}/${exerciseConfig.repetitions}`,
-        );
-        setScreen('listening');
-
-        const referencePlayback = playNoteSequence(
+      await Promise.all([
+        playNoteSequence(
           exerciseConfig.sequence.notes,
           REFERENCE_NOTE_GAP_SECONDS,
-        );
-        await Promise.all([
-          referencePlayback,
-          startStaffGuidePlayback(),
-        ]);
+        ),
+        startStaffGuidePlayback(),
+      ]);
 
-        if (!mountedRef.current) {
-          return;
-        }
-
-        setActiveGuideNoteIndex(null);
-
-        // The countdown comes AFTER all reference notes finish.
-        setCountdown(COUNTDOWN_SECONDS);
-        setScreen('countdown');
-      } catch (error) {
-        console.log(
-          'Rapid Note Transition reference playback failed:',
-          error instanceof Error ? error.message : String(error),
-        );
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        clearTimers();
-        setActiveGuideNoteIndex(null);
-        setErrorMessage(
-          'The reference sequence could not be played. Please try again.',
-        );
-        setScreen('instructions');
-      } finally {
-        playingSequenceRef.current = false;
+      if (!mountedRef.current) {
+        return;
       }
-    },
-    [
-      clearTimers,
-      currentRepetition,
-      exerciseConfig.repetitions,
-      exerciseConfig.sequence.notes,
-      resetLiveState,
-      setScreen,
-      startStaffGuidePlayback,
-    ],
-  );
 
-  // Start the actual singing task only after the post-reference countdown.
+      setActiveGuideNoteIndex(null);
+      setCountdown(COUNTDOWN_SECONDS);
+      setScreen('countdown');
+    } catch (error) {
+      console.error('Reference playback failed:', error);
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      clearTimers();
+      setActiveGuideNoteIndex(null);
+      setErrorMessage(
+        'The reference sequence could not be played. Please try again.',
+      );
+      setScreen('instructions');
+    } finally {
+      playingSequenceRef.current = false;
+    }
+  }, [
+    clearTimers,
+    exerciseConfig.sequence.notes,
+    resetLiveState,
+    setScreen,
+    startStaffGuidePlayback,
+  ]);
+
   const startRecordingExercise = useCallback(async () => {
     try {
       if (!mountedRef.current) {
         return;
       }
 
-      // Open a fresh completion slot for this recording only.
       recordingStopHandledRef.current = false;
       setScreen('recording');
       await startRecording();
@@ -1131,6 +901,7 @@ export default function RapidNoteTransitionExerciseScreen({
 
       recordingStartRef.current = Date.now();
       setElapsedSeconds(0);
+
       let elapsed = 0;
 
       recordingTimerRef.current = setInterval(() => {
@@ -1154,10 +925,7 @@ export default function RapidNoteTransitionExerciseScreen({
         }
       }, 100);
     } catch (error) {
-      console.log(
-        'Rapid Note Transition recording could not start:',
-        error instanceof Error ? error.message : String(error),
-      );
+      console.error('Could not start recording:', error);
 
       if (!mountedRef.current) {
         return;
@@ -1169,9 +937,14 @@ export default function RapidNoteTransitionExerciseScreen({
       );
       setScreen('instructions');
     }
-  }, [clearTimers, recordingDurationSeconds, setScreen, startRecording, stopRecording]);
+  }, [
+    clearTimers,
+    recordingDurationSeconds,
+    setScreen,
+    startRecording,
+    stopRecording,
+  ]);
 
-  // Replay the reference first whenever a new repetition is queued.
   useEffect(() => {
     if (!playReferenceOnNextRender) {
       return;
@@ -1181,10 +954,6 @@ export default function RapidNoteTransitionExerciseScreen({
     void playReferenceSequence();
   }, [playReferenceOnNextRender, playReferenceSequence]);
 
-  // ----------------------------------------------------------
-  // COUNTDOWN FOR EACH REPETITION
-  // ----------------------------------------------------------
-
   useEffect(() => {
     if (screen !== 'countdown') {
       return;
@@ -1192,10 +961,12 @@ export default function RapidNoteTransitionExerciseScreen({
 
     clearTimers();
     setCountdown(COUNTDOWN_SECONDS);
+
     let remaining = COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       remaining -= 1;
+
       if (!mountedRef.current) {
         return;
       }
@@ -1218,12 +989,9 @@ export default function RapidNoteTransitionExerciseScreen({
     };
   }, [screen, clearTimers, startRecordingExercise]);
 
-  // ----------------------------------------------------------
-  // UNMOUNT CLEANUP
-  // ----------------------------------------------------------
-
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       clearTimers();
@@ -1232,10 +1000,6 @@ export default function RapidNoteTransitionExerciseScreen({
     };
   }, [clearTimers, stopRecording]);
 
-  // ----------------------------------------------------------
-  // START / RESTART THE COMPLETE SET
-  // ----------------------------------------------------------
-
   const startExercise = useCallback(() => {
     if (
       screenRef.current !== 'instructions' ||
@@ -1243,6 +1007,7 @@ export default function RapidNoteTransitionExerciseScreen({
     ) {
       return;
     }
+
     clearTimers();
     resetLiveState();
     attemptResultsRef.current = [];
@@ -1258,13 +1023,9 @@ export default function RapidNoteTransitionExerciseScreen({
   }, [
     clearTimers,
     isLoadingAdaptiveParams,
-    resetLiveState,
     playReferenceSequence,
+    resetLiveState,
   ]);
-
-  // ----------------------------------------------------------
-  // FINISH CURRENT REPETITION
-  // ----------------------------------------------------------
 
   const finishRecording = useCallback(async () => {
     if (
@@ -1274,33 +1035,25 @@ export default function RapidNoteTransitionExerciseScreen({
     ) {
       return;
     }
+
     finishingRef.current = true;
     clearTimers();
+
     try {
       await stopRecording();
     } catch (error) {
-      console.error(
-        'Failed to stop the recording:',
-        error,
-      );
+      console.error('Failed to stop recording:', error);
+
       if (!mountedRef.current) {
         return;
       }
+
       setErrorMessage(
         'We could not stop the recording. Please restart the exercise.',
       );
       setScreen('instructions');
     }
-  }, [
-    clearTimers,
-    isRecording,
-    setScreen,
-    stopRecording,
-  ]);
-
-  // ----------------------------------------------------------
-  // RETRY THE COMPLETE SET
-  // ----------------------------------------------------------
+  }, [clearTimers, isRecording, setScreen, stopRecording]);
 
   const retryExercise = useCallback(() => {
     clearTimers();
@@ -1316,190 +1069,7 @@ export default function RapidNoteTransitionExerciseScreen({
     setExerciseConfigVersion(version => version + 1);
     setCountdown(COUNTDOWN_SECONDS);
     setScreen('instructions');
-  }, [
-    clearTimers,
-    resetLiveState,
-    setScreen,
-  ]);
-
-  // ============================================================
-  // INSTRUCTIONS
-  // ============================================================
-
-  const renderInstructions = () => (
-    <View style={styles.content}>
-      <Pressable
-        style={styles.backButton}
-        onPress={() => router.back()}
-        hitSlop={10}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-      <Text style={styles.title}>
-        Rapid Note Transition
-      </Text>
-      <Text style={styles.subtitle}>
-        VOCAL AGILITY
-      </Text>
-      <View style={styles.instructionCard}>
-        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
-          Exercise Instructions
-        </Text>
-        {[
-          'Listen carefully to the reference sequence.',
-          'Sing the same notes in the same order.',
-          'Move quickly and smoothly between each note.',
-          'Focus on maintaining accurate pitch throughout the sequence.',
-        ].map(item => (
-          <View
-            key={item}
-            style={styles.prepareItem}
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
-            <Text style={styles.prepareText}>{item}</Text>
-          </View>
-        ))}
-        <View style={styles.prepareCard}>
-          <View style={styles.prepareHeader}>
-            <Ionicons
-              name="information-circle-outline"
-              size={21}
-              color={BROWN}
-            />
-            <Text style={styles.prepareTitle}>
-              Before You Begin
-            </Text>
-          </View>
-          {[
-            'Find a quiet area with minimal background noise.',
-            'Stand or sit upright with your shoulders relaxed.',
-            'Keep a comfortable distance from the microphone while singing.',
-          ].map((item, index) => (
-            <View
-              key={item}
-              style={styles.prepareItem}
-            >
-              <Ionicons
-                name={
-                  index === 0
-                    ? 'volume-mute-outline'
-                    : index === 1
-                      ? 'body-outline'
-                      : 'mic-outline'
-                }
-                size={17}
-                color={BROWN}
-              />
-              <Text style={styles.prepareText}>
-                {item}
-              </Text>
-            </View>
-          ))}
-        </View>
-        <Text style={styles.cardTitle}>
-          Exercise Details
-        </Text>
-        <DetailRow
-          label="Difficulty"
-          value={tier.charAt(0).toUpperCase() + tier.slice(1)}
-        />
-        <DetailRow
-          label="Notes"
-          value={
-            isLoadingAdaptiveParams
-              ? '...'
-              : String(exerciseConfig.noteCount)
-          }
-        />
-        <DetailRow
-          label="Pitch Range"
-          value={
-            isLoadingAdaptiveParams
-              ? 'Loading assessment...'
-              : assessedVocalRangeHz
-                ? `${assessedVocalRangeHz.lowHz.toFixed(0)}–${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
-                : 'Tier pitch range (assessment unavailable)'
-          }
-        />
-        <DetailRow
-          label="Target Speed"
-          value={
-            isLoadingAdaptiveParams
-              ? '...'
-              : `${exerciseConfig.targetSpeed.toFixed(1)} notes/sec`
-          }
-        />
-        <DetailRow
-          label="Repetitions"
-          value={
-            isLoadingAdaptiveParams
-              ? '...'
-              : String(exerciseConfig.repetitions)
-          }
-        />
-        <DetailRow
-          label="Accuracy Goal"
-          value={`${exerciseConfig.accuracyThreshold}%`}
-        />
-      </View>
-      {errorMessage ? (
-        <View style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={BROWN}
-          />
-          <Text style={styles.errorText}>
-            {errorMessage}
-          </Text>
-        </View>
-      ) : null}
-      <View style={styles.tipCard}>
-        <Ionicons
-          name="bulb-outline"
-          size={19}
-          color={BROWN}
-        />
-        <Text style={styles.tipText}>
-          Coach tip: sing each note clearly, then connect them smoothly. Accuracy comes first; speed will follow!
-        </Text>
-      </View>
-      <Pressable
-        style={[
-          styles.startButton,
-          isLoadingAdaptiveParams && styles.disabledButton,
-        ]}
-        onPress={startExercise}
-        disabled={isLoadingAdaptiveParams}
-      >
-        {isLoadingAdaptiveParams ? (
-          <ActivityIndicator size="small" color={WHITE} />
-        ) : (
-          <Ionicons name="play" size={18} color={WHITE} />
-        )}
-        <Text style={styles.startButtonText}>
-          {isLoadingAdaptiveParams
-            ? 'Preparing Exercise...'
-            : 'Start Exercise'}
-        </Text>
-      </Pressable>
-    </View>
-  );
+  }, [clearTimers, resetLiveState, setScreen]);
 
   const renderRepetitionProgress = () => (
     <View style={styles.repetitionProgressCard}>
@@ -1527,18 +1097,147 @@ export default function RapidNoteTransitionExerciseScreen({
     </View>
   );
 
-  // ============================================================
-  // COUNTDOWN
-  // ============================================================
+  const renderInstructions = () => (
+    <View style={styles.content}>
+      <Pressable
+        style={styles.backButton}
+        onPress={() => router.back()}
+        hitSlop={10}
+      >
+        <Ionicons name="arrow-back" size={24} color={BROWN} />
+      </Pressable>
+
+      <View style={styles.iconCircle}>
+        <Ionicons name="flash-outline" size={34} color={BROWN} />
+      </View>
+
+      <Text style={styles.title}>Rapid Note Transition</Text>
+      <Text style={styles.subtitle}>VOCAL AGILITY</Text>
+
+      <View style={styles.instructionCard}>
+        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
+          Exercise Instructions
+        </Text>
+
+        {[
+          'Listen carefully to the reference sequence.',
+          'Sing the same notes in the same order.',
+          'Move quickly and smoothly between each note.',
+          'Focus on maintaining accurate pitch throughout the sequence.',
+        ].map(item => (
+          <View key={item} style={styles.prepareItem}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={17}
+              color={BROWN}
+            />
+            <Text style={styles.prepareText}>{item}</Text>
+          </View>
+        ))}
+
+        <View style={styles.prepareCard}>
+          <View style={styles.prepareHeader}>
+            <Ionicons
+              name="information-circle-outline"
+              size={21}
+              color={BROWN}
+            />
+            <Text style={styles.prepareTitle}>Before You Begin</Text>
+          </View>
+
+          {[
+            {
+              icon: 'volume-mute-outline' as const,
+              text: 'Find a quiet area with minimal background noise.',
+            },
+            {
+              icon: 'body-outline' as const,
+              text: 'Stand or sit upright with your shoulders relaxed.',
+            },
+            {
+              icon: 'mic-outline' as const,
+              text: 'Keep a comfortable distance from the microphone while singing.',
+            },
+          ].map(item => (
+            <View key={item.text} style={styles.prepareItem}>
+              <Ionicons name={item.icon} size={17} color={BROWN} />
+              <Text style={styles.prepareText}>{item.text}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.cardTitle}>Exercise Details</Text>
+
+        <DetailRow
+          label="Difficulty"
+          value={tier.charAt(0).toUpperCase() + tier.slice(1)}
+        />
+        <DetailRow
+          label="Notes"
+          value={String(exerciseConfig.noteCount)}
+        />
+        <DetailRow
+          label="Pitch Range"
+          value={
+            assessedVocalRangeHz
+              ? `${assessedVocalRangeHz.lowHz.toFixed(0)}–${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
+              : 'Tier pitch range (assessment unavailable)'
+          }
+        />
+        <DetailRow
+          label="Target Speed"
+          value={`${exerciseConfig.targetSpeed.toFixed(1)} notes/sec`}
+        />
+        <DetailRow
+          label="Repetitions"
+          value={String(exerciseConfig.repetitions)}
+        />
+        <DetailRow
+          label="Accuracy Goal"
+          value={`${exerciseConfig.accuracyThreshold}%`}
+        />
+      </View>
+
+      {errorMessage ? (
+        <View style={styles.errorCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={BROWN}
+          />
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.tipCard}>
+        <Ionicons name="bulb-outline" size={19} color={BROWN} />
+        <Text style={styles.tipText}>
+          Coach tip: sing each note clearly, then connect them smoothly.
+          Accuracy comes first; speed will follow!
+        </Text>
+      </View>
+
+      <Pressable
+        style={styles.startButton}
+        onPress={startExercise}
+        disabled={isLoadingAdaptiveParams}
+      >
+        {isLoadingAdaptiveParams ? (
+          <ActivityIndicator size="small" color={WHITE} />
+        ) : (
+          <Ionicons name="play" size={18} color={WHITE} />
+        )}
+        <Text style={styles.startButtonText}>
+          {isLoadingAdaptiveParams ? 'Preparing Exercise...' : 'Start Exercise'}
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={BROWN}
-        />
+        <Ionicons name="flash-outline" size={34} color={BROWN} />
       </View>
       <Text style={styles.phaseTitle}>
         {attemptResults.length === 0 && currentRepetition === 1
@@ -1546,34 +1245,24 @@ export default function RapidNoteTransitionExerciseScreen({
           : 'Next Repetition Starts In'}
       </Text>
       {renderRepetitionProgress()}
-      <Text style={styles.countdownText}>
-        {countdown}
-      </Text>
+      <Text style={styles.countdownText}>{countdown}</Text>
       <Text style={styles.phaseSubtitle}>
-        You have heard the reference. Start singing when the countdown reaches zero.
+        You have heard the reference. Start singing when the countdown reaches
+        zero.
       </Text>
     </View>
   );
 
-  // ============================================================
-  // LISTENING
-  // ============================================================
-
   const renderListening = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons
-          name="musical-notes-outline"
-          size={34}
-          color={BROWN}
-        />
+        <Ionicons name="musical-notes-outline" size={34} color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>
-        Listen to the Sequence
-      </Text>
+      <Text style={styles.phaseTitle}>Listen to the Sequence</Text>
       {renderRepetitionProgress()}
       <Text style={styles.phaseSubtitle}>
-        Listen for the pitch and order. After the reference finishes, a 3-second countdown gives you time to prepare.
+        Listen for the pitch and order. After the reference finishes, a
+        3-second countdown gives you time to prepare.
       </Text>
       <StaffSequenceGuide
         names={exerciseConfig.sequence.names}
@@ -1591,71 +1280,68 @@ export default function RapidNoteTransitionExerciseScreen({
     </View>
   );
 
-  // ============================================================
-  // RECORDING
-  // ============================================================
-
   const renderRecording = () => {
-    const progress = Math.min(
-      elapsedSeconds / recordingDurationSeconds,
-      1,
-    );
+    const progress = Math.min(elapsedSeconds / recordingDurationSeconds, 1);
+
     return (
       <View style={styles.recordingContent}>
         <View style={styles.recordingIcon}>
-          <Ionicons
-            name="mic"
-            size={34}
-            color={BROWN}
-          />
+          <Ionicons name="mic" size={34} color={BROWN} />
         </View>
-        <Text style={styles.recordingTitle}>
-          Sing the Sequence
-        </Text>
+        <Text style={styles.recordingTitle}>Sing the Sequence</Text>
         {renderRepetitionProgress()}
         <Text style={styles.recordingSubtitle}>
-          Follow the highlighted note path and sing the sequence in order. Keep your voice relaxed, move smoothly between notes, and prioritize accuracy.
+          Follow the highlighted note path and sing the sequence in order. Keep
+          your voice relaxed, move smoothly between notes, and prioritize
+          accuracy.
         </Text>
+
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingBadgeText}>
-            RECORDING
-          </Text>
+          <Text style={styles.recordingBadgeText}>RECORDING</Text>
         </View>
+
         <View style={styles.beginnerGuide}>
           <View style={styles.beginnerGuideStep}>
-            <View style={styles.beginnerStepNumber}><Text style={styles.beginnerStepNumberText}>1</Text></View>
+            <View style={styles.beginnerStepNumber}>
+              <Text style={styles.beginnerStepNumberText}>1</Text>
+            </View>
             <View style={styles.beginnerStepCopy}>
               <Text style={styles.beginnerStepTitle}>Look at the note path</Text>
-              <Text style={styles.beginnerStepText}>Read the note names from left to right.</Text>
+              <Text style={styles.beginnerStepText}>
+                Read the note names from left to right.
+              </Text>
             </View>
           </View>
+
           <View style={styles.beginnerGuideStep}>
-            <View style={styles.beginnerStepNumber}><Text style={styles.beginnerStepNumberText}>2</Text></View>
+            <View style={styles.beginnerStepNumber}>
+              <Text style={styles.beginnerStepNumberText}>2</Text>
+            </View>
             <View style={styles.beginnerStepCopy}>
-              <Text style={styles.beginnerStepTitle}>Sing one note at a time</Text>
-              <Text style={styles.beginnerStepText}>Move smoothly. Accuracy comes before speed.</Text>
+              <Text style={styles.beginnerStepTitle}>
+                Sing one note at a time
+              </Text>
+              <Text style={styles.beginnerStepText}>
+                Move smoothly. Accuracy comes before speed.
+              </Text>
             </View>
           </View>
         </View>
+
         <StaffSequenceGuide
           names={exerciseConfig.sequence.names}
           activeIndex={currentGuideNoteIndex}
           liveNote={livePitch.note}
-          showFeedback={screen === 'recording'}
+          showFeedback
           caption="Follow the highlighted note as you sing. Green means correct, yellow means close, and red means off pitch."
         />
+
         <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>
-            CURRENT NOTE
-          </Text>
-          <Text style={styles.liveCurrentNote}>
-            {livePitch.note}
-          </Text>
+          <Text style={styles.liveLabel}>CURRENT NOTE</Text>
+          <Text style={styles.liveCurrentNote}>{livePitch.note}</Text>
           <Text style={styles.liveFrequency}>
-            {livePitch.pitch > 0
-              ? `${livePitch.pitch.toFixed(1)} Hz`
-              : '--'}
+            {livePitch.pitch > 0 ? `${livePitch.pitch.toFixed(1)} Hz` : '--'}
           </Text>
           <View style={styles.liveDivider} />
           <View style={styles.liveStats}>
@@ -1675,17 +1361,15 @@ export default function RapidNoteTransitionExerciseScreen({
             />
           </View>
         </View>
+
         <Text style={styles.timerText}>
-          Recording Time: {elapsedSeconds.toFixed(1)}s / {recordingDurationSeconds.toFixed(1)}s
+          Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
+          {recordingDurationSeconds.toFixed(1)}s
         </Text>
         <View style={styles.timerTrack}>
-          <View
-            style={[
-              styles.timerFill,
-              { width: `${progress * 100}%` },
-            ]}
-          />
+          <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
+
         <Pressable
           style={[
             styles.finishButton,
@@ -1694,11 +1378,7 @@ export default function RapidNoteTransitionExerciseScreen({
           onPress={finishRecording}
           disabled={!isRecording}
         >
-          <Ionicons
-            name="stop"
-            size={18}
-            color={BROWN}
-          />
+          <Ionicons name="stop" size={18} color={BROWN} />
           <Text style={styles.finishButtonText}>
             Finish This Repetition
           </Text>
@@ -1707,33 +1387,25 @@ export default function RapidNoteTransitionExerciseScreen({
     );
   };
 
-  // ============================================================
-  // PROCESSING
-  // ============================================================
-
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
         <ActivityIndicator size="large" color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>
-        Analyzing Your Singing
-      </Text>
+      <Text style={styles.phaseTitle}>Analyzing Your Singing</Text>
       {renderRepetitionProgress()}
       <Text style={styles.phaseSubtitle}>
-        Measuring note transitions, speed, sequence accuracy, and pitch accuracy.
+        Measuring note transitions, speed, sequence accuracy, and pitch
+        accuracy.
       </Text>
     </View>
   );
-
-  // ============================================================
-  // RESULTS
-  // ============================================================
 
   const renderResults = () => {
     if (!result) {
       return null;
     }
+
     return (
       <View style={styles.resultsContent}>
         <View
@@ -1750,35 +1422,32 @@ export default function RapidNoteTransitionExerciseScreen({
             color={BROWN}
           />
         </View>
+
         <Text style={styles.resultTitle}>
           {result.passed ? 'Great Job!' : 'Keep Practicing!'}
         </Text>
         <Text style={styles.resultSubtitle}>
           Rapid Note Transition Result
         </Text>
+
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>
-            AVERAGE OVERALL SCORE
-          </Text>
-          <Text style={styles.scoreValue}>
-            {result.overall}
-          </Text>
+          <Text style={styles.scoreLabel}>AVERAGE OVERALL SCORE</Text>
+          <Text style={styles.scoreValue}>{result.overall}</Text>
           <Text style={styles.scoreDescription}>
             out of 100 · {result.attempts.length} of{' '}
             {exerciseConfig.repetitions} repetitions completed
           </Text>
         </View>
+
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
-            Repetition Scores
-          </Text>
+          <Text style={styles.resultCardTitle}>Repetition Scores</Text>
           {result.attempts.map((attempt, index) => (
             <View
               key={`attempt-${attempt.repetition}`}
               style={[
                 styles.attemptRow,
                 index === result.attempts.length - 1 &&
-                styles.attemptRowLast,
+                  styles.attemptRowLast,
               ]}
             >
               <View style={styles.attemptTextGroup}>
@@ -1797,24 +1466,20 @@ export default function RapidNoteTransitionExerciseScreen({
             </View>
           ))}
         </View>
+
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>
             Average Performance Breakdown
           </Text>
-          <ScoreBar
-            label="Pitch Accuracy"
-            value={result.pitchScore}
-          />
-          <ScoreBar
-            label="Sequence Accuracy"
-            value={result.sequenceScore}
-          />
+          <ScoreBar label="Pitch Accuracy" value={result.pitchScore} />
+          <ScoreBar label="Sequence Accuracy" value={result.sequenceScore} />
           <ScoreBar
             label="Transition Speed"
             value={result.speedScore}
             last
           />
         </View>
+
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>
             Average Performance Metrics
@@ -1833,46 +1498,26 @@ export default function RapidNoteTransitionExerciseScreen({
             last
           />
         </View>
+
         <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={20}
-            color={BROWN}
-          />
-          <Text style={styles.tipText}>
-            {result.feedback}
-          </Text>
+          <Ionicons name="bulb-outline" size={20} color={BROWN} />
+          <Text style={styles.tipText}>{result.feedback}</Text>
         </View>
-        <Pressable
-          style={styles.startButton}
-          onPress={retryExercise}
-        >
-          <Ionicons
-            name="refresh"
-            size={18}
-            color={WHITE}
-          />
-          <Text style={styles.startButtonText}>
-            Try Again
-          </Text>
+
+        <Pressable style={styles.startButton} onPress={retryExercise}>
+          <Ionicons name="refresh" size={18} color={WHITE} />
+          <Text style={styles.startButtonText}>Try Again</Text>
         </Pressable>
+
         <Pressable
           style={styles.doneButton}
-          onPress={() =>
-            router.replace('/dashboard?tab=exercises')
-          }
+          onPress={() => router.replace('/dashboard?tab=exercises')}
         >
-          <Text style={styles.doneButtonText}>
-            Done
-          </Text>
+          <Text style={styles.doneButtonText}>Done</Text>
         </Pressable>
       </View>
     );
   };
-
-  // ============================================================
-  // MAIN RENDER
-  // ============================================================
 
   if (isLoadingAdaptiveParams) {
     return (
@@ -1882,7 +1527,8 @@ export default function RapidNoteTransitionExerciseScreen({
         </View>
         <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
         <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and preparing your vocal range.
+          Adjusting the exercise to your current difficulty level and preparing
+          your vocal range.
         </Text>
         <ActivityIndicator
           size="large"
@@ -1897,11 +1543,7 @@ export default function RapidNoteTransitionExerciseScreen({
     <ScrollView
       ref={scrollViewRef}
       style={styles.screen}
-      contentContainerStyle={
-        screen === 'results'
-          ? styles.resultsWrapper
-          : undefined
-      }
+      contentContainerStyle={screen === 'results' ? styles.resultsWrapper : undefined}
       showsVerticalScrollIndicator={false}
     >
       {screen === 'instructions' && renderInstructions()}
@@ -1913,10 +1555,6 @@ export default function RapidNoteTransitionExerciseScreen({
     </ScrollView>
   );
 }
-
-// ============================================================
-
-// BEGINNER-FRIENDLY MUSICAL STAFF GUIDE (UI ONLY)
 
 function StaffSequenceGuide({
   names,
@@ -1933,47 +1571,76 @@ function StaffSequenceGuide({
 }) {
   const noteToStep = (name: string) => {
     const match = name.match(/^([A-G])(#|b)?(-?\d+)$/i);
-    if (!match) return 2;
+
+    if (!match) {
+      return 2;
+    }
+
     const letter = match[1].toUpperCase();
     const octave = Number(match[3]);
-    const steps: Record<string, number> = { C: 0, D: 1, E: 2, F: 3, G: 4, A: 5, B: 6 };
+    const steps: Record<string, number> = {
+      C: 0,
+      D: 1,
+      E: 2,
+      F: 3,
+      G: 4,
+      A: 5,
+      B: 6,
+    };
+
     return (octave - 4) * 7 + steps[letter];
   };
+
   const stepValues = names.map(noteToStep);
   const minStep = Math.min(...stepValues, 0);
   const maxStep = Math.max(...stepValues, 4);
   const range = Math.max(4, maxStep - minStep);
-
-  // Keep short sequences centered on narrow phones; allow longer sequences to scroll.
   const itemWidth = 38;
   const staffWidth = Math.max(210, names.length * itemWidth + 42);
+
   return (
     <View style={styles.staffGuideCard}>
       <View style={styles.staffGuideHeading}>
-        <Ionicons name="musical-notes-outline" size={18} color={BROWN} />
+        <Ionicons
+          name="musical-notes-outline"
+          size={18}
+          color={BROWN}
+        />
         <Text style={styles.staffGuideTitle}>Your note path</Text>
       </View>
       <Text style={styles.staffGuideCaption}>{caption}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.staffScrollContent}>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.staffScrollContent}
+      >
         <View style={[styles.staffCanvas, { width: staffWidth }]}>
           {[0, 1, 2, 3, 4].map(line => (
-            <View key={`staff-line-${line}`} style={[styles.staffLine, { top: 12 + line * 10 }]} />
+            <View
+              key={`staff-line-${line}`}
+              style={[styles.staffLine, { top: 12 + line * 10 }]}
+            />
           ))}
+
           <View style={styles.staffTreble}>
             <Text style={styles.trebleClef}>𝄞</Text>
           </View>
+
           {names.map((name, index) => {
             const normalized = (stepValues[index] - minStep) / range;
             const top = 48 - normalized * 34;
             const left = 34 + index * itemWidth;
             const isActive = activeIndex === index;
-            const feedbackColor = isActive && showFeedback
-              ? getGuideFeedbackColor(name, liveNote)
-              : null;
+            const feedbackColor =
+              isActive && showFeedback
+                ? getGuideFeedbackColor(name, liveNote)
+                : null;
             const isReferenceActive = isActive && !showFeedback;
             const noteColor =
               feedbackColor ??
               (isReferenceActive ? ACTIVE_REFERENCE_PINK : BROWN);
+
             return (
               <View key={`${name}-${index}`}>
                 <View
@@ -1994,42 +1661,77 @@ function StaffSequenceGuide({
                 <View
                   style={[
                     styles.staffNoteHead,
-                    { left, top, backgroundColor: noteColor, borderColor: noteColor },
+                    {
+                      left,
+                      top,
+                      backgroundColor: noteColor,
+                      borderColor: noteColor,
+                    },
                   ]}
                 />
-                <View style={[styles.staffNoteStem, { left: left + 9, top: top - 15, backgroundColor: noteColor }]} />
-                <Text style={[styles.staffNoteNumber, { left: left - 5, color: isActive ? noteColor : MUTED }]}>{index + 1}</Text>
-                <Text style={[styles.staffNoteName, { left: left - 10, color: isActive ? noteColor : BROWN }]}>{name}</Text>
+                <View
+                  style={[
+                    styles.staffNoteStem,
+                    {
+                      left: left + 9,
+                      top: top - 15,
+                      backgroundColor: noteColor,
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.staffNoteNumber,
+                    {
+                      left: left - 5,
+                      color: isActive ? noteColor : MUTED,
+                    },
+                  ]}
+                >
+                  {index + 1}
+                </Text>
+                <Text
+                  style={[
+                    styles.staffNoteName,
+                    {
+                      left: left - 10,
+                      color: isActive ? noteColor : BROWN,
+                    },
+                  ]}
+                >
+                  {name}
+                </Text>
               </View>
             );
           })}
         </View>
       </ScrollView>
+
       <View style={styles.staffLegend}>
-        <View style={styles.staffLegendItem}>
-          <View style={[styles.staffLegendDot, { backgroundColor: PINK, borderColor: '#D68DA0', borderWidth: 1 }]} />
-          <Text style={styles.staffLegendText}>Highlighted note = sing this now</Text>
-        </View>
-        <View style={styles.staffLegendItem}>
-          <View style={[styles.staffLegendDot, { backgroundColor: GUIDE_GREEN }]} />
-          <Text style={styles.staffLegendText}>Correct</Text>
-        </View>
-        <View style={styles.staffLegendItem}>
-          <View style={[styles.staffLegendDot, { backgroundColor: GUIDE_YELLOW }]} />
-          <Text style={styles.staffLegendText}>Close</Text>
-        </View>
-        <View style={styles.staffLegendItem}>
-          <View style={[styles.staffLegendDot, { backgroundColor: GUIDE_RED }]} />
-          <Text style={styles.staffLegendText}>Off pitch</Text>
-        </View>
+        {[
+          { color: PINK, label: 'Highlighted note = sing this now', border: true },
+          { color: GUIDE_GREEN, label: 'Correct' },
+          { color: GUIDE_YELLOW, label: 'Close' },
+          { color: GUIDE_RED, label: 'Off pitch' },
+        ].map(item => (
+          <View key={item.label} style={styles.staffLegendItem}>
+            <View
+              style={[
+                styles.staffLegendDot,
+                {
+                  backgroundColor: item.color,
+                  borderColor: item.border ? '#D68DA0' : item.color,
+                  borderWidth: item.border ? 1 : 0,
+                },
+              ]}
+            />
+            <Text style={styles.staffLegendText}>{item.label}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
 }
-
-// SMALL PRESENTATIONAL COMPONENTS
-
-// ============================================================
 
 function DetailRow({
   label,
@@ -2071,13 +1773,12 @@ function ScoreBar({
   last?: boolean;
 }) {
   const safeValue = clampScore(value);
+
   return (
     <View style={last ? styles.scoreRowLast : styles.scoreRow}>
       <View style={styles.scoreRowHeader}>
         <Text style={styles.scoreRowLabel}>{label}</Text>
-        <Text style={styles.scoreRowValue}>
-          {Math.round(safeValue)}%
-        </Text>
+        <Text style={styles.scoreRowValue}>{Math.round(safeValue)}%</Text>
       </View>
       <View style={styles.progressBackground}>
         <View
@@ -2101,21 +1802,12 @@ function MetricRow({
   last?: boolean;
 }) {
   return (
-    <View
-      style={[
-        styles.metricRow,
-        last && styles.metricRowLast,
-      ]}
-    >
+    <View style={[styles.metricRow, last && styles.metricRowLast]}>
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
-
-// ============================================================
-// STYLES
-// ============================================================
 
 const styles = StyleSheet.create({
   preparingScreen: {
@@ -2341,24 +2033,130 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     marginTop: 10,
   },
-  staffGuideHeading: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  staffGuideTitle: { fontFamily: 'FredokaBold', fontSize: 15, color: BROWN },
-  staffGuideCaption: { fontFamily: 'FredokaRegular', fontSize: 11, lineHeight: 16, color: MUTED, marginTop: 4 },
-  staffScrollContent: { flexGrow: 1, minWidth: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 2 },
-  staffCanvas: { height: 86, marginTop: 2, alignSelf: 'center' },
-  staffLine: { position: 'absolute', left: 8, right: 8, height: 1, backgroundColor: '#F3C5D2' },
-  staffTreble: { position: 'absolute', left: 0, top: 3, width: 24, height: 48, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  trebleClef: { fontSize: 32, lineHeight: 38, color: BROWN, fontFamily: 'serif', includeFontPadding: false },
-  staffNoteHalo: { position: 'absolute', width: 23, height: 18, borderRadius: 10, borderWidth: 2, zIndex: 0 },
-  staffNoteHaloInactive: { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 },
-  staffNoteHead: { position: 'absolute', width: 12, height: 8, borderRadius: 6, backgroundColor: BROWN, borderWidth: 1, borderColor: BROWN, transform: [{ rotate: '-20deg' }], zIndex: 1 },
-  staffNoteStem: { position: 'absolute', width: 1.5, height: 18, backgroundColor: BROWN, zIndex: 1 },
-  staffNoteNumber: { position: 'absolute', top: 57, width: 24, textAlign: 'center', fontFamily: 'FredokaRegular', fontSize: 9, color: MUTED },
-  staffNoteName: { position: 'absolute', top: 70, width: 32, textAlign: 'center', fontFamily: 'FredokaBold', fontSize: 10, color: BROWN },
-  staffLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4, gap: 6 },
-  staffLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  staffLegendDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: BROWN },
-  staffLegendText: { fontFamily: 'FredokaRegular', fontSize: 9, color: MUTED },
+  staffGuideHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  staffGuideTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  staffGuideCaption: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 4,
+  },
+  staffScrollContent: {
+    flexGrow: 1,
+    minWidth: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  staffCanvas: {
+    height: 86,
+    marginTop: 2,
+    alignSelf: 'center',
+  },
+  staffLine: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    height: 1,
+    backgroundColor: '#F3C5D2',
+  },
+  staffTreble: {
+    position: 'absolute',
+    left: 0,
+    top: 3,
+    width: 24,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  trebleClef: {
+    fontSize: 32,
+    lineHeight: 38,
+    color: BROWN,
+    fontFamily: 'serif',
+    includeFontPadding: false,
+  },
+  staffNoteHalo: {
+    position: 'absolute',
+    width: 23,
+    height: 18,
+    borderRadius: 10,
+    borderWidth: 2,
+    zIndex: 0,
+  },
+  staffNoteHaloInactive: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderWidth: 0,
+  },
+  staffNoteHead: {
+    position: 'absolute',
+    width: 12,
+    height: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    transform: [{ rotate: '-20deg' }],
+    zIndex: 1,
+  },
+  staffNoteStem: {
+    position: 'absolute',
+    width: 1.5,
+    height: 18,
+    zIndex: 1,
+  },
+  staffNoteNumber: {
+    position: 'absolute',
+    top: 57,
+    width: 24,
+    textAlign: 'center',
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
+  staffNoteName: {
+    position: 'absolute',
+    top: 70,
+    width: 32,
+    textAlign: 'center',
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    color: BROWN,
+  },
+  staffLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    gap: 6,
+  },
+  staffLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  staffLegendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: BROWN,
+  },
+  staffLegendText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
   repetitionProgressCard: {
     width: '100%',
     maxWidth: 340,
@@ -2405,13 +2203,49 @@ const styles = StyleSheet.create({
   repetitionProgressCurrent: {
     backgroundColor: ACTIVE_REFERENCE_PINK,
   },
-  beginnerGuide: { width: '100%', marginTop: 10, padding: 10, borderRadius: 16, backgroundColor: LIGHT_PINK, borderWidth: 1, borderColor: BORDER, gap: 12 },
-  beginnerGuideStep: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  beginnerStepNumber: { width: 25, height: 25, borderRadius: 13, backgroundColor: PINK, alignItems: 'center', justifyContent: 'center' },
-  beginnerStepNumberText: { fontFamily: 'FredokaBold', fontSize: 12, color: BROWN },
-  beginnerStepCopy: { flex: 1 },
-  beginnerStepTitle: { fontFamily: 'FredokaBold', fontSize: 12, color: BROWN },
-  beginnerStepText: { fontFamily: 'FredokaRegular', fontSize: 10, lineHeight: 15, color: MUTED, marginTop: 2 },
+  beginnerGuide: {
+    width: '100%',
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 16,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    gap: 12,
+  },
+  beginnerGuideStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  beginnerStepNumber: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beginnerStepNumberText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+  beginnerStepCopy: {
+    flex: 1,
+  },
+  beginnerStepTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+  beginnerStepText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 15,
+    color: MUTED,
+    marginTop: 2,
+  },
   centerScreen: {
     flexGrow: 1,
     minHeight: 620,
