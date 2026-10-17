@@ -1,55 +1,6 @@
-import {
-  CONTROLLED_DECRESCENDO_PARAMS,
-  type Tier,
-} from '@/constants/exercises/volume';
-
-import {
-  type LiveAudioFrame,
-  useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
-
-import ExerciseScreen, {
-  ExerciseListeningScreen,
-  ExerciseResultsScreen,
-} from '@/screens/exercises/ExerciseScreen';
-
-import {
-  generateControlledDecrescendoParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-
-import { auth } from '@/services/firebase/config';
-
-import {
-  measureControlledDecrescendo,
-} from '@/services/measurement/volume/controlledDecrescendoDrill';
-
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
-
-import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-
-import {
-  scoreControlledDecrescendo,
-} from '@/services/scoring/volume/controlledDecrescendoDrill';
-
-import { playSingleNote } from '@/utils/music/notePlayer';
-
-import { createMusicalNote } from '@/utils/music/notes';
-
 import { Ionicons } from '@expo/vector-icons';
-
 import { router } from 'expo-router';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import {
   ActivityIndicator,
   Pressable,
@@ -59,32 +10,65 @@ import {
   View,
 } from 'react-native';
 
+import {
+  CONTROLLED_DECRESCENDO_PARAMS,
+  type Tier,
+} from '@/constants/exercises/volume';
+import {
+  type LiveAudioFrame,
+  useAudioRecorder,
+} from '@/hooks/useAudioRecorder';
+import ExerciseScreen, {
+  ExerciseListeningScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
+import {
+  generateControlledDecrescendoParams,
+} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import {
+  getLatestAssessment,
+} from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
+import {
+  measureControlledDecrescendo,
+} from '@/services/measurement/volume/controlledDecrescendoDrill';
+import {
+  saveCompletedExercise,
+} from '@/services/progress/exerciseProgressService';
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+import {
+  scoreControlledDecrescendo,
+} from '@/services/scoring/volume/controlledDecrescendoDrill';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote } from '@/utils/music/notes';
+
 const BROWN = '#4E2F1F';
-
 const PINK = '#FCD6DD';
-
 const LIGHT = '#FFF8FA';
-
 const BORDER = '#F1DCE2';
-
 const ACCENT = '#D86C89';
-
 const MUTED = '#9A817D';
-
 const WHITE = '#FFFFFF';
 
 const WINDOW_MS = 50;
-
 const BAR_COUNT = 28;
-
 const DBFS_MIN = -60;
-
 const DBFS_MAX = -10;
-
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
+const COUNTDOWN_SECONDS = 3;
 
 type ControlledDecrescendoParams =
   typeof CONTROLLED_DECRESCENDO_PARAMS.beginner;
+
+type ExercisePhase =
+  | 'directions'
+  | 'countdown'
+  | 'repCountdown'
+  | 'exercise'
+  | 'results';
 
 interface ControlledDecrescendoExerciseProps {
   tier?: Tier;
@@ -104,6 +88,10 @@ interface TargetDecrescendoGuideProps {
   durationSeconds: number;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Utilities                                                                  */
+/* -------------------------------------------------------------------------- */
+
 function clamp(
   value: number,
   min: number,
@@ -116,6 +104,7 @@ function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
+
   return clamp(
     (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
     0,
@@ -124,19 +113,81 @@ function normalizeVolume(value: number): number {
 }
 
 /**
- * The target always moves from tall bars to short bars.
- * Tall bars represent louder volume; short bars represent softer volume.
+ * The target moves from tall to short bars:
+ * tall bars represent louder volume; short bars represent softer volume.
  */
-
 function targetHeight(index: number): number {
-  const progress = index / (BAR_COUNT - 1);
+  const progress = index / Math.max(1, BAR_COUNT - 1);
   return 0.83 - progress * 0.65;
 }
 
 /**
- * Displays the target decrescendo pattern and highlights the
- * current position based on the elapsed time of the repetition.
+ * Estimates how consistently the recorded volume decreases.
+ * This is a live display indicator, not the final exercise score.
  */
+function calculateLiveSmoothness(values: number[]): number {
+  if (values.length < 3) {
+    return 0;
+  }
+
+  const changes: number[] = [];
+
+  for (let index = 1; index < values.length; index += 1) {
+    changes.push(values[index] - values[index - 1]);
+  }
+
+  // Ignore very small changes caused by minor microphone fluctuations.
+  const meaningfulChanges = changes.filter(
+    (change) => Math.abs(change) >= 0.15,
+  );
+
+  if (meaningfulChanges.length === 0) {
+    return 0;
+  }
+
+  const downwardChanges = meaningfulChanges.filter(
+    (change) => change < 0,
+  ).length;
+
+  const directionalConsistency =
+    (downwardChanges / meaningfulChanges.length) * 100;
+
+  const totalDecrease = values[0] - values[values.length - 1];
+
+  if (!Number.isFinite(totalDecrease) || totalDecrease <= 0) {
+    return 0;
+  }
+
+  const decreaseStrength = clamp(
+    (totalDecrease / 8) * 100,
+    0,
+    100,
+  );
+
+  return Math.round(
+    clamp(
+      directionalConsistency * 0.8 + decreaseStrength * 0.2,
+      0,
+      100,
+    ),
+  );
+}
+
+function estimateLiveSmoothness(history: number[]): number {
+  if (history.length < 4) {
+    return 0;
+  }
+
+  const dbValues = history.map(
+    (value) => DBFS_MIN + value * (DBFS_MAX - DBFS_MIN),
+  );
+
+  return calculateLiveSmoothness(dbValues);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Visual components                                                          */
+/* -------------------------------------------------------------------------- */
 
 function TargetDecrescendoGuide({
   seconds,
@@ -153,7 +204,6 @@ function TargetDecrescendoGuide({
     Math.floor(progress * BAR_COUNT),
   );
 
-  const indicatorLeft: `${number}%` = `${progress * 100}%`;
   return (
     <View style={styles.guideCard}>
       <View style={styles.guideHeader}>
@@ -165,6 +215,7 @@ function TargetDecrescendoGuide({
             Gradually lower your volume from loud to soft
           </Text>
         </View>
+
         <View style={styles.guideIcon}>
           <Ionicons
             name="trending-down"
@@ -173,11 +224,12 @@ function TargetDecrescendoGuide({
           />
         </View>
       </View>
+
       <View style={styles.guideVisualizer}>
         {Array.from({ length: BAR_COUNT }, (_, index) => {
           const isActive = index === activeIndex;
-
           const hasPassed = index < activeIndex;
+
           return (
             <View
               key={`target-guide-${index}`}
@@ -195,17 +247,20 @@ function TargetDecrescendoGuide({
             />
           );
         })}
+
         <View
           style={[
             styles.guideIndicator,
-            { left: indicatorLeft },
+            { left: `${progress * 100}%` },
           ]}
         />
       </View>
+
       <View style={styles.guideLabels}>
         <Text style={styles.guideLabel}>LOUD</Text>
         <Text style={styles.guideLabel}>SOFT</Text>
       </View>
+
       <View style={styles.guideProgressTrack}>
         <View
           style={[
@@ -218,64 +273,6 @@ function TargetDecrescendoGuide({
   );
 }
 
-function calculateLiveSmoothness(values: number[]): number {
-  if (values.length < 3) {
-    return 0;
-  }
-
-  const derivatives: number[] = [];
-  for (let index = 1; index < values.length; index += 1) {
-    derivatives.push(values[index] - values[index - 1]);
-  }
-
-  // A decrescendo should trend downward. Ignore tiny microphone fluctuations
-
-  // so that near-flat noise does not dominate the live score.
-
-  const meaningfulChanges = derivatives.filter(
-    (change) => Math.abs(change) >= 0.15,
-  );
-  if (meaningfulChanges.length === 0) {
-    return 0;
-  }
-
-  const downwardChanges = meaningfulChanges.filter(
-    (change) => change < 0,
-  ).length;
-
-  const directionalConsistency =
-    (downwardChanges / meaningfulChanges.length) * 100;
-
-  const totalDecrease = values[0] - values[values.length - 1];
-  if (!Number.isFinite(totalDecrease) || totalDecrease <= 0) {
-    return 0;
-  }
-
-  // Weight consistent downward movement most heavily, with a smaller
-
-  // contribution for making a clear overall decrease in volume.
-
-  const decreaseStrength = clamp((totalDecrease / 8) * 100, 0, 100);
-  return Math.round(
-    clamp(
-      directionalConsistency * 0.8 + decreaseStrength * 0.2,
-      0,
-      100,
-    ),
-  );
-}
-
-function estimateLiveSmoothness(history: number[]): number {
-  if (history.length < 4) {
-    return 0;
-  }
-
-  const values = history.map(
-    (value) => DBFS_MIN + value * (DBFS_MAX - DBFS_MIN),
-  );
-  return Math.round(calculateLiveSmoothness(values));
-}
-
 function VolumeVisualizer({
   liveHistory,
 }: VolumeVisualizerProps) {
@@ -283,6 +280,7 @@ function VolumeVisualizer({
     { length: BAR_COUNT },
     (_, index) => liveHistory[index] ?? 0,
   );
+
   return (
     <View style={styles.visualizer}>
       <View style={styles.actualBars}>
@@ -314,17 +312,18 @@ function ResultItem({ label, value }: ResultItemProps) {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Main exercise                                                              */
+/* -------------------------------------------------------------------------- */
+
 export default function ControlledDecrescendoDrill({
   tier,
 }: ControlledDecrescendoExerciseProps) {
-  const [phase, setPhase] = useState<
-    'directions' | 'countdown' | 'repCountdown' | 'exercise' | 'results'
-  >('directions');
-
-  const [countdownSeconds, setCountdownSeconds] = useState(3);
+  const [phase, setPhase] = useState<ExercisePhase>('directions');
+  const [countdownSeconds, setCountdownSeconds] =
+    useState(COUNTDOWN_SECONDS);
 
   const [loadingParams, setLoadingParams] = useState(true);
-
   const [resolvedTier, setResolvedTier] = useState<Tier>(
     tier ?? 'beginner',
   );
@@ -337,17 +336,58 @@ export default function ControlledDecrescendoDrill({
   const [referenceNote, setReferenceNote] = useState(() =>
     createMusicalNote(60),
   );
+  const [referencePlaying, setReferencePlaying] = useState(false);
+  const [referencePlaybackError, setReferencePlaybackError] =
+    useState<string | undefined>();
 
-  const [referenceNoteReady, setReferenceNoteReady] = useState(false);
+  const [rep, setRep] = useState(1);
+  const [seconds, setSeconds] = useState(0);
+  const [guideElapsed, setGuideElapsed] = useState(0);
 
-  // Use the latest assessment's detected vocal range for the reference note.
+  const [liveFrame, setLiveFrame] =
+    useState<LiveAudioFrame | null>(null);
+  const [liveHistory, setLiveHistory] = useState<number[]>([]);
 
-  // Keep C4 as a fallback when no valid range is available.
+  const [smoothness, setSmoothness] = useState(0);
+  const [actualSmoothness, setActualSmoothness] = useState(0);
+  const [repResults, setRepResults] = useState<number[]>([]);
+
+  const [rangeReached, setRangeReached] = useState(false);
+  const [directionCorrect, setDirectionCorrect] = useState(false);
+
+  const [startDb, setStartDb] = useState(0);
+  const [endDb, setEndDb] = useState(0);
+  const [minDb, setMinDb] = useState(0);
+  const [maxDb, setMaxDb] = useState(0);
+
+  const [errorMessage, setErrorMessage] =
+    useState<string | undefined>();
+
+  const finishingRef = useRef(false);
+  const completedNaturallyRef = useRef(false);
+  const interRepStopRef = useRef(false);
+  const phaseRef = useRef<ExercisePhase>(phase);
+  const repetitionSamplesRef = useRef<Float32Array[]>([]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  const targetMin = params.targetDbRange[0];
+  const targetMax = params.targetDbRange[1];
+  const rampSeconds = params.durationSec;
+  const repetitions = params.repetitions;
+  const smoothnessTarget = params.smoothnessThreshold;
+
+  /* -------------------------- Reference note ----------------------------- */
+
   useEffect(() => {
     let cancelled = false;
+
     async function loadReferenceNote() {
       try {
         const assessment = await getLatestAssessment();
+
         if (!assessment || cancelled) {
           return;
         }
@@ -363,6 +403,7 @@ export default function ControlledDecrescendoDrill({
             assessment.vocalRangeHighHz ??
             0,
         );
+
         if (
           !Number.isFinite(lowHz) ||
           !Number.isFinite(highHz) ||
@@ -377,138 +418,126 @@ export default function ControlledDecrescendoDrill({
           69 + 12 * Math.log2(frequency / 440);
 
         const lowestMidi = Math.ceil(midiForFrequency(lowHz));
-
         const highestMidi = Math.floor(midiForFrequency(highHz));
 
         const centerFrequency = Math.sqrt(lowHz * highHz);
-        let midiNote = Math.round(midiForFrequency(centerFrequency));
+
+        let midiNote = Math.round(
+          midiForFrequency(centerFrequency),
+        );
+
         if (lowestMidi <= highestMidi) {
-          midiNote = clamp(midiNote, lowestMidi, highestMidi);
+          midiNote = clamp(
+            midiNote,
+            lowestMidi,
+            highestMidi,
+          );
         }
+
         if (!cancelled) {
           setReferenceNote(createMusicalNote(midiNote));
         }
       } catch (assessmentError) {
         console.warn(
-          'Unable to load the vocal range for Controlled Decrescendo reference note:',
+          'Unable to load the vocal range for Controlled Decrescendo:',
           assessmentError,
         );
-      } finally {
-        if (!cancelled) {
-          setReferenceNoteReady(true);
-        }
       }
     }
+
     void loadReferenceNote();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const [rep, setRep] = useState(1);
+  const playReferenceNote = useCallback(async () => {
+    if (referencePlaying) {
+      return;
+    }
 
-  const [seconds, setSeconds] = useState(0);
+    setReferencePlaying(true);
+    setReferencePlaybackError(undefined);
 
-  const [guideElapsed, setGuideElapsed] = useState(0);
+    try {
+      await playSingleNote(
+        referenceNote.frequency,
+        REFERENCE_NOTE_DURATION_SEC,
+      );
+    } catch (playbackError) {
+      console.error(
+        'Reference note playback failed:',
+        playbackError,
+      );
 
-  const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(null);
+      setReferencePlaybackError(
+        'Unable to play the reference note. Please try again.',
+      );
+    } finally {
+      setReferencePlaying(false);
+    }
+  }, [referenceNote, referencePlaying]);
 
-  const [liveHistory, setLiveHistory] = useState<number[]>([]);
+  /* ---------------------- Adaptive difficulty --------------------------- */
 
-  const [smoothness, setSmoothness] = useState(0);
-
-  const [actualSmoothness, setActualSmoothness] = useState(0);
-
-  const [repResults, setRepResults] = useState<number[]>([]);
-
-  const [rangeReached, setRangeReached] = useState(false);
-
-  const [directionCorrect, setDirectionCorrect] = useState(false);
-
-  const [startDb, setStartDb] = useState(0);
-
-  const [endDb, setEndDb] = useState(0);
-
-  const [minDb, setMinDb] = useState(0);
-
-  const [maxDb, setMaxDb] = useState(0);
-
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
-
-  const finishingRef = useRef(false);
-
-  const completedNaturallyRef = useRef(false);
-
-  const interRepStopRef = useRef(false);
-
-  const repetitionSamplesRef = useRef<Float32Array[]>([]);
-
-  const phaseRef = useRef(phase);
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
-
-  const targetMin = params.targetDbRange[0];
-
-  const targetMax = params.targetDbRange[1];
-
-  const rampSeconds = params.durationSec;
-
-  const repetitions = params.repetitions;
-
-  const smoothnessTarget = params.smoothnessThreshold;
-  /*
-   * Adaptive difficulty initialization:
-   * 1. Use the explicitly supplied tier, if present.
-   * 2. Otherwise use the saved Volume tier.
-   * 3. Use the latest five matching exercise scores.
-   * 4. Use the latest Volume assessment only as a cold-start fallback.
-   */
   useEffect(() => {
     let cancelled = false;
+
     async function initializeAdaptiveParams() {
       let currentTier: Tier = tier ?? 'beginner';
+
       setLoadingParams(true);
+
       try {
         const user = auth.currentUser;
+
         if (user && !tier) {
           const progress = await fetchComponentProgress(
             user.uid,
             'volume',
           );
+
           if (progress?.currentTier) {
             currentTier = progress.currentTier;
           }
         }
+
         if (cancelled) {
           return;
         }
+
         setResolvedTier(currentTier);
+
         let recentScores: number[] = [];
+
         if (user) {
           const records = await fetchExerciseRecords(
             user.uid,
             'volume',
           );
 
-          const matchingRecords = records
+          recentScores = records
             .filter(
               (record) =>
                 record.templateId === 'controlledDecrescendo' &&
                 record.tier === currentTier,
             )
-            .sort((a, b) => a.timestamp - b.timestamp);
-          recentScores = matchingRecords
+            .sort((a, b) => a.timestamp - b.timestamp)
             .slice(-5)
             .map((record) => record.scorePct);
         }
+
         if (cancelled) {
           return;
         }
+
+        // Assessment scores are used only when there is no matching
+        // completed exercise history for this tier and template.
         if (recentScores.length === 0) {
           try {
             const assessment = await getLatestAssessment();
+
             if (assessment) {
               const scores = assessment.scores as Array<{
                 componentId?: string;
@@ -523,6 +552,7 @@ export default function ControlledDecrescendoDrill({
               const assessmentScore = Number(
                 volumeScore?.scorePct ?? volumeScore?.score,
               );
+
               if (Number.isFinite(assessmentScore)) {
                 recentScores = [assessmentScore];
               }
@@ -540,9 +570,11 @@ export default function ControlledDecrescendoDrill({
             tier: currentTier,
             recentScores,
           });
+
         if (cancelled) {
           return;
         }
+
         setParams(generatedParams);
         setRepResults(
           Array(generatedParams.repetitions).fill(0),
@@ -552,12 +584,14 @@ export default function ControlledDecrescendoDrill({
           'Unable to initialize Controlled Decrescendo parameters:',
           initializationError,
         );
+
         if (cancelled) {
           return;
         }
 
         const fallbackParams =
           CONTROLLED_DECRESCENDO_PARAMS[currentTier];
+
         setResolvedTier(currentTier);
         setParams(fallbackParams);
         setRepResults(
@@ -569,25 +603,15 @@ export default function ControlledDecrescendoDrill({
         }
       }
     }
+
     void initializeAdaptiveParams();
+
     return () => {
       cancelled = true;
     };
   }, [tier]);
 
-  const playReferenceNote = useCallback(async () => {
-    try {
-      await playSingleNote(
-        referenceNote.frequency,
-        REFERENCE_NOTE_DURATION_SEC,
-      );
-    } catch (playbackError) {
-      console.error(
-        'Reference note playback failed:',
-        playbackError,
-      );
-    }
-  }, [referenceNote]);
+  /* -------------------------- Live guide timer -------------------------- */
 
   useEffect(() => {
     if (phase !== 'exercise') {
@@ -606,12 +630,14 @@ export default function ControlledDecrescendoDrill({
         ),
       );
     }, 50);
+
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds]);
 
+  /* -------------------------- Audio recorder ---------------------------- */
+
   const clearLiveState = useCallback(() => {
     setSeconds(0);
-    setRep(1);
     setGuideElapsed(0);
     setLiveFrame(null);
     setLiveHistory([]);
@@ -626,47 +652,52 @@ export default function ControlledDecrescendoDrill({
       if (phaseRef.current !== 'exercise') {
         return;
       }
+
       setLiveFrame(frame);
 
       const normalized = normalizeVolume(frame.volume);
+
       setLiveHistory((previous) => {
         const next = [...previous, normalized];
+
         return next.length > BAR_COUNT
           ? next.slice(-BAR_COUNT)
           : next;
       });
     },
-    onStop: (samples, sampleRate) => {
-      // Store each completed repetition separately so countdown audio can
 
-      // never be included in the final measurement.
+    onStop: (samples, sampleRate) => {
+      // Save the completed repetition without including the countdown.
       if (interRepStopRef.current) {
         interRepStopRef.current = false;
+
         if (samples.length > 0) {
           repetitionSamplesRef.current.push(samples);
         }
+
         return;
       }
-      /*
-       * A manual stop or navigation cancels the attempt.
-       * Only a naturally completed recording is scored and saved.
-       */
+
+      // Manual cancellation must never produce a scored result.
       if (!completedNaturallyRef.current) {
         repetitionSamplesRef.current = [];
         finishingRef.current = false;
         clearLiveState();
         return;
       }
+
       try {
-        const samplesPerRep = Math.floor(rampSeconds * sampleRate);
+        const samplesPerRep = Math.floor(
+          rampSeconds * sampleRate,
+        );
 
         const recordedSegments = [
           ...repetitionSamplesRef.current,
           samples,
         ].slice(0, repetitions);
 
-        const trimmedSegments = recordedSegments.map((segment) =>
-          segment.slice(0, samplesPerRep),
+        const trimmedSegments = recordedSegments.map(
+          (segment) => segment.slice(0, samplesPerRep),
         );
 
         const totalSampleCount = trimmedSegments.reduce(
@@ -674,16 +705,18 @@ export default function ControlledDecrescendoDrill({
           0,
         );
 
-        const exerciseSamples = new Float32Array(totalSampleCount);
+        const exerciseSamples = new Float32Array(
+          totalSampleCount,
+        );
+
         let sampleOffset = 0;
 
-        // Join only recorded exercise audio; never pad missing audio with
-
-        // silence or include the countdown between repetitions.
+        // Join only recorded repetition audio. Do not pad with silence.
         for (const segment of trimmedSegments) {
           exerciseSamples.set(segment, sampleOffset);
           sampleOffset += segment.length;
         }
+
         repetitionSamplesRef.current = [];
 
         const measurement = measureControlledDecrescendo(
@@ -692,7 +725,8 @@ export default function ControlledDecrescendoDrill({
           {
             windowMs: WINDOW_MS,
             targetRange: [targetMin, targetMax],
-            expectedDurationSeconds: rampSeconds,
+            expectedDurationSeconds:
+              rampSeconds * repetitions,
             repetitions,
             volumeDecreaseThreshold:
               params.volumeDecreaseThreshold,
@@ -707,8 +741,11 @@ export default function ControlledDecrescendoDrill({
         );
 
         const finalScore = Math.round(result.overallScore);
+
         setSmoothness(finalScore);
-        setActualSmoothness(Math.round(measurement.smoothness));
+        setActualSmoothness(
+          Math.round(measurement.smoothness),
+        );
         setRepResults(
           measurement.repSmoothness.map(
             (value) => Math.round(value),
@@ -716,6 +753,7 @@ export default function ControlledDecrescendoDrill({
         );
         setRangeReached(result.targetReached);
         setDirectionCorrect(result.directionCorrect);
+
         setStartDb(
           Math.round(measurement.startDb * 10) / 10,
         );
@@ -728,7 +766,10 @@ export default function ControlledDecrescendoDrill({
         setMaxDb(
           Math.round(measurement.maxDb * 10) / 10,
         );
+
+        phaseRef.current = 'results';
         setPhase('results');
+
         void saveCompletedExercise(
           'volume',
           'controlledDecrescendo',
@@ -745,9 +786,12 @@ export default function ControlledDecrescendoDrill({
           'Unable to measure Controlled Decrescendo:',
           measurementError,
         );
+
         setErrorMessage(
           'We could not analyze this recording. Please try the exercise again.',
         );
+
+        phaseRef.current = 'directions';
         setPhase('directions');
       } finally {
         clearLiveState();
@@ -756,82 +800,120 @@ export default function ControlledDecrescendoDrill({
       }
     },
   });
+
+  /* --------------------- Stop between repetitions ----------------------- */
+
   useEffect(() => {
-    if (phase !== 'repCountdown' || !isRecording || finishingRef.current) {
+    if (
+      phase !== 'repCountdown' ||
+      !isRecording ||
+      finishingRef.current
+    ) {
       return;
     }
+
     interRepStopRef.current = true;
+
     void stopRecording().catch((stopError) => {
       interRepStopRef.current = false;
       repetitionSamplesRef.current = [];
+      finishingRef.current = false;
+
       console.error(
         'Unable to save the Controlled Decrescendo repetition:',
         stopError,
       );
+
       setErrorMessage(
         'The repetition could not be recorded. Please try the exercise again.',
       );
+
+      phaseRef.current = 'directions';
       setPhase('directions');
     });
   }, [phase, isRecording, stopRecording]);
+
+  /* ------------------------- Countdown handling ------------------------- */
+
   useEffect(() => {
-    if (phase !== 'countdown' && phase !== 'repCountdown') {
+    if (
+      phase !== 'countdown' &&
+      phase !== 'repCountdown'
+    ) {
       return;
     }
-    setCountdownSeconds(3);
+
+    let cancelled = false;
+
+    setCountdownSeconds(COUNTDOWN_SECONDS);
 
     const interval = setInterval(() => {
       setCountdownSeconds((previous) => {
-        if (previous <= 1) {
-          clearInterval(interval);
-          if (phase === 'repCountdown') {
-            void startRecording()
-              .then(() => {
-                setRep((previousRep) => Math.min(previousRep + 1, repetitions));
-                setSeconds(0);
-                setGuideElapsed(0);
-                setLiveFrame(null);
-                setLiveHistory([]);
-                setPhase('exercise');
-              })
-              .catch((recordingError) => {
-                console.error(
-                  'Unable to restart Controlled Decrescendo recording:',
-                  recordingError,
-                );
-                repetitionSamplesRef.current = [];
-                setErrorMessage(
-                  'Microphone recording could not start. Check microphone permission and try again.',
-                );
-                setPhase('directions');
-              });
-          } else {
-            void startRecording()
-              .then(() => {
-                setPhase('exercise');
-              })
-              .catch((recordingError) => {
-                console.error(
-                  'Unable to start Controlled Decrescendo recording:',
-                  recordingError,
-                );
-                setErrorMessage(
-                  'Microphone recording could not start. Check microphone permission and try again.',
-                );
-                setPhase('directions');
-              });
-          }
-          return 0;
+        if (previous > 1) {
+          return previous - 1;
         }
-        return previous - 1;
+
+        clearInterval(interval);
+
+        const isNextRepetition = phase === 'repCountdown';
+
+        void (async () => {
+          try {
+            await startRecording();
+
+            if (cancelled) {
+              return;
+            }
+
+            if (isNextRepetition) {
+              setRep((previousRep) =>
+                Math.min(previousRep + 1, repetitions),
+              );
+            }
+
+            setSeconds(0);
+            setGuideElapsed(0);
+            setLiveFrame(null);
+            setLiveHistory([]);
+
+            phaseRef.current = 'exercise';
+            setPhase('exercise');
+          } catch (recordingError) {
+            if (cancelled) {
+              return;
+            }
+
+            console.error(
+              'Unable to start Controlled Decrescendo recording:',
+              recordingError,
+            );
+
+            repetitionSamplesRef.current = [];
+            interRepStopRef.current = false;
+            completedNaturallyRef.current = false;
+            finishingRef.current = false;
+
+            setErrorMessage(
+              'Microphone recording could not start. Check microphone permission and try again.',
+            );
+
+            phaseRef.current = 'directions';
+            setPhase('directions');
+          }
+        })();
+
+        return 0;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [phase, startRecording]);
-    /*
-   * Run one countdown for each repetition.
-   * Stop recording only after the final repetition finishes.
-   */
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [phase, startRecording, repetitions]);
+
+  /* ---------------------- Exercise duration timer ----------------------- */
+
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
@@ -842,49 +924,75 @@ export default function ControlledDecrescendoDrill({
         if (previousSeconds + 1 < rampSeconds) {
           return previousSeconds + 1;
         }
+
+        // Each repetition is stopped and stored separately.
         if (rep < repetitions) {
+          phaseRef.current = 'repCountdown';
           setPhase('repCountdown');
-          return 0;
+          return rampSeconds;
         }
+
+        // Only the final repetition completes and triggers measurement.
         if (
           !finishingRef.current &&
           !completedNaturallyRef.current
         ) {
           finishingRef.current = true;
           completedNaturallyRef.current = true;
+
           void stopRecording().catch((stopError) => {
             console.error(
               'Unable to finish Controlled Decrescendo recording:',
               stopError,
             );
+
             finishingRef.current = false;
             completedNaturallyRef.current = false;
+            repetitionSamplesRef.current = [];
+
             setErrorMessage(
               'The recording could not be completed. Please try again.',
             );
+
+            phaseRef.current = 'directions';
             setPhase('directions');
           });
         }
+
         return rampSeconds;
       });
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [phase, rep, rampSeconds, repetitions, stopRecording]);
+  }, [
+    phase,
+    rep,
+    rampSeconds,
+    repetitions,
+    stopRecording,
+  ]);
+
+  /* -------------------------- Exercise actions -------------------------- */
 
   const startExercise = useCallback(() => {
     setErrorMessage(undefined);
+
     setRep(1);
     setSeconds(0);
     setGuideElapsed(0);
+
     setSmoothness(0);
     setActualSmoothness(0);
     setRepResults(Array(repetitions).fill(0));
+
     setRangeReached(false);
     setDirectionCorrect(false);
+
     setStartDb(0);
     setEndDb(0);
     setMinDb(0);
     setMaxDb(0);
+
     setLiveFrame(null);
     setLiveHistory([]);
 
@@ -893,7 +1001,9 @@ export default function ControlledDecrescendoDrill({
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
 
-    setCountdownSeconds(3);
+    setCountdownSeconds(COUNTDOWN_SECONDS);
+
+    phaseRef.current = 'countdown';
     setPhase('countdown');
   }, [repetitions]);
 
@@ -902,6 +1012,7 @@ export default function ControlledDecrescendoDrill({
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
     finishingRef.current = true;
+
     try {
       if (isRecording) {
         await stopRecording();
@@ -914,6 +1025,8 @@ export default function ControlledDecrescendoDrill({
     } finally {
       finishingRef.current = false;
       clearLiveState();
+
+      phaseRef.current = 'directions';
       setPhase('directions');
     }
   }, [clearLiveState, isRecording, stopRecording]);
@@ -923,6 +1036,7 @@ export default function ControlledDecrescendoDrill({
     interRepStopRef.current = false;
     repetitionSamplesRef.current = [];
     finishingRef.current = true;
+
     try {
       if (isRecording) {
         await stopRecording();
@@ -939,18 +1053,31 @@ export default function ControlledDecrescendoDrill({
   }, [isRecording, stopRecording]);
 
   const tryAgain = useCallback(() => {
-    void startExercise();
+    startExercise();
   }, [startExercise]);
+
+  /* ---------------------------- Render states --------------------------- */
+
   if (loadingParams) {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={32} color={BROWN} />
+          <Ionicons
+            name="options-outline"
+            size={32}
+            color={BROWN}
+          />
         </View>
-        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and preparing your vocal volume targets.
+
+        <Text style={styles.preparingTitle}>
+          Preparing Your Exercise
         </Text>
+
+        <Text style={styles.preparingSubtitle}>
+          Adjusting the exercise to your current difficulty level
+          and preparing your vocal volume targets.
+        </Text>
+
         <ActivityIndicator
           size="large"
           color={BROWN}
@@ -983,6 +1110,9 @@ export default function ControlledDecrescendoDrill({
     resolvedTier.slice(1);
 
   const passed = smoothness >= smoothnessTarget;
+
+  /* ----------------------------- Directions ----------------------------- */
+
   if (phase === 'directions') {
     return (
       <ExerciseScreen
@@ -1019,62 +1149,77 @@ export default function ControlledDecrescendoDrill({
         startLabel="Start Exercise"
       >
         <View style={styles.referenceCard}>
-          <View style={styles.referenceHeader}>
-            <View style={styles.referenceIcon}>
-              <Ionicons
-                name="musical-note"
-                size={18}
-                color={BROWN}
-              />
-            </View>
-            <View style={styles.referenceText}>
-              <Text style={styles.referenceLabel}>
-                BEFORE YOU BEGIN
-              </Text>
+          <View style={styles.referenceTopRow}>
+            <View style={styles.referenceCopy}>
+              <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
+
               <Text style={styles.referenceNote}>
                 {referenceNote.name}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.replayButton}
-              onPress={() => void playReferenceNote()}
-              activeOpacity={0.85}
-            >
+
+            <View style={styles.referenceIconCircle}>
               <Ionicons
-                name="play"
-                size={13}
+                name="musical-note"
+                size={22}
                 color={BROWN}
               />
-              <Text style={styles.replayButtonText}>
-                Play note
-              </Text>
-            </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.referenceDescription}>
-            Listen to the reference note first. During the exercise,
-            sing the same note while gradually decreasing your volume.
+
+          <Text style={styles.referenceInstruction}>
+            Play the note, then sing it while gradually decreasing your
+            volume from loud to soft.
           </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.referenceButton,
+              referencePlaying && styles.disabled,
+            ]}
+            onPress={() => void playReferenceNote()}
+            activeOpacity={0.85}
+            disabled={referencePlaying}
+          >
+            {referencePlaying ? (
+              <ActivityIndicator size="small" color={BROWN} />
+            ) : (
+              <Ionicons name="play" size={17} color={BROWN} />
+            )}
+
+            <Text style={styles.referenceButtonText}>
+              {referencePlaying
+                ? 'Playing...'
+                : `Play ${referenceNote.name}`}
+            </Text>
+          </TouchableOpacity>
+
+          {referencePlaybackError && (
+            <Text style={styles.playbackError}>
+              {referencePlaybackError}
+            </Text>
+          )}
         </View>
+
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>
             Follow this pattern
           </Text>
+
           <View style={styles.previewVisualizer}>
-            {Array.from(
-              { length: BAR_COUNT },
-              (_, index) => (
-                <View
-                  key={`preview-${index}`}
-                  style={[
-                    styles.previewBar,
-                    {
-                      height: `${targetHeight(index) * 80}%`,
-                    },
-                  ]}
-                />
-              ),
-            )}
+            {Array.from({ length: BAR_COUNT }, (_, index) => (
+              <View
+                key={`preview-${index}`}
+                style={[
+                  styles.previewBar,
+                  {
+                    height: `${targetHeight(index) * 80}%`,
+                  },
+                ]}
+              />
+            ))}
           </View>
+
           <View style={styles.previewLabels}>
             <Text style={styles.previewLabel}>Loud</Text>
             <Text style={styles.previewLabel}>Soft</Text>
@@ -1083,26 +1228,59 @@ export default function ControlledDecrescendoDrill({
       </ExerciseScreen>
     );
   }
-  if (phase === 'countdown' || phase === 'repCountdown') {
+
+  /* ------------------------------ Countdown ----------------------------- */
+
+  if (
+    phase === 'countdown' ||
+    phase === 'repCountdown'
+  ) {
+    const isNextRepetition = phase === 'repCountdown';
+
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="musical-note" size={32} color={BROWN} />
+          <Ionicons
+            name="musical-note"
+            size={32}
+            color={BROWN}
+          />
         </View>
-        <Text style={styles.preparingTitle}>Get Ready!</Text>
-        <Text style={styles.preparingSubtitle}>
-          Get ready for the next repetition. Begin when the countdown ends.
+
+        <Text style={styles.preparingTitle}>
+          {isNextRepetition
+            ? `Repetition ${Math.min(rep + 1, repetitions)}`
+            : 'Get Ready!'}
         </Text>
-        <Text style={styles.countdownNumber}>{countdownSeconds}</Text>
+
+        <Text style={styles.preparingSubtitle}>
+          {isNextRepetition
+            ? 'Take a breath. Prepare to begin loudly, then gradually lower your volume.'
+            : 'Get ready to sing the reference note. Begin comfortably loud when the countdown ends.'}
+        </Text>
+
+        <Text style={styles.countdownNumber}>
+          {countdownSeconds}
+        </Text>
+
+        <Text style={styles.countdownCaption}>
+          {isNextRepetition
+            ? `NEXT REPETITION · ${Math.min(rep + 1, repetitions)} OF ${repetitions}`
+            : 'YOUR EXERCISE STARTS IN'}
+        </Text>
       </View>
     );
   }
+
+  /* ------------------------------- Exercise ----------------------------- */
+
   if (phase === 'exercise') {
     const progress = clamp(
       (seconds / rampSeconds) * 100,
       0,
       100,
     );
+
     return (
       <ExerciseListeningScreen
         icon="volume-low-outline"
@@ -1123,28 +1301,42 @@ export default function ControlledDecrescendoDrill({
                 size={15}
                 color={BROWN}
               />
+
               <Text style={styles.exerciseReferenceText}>
                 Sing {referenceNote.name} while following the decrescendo.
               </Text>
+
               <TouchableOpacity
-                style={styles.exerciseReplayButton}
+                style={[
+                  styles.exerciseReplayButton,
+                  referencePlaying && styles.disabled,
+                ]}
                 onPress={() => void playReferenceNote()}
+                disabled={referencePlaying}
                 activeOpacity={0.85}
               >
-                <Ionicons
-                  name="play"
-                  size={11}
-                  color={BROWN}
-                />
-                <Text style={styles.exerciseReplayText}>
-                  Replay
-                </Text>
+                {referencePlaying ? (
+                  <ActivityIndicator size="small" color={BROWN} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="play"
+                      size={11}
+                      color={BROWN}
+                    />
+                    <Text style={styles.exerciseReplayText}>
+                      Replay
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
+
             <TargetDecrescendoGuide
               seconds={guideElapsed}
               durationSeconds={rampSeconds}
             />
+
             <View style={styles.visualizerCard}>
               <View style={styles.visualizerHeader}>
                 <View>
@@ -1155,6 +1347,7 @@ export default function ControlledDecrescendoDrill({
                     Compare your voice with the target above
                   </Text>
                 </View>
+
                 <View style={styles.micCircle}>
                   <Ionicons
                     name="mic"
@@ -1163,13 +1356,16 @@ export default function ControlledDecrescendoDrill({
                   />
                 </View>
               </View>
+
               <View style={styles.visualizerLegend}>
                 <View style={styles.legendDot} />
                 <Text style={styles.legendText}>
                   Your voice
                 </Text>
               </View>
+
               <VolumeVisualizer liveHistory={liveHistory} />
+
               <View style={styles.visualizerLabels}>
                 <Text style={styles.visualizerLabel}>
                   LIVE AUDIO
@@ -1179,6 +1375,7 @@ export default function ControlledDecrescendoDrill({
                 </Text>
               </View>
             </View>
+
             <View style={styles.voiceRow}>
               <View style={styles.voiceLeft}>
                 <View style={styles.smallMic}>
@@ -1188,6 +1385,7 @@ export default function ControlledDecrescendoDrill({
                     color={BROWN}
                   />
                 </View>
+
                 <View>
                   <Text style={styles.voiceTitle}>
                     Your voice
@@ -1199,6 +1397,7 @@ export default function ControlledDecrescendoDrill({
                   </Text>
                 </View>
               </View>
+
               <Text style={styles.voiceValue}>
                 {liveFrame &&
                 Number.isFinite(liveFrame.volume)
@@ -1207,6 +1406,7 @@ export default function ControlledDecrescendoDrill({
                 <Text style={styles.voiceUnit}> dBFS</Text>
               </Text>
             </View>
+
             <View style={styles.targetRow}>
               <View>
                 <Text style={styles.targetLabel}>
@@ -1216,10 +1416,12 @@ export default function ControlledDecrescendoDrill({
                   {targetMax}–{targetMin} dB
                 </Text>
               </View>
+
               <Text style={styles.patternText}>
                 Loud → Soft
               </Text>
             </View>
+
             <View style={styles.sessionRow}>
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
@@ -1229,7 +1431,9 @@ export default function ControlledDecrescendoDrill({
                   {rep} / {repetitions}
                 </Text>
               </View>
+
               <View style={styles.sessionDivider} />
+
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
                   TIME
@@ -1238,7 +1442,9 @@ export default function ControlledDecrescendoDrill({
                   0:{String(seconds).padStart(2, '0')}
                 </Text>
               </View>
+
               <View style={styles.sessionDivider} />
+
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>
                   SMOOTHNESS
@@ -1248,6 +1454,7 @@ export default function ControlledDecrescendoDrill({
                 </Text>
               </View>
             </View>
+
             <Pressable
               style={styles.stopButton}
               onPress={() => void cancelExercise()}
@@ -1266,6 +1473,9 @@ export default function ControlledDecrescendoDrill({
       />
     );
   }
+
+  /* -------------------------------- Results ----------------------------- */
+
   return (
     <ExerciseResultsScreen
       title="Controlled Decrescendo"
@@ -1293,12 +1503,16 @@ export default function ControlledDecrescendoDrill({
             value={directionCorrect ? 'Yes' : 'No'}
           />
           <ResultItem
+            label="Target range reached"
+            value={rangeReached ? 'Yes' : 'No'}
+          />
+          <ResultItem
             label="Observed range"
-            value={`${minDb}–${maxDb} dB`}
+            value={`${minDb}–${maxDb} dBFS`}
           />
           <ResultItem
             label="Start → End"
-            value={`${startDb} → ${endDb} dB`}
+            value={`${startDb} → ${endDb} dBFS`}
           />
           <ResultItem
             label="Actual smoothness"
@@ -1330,6 +1544,10 @@ export default function ControlledDecrescendoDrill({
     </ExerciseResultsScreen>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Styles                                                                     */
+/* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
   preparingScreen: {
@@ -1372,65 +1590,88 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 18,
   },
-  referenceCard: {
-    width: '100%',
-    backgroundColor: WHITE,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 13,
-    marginTop: 12,
-  },
-  referenceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  referenceIcon: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 9,
-  },
-  referenceText: {
-    flex: 1,
-  },
-  referenceLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    letterSpacing: 1,
-    color: ACCENT,
-  },
-  referenceNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-    marginTop: 1,
-  },
-  replayButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: PINK,
-    borderRadius: 15,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  replayButtonText: {
+  countdownCaption: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 9,
-    color: BROWN,
-    marginLeft: 4,
+    letterSpacing: 1,
+    color: ACCENT,
+    textAlign: 'center',
+    marginTop: 8,
   },
-  referenceDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 16,
+
+  referenceCard: {
+    width: '100%',
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    gap: 9,
+  },
+  referenceTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  referenceCopy: {
+    flex: 1,
+  },
+  eyebrow: {
     color: MUTED,
-    marginTop: 9,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.7,
   },
+  referenceNote: {
+    marginTop: 2,
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 29,
+    lineHeight: 36,
+  },
+  referenceIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referenceInstruction: {
+    color: '#765D63',
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  referenceButton: {
+    width: '100%',
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: PINK,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  referenceButtonText: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 13,
+  },
+  playbackError: {
+    marginTop: 6,
+    color: '#C62828',
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  disabled: {
+    opacity: 0.6,
+  },
+
   previewCard: {
     width: '100%',
     backgroundColor: LIGHT,
@@ -1469,6 +1710,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
+
   liveContent: {
     width: '100%',
     gap: 8,
@@ -1489,7 +1731,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   exerciseReplayButton: {
-    height: 27,
+    minHeight: 27,
     paddingHorizontal: 9,
     borderRadius: 14,
     backgroundColor: PINK,
@@ -1503,6 +1745,7 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 4,
   },
+
   guideCard: {
     width: '100%',
     backgroundColor: LIGHT,
@@ -1587,6 +1830,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: ACCENT,
   },
+
   visualizerCard: {
     width: '100%',
     minHeight: 185,
@@ -1673,6 +1917,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: MUTED,
   },
+
   voiceRow: {
     minHeight: 52,
     borderRadius: 15,
@@ -1717,6 +1962,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: MUTED,
   },
+
   targetRow: {
     minHeight: 46,
     paddingHorizontal: 12,
@@ -1743,6 +1989,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
+
   sessionRow: {
     minHeight: 48,
     borderRadius: 14,
@@ -1786,6 +2033,7 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 6,
   },
+
   resultDetails: {
     width: '100%',
     borderRadius: 16,
