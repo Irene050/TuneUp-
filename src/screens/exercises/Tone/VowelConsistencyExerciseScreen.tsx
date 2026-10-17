@@ -1,9 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-
 import { router } from 'expo-router';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import {
   ActivityIndicator,
   Alert,
@@ -15,76 +12,55 @@ import {
 } from 'react-native';
 
 import {
-  Tier,
+  type Tier,
   VOWEL_CONSISTENCY_PARAMS,
   type VowelConsistencyParams,
 } from '@/constants/exercises/tone';
-
 import {
-  LiveAudioFrame,
+  type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  type ExercisePreparationStep,
+  ExerciseProcessingScreen,
+  type ExerciseSummaryItem,
+} from '@/screens/exercises/ExerciseScreen';
 import {
   generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
 import {
   getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
-
 import { auth } from '@/services/firebase/config';
-
 import {
   measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
-
 import {
   saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
-
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
-import type {
-  VowelConsistencyScoreResult,
-} from '@/services/scoring/tone/vowelConsistencyExercise';
-
 import {
   scoreVowelConsistencyExercise,
+  type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
-
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  type ExercisePreparationStep,
-  type ExerciseSummaryItem,
-} from '@/screens/exercises/ExerciseScreen';
-
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-
 import { frequencyToNote } from '@/utils/dsp/pitch';
 
 const BROWN = '#4E2F1F';
-
 const PINK = '#FCD6DD';
-
 const LIGHT_PINK = '#FFF8FA';
-
 const WHITE = '#FFFFFF';
-
 const MUTED = '#8E7770';
-
 const LIGHT_GRAY = '#F2F2F2';
+const BORDER = '#F2DDE5';
 
 const FFT_SIZE = 1024;
-
 const FFT_HOP_SIZE = 512;
-
 const COUNTDOWN_SECONDS = 3;
-
 const REST_MS = 1200;
 
 interface Props {
@@ -104,890 +80,533 @@ interface RepetitionResult {
   passed: boolean;
 }
 
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-) {
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function randomInRange(
-  range: [number, number],
-) {
-
-  const [min, max] = range;
-  return (
-    min +
-    Math.random() * (max - min)
-  );
+function randomInRange([min, max]: [number, number]) {
+  return min + Math.random() * (max - min);
 }
 
-function formatNumber(
-  value: number,
-  decimals = 1,
-) {
-  return Number.isFinite(value)
-    ? value.toFixed(decimals)
-    : '--';
+function formatNumber(value: number, decimals = 1) {
+  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
 }
 
 function vowelDisplay(vowel: string) {
   return vowel.toUpperCase();
 }
 
-export default function VowelConsistencyExerciseScreen({
-  tier,
-}: Props) {
+export default function VowelConsistencyExerciseScreen({ tier }: Props) {
+  const initialTier = tier ?? 'beginner';
 
-  const initialTier =
-    tier ?? 'beginner';
-
-  const [currentTier, setCurrentTier] =
-    useState<Tier>(initialTier);
-
-  const [params, setParams] =
-    useState<VowelConsistencyParams>(
-      VOWEL_CONSISTENCY_PARAMS[
-        initialTier
-      ],
-    );
-
-  const [loadingParams, setLoadingParams] =
-    useState(true);
-
-  const repetitions =
-    Math.max(
-      1,
-      params.repetitions,
-    );
-
-  const [phase, setPhase] =
-    useState<Phase>('instructions');
-
-  const [countdown, setCountdown] =
-    useState(
-      COUNTDOWN_SECONDS,
-    );
-
-  const [targetDuration, setTargetDuration] =
-    useState(() =>
-      randomInRange(
-        params.durationRangeSec,
-      ),
-    );
-
-  const [
-    currentRepetition,
-    setCurrentRepetition,
-  ] = useState(1);
-
-  const [elapsedMs, setElapsedMs] =
-    useState(0);
-
-  const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(
-      null,
-    );
-
-  const [results, setResults] =
-    useState<RepetitionResult[]>([]);
-
+  const [currentTier, setCurrentTier] = useState<Tier>(initialTier);
+  const [params, setParams] = useState<VowelConsistencyParams>(
+    VOWEL_CONSISTENCY_PARAMS[initialTier],
+  );
+  const [loadingParams, setLoadingParams] = useState(true);
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [targetDuration, setTargetDuration] = useState(() =>
+    randomInRange(params.durationRangeSec),
+  );
+  const [currentRepetition, setCurrentRepetition] = useState(1);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [results, setResults] = useState<RepetitionResult[]>([]);
   const [finalResult, setFinalResult] =
-    useState<VowelConsistencyScoreResult | null>(
-      null,
-    );
+    useState<VowelConsistencyScoreResult | null>(null);
+  const [finalAverageCentroid, setFinalAverageCentroid] = useState(0);
+  const [frameCount, setFrameCount] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [
-    finalAverageCentroid,
-    setFinalAverageCentroid,
-  ] = useState(0);
-
-  const [frameCount, setFrameCount] =
-    useState(0);
-
-  const [errorMessage, setErrorMessage] =
-    useState<string | null>(null);
+  const repetitions = Math.max(1, params.repetitions);
 
   const mountedRef = useRef(true);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const processingRef = useRef(false);
+  const elapsedRef = useRef(0);
+  const repetitionRef = useRef(1);
+  const targetDurationRef = useRef(targetDuration);
 
-  const countdownTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(
-      null,
-    );
+  const repetitionMeasurementsRef = useRef<
+    Array<ReturnType<typeof measureVowelConsistency>>
+  >([]);
+  const resultsRef = useRef<RepetitionResult[]>([]);
 
-  const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(
-      null,
-    );
+  useEffect(() => {
+    let cancelled = false;
 
-  const restTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
+    async function loadAdaptiveParams() {
+      setLoadingParams(true);
 
-  const recordingRef =
-    useRef(false);
+      try {
+        const user = auth.currentUser;
+        let resolvedTier: Tier = initialTier;
+        let recentScores: number[] = [];
 
-  const stopRequestedRef =
-    useRef(false);
-
-  const processingRef =
-    useRef(false);
-
-  const elapsedRef =
-    useRef(0);
-
-  const repetitionRef =
-    useRef(1);
-
-  const targetDurationRef =
-    useRef(targetDuration);
-
-  const repetitionMeasurementsRef =
-    useRef<
-      Array<
-        ReturnType<
-          typeof measureVowelConsistency
-        >
-      >
-    >([]);
-
-  const resultsRef =
-    useRef<RepetitionResult[]>([]);
-
-useEffect(() => {
-  let cancelled = false;
-
-  async function loadAdaptiveParams() {
-    setLoadingParams(true);
-
-    try {
-      const user = auth.currentUser;
-      let resolvedTier: Tier = initialTier;
-      let recentScores: number[] = [];
-
-      // Only fetch progress if the screen was not given a tier.
-      if (!tier && user) {
-        try {
-          const progress = await fetchComponentProgress(
-            user.uid,
-            'tone',
-          );
-
-          if (cancelled) return;
-
-          resolvedTier = progress?.currentTier ?? 'beginner';
-        } catch (error) {
-          console.error(
-            '❌ FAILED TO LOAD TONE PROGRESS:',
-            error,
-          );
-        }
-      }
-
-      if (cancelled) return;
-
-      setCurrentTier(resolvedTier);
-
-      if (user) {
-        try {
-          const records = await fetchExerciseRecords(
-            user.uid,
-            'tone',
-          );
-
-          if (cancelled) return;
-
-          recentScores = records
-            .filter(
-              record =>
-                record.tier === resolvedTier &&
-                record.templateId === 'vowelConsistency',
-            )
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .slice(-5)
-            .map(record => record.scorePct);
-        } catch (error) {
-          console.error(
-            '❌ FAILED TO LOAD VOWEL CONSISTENCY HISTORY:',
-            error,
-          );
-        }
-
-        // Assessment is only needed when no matching history exists.
-        if (recentScores.length === 0) {
+        if (!tier && user) {
           try {
-            const assessment = await getLatestAssessment();
+            const progress = await fetchComponentProgress(user.uid, 'tone');
 
             if (cancelled) return;
 
-            const toneScore = assessment?.scores.find(
-              score => score.componentId === 'tone',
-            );
-
-            if (
-              toneScore &&
-              Number.isFinite(toneScore.scorePct)
-            ) {
-              recentScores = [toneScore.scorePct];
-            }
+            resolvedTier = progress?.currentTier ?? 'beginner';
           } catch (error) {
-            console.error(
-              '❌ FAILED TO LOAD LATEST ASSESSMENT:',
-              error,
-            );
+            console.error('Failed to load tone progress:', error);
           }
         }
-      }
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const generatedParams = generateVowelConsistencyParams({
-        tier: resolvedTier,
-        recentScores,
-      });
+        setCurrentTier(resolvedTier);
 
-      const newTargetDuration = randomInRange(
-        generatedParams.durationRangeSec,
-      );
+        if (user) {
+          try {
+            const records = await fetchExerciseRecords(user.uid, 'tone');
 
-      targetDurationRef.current = newTargetDuration;
+            if (cancelled) return;
 
-      setParams(generatedParams);
-      setTargetDuration(newTargetDuration);
-    } catch (error) {
-      console.error(
-        '❌ FAILED TO LOAD VOWEL CONSISTENCY ADS PARAMETERS:',
-        error,
-      );
+            recentScores = records
+              .filter(
+                (record) =>
+                  record.tier === resolvedTier &&
+                  record.templateId === 'vowelConsistency',
+              )
+              .sort((a, b) => a.timestamp - b.timestamp)
+              .slice(-5)
+              .map((record) => record.scorePct);
+          } catch (error) {
+            console.error('Failed to load vowel consistency history:', error);
+          }
 
-      if (!cancelled) {
-        setCurrentTier(initialTier);
-        setParams(VOWEL_CONSISTENCY_PARAMS[initialTier]);
-      }
-    } finally {
-      if (!cancelled) {
-        setLoadingParams(false);
+          if (cancelled) return;
+
+          if (recentScores.length === 0) {
+            try {
+              const assessment = await getLatestAssessment();
+
+              if (cancelled) return;
+
+              const toneScore = assessment?.scores.find(
+                (score) => score.componentId === 'tone',
+              );
+
+              if (toneScore && Number.isFinite(toneScore.scorePct)) {
+                recentScores = [toneScore.scorePct];
+              }
+            } catch (error) {
+              console.error('Failed to load latest assessment:', error);
+            }
+          }
+        }
+
+        if (cancelled) return;
+
+        const generatedParams = generateVowelConsistencyParams({
+          tier: resolvedTier,
+          recentScores,
+        });
+
+        const nextDuration = randomInRange(
+          generatedParams.durationRangeSec,
+        );
+
+        targetDurationRef.current = nextDuration;
+        setParams(generatedParams);
+        setTargetDuration(nextDuration);
+      } catch (error) {
+        console.error('Failed to load adaptive vowel consistency parameters:', error);
+
+        if (!cancelled) {
+          setCurrentTier(initialTier);
+          setParams(VOWEL_CONSISTENCY_PARAMS[initialTier]);
+        }
+      } finally {
+        if (!cancelled) setLoadingParams(false);
       }
     }
-  }
 
-  void loadAdaptiveParams();
+    void loadAdaptiveParams();
 
-  return () => {
-    cancelled = true;
-  };
-}, [initialTier, tier]);
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTier, tier]);
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-      }
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-      }
-      if (
-        restTimerRef.current
-      ) {
-        clearTimeout(
-          restTimerRef.current,
-        );
-      }
+
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (restTimerRef.current) clearTimeout(restTimerRef.current);
+
       recordingRef.current = false;
-      stopRequestedRef.current =
-        false;
+      stopRequestedRef.current = false;
     };
   }, []);
 
   useEffect(() => {
-    targetDurationRef.current =
-      targetDuration;
+    targetDurationRef.current = targetDuration;
   }, [targetDuration]);
 
   useEffect(() => {
-    resultsRef.current =
-      results;
+    resultsRef.current = results;
   }, [results]);
 
-  const handleLiveFrame =
-    useCallback(
-      (frame: LiveAudioFrame) => {
-        if (
-          mountedRef.current
-        ) {
-          setLiveFrame(frame);
+  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
+    if (mountedRef.current) setLiveFrame(frame);
+  }, []);
+
+  const resetExercise = useCallback(() => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (restTimerRef.current) clearTimeout(restTimerRef.current);
+
+    countdownTimerRef.current = null;
+    recordingTimerRef.current = null;
+    restTimerRef.current = null;
+
+    repetitionRef.current = 1;
+    recordingRef.current = false;
+    stopRequestedRef.current = false;
+    processingRef.current = false;
+    elapsedRef.current = 0;
+    repetitionMeasurementsRef.current = [];
+    resultsRef.current = [];
+
+    setCurrentRepetition(1);
+    setElapsedMs(0);
+    setLiveFrame(null);
+    setResults([]);
+    setFinalResult(null);
+    setFinalAverageCentroid(0);
+    setFrameCount(0);
+    setErrorMessage(null);
+
+    const nextDuration = randomInRange(params.durationRangeSec);
+    targetDurationRef.current = nextDuration;
+    setTargetDuration(nextDuration);
+  }, [params.durationRangeSec]);
+
+  const startRepCountdown = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      processingRef.current ||
+      recordingRef.current
+    ) {
+      return;
+    }
+
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+
+    setCountdown(COUNTDOWN_SECONDS);
+    setPhase('countdown');
+
+    let value = COUNTDOWN_SECONDS;
+
+    countdownTimerRef.current = setInterval(() => {
+      value -= 1;
+
+      if (value <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
         }
-      },
-      [],
-    );
 
-  const resetExercise =
-    useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-      }
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-      }
-      if (
-        restTimerRef.current
-      ) {
-        clearTimeout(
-          restTimerRef.current,
-        );
-      }
-      repetitionRef.current = 1;
-      recordingRef.current = false;
-      stopRequestedRef.current =
-        false;
-      processingRef.current =
-        false;
-      elapsedRef.current = 0;
-      repetitionMeasurementsRef.current =
-        [];
-      resultsRef.current = [];
-      setCurrentRepetition(1);
-      setElapsedMs(0);
-      setLiveFrame(null);
-      setResults([]);
-      setFinalResult(null);
-      setFinalAverageCentroid(0);
-      setFrameCount(0);
-      setErrorMessage(null);
-      const newTargetDuration =
-        randomInRange(
-          params.durationRangeSec,
-        );
-      targetDurationRef.current =
-        newTargetDuration;
-      setTargetDuration(
-        newTargetDuration,
-      );
-    }, [
-      params.durationRangeSec,
-    ]);
-
-  const startRepCountdown =
-    useCallback(() => {
-      if (
-        !mountedRef.current ||
-        processingRef.current ||
-        recordingRef.current
-      ) {
+        countdownTimerRef.current = null;
+        void beginRecording();
         return;
       }
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-      }
-      setCountdown(
-        COUNTDOWN_SECONDS,
-      );
-      setPhase('countdown');
-      let value =
-        COUNTDOWN_SECONDS;
-      countdownTimerRef.current =
-        setInterval(() => {
-          value -= 1;
-          if (value <= 0) {
-            if (
-              countdownTimerRef.current
-            ) {
-              clearInterval(
-                countdownTimerRef.current,
-              );
-            }
-            countdownTimerRef.current =
-              null;
-            void beginRecording();
-            return;
-          }
-          if (
-            mountedRef.current
-          ) {
-            setCountdown(value);
-          }
-        }, 1000);
-    }, []);
+
+      if (mountedRef.current) setCountdown(value);
+    }, 1000);
+  }, []);
 
   const {
     startRecording,
     stopRecording,
     isRecording,
   } = useAudioRecorder({
-    onFrame:
-      handleLiveFrame,
-    onStop: async (
-      samples,
-      sampleRate,
-    ) => {
-      if (
-        !mountedRef.current ||
-        processingRef.current
-      ) {
-        return;
+    onFrame: handleLiveFrame,
+    onStop: async (samples, sampleRate) => {
+      if (!mountedRef.current || processingRef.current) return;
+
+      recordingRef.current = false;
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
       }
-      recordingRef.current =
-        false;
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-        recordingTimerRef.current =
-          null;
-      }
+
       setPhase('processing');
+
       try {
-        if (
-          !samples.length ||
-          sampleRate <= 0
-        ) {
-          throw new Error(
-            'No usable audio was recorded.',
-          );
+        if (!samples.length || sampleRate <= 0) {
+          throw new Error('No usable audio was recorded.');
         }
-        const fftFrames =
-          samplesToFFTFrames(
-            samples,
-            FFT_SIZE,
-            FFT_HOP_SIZE,
-          );
-        if (!fftFrames.length) {
-          throw new Error(
-            'No FFT frames could be generated.',
-          );
-        }
-        const measurement =
-          measureVowelConsistency(
-            fftFrames,
-            sampleRate,
-            FFT_SIZE,
-          );
-        const scored =
-          scoreVowelConsistencyExercise(
-            measurement,
-            params,
-          );
-        repetitionMeasurementsRef.current.push(
-          measurement,
+
+        const fftFrames = samplesToFFTFrames(
+          samples,
+          FFT_SIZE,
+          FFT_HOP_SIZE,
         );
-        const repResult: RepetitionResult =
-          {
-            score: scored.score,
-            passed: scored.passed,
-          };
+
+        if (!fftFrames.length) {
+          throw new Error('No FFT frames could be generated.');
+        }
+
+        const measurement = measureVowelConsistency(
+          fftFrames,
+          sampleRate,
+          FFT_SIZE,
+        );
+
+        const scored = scoreVowelConsistencyExercise(measurement, params);
+
+        repetitionMeasurementsRef.current.push(measurement);
+
         const nextResults = [
           ...resultsRef.current,
-          repResult,
+          { score: scored.score, passed: scored.passed },
         ];
-        resultsRef.current =
-          nextResults;
-        if (
-          !mountedRef.current
-        ) {
-          return;
-        }
-        setResults(
-          nextResults,
-        );
-        setFrameCount(
-          previous =>
-            previous +
-            fftFrames.length,
-        );
-        const measurementCount =
-          repetitionMeasurementsRef.current
-            .length;
-        setFinalAverageCentroid(
-          measurementCount > 0
-            ? repetitionMeasurementsRef.current.reduce(
-                (
-                  sum,
-                  current,
-                ) => {
-                  const valid =
-                    current.centroidOverTime.filter(
-                      value =>
-                        Number.isFinite(
-                          value,
-                        ) &&
-                        value > 0,
-                    );
-                  if (!valid.length) {
-                    return sum;
-                  }
-                  return (
-                    sum +
-                    valid.reduce(
-                      (a, b) =>
-                        a + b,
-                      0,
-                    ) /
-                      valid.length
-                  );
-                },
-                0,
-              ) /
-                measurementCount
-            : 0,
-        );
-        if (
-          nextResults.length <
-          repetitions
-        ) {
-          const nextRep =
-            nextResults.length +
-            1;
-          repetitionRef.current =
-            nextRep;
-          setCurrentRepetition(
-            nextRep,
+
+        resultsRef.current = nextResults;
+
+        if (!mountedRef.current) return;
+
+        setResults(nextResults);
+        setFrameCount((previous) => previous + fftFrames.length);
+
+        const measurements = repetitionMeasurementsRef.current;
+
+        const centroidAverages = measurements.map((item) => {
+          const valid = item.centroidOverTime.filter(
+            (value) => Number.isFinite(value) && value > 0,
           );
+
+          return valid.length
+            ? valid.reduce((sum, value) => sum + value, 0) / valid.length
+            : 0;
+        });
+
+        setFinalAverageCentroid(
+          centroidAverages.reduce((sum, value) => sum + value, 0) /
+            measurements.length,
+        );
+
+        if (nextResults.length < repetitions) {
+          const nextRep = nextResults.length + 1;
+
+          repetitionRef.current = nextRep;
+          setCurrentRepetition(nextRep);
           setLiveFrame(null);
           setElapsedMs(0);
           elapsedRef.current = 0;
           setPhase('rest');
-          restTimerRef.current =
-            setTimeout(() => {
-              if (
-                !mountedRef.current
-              ) {
-                return;
-              }
-              startRepCountdown();
-            }, REST_MS);
+
+          restTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) startRepCountdown();
+          }, REST_MS);
+
           return;
         }
-        processingRef.current =
-          true;
-        const overallScore =
-          Math.round(
-            nextResults.reduce(
-              (sum, item) =>
-                sum + item.score,
-              0,
-            ) /
-              nextResults.length,
-          );
-        const overallPassed =
-          nextResults.every(
-            item => item.passed,
-          );
-        const finalScored:
-          VowelConsistencyScoreResult =
-          {
-            score: clamp(
-              overallScore,
-              0,
-              100,
-            ),
-            passed:
-              overallPassed,
-          };
-        setFinalResult(
-          finalScored,
+
+        processingRef.current = true;
+
+        const overallScore = Math.round(
+          nextResults.reduce((sum, item) => sum + item.score, 0) /
+            nextResults.length,
         );
+
+        const finalScored: VowelConsistencyScoreResult = {
+          score: clamp(overallScore, 0, 100),
+          passed: nextResults.every((item) => item.passed),
+        };
+
+        setFinalResult(finalScored);
+
         await saveCompletedExercise(
           'tone',
           'vowelConsistency',
           currentTier,
           finalScored.score,
         );
-        if (
-          mountedRef.current
-        ) {
-          setPhase('results');
-        }
+
+        if (mountedRef.current) setPhase('results');
       } catch (error) {
-        console.error(
-          '❌ VOWEL CONSISTENCY PROCESSING ERROR:',
-          error,
-        );
-        if (
-          mountedRef.current
-        ) {
+        console.error('Vowel consistency processing error:', error);
+
+        if (mountedRef.current) {
           setErrorMessage(
             'We could not analyze this repetition. Please try again.',
           );
-          setPhase(
-            'instructions',
-          );
+          setPhase('instructions');
         }
       } finally {
-        if (
-          resultsRef.current.length >=
-          repetitions
-        ) {
-          processingRef.current =
-            false;
+        if (resultsRef.current.length >= repetitions) {
+          processingRef.current = false;
         }
-        stopRequestedRef.current =
-          false;
+
+        stopRequestedRef.current = false;
       }
     },
   });
 
-  const beginRecording =
-    useCallback(async () => {
-      if (
-        !mountedRef.current ||
-        recordingRef.current ||
-        processingRef.current
-      ) {
-        return;
-      }
-      try {
-        setErrorMessage(null);
-        setLiveFrame(null);
-        elapsedRef.current = 0;
-        setElapsedMs(0);
-        stopRequestedRef.current =
-          false;
-        setPhase('recording');
-        await startRecording();
+  const beginRecording = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      recordingRef.current ||
+      processingRef.current
+    ) {
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      setLiveFrame(null);
+      elapsedRef.current = 0;
+      setElapsedMs(0);
+      stopRequestedRef.current = false;
+      setPhase('recording');
+
+      await startRecording();
+
+      if (!mountedRef.current) return;
+
+      recordingRef.current = true;
+
+      const durationMs = targetDurationRef.current * 1000;
+
+      recordingTimerRef.current = setInterval(() => {
         if (
-          !mountedRef.current
+          !mountedRef.current ||
+          !recordingRef.current ||
+          stopRequestedRef.current
         ) {
           return;
         }
-        recordingRef.current =
-          true;
-        const durationMs =
-          targetDurationRef.current *
-          1000;
-        recordingTimerRef.current =
-          setInterval(() => {
-            if (
-              !mountedRef.current ||
-              !recordingRef.current ||
-              stopRequestedRef.current
-            ) {
-              return;
-            }
-            elapsedRef.current +=
-              100;
-            setElapsedMs(
-              elapsedRef.current,
-            );
-            if (
-              elapsedRef.current >=
-              durationMs
-            ) {
-              if (
-                recordingTimerRef.current
-              ) {
-                clearInterval(
-                  recordingTimerRef.current,
-                );
-                recordingTimerRef.current =
-                  null;
-              }
-              stopRequestedRef.current =
-                true;
-              stopRecording().catch(
-                error => {
-                  console.error(
-                    '❌ FAILED TO STOP VOWEL RECORDING:',
-                    error,
-                  );
-                  recordingRef.current =
-                    false;
-                  stopRequestedRef.current =
-                    false;
-                  if (
-                    mountedRef.current
-                  ) {
-                    setErrorMessage(
-                      'We could not finish the recording. Please try again.',
-                    );
-                    setPhase(
-                      'instructions',
-                    );
-                  }
-                },
+
+        elapsedRef.current += 100;
+        setElapsedMs(elapsedRef.current);
+
+        if (elapsedRef.current >= durationMs) {
+          if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
+
+          stopRequestedRef.current = true;
+
+          stopRecording().catch((error) => {
+            console.error('Failed to stop vowel recording:', error);
+
+            recordingRef.current = false;
+            stopRequestedRef.current = false;
+
+            if (mountedRef.current) {
+              setErrorMessage(
+                'We could not finish the recording. Please try again.',
               );
+              setPhase('instructions');
             }
-          }, 100);
-      } catch (error) {
-        console.error(
-          '❌ FAILED TO START VOWEL RECORDING:',
-          error,
-        );
-        recordingRef.current =
-          false;
-        stopRequestedRef.current =
-          false;
-        if (
-          mountedRef.current
-        ) {
-          setPhase(
-            'instructions',
-          );
-          Alert.alert(
-            'Microphone Error',
-            'Unable to start the microphone. Please check your microphone permission and try again.',
-          );
+          });
         }
-      }
-    }, [
-      startRecording,
-      stopRecording,
-    ]);
+      }, 100);
+    } catch (error) {
+      console.error('Failed to start vowel recording:', error);
 
-  const startExercise =
-    useCallback(() => {
-      if (loadingParams) {
-        return;
-      }
-      resetExercise();
-      startRepCountdown();
-    }, [
-      loadingParams,
-      resetExercise,
-      startRepCountdown,
-    ]);
-
-  const stopEarly =
-    useCallback(() => {
-      if (
-        !recordingRef.current ||
-        stopRequestedRef.current
-      ) {
-        return;
-      }
-      stopRequestedRef.current =
-        true;
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-      }
-      recordingTimerRef.current =
-        null;
-      stopRecording().catch(
-        error => {
-          console.error(
-            '❌ FAILED TO STOP VOWEL RECORDING EARLY:',
-            error,
-          );
-          stopRequestedRef.current =
-            false;
-        },
-      );
-    }, [stopRecording]);
-
-  const goBack =
-    useCallback(() => {
-      if (
-        countdownTimerRef.current
-      ) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-        countdownTimerRef.current =
-          null;
-      }
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current,
-        );
-        recordingTimerRef.current =
-          null;
-      }
-      if (
-        restTimerRef.current
-      ) {
-        clearTimeout(
-          restTimerRef.current,
-        );
-        restTimerRef.current =
-          null;
-      }
-      if (recordingRef.current) {
-        stopRequestedRef.current =
-          true;
-        void stopRecording().catch(
-          error => {
-            console.error(
-              '❌ FAILED TO STOP VOWEL RECORDING BEFORE NAVIGATION:',
-              error,
-            );
-          },
-        );
-      }
       recordingRef.current = false;
-      router.replace(
-        '/dashboard?tab=exercises',
-      );
-    }, [stopRecording]);
+      stopRequestedRef.current = false;
 
-  const retry =
-    useCallback(() => {
-      resetExercise();
-      setPhase('instructions');
-    }, [resetExercise]);
+      if (mountedRef.current) {
+        setPhase('instructions');
+        Alert.alert(
+          'Microphone Error',
+          'Unable to start the microphone. Please check your microphone permission and try again.',
+        );
+      }
+    }
+  }, [startRecording, stopRecording]);
 
-  const recordingProgress =
-    targetDuration
-      ? clamp(
-          elapsedMs /
-            1000 /
-            targetDuration,
-          0,
-          1,
-        )
-      : 0;
+  const startExercise = useCallback(() => {
+    if (loadingParams) return;
+
+    resetExercise();
+    startRepCountdown();
+  }, [loadingParams, resetExercise, startRepCountdown]);
+
+  const stopEarly = useCallback(() => {
+    if (!recordingRef.current || stopRequestedRef.current) return;
+
+    stopRequestedRef.current = true;
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+    }
+
+    recordingTimerRef.current = null;
+
+    stopRecording().catch((error) => {
+      console.error('Failed to stop vowel recording early:', error);
+      stopRequestedRef.current = false;
+    });
+  }, [stopRecording]);
+
+  const goBack = useCallback(() => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (restTimerRef.current) clearTimeout(restTimerRef.current);
+
+    countdownTimerRef.current = null;
+    recordingTimerRef.current = null;
+    restTimerRef.current = null;
+
+    if (recordingRef.current) {
+      stopRequestedRef.current = true;
+
+      void stopRecording().catch((error) => {
+        console.error('Failed to stop recording before navigation:', error);
+      });
+    }
+
+    recordingRef.current = false;
+    router.replace('/dashboard?tab=exercises');
+  }, [stopRecording]);
+
+  const retry = useCallback(() => {
+    resetExercise();
+    setPhase('instructions');
+  }, [resetExercise]);
+
+  const recordingProgress = targetDuration
+    ? clamp(elapsedMs / 1000 / targetDuration, 0, 1)
+    : 0;
 
   const livePitchNote =
-    liveFrame &&
-    liveFrame.pitch > 0
-      ? frequencyToNote(
-          liveFrame.pitch,
-        )
+    liveFrame && liveFrame.pitch > 0
+      ? frequencyToNote(liveFrame.pitch)
       : '--';
 
-  if (loadingParams || !params ) {
+  if (loadingParams || !params) {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
           <Ionicons name="options-outline" size={32} color={BROWN} />
         </View>
+
         <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
         <Text style={styles.preparingSubtitle}>
           Adjusting the exercise to your current difficulty level and preparing your vocal range.
         </Text>
+
         <ActivityIndicator
           size="large"
           color={BROWN}
@@ -1012,17 +631,10 @@ useEffect(() => {
         text: 'You will repeat the same vowel several times so TuneUp! can compare your consistency.',
       },
     ];
+
     const summary: ExerciseSummaryItem[] = [
-      {
-        label: 'TARGET',
-        value: vowelDisplay(params.vowel),
-        hint: 'vowel',
-      },
-      {
-        label: 'REPETITIONS',
-        value: String(repetitions),
-        hint: 'attempts',
-      },
+      { label: 'TARGET', value: vowelDisplay(params.vowel), hint: 'vowel' },
+      { label: 'REPETITIONS', value: String(repetitions), hint: 'attempts' },
       {
         label: 'HOLD',
         value: `${formatNumber(params.durationRangeSec[0])}–${formatNumber(params.durationRangeSec[1])}s`,
@@ -1034,6 +646,7 @@ useEffect(() => {
         hint: 'minimum',
       },
     ];
+
     return (
       <ExerciseScreen
         title="Vowel Consistency"
@@ -1072,41 +685,21 @@ useEffect(() => {
 
   if (phase === 'rest') {
     return (
-      <View
-        style={styles.centerScreen}
-      >
-        <View
-          style={styles.iconCircle}
-        >
-          <Ionicons
-            name="pause-outline"
-            size={34}
-            color={BROWN}
-          />
+      <View style={styles.centerScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="pause-outline" size={34} color={BROWN} />
         </View>
-        <Text
-          style={styles.phaseTitle}
-        >
-          Relax
+
+        <Text style={styles.phaseTitle}>Relax</Text>
+        <Text style={styles.phaseSubtitle}>
+          Repetition {currentRepetition - 1} complete.
         </Text>
-        <Text
-          style={styles.phaseSubtitle}
-        >
-          Repetition{' '}
-          {currentRepetition - 1}{' '}
-          complete.
-        </Text>
-        <Text
-          style={styles.largeVowel}
-        >
-          Next {currentRepetition}
-        </Text>
+        <Text style={styles.largeVowel}>Next {currentRepetition}</Text>
+
         <ActivityIndicator
           size="small"
           color={BROWN}
-          style={
-            styles.restIndicator
-          }
+          style={styles.restIndicator}
         />
       </View>
     );
@@ -1116,222 +709,98 @@ useEffect(() => {
     return (
       <View style={styles.screen}>
         <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.recordingContent
-          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.recordingContent}
         >
-          <Text
-            style={
-              styles.recordingEyebrow
-            }
-          >
-            REPETITION{' '}
-            {currentRepetition} /{' '}
-            {repetitions}
+          <Text style={styles.recordingEyebrow}>
+            REPETITION {currentRepetition} / {repetitions}
           </Text>
-          <Text
-            style={styles.recordingTitle}
-          >
+
+          <Text style={styles.recordingTitle}>
             Keep the Vowel Consistent
           </Text>
-          <Text
-            style={
-              styles.recordingSubtitle
-            }
-          >
-            Do not change the vowel
-            shape while you sustain it.
+          <Text style={styles.recordingSubtitle}>
+            Do not change the vowel shape while you sustain it.
           </Text>
-          <View
-            style={styles.vowelCard}
-          >
-            <Text
-              style={styles.vowelLabel}
-            >
-              TARGET VOWEL
+
+          <View style={styles.vowelCard}>
+            <Text style={styles.vowelLabel}>TARGET VOWEL</Text>
+            <Text style={styles.vowelValue}>
+              {vowelDisplay(params.vowel)}
             </Text>
-            <Text
-              style={styles.vowelValue}
-            >
-              {vowelDisplay(
-                params.vowel,
-              )}
-            </Text>
-            <Text
-              style={
-                styles.vowelInstruction
-              }
-            >
+            <Text style={styles.vowelInstruction}>
               Same vowel • same sound
             </Text>
           </View>
-          <View
-            style={styles.microphoneArea}
-          >
-            <View
-              style={
-                styles.outerMicCircle
-              }
-            >
-              <View
-                style={
-                  styles.innerMicCircle
-                }
-              >
-                <Ionicons
-                  name="mic"
-                  size={52}
-                  color={BROWN}
-                />
+
+          <View style={styles.microphoneArea}>
+            <View style={styles.outerMicCircle}>
+              <View style={styles.innerMicCircle}>
+                <Ionicons name="mic" size={52} color={BROWN} />
               </View>
             </View>
-            <View
-              style={styles.recordingBadge}
-            >
-              <View
-                style={styles.recordingDot}
-              />
-              <Text
-                style={
-                  styles.recordingBadgeText
-                }
-              >
-                RECORDING
-              </Text>
+
+            <View style={styles.recordingBadge}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingBadgeText}>RECORDING</Text>
             </View>
           </View>
-          <View
-            style={styles.liveCard}
-          >
-            <Text
-              style={styles.liveLabel}
-            >
-              LIVE SIGNAL
-            </Text>
-            <Text
-              style={styles.liveNote}
-            >
-              {livePitchNote}
-            </Text>
-            <Text
-              style={
-                styles.liveFrequency
-              }
-            >
-              {liveFrame &&
-              liveFrame.pitch > 0
-                ? `${Math.round(
-                    liveFrame.pitch,
-                  )} Hz`
+
+          <View style={styles.liveCard}>
+            <Text style={styles.liveLabel}>LIVE SIGNAL</Text>
+            <Text style={styles.liveNote}>{livePitchNote}</Text>
+            <Text style={styles.liveFrequency}>
+              {liveFrame && liveFrame.pitch > 0
+                ? `${Math.round(liveFrame.pitch)} Hz`
                 : '--'}
             </Text>
-            <View
-              style={styles.liveStats}
-            >
-              <View
-                style={styles.liveStat}
-              >
-                <Text
-                  style={
-                    styles.liveStatLabel
-                  }
-                >
-                  Clarity
-                </Text>
-                <Text
-                  style={
-                    styles.liveStatValue
-                  }
-                >
-                  {liveFrame &&
-                  liveFrame.clarity >
-                    0
-                    ? `${Math.round(
-                        liveFrame.clarity *
-                          100,
-                      )}%`
+
+            <View style={styles.liveStats}>
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Clarity</Text>
+                <Text style={styles.liveStatValue}>
+                  {liveFrame && liveFrame.clarity > 0
+                    ? `${Math.round(liveFrame.clarity * 100)}%`
                     : '--'}
                 </Text>
               </View>
-              <View
-                style={styles.liveStat}
-              >
-                <Text
-                  style={
-                    styles.liveStatLabel
-                  }
-                >
-                  Volume
-                </Text>
-                <Text
-                  style={
-                    styles.liveStatValue
-                  }
-                >
-                  {liveFrame &&
-                  Number.isFinite(
-                    liveFrame.volume,
-                  )
-                    ? `${Math.round(
-                        liveFrame.volume,
-                      )} dB`
+
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Volume</Text>
+                <Text style={styles.liveStatValue}>
+                  {liveFrame && Number.isFinite(liveFrame.volume)
+                    ? `${Math.round(liveFrame.volume)} dB`
                     : '--'}
                 </Text>
               </View>
             </View>
           </View>
-          <Text
-            style={styles.timerText}
-          >
-            {(elapsedMs / 1000).toFixed(
-              1,
-            )}{' '}
-            /{' '}
-            {formatNumber(
-              targetDuration,
-            )}
-            s
+
+          <Text style={styles.timerText}>
+            {(elapsedMs / 1000).toFixed(1)} / {formatNumber(targetDuration)}s
           </Text>
-          <View
-            style={styles.timerTrack}
-          >
+
+          <View style={styles.timerTrack}>
             <View
               style={[
                 styles.timerFill,
-                {
-                  width: `${
-                    recordingProgress *
-                    100
-                  }%`,
-                },
+                { width: `${recordingProgress * 100}%` },
               ]}
             />
           </View>
-          <Text
-            style={styles.helperText}
-          >
-            The important part is
-            keeping the vowel sounding
-            the same from start to finish.
+
+          <Text style={styles.helperText}>
+            The important part is keeping the vowel sounding the same from start to finish.
           </Text>
+
           <Pressable
             style={styles.stopButton}
             onPress={stopEarly}
             disabled={!isRecording}
+            accessibilityRole="button"
           >
-            <Ionicons
-              name="stop-circle-outline"
-              size={20}
-              color={BROWN}
-            />
-            <Text
-              style={
-                styles.stopButtonText
-              }
-            >
+            <Ionicons name="stop-circle-outline" size={20} color={BROWN} />
+            <Text style={styles.stopButtonText}>
               Finish This Repetition
             </Text>
           </Pressable>
@@ -1341,16 +810,12 @@ useEffect(() => {
   }
 
   if (phase === 'processing') {
-    const isFinalRep =
-      currentRepetition >= repetitions;
+    const isFinalRep = currentRepetition >= repetitions;
+
     return (
       <ExerciseProcessingScreen
         icon="analytics-outline"
-        title={
-          isFinalRep
-            ? 'Analyzing Your Results'
-            : 'Analyzing Your Vowel'
-        }
+        title={isFinalRep ? 'Analyzing Your Results' : 'Analyzing Your Vowel'}
         message={
           isFinalRep
             ? 'Calculating your overall tone consistency score'
@@ -1359,19 +824,13 @@ useEffect(() => {
       />
     );
   }
-  if (
-    phase === 'results' &&
-    finalResult
-  ) {
+
+  if (phase === 'results' && finalResult) {
     return (
       <View style={styles.screen}>
         <ScrollView
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.resultsContent
-          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.resultsContent}
         >
           <View
             style={[
@@ -1382,251 +841,105 @@ useEffect(() => {
             ]}
           >
             <Ionicons
-              name={
-                finalResult.passed
-                  ? 'checkmark'
-                  : 'refresh'
-              }
+              name={finalResult.passed ? 'checkmark' : 'refresh'}
               size={40}
               color={BROWN}
             />
           </View>
-          <Text
-            style={styles.resultTitle}
-          >
-            {finalResult.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'}
+
+          <Text style={styles.resultTitle}>
+            {finalResult.passed ? 'Great Job!' : 'Keep Practicing!'}
           </Text>
-          <Text
-            style={
-              styles.resultSubtitle
-            }
-          >
+          <Text style={styles.resultSubtitle}>
             Vowel Consistency Result
           </Text>
-          <View
-            style={styles.scoreCard}
-          >
-            <Text
-              style={styles.scoreLabel}
-            >
-              Overall Score
-            </Text>
-            <Text
-              style={styles.scoreValue}
-            >
-              {finalResult.score}%
-            </Text>
-            <Text
-              style={
-                styles.scoreDescription
-              }
-            >
+
+          <View style={styles.scoreCard}>
+            <Text style={styles.scoreLabel}>Overall Score</Text>
+            <Text style={styles.scoreValue}>{finalResult.score}%</Text>
+            <Text style={styles.scoreDescription}>
               {finalResult.passed
                 ? 'Your vowel stayed consistent across the exercise.'
                 : 'Try to keep the vowel shape and tone more consistent in every repetition.'}
             </Text>
           </View>
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Target
-            </Text>
-            <View
-              style={
-                styles.targetResultRow
-              }
-            >
+
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>Target</Text>
+
+            <View style={styles.targetResultRow}>
               <View>
-                <Text
-                  style={
-                    styles.resultTargetSmall
-                  }
-                >
-                  VOWEL
-                </Text>
-                <Text
-                  style={
-                    styles.resultTargetLarge
-                  }
-                >
-                  {vowelDisplay(
-                    params.vowel,
-                  )}
+                <Text style={styles.resultTargetSmall}>VOWEL</Text>
+                <Text style={styles.resultTargetLarge}>
+                  {vowelDisplay(params.vowel)}
                 </Text>
               </View>
-              <View
-                style={styles.targetBadge}
-              >
-                <Text
-                  style={
-                    styles.targetBadgeText
-                  }
-                >
+
+              <View style={styles.targetBadge}>
+                <Text style={styles.targetBadgeText}>
                   {repetitions} reps
                 </Text>
               </View>
             </View>
           </View>
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Repetition Scores
-            </Text>
-            {results.map(
-              (item, index) => (
-                <View
-                  style={styles.resultRow}
-                  key={`rep-${index}`}
-                >
-                  <View
-                    style={
-                      styles.resultRowContent
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.resultRowLabel
-                      }
-                    >
-                      Repetition{' '}
-                      {index + 1}
-                    </Text>
-                    <Text
-                      style={
-                        styles.resultRowHint
-                      }
-                    >
-                      {item.passed
-                        ? 'Vowel target and smoothness met'
-                        : 'Needs more consistent vowel quality'}
-                    </Text>
-                  </View>
-                  <Text
-                    style={
-                      styles.resultRowValue
-                    }
-                  >
-                    {item.score}%
+
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>Repetition Scores</Text>
+
+            {results.map((item, index) => (
+              <View style={styles.resultRow} key={`rep-${index}`}>
+                <View style={styles.resultRowContent}>
+                  <Text style={styles.resultRowLabel}>
+                    Repetition {index + 1}
+                  </Text>
+                  <Text style={styles.resultRowHint}>
+                    {item.passed
+                      ? 'Vowel target and smoothness met'
+                      : 'Needs more consistent vowel quality'}
                   </Text>
                 </View>
-              ),
-            )}
+
+                <Text style={styles.resultRowValue}>{item.score}%</Text>
+              </View>
+            ))}
           </View>
-          <View
-            style={styles.resultCard}
-          >
-            <Text
-              style={
-                styles.resultCardTitle
-              }
-            >
-              Analysis
-            </Text>
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Average spectral
-                centroid
+
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>Analysis</Text>
+
+            <View style={styles.resultRow}>
+              <Text style={styles.resultRowLabel}>
+                Average spectral centroid
               </Text>
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {finalAverageCentroid >
-                0
-                  ? `${Math.round(
-                      finalAverageCentroid,
-                    )} Hz`
+              <Text style={styles.resultRowValue}>
+                {finalAverageCentroid > 0
+                  ? `${Math.round(finalAverageCentroid)} Hz`
                   : '--'}
               </Text>
             </View>
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
-                Frames analyzed
-              </Text>
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {frameCount}
-              </Text>
+
+            <View style={styles.resultRow}>
+              <Text style={styles.resultRowLabel}>Frames analyzed</Text>
+              <Text style={styles.resultRowValue}>{frameCount}</Text>
             </View>
-            <View
-              style={styles.resultRow}
-            >
-              <Text
-                style={
-                  styles.resultRowLabel
-                }
-              >
+
+            <View style={styles.resultRow}>
+              <Text style={styles.resultRowLabel}>
                 Required smoothness
               </Text>
-              <Text
-                style={
-                  styles.resultRowValue
-                }
-              >
-                {
-                  params
-                    .smoothnessThreshold
-                }
-                %
+              <Text style={styles.resultRowValue}>
+                {params.smoothnessThreshold}%
               </Text>
             </View>
           </View>
-          <Pressable
-            style={styles.startButton}
-            onPress={retry}
-          >
-            <Text
-              style={
-                styles.startButtonText
-              }
-            >
-              Try Again
-            </Text>
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
+
+          <Pressable style={styles.startButton} onPress={retry}>
+            <Text style={styles.startButtonText}>Try Again</Text>
+            <Ionicons name="refresh" size={18} color={WHITE} />
           </Pressable>
-          <Pressable
-            style={
-              styles.secondaryButton
-            }
-            onPress={goBack}
-          >
-            <Text
-              style={
-                styles.secondaryButtonText
-              }
-            >
+
+          <Pressable style={styles.secondaryButton} onPress={goBack}>
+            <Text style={styles.secondaryButtonText}>
               Back to Exercises
             </Text>
           </Pressable>
@@ -1634,6 +947,7 @@ useEffect(() => {
       </View>
     );
   }
+
   return null;
 }
 
@@ -1850,7 +1164,7 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     padding: 20,
     marginTop: 25,
     alignItems: 'center',
@@ -1924,7 +1238,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     backgroundColor: WHITE,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1936,9 +1250,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
-  },
-  processingIndicator: {
-    marginTop: 28,
   },
   resultIcon: {
     width: 82,
@@ -2000,7 +1311,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
   },
   resultCardTitle: {
     fontFamily: 'FredokaBold',
@@ -2040,7 +1351,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2DDE5',
+    borderBottomColor: BORDER,
   },
   resultRowContent: {
     flex: 1,
