@@ -1,13 +1,7 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
-
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -16,21 +10,9 @@ import {
   View,
 } from 'react-native';
 
+import type { SavedAssessmentResult } from '@/services/assessment/assessmentRepository';
+import { getRecentAssessments } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-
-import {
-  getRecentAssessments,
-} from '@/services/assessment/assessmentRepository';
-
-import type {
-  SavedAssessmentResult,
-} from '@/services/assessment/assessmentRepository';
-
-import {
-  fetchAllProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-
 import type {
   ComponentId,
   ComponentProgressSummary,
@@ -38,14 +20,11 @@ import type {
   PeriodComparison,
   ProgressPeriod,
 } from '@/services/progress/progressModule';
-
+import { comparePeriods } from '@/services/progress/progressModule';
 import {
-  comparePeriods
-} from '@/services/progress/progressModule';
-
-// ============================================================
-// COLORS
-// ============================================================
+  fetchAllProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -57,15 +36,13 @@ const GREEN = '#3E8E5A';
 const RED = '#B24A4A';
 const BORDER = '#F2DDE5';
 
-// ============================================================
-// COMPONENT INFORMATION
-// ============================================================
-
-const components: {
+type ComponentInfo = {
   id: ComponentId;
   name: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
-}[] = [
+};
+
+const components: ComponentInfo[] = [
   {
     id: 'breathControl',
     name: 'Breath Control',
@@ -93,9 +70,11 @@ const components: {
   },
 ];
 
-// ============================================================
-// HELPERS
-// ============================================================
+const periods: { value: ProgressPeriod; label: string }[] = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
 
 function formatAssessmentDate(timestamp: number): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) {
@@ -155,9 +134,16 @@ function formatTier(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-// ============================================================
-// DELTA BADGE
-// ============================================================
+function emptyProgress(
+  componentId: ComponentId,
+): ComponentProgressSummary {
+  return {
+    componentId,
+    currentTier: 'beginner',
+    exercisesCompleted: 0,
+    averageRecentScorePct: 0,
+  };
+}
 
 function DeltaBadge({
   delta,
@@ -171,10 +157,7 @@ function DeltaBadge({
   }
 
   const rounded = Math.round(delta);
-
-  const color =
-    rounded > 0 ? GREEN : rounded < 0 ? RED : MUTED;
-
+  const color = rounded > 0 ? GREEN : rounded < 0 ? RED : MUTED;
   const icon =
     rounded > 0
       ? 'arrow-up'
@@ -185,7 +168,6 @@ function DeltaBadge({
   return (
     <View style={styles.deltaBadge}>
       <Ionicons name={icon} size={11} color={color} />
-
       <Text style={[styles.deltaText, { color }]}>
         {rounded > 0 ? '+' : ''}
         {rounded}
@@ -195,68 +177,21 @@ function DeltaBadge({
   );
 }
 
-// ============================================================
-// EMPTY PROGRESS SUMMARY
-// ============================================================
-
-function emptyProgress(
-  componentId: ComponentId,
-): ComponentProgressSummary {
-  return {
-    componentId,
-    currentTier: 'beginner',
-    exercisesCompleted: 0,
-    averageRecentScorePct: 0,
-  };
-}
-
-// ============================================================
-// SCREEN
-// ============================================================
-
 export default function ProgressScreen() {
-  // ----------------------------------------------------------
-  // SELECTED PERIOD
-  // ----------------------------------------------------------
-
   const [period, setPeriod] = useState<ProgressPeriod>('daily');
-
-  // ----------------------------------------------------------
-  // ASSESSMENT STATE
-  // ----------------------------------------------------------
 
   const [latestAssessment, setLatestAssessment] =
     useState<SavedAssessmentResult | null>(null);
-
   const [previousAssessment, setPreviousAssessment] =
     useState<SavedAssessmentResult | null>(null);
-
-  const [assessmentLoading, setAssessmentLoading] =
-    useState(true);
-
-  const [assessmentError, setAssessmentError] =
-    useState(false);
-
-  // ----------------------------------------------------------
-  // EXERCISE PROGRESS STATE
-  // ----------------------------------------------------------
+  const [assessmentLoading, setAssessmentLoading] = useState(true);
+  const [assessmentError, setAssessmentError] = useState(false);
 
   const [exerciseProgress, setExerciseProgress] =
     useState<ComponentProgressSummary[]>([]);
-
-  const [attempts, setAttempts] =
-    useState<ExerciseAttempt[]>([]);
-
-  const [progressLoading, setProgressLoading] =
-    useState(true);
-
-  const [progressError, setProgressError] =
-    useState(false);
-
-
-  // ==========================================================
-  // ALL-TIME COMPONENT IMPROVEMENT
-  // ==========================================================
+  const [attempts, setAttempts] = useState<ExerciseAttempt[]>([]);
+  const [progressLoading, setProgressLoading] = useState(true);
+  const [progressError, setProgressError] = useState(false);
 
   const allTimeComponentChanges = useMemo(() => {
     const result = {} as Record<ComponentId, number | null>;
@@ -281,11 +216,6 @@ export default function ProgressScreen() {
     return result;
   }, [attempts]);
 
-  
-  // ==========================================================
-  // LOAD DATA WHEN SCREEN GETS FOCUS
-  // ==========================================================
-
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
@@ -307,11 +237,9 @@ export default function ProgressScreen() {
             setAssessmentLoading(false);
             setProgressLoading(false);
           }
-
           return;
         }
 
-        // Retrieve assessments and exercise data independently.
         const [
           assessmentResult,
           progressResult,
@@ -319,7 +247,6 @@ export default function ProgressScreen() {
         ] = await Promise.allSettled([
           getRecentAssessments(2),
           fetchAllProgress(user.uid),
-
           ...components.map(component =>
             fetchExerciseRecords(user.uid, component.id),
           ),
@@ -329,34 +256,20 @@ export default function ProgressScreen() {
           return;
         }
 
-        // ------------------------------------------------------
-        // ASSESSMENTS
-        // ------------------------------------------------------
-
         if (assessmentResult.status === 'fulfilled') {
-          setLatestAssessment(
-            assessmentResult.value[0] ?? null,
-          );
-
-          setPreviousAssessment(
-            assessmentResult.value[1] ?? null,
-          );
+          setLatestAssessment(assessmentResult.value[0] ?? null);
+          setPreviousAssessment(assessmentResult.value[1] ?? null);
         } else {
           console.error(
             'Unable to load assessments:',
             assessmentResult.reason,
           );
-
           setLatestAssessment(null);
           setPreviousAssessment(null);
           setAssessmentError(true);
         }
 
         setAssessmentLoading(false);
-
-        // ------------------------------------------------------
-        // COMPONENT PROGRESS SUMMARIES
-        // ------------------------------------------------------
 
         if (progressResult.status === 'fulfilled') {
           setExerciseProgress(progressResult.value);
@@ -365,14 +278,9 @@ export default function ProgressScreen() {
             'Unable to load component progress:',
             progressResult.reason,
           );
-
           setExerciseProgress([]);
           setProgressError(true);
         }
-
-        // ------------------------------------------------------
-        // COMBINE EXERCISE HISTORY
-        // ------------------------------------------------------
 
         const combinedAttempts: ExerciseAttempt[] = [];
         let historyFailed = false;
@@ -395,7 +303,6 @@ export default function ProgressScreen() {
             }
           } else {
             historyFailed = true;
-
             console.error(
               `Unable to load ${component.name} history:`,
               result.reason,
@@ -403,10 +310,7 @@ export default function ProgressScreen() {
           }
         }
 
-        combinedAttempts.sort(
-          (a, b) => a.timestamp - b.timestamp,
-        );
-
+        combinedAttempts.sort((a, b) => a.timestamp - b.timestamp);
         setAttempts(combinedAttempts);
 
         if (historyFailed) {
@@ -433,10 +337,6 @@ export default function ProgressScreen() {
     }, []),
   );
 
-  // ==========================================================
-  // PERIOD LABEL
-  // ==========================================================
-
   const periodLabel =
     period === 'daily'
       ? 'Last 24 Hours'
@@ -444,23 +344,13 @@ export default function ProgressScreen() {
         ? 'Last 7 Days'
         : 'Last 30 Days';
 
-  // ==========================================================
-  // ASSESSMENT SUMMARY
-  // ==========================================================
-
   const assessmentAverage = averageScorePct(latestAssessment);
-
-  const previousAssessmentAverage =
-    averageScorePct(previousAssessment);
+  const previousAssessmentAverage = averageScorePct(previousAssessment);
 
   const overallAssessmentDelta =
     latestAssessment && previousAssessment
       ? assessmentAverage - previousAssessmentAverage
       : null;
-
-  // ==========================================================
-  // EXERCISE PERIOD SUMMARY
-  // ==========================================================
 
   const periodComparison = useMemo(
     () => comparePeriods(attempts, period),
@@ -468,18 +358,12 @@ export default function ProgressScreen() {
   );
 
   const totalExercises = periodComparison.current.count;
-
-  const overallExerciseAverage =
-    periodComparison.current.averagePct;
+  const overallExerciseAverage = periodComparison.current.averagePct;
 
   const getComponentProgress = useCallback(
-    (componentId: ComponentId): ComponentProgressSummary => {
-      return (
-        exerciseProgress.find(
-          item => item.componentId === componentId,
-        ) ?? emptyProgress(componentId)
-      );
-    },
+    (componentId: ComponentId): ComponentProgressSummary =>
+      exerciseProgress.find(item => item.componentId === componentId) ??
+      emptyProgress(componentId),
     [exerciseProgress],
   );
 
@@ -498,10 +382,6 @@ export default function ProgressScreen() {
     return result;
   }, [attempts, period]);
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
-
   return (
     <View style={styles.screen}>
       <AppHeader />
@@ -519,24 +399,13 @@ export default function ProgressScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {/* TITLE */}
-
         <Text style={styles.title}>My Progress</Text>
-
         <Text style={styles.subtitle}>
           Track your vocal improvement.
         </Text>
 
-        {/* PERIOD SELECTOR */}
-
         <View style={styles.periodSelector}>
-          {(
-            [
-              ['daily', 'Daily'],
-              ['weekly', 'Weekly'],
-              ['monthly', 'Monthly'],
-            ] as const
-          ).map(([value, label]) => (
+          {periods.map(({ value, label }) => (
             <Pressable
               key={value}
               style={[
@@ -559,8 +428,6 @@ export default function ProgressScreen() {
           ))}
         </View>
 
-        {/* PERIOD SUMMARY */}
-
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>{periodLabel}</Text>
 
@@ -574,7 +441,6 @@ export default function ProgressScreen() {
                 <Text style={styles.summaryValue}>
                   {totalExercises}
                 </Text>
-
                 <Text style={styles.summaryLabel}>
                   Exercises completed
                 </Text>
@@ -586,7 +452,6 @@ export default function ProgressScreen() {
                 <Text style={styles.summaryValue}>
                   {overallExerciseAverage}%
                 </Text>
-
                 <Text style={styles.summaryLabel}>
                   Average score
                 </Text>
@@ -601,13 +466,8 @@ export default function ProgressScreen() {
           )}
         </View>
 
-        {/* LATEST ASSESSMENT */}
-
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Latest Assessment
-          </Text>
-
+          <Text style={styles.sectionTitle}>Latest Assessment</Text>
           <Text style={styles.sectionSubtitle}>
             Your most recent vocal assessment scores.
           </Text>
@@ -626,20 +486,16 @@ export default function ProgressScreen() {
               size={28}
               color={BROWN}
             />
-
             <Text style={styles.emptyTitle}>
               Assessment Unavailable
             </Text>
-
             <Text style={styles.emptyText}>
-              We couldn't load your assessment records. Please
-              check your connection and try again.
+              We couldn't load your assessment records. Please check
+              your connection and try again.
             </Text>
           </View>
         ) : latestAssessment ? (
           <>
-            {/* OVERALL ASSESSMENT SCORE */}
-
             <View style={styles.assessmentSummaryCard}>
               <View style={styles.assessmentSummaryLeft}>
                 <Text style={styles.assessmentSummaryLabel}>
@@ -650,7 +506,6 @@ export default function ProgressScreen() {
                   <Text style={styles.assessmentAverage}>
                     {assessmentAverage}%
                   </Text>
-
                   <DeltaBadge delta={overallAssessmentDelta} />
                 </View>
 
@@ -671,8 +526,6 @@ export default function ProgressScreen() {
               </View>
             </View>
 
-            {/* ACTUAL ASSESSMENT COMPONENT SCORES */}
-
             <View style={styles.assessmentScoresCard}>
               {components.map((component, index) => {
                 const score = getAssessmentComponentScore(
@@ -680,11 +533,10 @@ export default function ProgressScreen() {
                   component.id,
                 );
 
-                const previousScore =
-                  getAssessmentComponentScore(
-                    previousAssessment,
-                    component.id,
-                  );
+                const previousScore = getAssessmentComponentScore(
+                  previousAssessment,
+                  component.id,
+                );
 
                 const delta =
                   score !== null && previousScore !== null
@@ -701,17 +553,16 @@ export default function ProgressScreen() {
                     ]}
                   >
                     <View style={styles.componentHeader}>
-                  <View style={styles.componentNameRow}>
-                    <Ionicons
-                      name={component.icon}
-                      size={18}
-                      color={BROWN}
-                    />
-
-                    <Text style={styles.componentName}>
-                      {component.name}
-                    </Text>
-                  </View>
+                      <View style={styles.componentNameRow}>
+                        <Ionicons
+                          name={component.icon}
+                          size={18}
+                          color={BROWN}
+                        />
+                        <Text style={styles.componentName}>
+                          {component.name}
+                        </Text>
+                      </View>
 
                       <View style={styles.deltaRow}>
                         <Text style={styles.componentScore}>
@@ -725,9 +576,7 @@ export default function ProgressScreen() {
                       <View
                         style={[
                           styles.progressFill,
-                          {
-                            width: `${score ?? 0}%`,
-                          },
+                          { width: `${score ?? 0}%` },
                         ]}
                       />
                     </View>
@@ -745,11 +594,11 @@ export default function ProgressScreen() {
                 })
               }
               accessibilityRole="button"
+              accessibilityLabel="Retake assessment"
             >
               <Text style={styles.outlineButtonText}>
                 Retake Assessment
               </Text>
-
               <Ionicons
                 name="arrow-forward"
                 size={17}
@@ -767,13 +616,10 @@ export default function ProgressScreen() {
               />
             </View>
 
-            <Text style={styles.emptyTitle}>
-              No Assessment Yet
-            </Text>
-
+            <Text style={styles.emptyTitle}>No Assessment Yet</Text>
             <Text style={styles.emptyText}>
-              Complete a vocal assessment to see your Breath
-              Control, Pitch, Tone, Volume, and Agility scores.
+              Complete a vocal assessment to see your Breath Control,
+              Pitch, Tone, Volume, and Agility scores.
             </Text>
 
             <Pressable
@@ -785,11 +631,11 @@ export default function ProgressScreen() {
                 })
               }
               accessibilityRole="button"
+              accessibilityLabel="Take assessment"
             >
               <Text style={styles.primaryButtonText}>
                 Take Assessment
               </Text>
-
               <Ionicons
                 name="arrow-forward"
                 size={17}
@@ -799,27 +645,22 @@ export default function ProgressScreen() {
           </View>
         )}
 
-        {/* EXERCISE PROGRESS */}
-
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Exercise Progress
-          </Text>
-
+          <Text style={styles.sectionTitle}>Exercise Progress</Text>
           <Text style={styles.sectionSubtitle}>
-            Completed exercises during the selected period and
-            your overall progress by component.
+            Completed exercises during the selected period and your
+            overall progress by component.
           </Text>
         </View>
 
         {!progressLoading &&
           components.map(component => {
             const progress = getComponentProgress(component.id);
-            const comparison = componentComparisons[component.id];
-
             const recentScore = clampPercentage(
               progress.averageRecentScorePct,
             );
+            const allTimeChange =
+              allTimeComponentChanges[component.id];
 
             return (
               <View
@@ -833,7 +674,6 @@ export default function ProgressScreen() {
                       size={18}
                       color={BROWN}
                     />
-
                     <Text style={styles.componentName}>
                       {component.name}
                     </Text>
@@ -843,12 +683,10 @@ export default function ProgressScreen() {
                     <Text style={styles.componentScore}>
                       {recentScore}%
                     </Text>
-
-                    <DeltaBadge
-                      delta={allTimeComponentChanges[component.id]}
-                    />
+                    <DeltaBadge delta={allTimeChange} />
                   </View>
                 </View>
+
                 <View style={styles.progressBackground}>
                   <View
                     style={[
@@ -859,22 +697,20 @@ export default function ProgressScreen() {
                 </View>
 
                 <View style={styles.componentMeta}>
-                  <View style={styles.metaGroup}>
-                    <Text style={styles.componentMetaText}>
-                      {progress.exercisesCompleted}{' '}
-                      {progress.exercisesCompleted === 1
-                        ? 'exercise'
-                        : 'exercises'}{' '}
-                      total
-                    </Text>
-                  </View>
-
+                  <Text style={styles.componentMetaText}>
+                    {progress.exercisesCompleted}{' '}
+                    {progress.exercisesCompleted === 1
+                      ? 'exercise'
+                      : 'exercises'}{' '}
+                    total
+                  </Text>
                   <Text style={styles.componentMetaText}>
                     {formatTier(progress.currentTier)}
                   </Text>
                 </View>
+
                 <Text style={styles.comparisonHint}>
-                  {allTimeComponentChanges[component.id] === null
+                  {allTimeChange === null
                     ? 'Complete another exercise to track improvement.'
                     : 'Improvement across all recorded exercises'}
                 </Text>
@@ -882,26 +718,22 @@ export default function ProgressScreen() {
             );
           })}
 
-        {!progressLoading &&
-          !progressError &&
-          attempts.length === 0 && (
-            <View style={styles.emptyCard}>
-              <Ionicons
-                name="bar-chart-outline"
-                size={28}
-                color={BROWN}
-              />
-
-              <Text style={styles.emptyTitle}>
-                No Exercise History Yet
-              </Text>
-
-              <Text style={styles.emptyText}>
-                Complete an exercise to start tracking your scores
-                and progress here.
-              </Text>
-            </View>
-          )}
+        {!progressLoading && !progressError && attempts.length === 0 && (
+          <View style={styles.emptyCard}>
+            <Ionicons
+              name="bar-chart-outline"
+              size={28}
+              color={BROWN}
+            />
+            <Text style={styles.emptyTitle}>
+              No Exercise History Yet
+            </Text>
+            <Text style={styles.emptyText}>
+              Complete an exercise to start tracking your scores and
+              progress here.
+            </Text>
+          </View>
+        )}
 
         {progressLoading && (
           <View style={styles.emptyCard}>
@@ -915,22 +747,16 @@ export default function ProgressScreen() {
   );
 }
 
-// ============================================================
-// STYLES
-// ============================================================
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: WHITE,
   },
-
   content: {
     paddingHorizontal: 24,
     paddingTop: 25,
     paddingBottom: 140,
   },
-
   backButton: {
     position: 'absolute',
     top: 55,
@@ -941,14 +767,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     color: BROWN,
     marginTop: 30,
   },
-
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -956,7 +780,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: 20,
   },
-
   periodSelector: {
     flexDirection: 'row',
     backgroundColor: LIGHT_GRAY,
@@ -964,7 +787,6 @@ const styles = StyleSheet.create({
     padding: 4,
     marginBottom: 20,
   },
-
   periodButton: {
     flex: 1,
     height: 36,
@@ -972,52 +794,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   periodButtonActive: {
     backgroundColor: PINK,
   },
-
   periodText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   periodTextActive: {
     fontFamily: 'FredokaBold',
     color: BROWN,
   },
-
   summaryCard: {
     backgroundColor: PINK,
     borderRadius: 20,
     padding: 20,
     marginBottom: 30,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
-
   summaryTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
     marginBottom: 15,
   },
-
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   summaryItem: {
     flex: 1,
     alignItems: 'center',
   },
-
   summaryValue: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     color: BROWN,
   },
-
   summaryLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
@@ -1025,44 +843,38 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
   },
-
   divider: {
     width: 1,
     height: 42,
     backgroundColor: '#E8C7D0',
   },
-
   loadingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
   },
-
   warningText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: RED,
     marginTop: 12,
   },
-
   sectionHeader: {
     marginBottom: 14,
   },
-
   sectionTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
   },
-
   sectionSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
+    lineHeight: 16,
     color: MUTED,
     marginTop: 3,
     marginBottom: 14,
   },
-
   assessmentSummaryCard: {
     backgroundColor: PINK,
     borderRadius: 20,
@@ -1071,32 +883,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
-
   assessmentSummaryLeft: {
     flex: 1,
   },
-
   assessmentSummaryLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginBottom: 2,
   },
-
   assessmentAverage: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
   },
-
   assessmentDate: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     marginTop: 2,
   },
-
   assessmentIconCircle: {
     width: 56,
     height: 56,
@@ -1104,64 +916,62 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 12,
   },
-
   assessmentScoresCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
     paddingHorizontal: 17,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: LIGHT_PINK,
+    borderColor: BORDER,
     marginBottom: 12,
   },
-
   assessmentScoreItem: {
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-
   assessmentScoreItemLast: {
     borderBottomWidth: 0,
   },
-
   componentCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: LIGHT_PINK,
+    borderColor: BORDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-
   componentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+    gap: 10,
   },
-
   componentName: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
     flexShrink: 1,
   },
-  
   componentNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexShrink: 1,
-    },
-
+  },
   componentScore: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,
   },
-
   progressBackground: {
     height: 9,
     width: '100%',
@@ -1169,59 +979,35 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
   },
-
   progressFill: {
     height: '100%',
     backgroundColor: BROWN,
     borderRadius: 10,
   },
-
   componentMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
   },
-
-  metaGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
   componentMetaText: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     textTransform: 'capitalize',
   },
-
-  comparisonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-
-  comparisonText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-    flexShrink: 1,
-  },
-
   comparisonHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
+    lineHeight: 15,
     color: MUTED,
     marginTop: 5,
   },
-
   deltaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-
   deltaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1231,31 +1017,27 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: WHITE,
   },
-
   deltaText: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
   },
-
   outlineButton: {
     height: 44,
     borderRadius: 22,
     backgroundColor: LIGHT_PINK,
     borderWidth: 1,
-    borderColor: LIGHT_PINK,
+    borderColor: BORDER,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
     marginBottom: 30,
   },
-
   outlineButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   primaryButton: {
     height: 44,
     borderRadius: 22,
@@ -1266,13 +1048,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
-
   primaryButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: WHITE,
   },
-
   emptyCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
@@ -1282,7 +1062,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     marginBottom: 30,
   },
-
   emptyIconCircle: {
     width: 54,
     height: 54,
@@ -1292,7 +1071,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-
   emptyTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
@@ -1300,7 +1078,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 6,
   },
-
   emptyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,

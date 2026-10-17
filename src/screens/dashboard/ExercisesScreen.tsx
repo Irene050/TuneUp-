@@ -4,9 +4,7 @@ import type {
   ComponentId,
   ComponentProgressSummary,
 } from '@/services/progress/progressModule';
-import {
-  fetchAllProgress,
-} from '@/services/progress/progressRepo';
+import { fetchAllProgress } from '@/services/progress/progressRepo';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -18,18 +16,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-// =========================================================
-// COLORS
-// =========================================================
+
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const BORDER = '#D8C9C2';
 const MUTED = '#A58F84';
-// =========================================================
-// CATEGORIES
-// =========================================================
+
 const categories = [
   'All',
   'Breath Control',
@@ -38,6 +32,7 @@ const categories = [
   'Volume',
   'Agility',
 ];
+
 const componentIds: Record<string, ComponentId> = {
   'Breath Control': 'breathControl',
   Pitch: 'pitch',
@@ -45,16 +40,14 @@ const componentIds: Record<string, ComponentId> = {
   Volume: 'volume',
   Agility: 'agility',
 };
-// =========================================================
-// EXERCISE DATA
-// =========================================================
+
 type Exercise = {
   name: string;
   category: string;
   templateId?: string;
 };
+
 const exercises: Exercise[] = [
-  // BREATH CONTROL
   {
     name: 'Sustained Exhale',
     category: 'Breath Control',
@@ -80,7 +73,6 @@ const exercises: Exercise[] = [
     category: 'Breath Control',
     templateId: 'controlledBreathRelease',
   },
-  // PITCH
   {
     name: 'Note Matching Exercise',
     category: 'Pitch',
@@ -106,7 +98,6 @@ const exercises: Exercise[] = [
     category: 'Pitch',
     templateId: 'melodicPatternMatching',
   },
-  // TONE
   {
     name: 'Vowel Consistency Exercise',
     category: 'Tone',
@@ -132,7 +123,6 @@ const exercises: Exercise[] = [
     category: 'Tone',
     templateId: 'steadyToneHolding',
   },
-  // VOLUME
   {
     name: 'Dynamic Range Exercise',
     category: 'Volume',
@@ -158,7 +148,6 @@ const exercises: Exercise[] = [
     category: 'Volume',
     templateId: 'volume-control-stability',
   },
-  // AGILITY
   {
     name: 'Rapid Note-Transition Exercise',
     category: 'Agility',
@@ -185,9 +174,7 @@ const exercises: Exercise[] = [
     templateId: 'rapidScaleTrill',
   },
 ];
-// =========================================================
-// DEFAULT RECOMMENDATIONS
-// =========================================================
+
 const fallbackRecommendations: Exercise[] = [
   exercises[0],
   exercises[5],
@@ -195,51 +182,47 @@ const fallbackRecommendations: Exercise[] = [
   exercises[15],
   exercises[20],
 ].filter((exercise): exercise is Exercise => Boolean(exercise));
-// =========================================================
-// HELPERS
-// =========================================================
+
 function clampPercentage(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
+
   return Math.round(Math.max(0, Math.min(100, value)));
 }
-function getExerciseDifficulty(
-  exercise: Exercise,
-): string {
+
+function getExerciseDifficulty(_exercise: Exercise): string {
   return 'Beginner';
 }
-// =========================================================
-// SCREEN
-// =========================================================
+
 export default function ExercisesScreen() {
-  const [selectedCategory, setSelectedCategory] =
-    useState('All');
-  const [filterOpen, setFilterOpen] =
-    useState(false);
-  const [search, setSearch] =
-    useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [progressSummaries, setProgressSummaries] =
     useState<ComponentProgressSummary[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] =
     useState(true);
-  // =======================================================
-  // LOAD PROGRESS WHEN SCREEN GAINS FOCUS
-  // =======================================================
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
+
       async function loadRecommendations() {
         setRecommendationsLoading(true);
+
         try {
           const user = auth.currentUser;
+
           if (!user) {
             if (active) {
               setProgressSummaries([]);
             }
             return;
           }
+
           const summaries = await fetchAllProgress(user.uid);
+
           if (active) {
             setProgressSummaries(summaries);
           }
@@ -248,6 +231,7 @@ export default function ExercisesScreen() {
             'Failed to load exercise recommendations:',
             error,
           );
+
           if (active) {
             setProgressSummaries([]);
           }
@@ -257,30 +241,29 @@ export default function ExercisesScreen() {
           }
         }
       }
+
       void loadRecommendations();
+
       return () => {
         active = false;
       };
     }, []),
   );
-  // =======================================================
-  // FILTER EXERCISES
-  // =======================================================
+
   const filteredExercises = useMemo(() => {
     return exercises.filter((exercise) => {
       const matchesCategory =
         selectedCategory === 'All' ||
         exercise.category === selectedCategory;
-      const matchesSearch =
-        exercise.name
-          .toLowerCase()
-          .includes(search.toLowerCase());
+
+      const matchesSearch = exercise.name
+        .toLowerCase()
+        .includes(search.toLowerCase());
+
       return matchesCategory && matchesSearch;
     });
   }, [selectedCategory, search]);
-  // =======================================================
-  // RECOMMEND EXERCISES
-  // =======================================================
+
   const recommendedExercises = useMemo(() => {
     if (
       recommendationsLoading ||
@@ -288,11 +271,13 @@ export default function ExercisesScreen() {
     ) {
       return fallbackRecommendations;
     }
+
     const rankedComponents = Object.entries(componentIds)
       .map(([category, componentId]) => {
         const summary = progressSummaries.find(
-          item => item.componentId === componentId,
+          (item) => item.componentId === componentId,
         );
+
         return {
           category,
           score: clampPercentage(
@@ -302,139 +287,104 @@ export default function ExercisesScreen() {
         };
       })
       .sort((a, b) => {
-        // Prioritize components that have exercise history.
         if (a.completed > 0 && b.completed === 0) {
           return -1;
         }
+
         if (a.completed === 0 && b.completed > 0) {
           return 1;
         }
-        // Among practiced components, lowest score first.
+
         if (a.completed > 0 && b.completed > 0) {
           return a.score - b.score;
         }
+
         return 0;
       });
+
     const recommendations: Exercise[] = [];
-    // First, recommend one exercise from each of the
-    // lowest-scoring components.
+
     for (const component of rankedComponents) {
       const exercise = exercises.find(
-        item => item.category === component.category,
+        (item) => item.category === component.category,
       );
+
       if (exercise) {
         recommendations.push(exercise);
       }
+
       if (recommendations.length >= 5) {
         break;
       }
     }
-    // Ensure there are at least three recommendations.
-    // Add exercises from the lowest-scoring categories first.
+
     for (const component of rankedComponents) {
       if (recommendations.length >= 3) {
         break;
       }
+
       const remainingExercises = exercises.filter(
-        exercise =>
+        (exercise) =>
           exercise.category === component.category &&
           !recommendations.some(
-            recommended =>
+            (recommended) =>
               recommended.name === exercise.name,
           ),
       );
+
       for (const exercise of remainingExercises) {
         recommendations.push(exercise);
+
         if (recommendations.length >= 3) {
           break;
         }
       }
     }
+
     return recommendations.slice(0, 5);
   }, [progressSummaries, recommendationsLoading]);
-  // =======================================================
-  // EXERCISE NAVIGATION
-  // =======================================================
-  const handleExercisePress = (
-    exercise: Exercise,
-  ) => {
-    // BREATH CONTROL
-    if (
-      exercise.category === 'Breath Control' &&
-      exercise.templateId
-    ) {
-      router.push({
-        pathname: '/exercises/breath-control',
-        params: {
-          templateId: exercise.templateId,
-        },
-      } as any);
+
+  const handleExercisePress = (exercise: Exercise) => {
+    if (!exercise.templateId) {
       return;
     }
-    // PITCH
-    if (
-      exercise.category === 'Pitch' &&
-      exercise.templateId
-    ) {
-      router.push({
-        pathname: '/exercises/pitch',
-        params: {
-          templateId: exercise.templateId,
-        },
-      } as any);
+
+    const routes: Record<string, string> = {
+      'Breath Control': '/exercises/breath-control',
+      Pitch: '/exercises/pitch',
+      Tone: '/exercises/tone',
+      Volume: '/exercises/volume',
+      Agility: '/exercises/agility',
+    };
+
+    const pathname = routes[exercise.category];
+
+    if (!pathname) {
       return;
     }
-    // TONE
-    if (
-      exercise.category === 'Tone' &&
-      exercise.templateId
-    ) {
-      router.push({
-        pathname: '/exercises/tone',
-        params: {
-          templateId: exercise.templateId,
-        },
-      } as any);
-      return;
-    }
-    // VOLUME
-    if (
-      exercise.category === 'Volume' &&
-      exercise.templateId
-    ) {
-      router.push({
-        pathname: '/exercises/volume',
-        params: {
-          templateId: exercise.templateId,
-        },
-      } as any);
-      return;
-    }
-    // AGILITY
-    if (
-      exercise.category === 'Agility' &&
-      exercise.templateId
-    ) {
-      router.push({
-        pathname: '/exercises/agility',
-        params: {
-          templateId: exercise.templateId,
-        },
-      } as any);
-    }
+
+    router.push({
+      pathname: pathname as
+        | '/exercises/breath-control'
+        | '/exercises/pitch'
+        | '/exercises/tone'
+        | '/exercises/volume'
+        | '/exercises/agility',
+      params: {
+        templateId: exercise.templateId,
+      },
+    });
   };
-  // =======================================================
-  // UI
-  // =======================================================
+
   return (
     <View style={styles.screen}>
       <AppHeader />
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* SEARCH */}
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Ionicons
@@ -442,25 +392,25 @@ export default function ExercisesScreen() {
               size={21}
               color={MUTED}
             />
+
             <TextInput
               style={styles.searchInput}
-              placeholder="search exercises..."
+              placeholder="Search exercises..."
               placeholderTextColor={MUTED}
               value={search}
               onChangeText={setSearch}
             />
           </View>
         </View>
-        {/* TITLE */}
-        <Text style={styles.title}>
-          Vocal Exercises
-        </Text>
-        {/* RECOMMENDED FOR YOU */}
+
+        <Text style={styles.title}>Vocal Exercises</Text>
+
         <View style={styles.recommendedHeader}>
           <View>
             <Text style={styles.recommendedTitle}>
               Recommended For You
             </Text>
+
             <Text style={styles.recommendedSubtitle}>
               {recommendationsLoading
                 ? 'Loading your exercise scores...'
@@ -468,6 +418,7 @@ export default function ExercisesScreen() {
             </Text>
           </View>
         </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -478,7 +429,6 @@ export default function ExercisesScreen() {
               key={`${exercise.category}-${exercise.name}`}
               style={styles.recommendedCard}
             >
-              {/* IMAGE AREA */}
               <View style={styles.recommendedImage}>
                 <Ionicons
                   name={
@@ -495,13 +445,14 @@ export default function ExercisesScreen() {
                   size={56}
                   color={BROWN}
                 />
+
                 <View style={styles.recommendedDifficulty}>
                   <Text style={styles.difficultyText}>
                     {exercise.category}
                   </Text>
                 </View>
               </View>
-              {/* CARD BOTTOM */}
+
               <View style={styles.recommendedBottom}>
                 <View style={styles.recommendedExerciseText}>
                   <Text
@@ -511,6 +462,7 @@ export default function ExercisesScreen() {
                     {exercise.name}
                   </Text>
                 </View>
+
                 <Pressable
                   style={styles.smallPlayButton}
                   onPress={() => handleExercisePress(exercise)}
@@ -527,12 +479,10 @@ export default function ExercisesScreen() {
             </View>
           ))}
         </ScrollView>
-        {/* EXERCISES HEADER */}
+
         <View style={styles.exerciseHeader}>
-          <Text style={styles.exerciseTitle}>
-            Exercises
-          </Text>
-          {/* FILTER DROPDOWN */}
+          <Text style={styles.exerciseTitle}>Exercises</Text>
+
           <View style={styles.dropdownWrapper}>
             <Pressable
               style={styles.dropdown}
@@ -543,12 +493,14 @@ export default function ExercisesScreen() {
               <Text style={styles.dropdownText}>
                 {selectedCategory}
               </Text>
+
               <Ionicons
                 name={filterOpen ? 'chevron-up' : 'chevron-down'}
                 size={15}
                 color={MUTED}
               />
             </Pressable>
+
             {filterOpen && (
               <View style={styles.dropdownMenu}>
                 {categories.map((category) => (
@@ -580,14 +532,14 @@ export default function ExercisesScreen() {
             )}
           </View>
         </View>
-        {/* EXERCISE COUNT */}
+
         <Text style={styles.resultCount}>
           {filteredExercises.length}{' '}
           {filteredExercises.length === 1
             ? 'exercise'
             : 'exercises'}
         </Text>
-        {/* EXERCISE LIST */}
+
         <View style={styles.exerciseList}>
           {filteredExercises.map((exercise) => (
             <Pressable
@@ -608,17 +560,20 @@ export default function ExercisesScreen() {
                   {exercise.name}
                 </Text>
               </View>
+
               <View style={styles.levelBadge}>
                 <Text style={styles.levelText}>
                   {getExerciseDifficulty(exercise)}
                 </Text>
               </View>
+
               <Text
                 style={styles.exerciseCategory}
                 numberOfLines={1}
               >
                 {exercise.category}
               </Text>
+
               <View style={styles.listPlayButton}>
                 <Ionicons
                   name="play"
@@ -628,7 +583,7 @@ export default function ExercisesScreen() {
               </View>
             </Pressable>
           ))}
-          {/* NO RESULTS */}
+
           {filteredExercises.length === 0 && (
             <View style={styles.noResults}>
               <Ionicons
@@ -636,9 +591,11 @@ export default function ExercisesScreen() {
                 size={32}
                 color={MUTED}
               />
+
               <Text style={styles.noResultsTitle}>
                 No exercises found
               </Text>
+
               <Text style={styles.noResultsText}>
                 Try another search or category.
               </Text>
@@ -649,9 +606,7 @@ export default function ExercisesScreen() {
     </View>
   );
 }
-// =========================================================
-// STYLES
-// =========================================================
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -665,7 +620,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 140,
   },
-  // SEARCH
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -691,14 +645,12 @@ const styles = StyleSheet.create({
     color: BROWN,
     padding: 0,
   },
-  // TITLE
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
     marginBottom: 20,
   },
-  // RECOMMENDED
   recommendedHeader: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -789,7 +741,6 @@ const styles = StyleSheet.create({
     },
     elevation: 3,
   },
-  // EXERCISES HEADER
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -801,7 +752,6 @@ const styles = StyleSheet.create({
     fontSize: 31,
     color: BROWN,
   },
-  // DROPDOWN
   dropdownWrapper: {
     position: 'relative',
     zIndex: 100,
@@ -855,14 +805,12 @@ const styles = StyleSheet.create({
   selectedDropdownText: {
     fontFamily: 'FredokaBold',
   },
-  // RESULT COUNT
   resultCount: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     marginBottom: 8,
   },
-  // EXERCISE LIST
   exerciseList: {
     gap: 7,
   },
@@ -916,7 +864,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.1,
     shadowRadius: 3,
     shadowOffset: {
       width: 0,
@@ -924,7 +872,6 @@ const styles = StyleSheet.create({
     },
     elevation: 2,
   },
-  // NO RESULTS
   noResults: {
     alignItems: 'center',
     justifyContent: 'center',
