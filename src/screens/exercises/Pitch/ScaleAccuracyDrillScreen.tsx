@@ -19,56 +19,37 @@ import {
   type ScaleAccuracyParams,
   type Tier,
 } from '@/constants/exercises/pitch';
-
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-
-import {
-  measureScaleAccuracyDrill,
-} from '@/services/measurement/pitch/scaleAccuracyDrill';
-
-import {
-  scoreScaleAccuracyDrill,
-  type ScaleAccuracyScoreResult,
-} from '@/services/scoring/pitch/scaleAccuracyDrill';
-
-import {
-  disposeNotePlayer,
-  playNoteSequence,
-} from '@/utils/music/notePlayer';
-
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-
-import {
-  getRandomScale,
-  type VocalRange,
-} from '@/utils/music/notes';
-
+import { generateScaleAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
+import { measureScaleAccuracyDrill } from '@/services/measurement/pitch/scaleAccuracyDrill';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
 import {
-  generateScaleAccuracyParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
+  scoreScaleAccuracyDrill,
+  type ScaleAccuracyScoreResult,
+} from '@/services/scoring/pitch/scaleAccuracyDrill';
 import {
   calcLiveStability,
   calcPitchAccuracy,
   frequencyToNote,
   segmentIntoNotes,
 } from '@/utils/dsp/pitch';
-
 import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
-
-import { auth } from '@/services/firebase/config';
+  disposeNotePlayer,
+  playNoteSequence,
+} from '@/utils/music/notePlayer';
+import {
+  getRandomScale,
+  type VocalRange,
+} from '@/utils/music/notes';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -76,10 +57,6 @@ import ExerciseScreen, {
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
 } from '../ExerciseScreen';
-
-// ============================================================
-// COLORS
-// ============================================================
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -89,9 +66,11 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
-// ============================================================
-// TYPES
-// ============================================================
+const COUNTDOWN_SECONDS = 3;
+const NOTE_DURATION_SECONDS = 0.8;
+const RECORDING_MIN_DURATION_MS = 5000;
+const RECORDING_MS_PER_NOTE = 1250;
+const RECORDING_INTERVAL_MS = 100;
 
 interface Props {
   tier?: Tier;
@@ -110,13 +89,9 @@ interface SavedRecording {
   sampleRate: number;
 }
 
-// ============================================================
-// SCALE GENERATION
-// ============================================================
-
 function generateScale(
   params: ScaleAccuracyParams,
-  currentTier: Tier,
+  tier: Tier,
   vocalRange: VocalRange | null,
 ) {
   const noteCount = Math.min(
@@ -124,16 +99,8 @@ function generateScale(
     8,
   );
 
-  return getRandomScale(
-    currentTier,
-    noteCount,
-    vocalRange,
-  );
+  return getRandomScale(tier, noteCount, vocalRange);
 }
-
-// ============================================================
-// RESULT AGGREGATION
-// ============================================================
 
 function average(values: number[]): number {
   const validValues = values.filter(Number.isFinite);
@@ -145,6 +112,12 @@ function average(values: number[]): number {
   return (
     validValues.reduce((sum, value) => sum + value, 0) /
     validValues.length
+  );
+}
+
+function averagePositive(values: number[]): number {
+  return average(
+    values.filter(value => Number.isFinite(value) && value > 0),
   );
 }
 
@@ -170,64 +143,42 @@ function aggregateScaleResults(
   }
 
   return {
-    score: Math.round(
-      average(results.map(item => item.score)),
-    ),
-
+    score: Math.round(average(results.map(item => item.score))),
     passed: results.every(item => item.passed),
-
-    noteAccuracy: average(
-      results.map(item => item.noteAccuracy),
-    ),
-
+    noteAccuracy: average(results.map(item => item.noteAccuracy)),
     transitionSmoothness: average(
       results.map(item => item.transitionSmoothness),
     ),
-
     correctNotes: results.reduce(
       (sum, item) => sum + item.correctNotes,
       0,
     ),
-
     totalNotes: results.reduce(
       (sum, item) => sum + item.totalNotes,
       0,
     ),
-
     detectedFreqs: targetFreqs.map((_, index) =>
-      average(
-        results
-          .map(item => item.detectedFreqs[index])
-          .filter(
-            (value): value is number =>
-              Number.isFinite(value) && value > 0,
-          ),
+      averagePositive(
+        results.map(item => item.detectedFreqs[index] ?? 0),
       ),
     ),
-
     targetFreqs,
-
     noteScores: targetFreqs.map((_, index) =>
-      average(
-        results.map(item => item.noteScores[index] ?? 0),
-      ),
+      average(results.map(item => item.noteScores[index] ?? 0)),
     ),
-
     noteDeviations: targetFreqs.map((_, index) => {
-      const values = results
+      const deviations = results
         .map(item => item.noteDeviations[index])
         .filter(
           (value): value is number =>
             Number.isFinite(value),
         );
 
-      return values.length > 0 ? average(values) : 100;
+      return deviations.length > 0 ? average(deviations) : 100;
     }),
-
     averageClarity: average(
       results.map(item => item.averageClarity),
     ),
-
     voicedNotes: results.reduce(
       (sum, item) => sum + item.voicedNotes,
       0,
@@ -235,217 +186,62 @@ function aggregateScaleResults(
   };
 }
 
-// ============================================================
-// SCREEN
-// ============================================================
-
 export default function ScaleAccuracyDrillScreen({
   tier,
 }: Props) {
-  // ==========================================================
-  // ADAPTIVE PARAMETERS
-  // ==========================================================
+  const initialTier = tier ?? 'beginner';
 
-  const [currentTier, setCurrentTier] = useState<Tier>(
-    tier ?? 'beginner',
-  );
-
+  const [currentTier, setCurrentTier] = useState<Tier>(initialTier);
   const [params, setParams] = useState<ScaleAccuracyParams>(
-    SCALE_ACCURACY_PARAMS[tier ?? 'beginner'],
+    SCALE_ACCURACY_PARAMS[initialTier],
   );
-
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
 
-  // ==========================================================
-  // STATE
-  // ==========================================================
-
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
   const [currentRep, setCurrentRep] = useState(1);
-
-  // Declare vocalRange before generating targetNotes.
   const [vocalRange, setVocalRange] =
     useState<VocalRange | null>(null);
 
   const [targetNotes, setTargetNotes] = useState(() =>
     generateScale(
-      SCALE_ACCURACY_PARAMS[tier ?? 'beginner'],
-      tier ?? 'beginner',
+      SCALE_ACCURACY_PARAMS[initialTier],
+      initialTier,
       null,
     ),
   );
 
-  const targetNotesRef = useRef(targetNotes);
-
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
-  const [liveFrequencies, setLiveFrequencies] =
-    useState<number[]>([]);
-
+  const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
   const [result, setResult] =
     useState<ScaleAccuracyScoreResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [errorMessage, setErrorMessage] =
-    useState<string | null>(null);
-
-  // ==========================================================
-  // REFS
-  // ==========================================================
-
-  const mountedRef = useRef(true);
-
-  const countdownTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const recordingTimerRef =
-    useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Allows the next repetition to start after the previous
-  // native recording has had time to finish stopping.
-  const transitionTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const recordingsRef = useRef<SavedRecording[]>([]);
-
+  const mountedRef = useRef(false);
+  const targetNotesRef = useRef(targetNotes);
   const currentRepRef = useRef(1);
-  const recordingRef = useRef(false);
-  const startingRecordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const recordingsRef = useRef<SavedRecording[]>([]);
   const pitchHistoryRef = useRef<number[]>([]);
   const recordingElapsedRef = useRef(0);
 
+  const recordingRef = useRef(false);
+  const startingRecordingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const processingRef = useRef(false);
+
+  const countdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const transitionTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const stopRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-
   const beginRepCountdownRef = useRef<() => void>(() => {});
-
-  // ==========================================================
-  // LOAD ADAPTIVE PARAMETERS
-  // ==========================================================
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAdaptiveParams() {
-      setIsLoadingAdaptiveParams(true);
-
-      try {
-        const user = auth.currentUser;
-
-        let resolvedTier: Tier = tier ?? 'beginner';
-
-        if (!tier && user) {
-          const progress = await fetchComponentProgress(
-            user.uid,
-            'pitch',
-          );
-
-          resolvedTier = progress?.currentTier ?? 'beginner';
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setCurrentTier(resolvedTier);
-
-        let recentScores: number[] = [];
-
-        if (user) {
-          const records = await fetchExerciseRecords(
-            user.uid,
-            'pitch',
-          );
-
-          if (cancelled) {
-            return;
-          }
-
-          recentScores = records
-            .filter(
-              record =>
-                record.tier === resolvedTier &&
-                record.templateId === 'scaleAccuracyDrill',
-            )
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .slice(-5)
-            .map(record => record.scorePct);
-        }
-
-        // Use assessment as a fallback when no exercise history
-        // exists for this exercise and tier.
-        if (user && recentScores.length === 0) {
-          const assessment = await getLatestAssessment();
-
-          if (cancelled) {
-            return;
-          }
-
-          setVocalRange(assessment?.vocalRange ?? null);
-
-          const pitchScore = assessment?.scores.find(
-            score => score.componentId === 'pitch',
-          );
-
-          if (pitchScore) {
-            recentScores = [pitchScore.scorePct];
-          }
-        }
-
-        const generatedParams = generateScaleAccuracyParams({
-          tier: resolvedTier,
-          recentScores,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setParams(generatedParams);
-
-        // Generate the scale using the resolved parameters.
-        const newScale = generateScale(
-          generatedParams,
-          resolvedTier,
-          vocalRange,
-        );
-
-        targetNotesRef.current = newScale;
-        setTargetNotes(newScale);
-      } catch (error) {
-        console.error(
-          '❌ FAILED TO LOAD SCALE ACCURACY PARAMETERS:',
-          error,
-        );
-
-        if (!cancelled) {
-          const fallbackTier = tier ?? 'beginner';
-          const fallbackParams = SCALE_ACCURACY_PARAMS[fallbackTier];
-
-          setCurrentTier(fallbackTier);
-          setParams(fallbackParams);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
-        }
-      }
-    }
-
-    loadAdaptiveParams();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tier]);
-
-  // ==========================================================
-  // TIMER CLEANUP
-  // ==========================================================
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -464,83 +260,68 @@ export default function ScaleAccuracyDrillScreen({
     }
   }, []);
 
-  // ==========================================================
-  // GO BACK
-  // ==========================================================
+  const resetRecordingState = useCallback(() => {
+    recordingRef.current = false;
+    startingRecordingRef.current = false;
+    stopRequestedRef.current = false;
+    processingRef.current = false;
+    recordingElapsedRef.current = 0;
+    pitchHistoryRef.current = [];
+
+    setLiveFrame(null);
+    setLiveFrequencies([]);
+    setCurrentNoteIndex(-1);
+  }, []);
 
   const goBack = useCallback(() => {
     clearTimers();
-
     stopRequestedRef.current = true;
 
     if (recordingRef.current) {
-      void stopRecordingRef.current?.();
+      void stopRecordingRef.current?.().catch(error => {
+        console.warn('Could not stop recording while leaving:', error);
+      });
     }
 
     void disposeNotePlayer().catch(() => {});
-
     router.replace('/dashboard?tab=exercises');
   }, [clearTimers]);
-
-  // ==========================================================
-  // CLEANUP
-  // ==========================================================
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
-
       clearTimers();
+      stopRequestedRef.current = true;
 
       if (recordingRef.current) {
-        void stopRecordingRef.current?.();
+        void stopRecordingRef.current?.().catch(() => {});
       }
 
       void disposeNotePlayer().catch(() => {});
     };
   }, [clearTimers]);
 
-  // ==========================================================
-  // LIVE AUDIO FRAME
-  // ==========================================================
+  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
+    if (!mountedRef.current || !recordingRef.current) {
+      return;
+    }
 
-  const handleLiveFrame = useCallback(
-    (frame: LiveAudioFrame) => {
-      if (!mountedRef.current) {
-        return;
-      }
+    setLiveFrame(frame);
 
-      setLiveFrame(frame);
+    if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
+      pitchHistoryRef.current = [
+        ...pitchHistoryRef.current,
+        frame.pitch,
+      ].slice(-30);
 
-      if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
-        pitchHistoryRef.current = [
-          ...pitchHistoryRef.current,
-          frame.pitch,
-        ].slice(-30);
-
-        setLiveFrequencies(pitchHistoryRef.current);
-      }
-    },
-    [],
-  );
-
-  // ==========================================================
-  // AUDIO STOP / PROCESS ALL REPETITIONS
-  // ==========================================================
-
-
-  // ============================================================
-  // AUDIO STOP / PROCESS ALL REPETITIONS
-  // ============================================================
+      setLiveFrequencies(pitchHistoryRef.current);
+    }
+  }, []);
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
-      if (!mountedRef.current) {
-        return;
-      }
-
       recordingRef.current = false;
 
       if (recordingTimerRef.current) {
@@ -548,11 +329,14 @@ export default function ScaleAccuracyDrillScreen({
         recordingTimerRef.current = null;
       }
 
-      console.log(
-        `Scale rep ${currentRepRef.current} stopped. Samples: ${samples.length}`,
-      );
+      if (
+        !mountedRef.current ||
+        stopRequestedRef.current === false &&
+          processingRef.current
+      ) {
+        return;
+      }
 
-      // Keep a copy because the recorder may reuse its buffer.
       recordingsRef.current.push({
         samples: new Float32Array(samples),
         sampleRate,
@@ -560,10 +344,6 @@ export default function ScaleAccuracyDrillScreen({
 
       const isLastRep =
         currentRepRef.current >= params.repetitions;
-
-      // --------------------------------------------------------
-      // PREPARE THE NEXT REPETITION
-      // --------------------------------------------------------
 
       if (!isLastRep) {
         const nextRep = currentRepRef.current + 1;
@@ -573,53 +353,43 @@ export default function ScaleAccuracyDrillScreen({
 
         pitchHistoryRef.current = [];
         recordingElapsedRef.current = 0;
-
         setCurrentNoteIndex(-1);
         setLiveFrame(null);
         setLiveFrequencies([]);
-
         stopRequestedRef.current = false;
-
-        console.log(`Preparing scale rep ${nextRep}`);
-
-        if (transitionTimerRef.current) {
-          clearTimeout(transitionTimerRef.current);
-        }
 
         transitionTimerRef.current = setTimeout(() => {
           transitionTimerRef.current = null;
 
-          if (mountedRef.current) {
-            setTimeout(() => {
-              if (mountedRef.current) {
-                beginRepCountdownRef.current();
-              }
-            }, 400);
+          if (!mountedRef.current) {
+            return;
           }
+
+          transitionTimerRef.current = setTimeout(() => {
+            transitionTimerRef.current = null;
+
+            if (mountedRef.current) {
+              beginRepCountdownRef.current();
+            }
+          }, 400);
         }, 500);
 
         return;
       }
 
-      // --------------------------------------------------------
-      // PROCESS ALL COMPLETED REPETITIONS
-      // --------------------------------------------------------
+      if (processingRef.current) {
+        return;
+      }
 
-      console.log('🔍 SCALE ANALYSIS STARTING', {
-        savedRecordings: recordingsRef.current.length,
-        expectedRepetitions: params.repetitions,
-      });
-
-      // Request the processing screen first.
+      processingRef.current = true;
       setPhase('processing');
 
-      // Yield to the React Native event loop so the screen can
-      // render before the synchronous DSP functions execute.
       await new Promise<void>(resolve => {
         setTimeout(resolve, 150);
       });
 
       if (!mountedRef.current) {
+        processingRef.current = false;
         return;
       }
 
@@ -627,23 +397,12 @@ export default function ScaleAccuracyDrillScreen({
         const targetFreqs = targetNotesRef.current.map(
           note => note.frequency,
         );
-
         const scores: ScaleAccuracyScoreResult[] = [];
 
-        for (
-          let index = 0;
-          index < recordingsRef.current.length;
-          index++
-        ) {
+        for (const recording of recordingsRef.current) {
           if (!mountedRef.current) {
             return;
           }
-
-          const recording = recordingsRef.current[index];
-
-          console.log(
-            `🎼 Processing repetition ${index + 1} of ${recordingsRef.current.length}`,
-          );
 
           const segments = segmentIntoNotes(
             recording.samples,
@@ -659,12 +418,7 @@ export default function ScaleAccuracyDrillScreen({
             params.minClarity,
           );
 
-          const score = scoreScaleAccuracyDrill(
-            measurement,
-            params,
-          );
-
-          scores.push(score);
+          scores.push(scoreScaleAccuracyDrill(measurement, params));
         }
 
         if (!mountedRef.current) {
@@ -675,11 +429,6 @@ export default function ScaleAccuracyDrillScreen({
           scores,
           targetFreqs,
         );
-
-        console.log('✅ SCALE ANALYSIS COMPLETE', {
-          repetitionsProcessed: scores.length,
-          finalScore: finalResult.score,
-        });
 
         await saveCompletedExercise(
           'pitch',
@@ -695,28 +444,21 @@ export default function ScaleAccuracyDrillScreen({
         setResult(finalResult);
         setPhase('results');
       } catch (error) {
-        console.error(
-          '❌ SCALE PROCESSING ERROR:',
-          error,
-        );
+        console.error('Scale processing failed:', error);
 
         if (mountedRef.current) {
           setErrorMessage(
             'We could not analyze your recordings. Please try again.',
           );
-
           setPhase('instructions');
         }
       } finally {
+        processingRef.current = false;
         stopRequestedRef.current = false;
       }
     },
     [currentTier, params],
   );
-
-  // ==========================================================
-  // AUDIO RECORDER
-  // ==========================================================
 
   const {
     startRecording,
@@ -727,10 +469,6 @@ export default function ScaleAccuracyDrillScreen({
     onStop: handleRecordingStop,
   });
 
-  // ==========================================================
-  // STOP FUNCTION REF
-  // ==========================================================
-
   useEffect(() => {
     stopRecordingRef.current = stopRecording;
 
@@ -739,15 +477,12 @@ export default function ScaleAccuracyDrillScreen({
     };
   }, [stopRecording]);
 
-  // ==========================================================
-  // START ONE RECORDING
-  // ==========================================================
-
   const beginRecording = useCallback(async () => {
     if (
       !mountedRef.current ||
       recordingRef.current ||
-      startingRecordingRef.current
+      startingRecordingRef.current ||
+      processingRef.current
     ) {
       return;
     }
@@ -768,25 +503,17 @@ export default function ScaleAccuracyDrillScreen({
       await startRecording();
 
       if (!mountedRef.current) {
+        await stopRecording().catch(() => {});
         return;
       }
 
       recordingRef.current = true;
 
-      console.log(
-        `Scale rep ${currentRepRef.current} recording started`,
-      );
-
-      const noteCount = Math.max(
-        1,
-        targetNotesRef.current.length,
-      );
-
+      const noteCount = Math.max(1, targetNotesRef.current.length);
       const recordingDuration = Math.max(
-        5000,
-        noteCount * 1250,
+        RECORDING_MIN_DURATION_MS,
+        noteCount * RECORDING_MS_PER_NOTE,
       );
-
       const noteDuration = recordingDuration / noteCount;
 
       recordingTimerRef.current = setInterval(() => {
@@ -798,10 +525,9 @@ export default function ScaleAccuracyDrillScreen({
           return;
         }
 
-        recordingElapsedRef.current += 100;
+        recordingElapsedRef.current += RECORDING_INTERVAL_MS;
 
         const elapsedMs = recordingElapsedRef.current;
-
         const nextNoteIndex = Math.min(
           Math.floor(elapsedMs / noteDuration),
           noteCount - 1,
@@ -818,17 +544,10 @@ export default function ScaleAccuracyDrillScreen({
           recordingTimerRef.current = null;
         }
 
-        if (stopRequestedRef.current) {
-          return;
-        }
-
         stopRequestedRef.current = true;
 
         void stopRecording().catch(error => {
-          console.error(
-            '❌ FAILED TO STOP SCALE RECORDING:',
-            error,
-          );
+          console.error('Failed to stop scale recording:', error);
 
           recordingRef.current = false;
           stopRequestedRef.current = false;
@@ -837,16 +556,12 @@ export default function ScaleAccuracyDrillScreen({
             setErrorMessage(
               'We could not finish the recording. Please try again.',
             );
-
             setPhase('instructions');
           }
         });
-      }, 100);
+      }, RECORDING_INTERVAL_MS);
     } catch (error) {
-      console.error(
-        '❌ FAILED TO START SCALE RECORDING:',
-        error,
-      );
+      console.error('Failed to start scale recording:', error);
 
       recordingRef.current = false;
       stopRequestedRef.current = false;
@@ -864,10 +579,6 @@ export default function ScaleAccuracyDrillScreen({
     }
   }, [startRecording, stopRecording]);
 
-  // ==========================================================
-  // PLAY TARGET SCALE THEN RECORD
-  // ==========================================================
-
   const playScaleAndRecord = useCallback(async () => {
     if (!mountedRef.current) {
       return;
@@ -879,12 +590,8 @@ export default function ScaleAccuracyDrillScreen({
 
       const sequence = targetNotesRef.current.map(note => ({
         frequencyHz: note.frequency,
-        durationSec: 0.8,
+        durationSec: NOTE_DURATION_SECONDS,
       }));
-
-      console.log(
-        `Playing target scale for rep ${currentRepRef.current}`,
-      );
 
       await playNoteSequence(sequence);
 
@@ -894,16 +601,12 @@ export default function ScaleAccuracyDrillScreen({
 
       await beginRecording();
     } catch (error) {
-      console.error(
-        '❌ FAILED TO PLAY SCALE OR START RECORDING:',
-        error,
-      );
+      console.error('Failed to play scale or start recording:', error);
 
       if (mountedRef.current) {
         setErrorMessage(
           'Unable to play the target scale or start recording. Please try again.',
         );
-
         setPhase('instructions');
 
         Alert.alert(
@@ -913,10 +616,6 @@ export default function ScaleAccuracyDrillScreen({
       }
     }
   }, [beginRecording]);
-
-  // ==========================================================
-  // COUNTDOWN BEFORE EACH REP
-  // ==========================================================
 
   const beginRepCountdown = useCallback(() => {
     if (!mountedRef.current) {
@@ -928,13 +627,13 @@ export default function ScaleAccuracyDrillScreen({
       countdownTimerRef.current = null;
     }
 
-    setCountdown(3);
+    setCountdown(COUNTDOWN_SECONDS);
     setCurrentNoteIndex(-1);
     setLiveFrame(null);
     setLiveFrequencies([]);
     setPhase('countdown');
 
-    let value = 3;
+    let value = COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       value--;
@@ -956,12 +655,7 @@ export default function ScaleAccuracyDrillScreen({
     }, 1000);
   }, [playScaleAndRecord]);
 
-  // Keep the latest callback available to handleRecordingStop.
   beginRepCountdownRef.current = beginRepCountdown;
-
-  // ==========================================================
-  // START EXERCISE
-  // ==========================================================
 
   const startCountdown = useCallback(() => {
     if (isLoadingAdaptiveParams) {
@@ -970,32 +664,18 @@ export default function ScaleAccuracyDrillScreen({
 
     clearTimers();
 
-    const newScale = generateScale(
-      params,
-      currentTier,
-      vocalRange,
-    );
+    const newScale = generateScale(params, currentTier, vocalRange);
 
     targetNotesRef.current = newScale;
     setTargetNotes(newScale);
 
     recordingsRef.current = [];
-
     currentRepRef.current = 1;
     setCurrentRep(1);
 
-    recordingRef.current = false;
-    startingRecordingRef.current = false;
-    stopRequestedRef.current = false;
-
-    pitchHistoryRef.current = [];
-    recordingElapsedRef.current = 0;
-
+    resetRecordingState();
     setResult(null);
     setErrorMessage(null);
-    setLiveFrame(null);
-    setLiveFrequencies([]);
-    setCurrentNoteIndex(-1);
 
     beginRepCountdown();
   }, [
@@ -1004,43 +684,144 @@ export default function ScaleAccuracyDrillScreen({
     currentTier,
     isLoadingAdaptiveParams,
     params,
+    resetRecordingState,
     vocalRange,
   ]);
-
-  // ==========================================================
-  // RETRY
-  // ==========================================================
 
   const retry = useCallback(() => {
     clearTimers();
 
     recordingsRef.current = [];
-
     currentRepRef.current = 1;
     setCurrentRep(1);
 
-    recordingRef.current = false;
-    startingRecordingRef.current = false;
-    stopRequestedRef.current = false;
-
-    pitchHistoryRef.current = [];
-    recordingElapsedRef.current = 0;
-
+    resetRecordingState();
     setResult(null);
-    setLiveFrame(null);
-    setLiveFrequencies([]);
-    setCurrentNoteIndex(-1);
     setErrorMessage(null);
     setPhase('instructions');
-  }, [clearTimers]);
+  }, [clearTimers, resetRecordingState]);
 
-  // ==========================================================
-  // CURRENT TARGET
-  // ==========================================================
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAdaptiveParams() {
+      setIsLoadingAdaptiveParams(true);
+
+      try {
+        const user = auth.currentUser;
+        let resolvedTier: Tier = tier ?? 'beginner';
+
+        if (!tier && user) {
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'pitch',
+          );
+
+          if (cancelled) {
+            return;
+          }
+
+          resolvedTier = progress?.currentTier ?? 'beginner';
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentTier(resolvedTier);
+
+        let recentScores: number[] = [];
+        let assessmentVocalRange: VocalRange | null = null;
+
+        if (user) {
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'pitch',
+          );
+
+          if (cancelled) {
+            return;
+          }
+
+          recentScores = records
+            .filter(
+              record =>
+                record.tier === resolvedTier &&
+                record.templateId === 'scaleAccuracyDrill',
+            )
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .slice(-5)
+            .map(record => record.scorePct);
+
+          const assessment = await getLatestAssessment();
+
+          if (cancelled) {
+            return;
+          }
+
+          assessmentVocalRange = assessment?.vocalRange ?? null;
+          setVocalRange(assessmentVocalRange);
+
+          if (recentScores.length === 0) {
+            const pitchScore = assessment?.scores.find(
+              score => score.componentId === 'pitch',
+            );
+
+            if (pitchScore) {
+              recentScores = [pitchScore.scorePct];
+            }
+          }
+        } else {
+          setVocalRange(null);
+        }
+
+        const generatedParams = generateScaleAccuracyParams({
+          tier: resolvedTier,
+          recentScores,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setParams(generatedParams);
+
+        const newScale = generateScale(
+          generatedParams,
+          resolvedTier,
+          assessmentVocalRange,
+        );
+
+        targetNotesRef.current = newScale;
+        setTargetNotes(newScale);
+      } catch (error) {
+        console.error(
+          'Failed to load scale accuracy parameters:',
+          error,
+        );
+
+        if (!cancelled) {
+          const fallbackTier = tier ?? 'beginner';
+
+          setCurrentTier(fallbackTier);
+          setParams(SCALE_ACCURACY_PARAMS[fallbackTier]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAdaptiveParams(false);
+        }
+      }
+    }
+
+    void loadAdaptiveParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
 
   const currentTarget =
-    currentNoteIndex >= 0 &&
-    currentNoteIndex < targetNotes.length
+    currentNoteIndex >= 0 && currentNoteIndex < targetNotes.length
       ? targetNotes[currentNoteIndex]
       : null;
 
@@ -1053,11 +834,6 @@ export default function ScaleAccuracyDrillScreen({
       : 0;
 
   const liveStability = calcLiveStability(liveFrequencies);
-
-  
-  // ============================================================
-  // PREPARING EXERCISE
-  // ============================================================
 
   if (phase === 'instructions' && isLoadingAdaptiveParams) {
     return (
@@ -1086,10 +862,6 @@ export default function ScaleAccuracyDrillScreen({
       </View>
     );
   }
-
-  // ==========================================================
-  // INSTRUCTIONS
-  // ==========================================================
 
   if (phase === 'instructions') {
     return (
@@ -1128,10 +900,6 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ==========================================================
-  // COUNTDOWN
-  // ==========================================================
-
   if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
@@ -1146,10 +914,6 @@ export default function ScaleAccuracyDrillScreen({
       />
     );
   }
-
-  // ==========================================================
-  // LISTENING
-  // ==========================================================
 
   if (phase === 'listening') {
     return (
@@ -1180,10 +944,6 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ==========================================================
-  // RECORDING
-  // ==========================================================
-
   if (phase === 'recording') {
     return (
       <View style={styles.recordingScreen}>
@@ -1191,9 +951,7 @@ export default function ScaleAccuracyDrillScreen({
           <Ionicons name="mic" size={34} color={BROWN} />
         </View>
 
-        <Text style={styles.recordingTitle}>
-          Sing the Scale
-        </Text>
+        <Text style={styles.recordingTitle}>Sing the Scale</Text>
 
         <Text style={styles.recordingSubtitle}>
           Repetition {currentRep} of {params.repetitions}
@@ -1222,20 +980,14 @@ export default function ScaleAccuracyDrillScreen({
 
           <View style={styles.liveStats}>
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Accuracy
-              </Text>
-
+              <Text style={styles.liveStatLabel}>Accuracy</Text>
               <Text style={styles.liveStatValue}>
                 {Math.round(liveAccuracy)}%
               </Text>
             </View>
 
             <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Stability
-              </Text>
-
+              <Text style={styles.liveStatLabel}>Stability</Text>
               <Text style={styles.liveStatValue}>
                 {Math.round(liveStability)}%
               </Text>
@@ -1281,10 +1033,6 @@ export default function ScaleAccuracyDrillScreen({
     );
   }
 
-  // ==========================================================
-  // PROCESSING
-  // ==========================================================
-
   if (phase === 'processing') {
     return (
       <ExerciseProcessingScreen
@@ -1294,10 +1042,6 @@ export default function ScaleAccuracyDrillScreen({
       />
     );
   }
-
-  // ==========================================================
-  // RESULTS
-  // ==========================================================
 
   if (phase === 'results' && result) {
     return (
@@ -1313,15 +1057,10 @@ export default function ScaleAccuracyDrillScreen({
         onExit={goBack}
       >
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
-            Note Accuracy
-          </Text>
+          <Text style={styles.resultCardTitle}>Note Accuracy</Text>
 
           <View style={styles.resultRow}>
-            <Text style={styles.resultRowLabel}>
-              Accurate notes
-            </Text>
-
+            <Text style={styles.resultRowLabel}>Accurate notes</Text>
             <Text style={styles.resultRowValue}>
               {Math.round(result.noteAccuracy)}%
             </Text>
@@ -1331,17 +1070,13 @@ export default function ScaleAccuracyDrillScreen({
             <Text style={styles.resultRowLabel}>
               Transition smoothness
             </Text>
-
             <Text style={styles.resultRowValue}>
               {Math.round(result.transitionSmoothness)}%
             </Text>
           </View>
 
           <View style={styles.resultRow}>
-            <Text style={styles.resultRowLabel}>
-              Average clarity
-            </Text>
-
+            <Text style={styles.resultRowLabel}>Average clarity</Text>
             <Text style={styles.resultRowValue}>
               {Math.round(result.averageClarity * 100)}%
             </Text>
@@ -1349,14 +1084,13 @@ export default function ScaleAccuracyDrillScreen({
         </View>
 
         <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
-            Your Notes
-          </Text>
+          <Text style={styles.resultCardTitle}>Your Notes</Text>
 
           {targetNotes.map((target, index) => {
             const detected = result.detectedFreqs[index];
             const noteScore = result.noteScores[index] ?? 0;
-            const deviation = result.noteDeviations[index] ?? Infinity;
+            const deviation =
+              result.noteDeviations[index] ?? Infinity;
 
             const noteName =
               detected && detected > 0
@@ -1364,6 +1098,7 @@ export default function ScaleAccuracyDrillScreen({
                 : '--';
 
             const correct =
+              detected > 0 &&
               deviation <= params.tolerancePct;
 
             return (
@@ -1400,7 +1135,7 @@ export default function ScaleAccuracyDrillScreen({
                   />
 
                   <Text style={styles.noteStatusText}>
-                    {noteScore}%
+                    {Math.round(noteScore)}%
                   </Text>
                 </View>
               </View>
@@ -1428,12 +1163,7 @@ export default function ScaleAccuracyDrillScreen({
   return null;
 }
 
-// ============================================================
-// STYLES
-// ============================================================
-
 const styles = StyleSheet.create({
-  
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1441,7 +1171,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   largeIconCircle: {
     width: 96,
     height: 96,
@@ -1451,14 +1180,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   processingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   processingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
@@ -1466,11 +1193,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
-
   spinner: {
     marginTop: 28,
   },
-
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1478,7 +1203,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-
   recordingIcon: {
     width: 76,
     height: 76,
@@ -1488,14 +1212,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
   },
-
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1504,7 +1226,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1515,65 +1236,55 @@ const styles = StyleSheet.create({
     marginTop: 25,
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   liveTarget: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     marginTop: 3,
   },
-
   liveDivider: {
     width: '70%',
     height: 1,
     backgroundColor: BORDER,
     marginVertical: 12,
   },
-
   liveNote: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
     marginTop: 3,
   },
-
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   liveStats: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 18,
   },
-
   liveStat: {
     alignItems: 'center',
   },
-
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
   },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 2,
   },
-
   scalePreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1582,7 +1293,6 @@ const styles = StyleSheet.create({
     marginTop: 24,
     maxWidth: 350,
   },
-
   previewNote: {
     minWidth: 48,
     height: 44,
@@ -1592,27 +1302,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   previewNoteActive: {
     backgroundColor: PINK,
   },
-
   previewNoteText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: MUTED,
   },
-
   previewNoteTextActive: {
     color: BROWN,
   },
-
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 22,
   },
-
   recordingDot: {
     width: 9,
     height: 9,
@@ -1620,13 +1325,11 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginRight: 7,
   },
-
   recordingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   sharedScalePreview: {
     width: '100%',
     flexDirection: 'row',
@@ -1634,7 +1337,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
   sharedScaleNote: {
     minWidth: 44,
     height: 40,
@@ -1646,13 +1348,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   sharedScaleNoteText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: BROWN,
   },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1662,33 +1362,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginBottom: 10,
   },
-
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
   },
-
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   noteResultRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1696,7 +1391,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-
   noteNumber: {
     width: 28,
     height: 28,
@@ -1705,31 +1399,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   noteNumberText: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: BROWN,
   },
-
   noteResultInfo: {
     flex: 1,
     marginLeft: 10,
   },
-
   targetNoteText: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: BROWN,
   },
-
   detectedNoteText: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     marginTop: 2,
   },
-
   noteStatus: {
     minWidth: 55,
     height: 30,
@@ -1741,17 +1430,14 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
   },
-
   noteStatusCorrect: {
     backgroundColor: PINK,
   },
-
   noteStatusText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     color: BROWN,
   },
-
   resultTip: {
     width: '100%',
     flexDirection: 'row',
@@ -1761,7 +1447,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 14,
   },
-
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',

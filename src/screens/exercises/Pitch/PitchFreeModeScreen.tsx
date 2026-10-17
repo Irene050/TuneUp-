@@ -1,4 +1,3 @@
-
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
@@ -20,13 +19,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  LiveAudioFrame,
+  type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-
-import {
-  measurePitchFreeModeFrame,
-} from '@/services/measurement/freemode/pitch';
+import { measurePitchFreeModeFrame } from '@/services/measurement/freemode/pitch';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
@@ -48,8 +44,18 @@ function frequencyToNote(frequency: number): string {
   }
 
   const noteNames = [
-    'C', 'C#', 'D', 'D#', 'E', 'F',
-    'F#', 'G', 'G#', 'A', 'A#', 'B',
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
   ];
 
   const midi = Math.round(
@@ -62,10 +68,7 @@ function frequencyToNote(frequency: number): string {
   return `${noteNames[noteIndex]}${octave}`;
 }
 
-
-
 export default function PitchFreeModeScreen() {
-  const isRecordingRef = useRef(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontalPadding = Math.min(22, width * 0.055);
@@ -73,8 +76,8 @@ export default function PitchFreeModeScreen() {
   const [phase, setPhase] = useState<Phase>('ready');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Live pitch data
   const [detectedFrequency, setDetectedFrequency] = useState(0);
   const [stabilityPct, setStabilityPct] = useState(0);
   const [stabilityReady, setStabilityReady] = useState(false);
@@ -83,13 +86,29 @@ export default function PitchFreeModeScreen() {
     () => Array(WAVE_COUNT).fill(0),
   );
 
-  // Keep recent valid pitches between audio callbacks.
+  const isRecordingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const startingRef = useRef(false);
+  const stoppingRef = useRef(false);
   const recentFrequenciesRef = useRef<number[]>([]);
 
-  // Audio frame handler
+  const resetPitchData = useCallback(() => {
+    recentFrequenciesRef.current = [];
+    setDetectedFrequency(0);
+    setStabilityPct(0);
+    setStabilityReady(false);
+    setPitchHistory(Array(WAVE_COUNT).fill(0));
+  }, []);
+
   const handleAudioFrame = useCallback(
     (frame: LiveAudioFrame) => {
-      if (!isRecordingRef.current) return;
+      if (
+        !isRecordingRef.current ||
+        !mountedRef.current
+      ) {
+        return;
+      }
+
       const reading = measurePitchFreeModeFrame(
         frame.samples,
         frame.sampleRate,
@@ -103,37 +122,30 @@ export default function PitchFreeModeScreen() {
         ].slice(-PITCH_HISTORY_LIMIT);
       }
 
-      console.log('🎵 PITCH FREE MODE:', {
-        frequency: reading.detectedFrequency,
-        stability: reading.stabilityPct,
-        stabilityReady: reading.stabilityReady,
-        historyLength: recentFrequenciesRef.current.length,
-        samples: frame.samples.length,
-        sampleRate: frame.sampleRate,
-      });
-
       setDetectedFrequency(reading.detectedFrequency);
       setStabilityPct(reading.stabilityPct);
       setStabilityReady(reading.stabilityReady);
 
-      // Normalize frequency for the visual waveform only.
       if (reading.detectedFrequency > 0) {
         const minHz = 80;
         const maxHz = 1000;
 
         const normalized =
-          (Math.log(reading.detectedFrequency) - Math.log(minHz)) /
+          (Math.log(reading.detectedFrequency) -
+            Math.log(minHz)) /
           (Math.log(maxHz) - Math.log(minHz));
 
-        const clamped = Math.max(0, Math.min(1, normalized));
+        const clamped = Math.max(
+          0,
+          Math.min(1, normalized),
+        );
 
-        setPitchHistory((previous) => [
+        setPitchHistory(previous => [
           ...previous.slice(-(WAVE_COUNT - 1)),
           clamped,
         ]);
       } else {
-        // Do not represent silence as a detected pitch.
-        setPitchHistory((previous) => [
+        setPitchHistory(previous => [
           ...previous.slice(-(WAVE_COUNT - 1)),
           0,
         ]);
@@ -150,18 +162,26 @@ export default function PitchFreeModeScreen() {
     onFrame: handleAudioFrame,
   });
 
-  // Timer
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
     }
 
     const timer = setInterval(() => {
-      setElapsedSeconds((previous) => previous + 1);
+      setElapsedSeconds(previous => previous + 1);
     }, 1000);
 
     return () => clearInterval(timer);
   }, [phase]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      isRecordingRef.current = false;
+    };
+  }, []);
 
   const formattedTime = useMemo(() => {
     const minutes = Math.floor(elapsedSeconds / 60);
@@ -177,71 +197,93 @@ export default function PitchFreeModeScreen() {
     [detectedFrequency],
   );
 
-  // Start
-  
-const startFreeMode = async () => {
-  if (isStarting || phase === 'exercise' || isRecording) {
-    return;
-  }
+  const startFreeMode = useCallback(async () => {
+    if (
+      startingRef.current ||
+      stoppingRef.current ||
+      phase === 'exercise' ||
+      isRecording
+    ) {
+      return;
+    }
 
-  setIsStarting(true);
-  isRecordingRef.current = false;
-
-  try {
-    setElapsedSeconds(0);
-    setDetectedFrequency(0);
-    setStabilityPct(0);
-    setStabilityReady(false);
-
-    recentFrequenciesRef.current = [];
-    setPitchHistory(Array(WAVE_COUNT).fill(0));
-
-    // Allow audio frames only while starting/recording.
-    isRecordingRef.current = true;
-    await startRecording();
-
-    setPhase('exercise');
-  } catch (error) {
+    startingRef.current = true;
+    setIsStarting(true);
+    setError(null);
     isRecordingRef.current = false;
 
-    console.error(
-      '❌ FAILED TO START PITCH FREE MODE:',
-      error,
-    );
-  } finally {
-    setIsStarting(false);
-  }
-};
+    try {
+      setElapsedSeconds(0);
+      resetPitchData();
 
-  // Stop
+      isRecordingRef.current = true;
+      await startRecording();
 
-const stopFreeMode = async () => {
-  // Disable frame processing BEFORE stopping the recorder.
-  isRecordingRef.current = false;
+      if (!mountedRef.current) {
+        isRecordingRef.current = false;
+        return;
+      }
 
-  setPhase('ready');
+      setPhase('exercise');
+    } catch (startError) {
+      isRecordingRef.current = false;
 
-  try {
-    await stopRecording();
-  } catch (error) {
-    console.error(
-      '❌ FAILED TO STOP PITCH FREE MODE:',
-      error,
-    );
-  } finally {
-    recentFrequenciesRef.current = [];
+      console.error(
+        'Failed to start Pitch Free Mode:',
+        startError,
+      );
 
-    setElapsedSeconds(0);
-    setDetectedFrequency(0);
-    setStabilityPct(0);
-    setStabilityReady(false);
-    setPitchHistory(Array(WAVE_COUNT).fill(0));
-    setIsStarting(false);
-  }
-};
+      if (mountedRef.current) {
+        setError(
+          'Could not start the microphone. Check microphone permission and try again.',
+        );
+      }
+    } finally {
+      startingRef.current = false;
 
+      if (mountedRef.current) {
+        setIsStarting(false);
+      }
+    }
+  }, [
+    isRecording,
+    phase,
+    resetPitchData,
+    startRecording,
+  ]);
 
-  // Ready screen
+  const stopFreeMode = useCallback(async () => {
+    if (stoppingRef.current) {
+      return;
+    }
+
+    stoppingRef.current = true;
+    isRecordingRef.current = false;
+
+    if (mountedRef.current) {
+      setPhase('ready');
+    }
+
+    try {
+      await stopRecording();
+    } catch (stopError) {
+      console.error(
+        'Failed to stop Pitch Free Mode:',
+        stopError,
+      );
+    } finally {
+      recentFrequenciesRef.current = [];
+
+      if (mountedRef.current) {
+        setElapsedSeconds(0);
+        resetPitchData();
+        setIsStarting(false);
+      }
+
+      stoppingRef.current = false;
+    }
+  }, [resetPitchData, stopRecording]);
+
   if (phase === 'ready') {
     return (
       <SafeAreaView
@@ -260,10 +302,17 @@ const stopFreeMode = async () => {
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={20} color={BROWN} />
+            <Ionicons
+              name="arrow-back"
+              size={20}
+              color={BROWN}
+            />
           </Pressable>
 
-          <Text style={styles.headerTitle}>Pitch Free Mode</Text>
+          <Text style={styles.headerTitle}>
+            Pitch Free Mode
+          </Text>
+
           <View style={styles.headerSpacer} />
         </View>
 
@@ -281,7 +330,9 @@ const stopFreeMode = async () => {
             />
           </View>
 
-          <Text style={styles.pageTitle}>Pitch Free Mode</Text>
+          <Text style={styles.pageTitle}>
+            Pitch Free Mode
+          </Text>
 
           <Text style={styles.pageDescription}>
             Sing naturally and listen to your pitch
@@ -289,15 +340,24 @@ const stopFreeMode = async () => {
           </Text>
 
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>LIVE FEEDBACK</Text>
+            <Text style={styles.infoTitle}>
+              LIVE FEEDBACK
+            </Text>
 
             <View style={styles.infoRow}>
               <View style={styles.infoIcon}>
-                <Ionicons name="mic-outline" size={20} color={ACCENT} />
+                <Ionicons
+                  name="mic-outline"
+                  size={20}
+                  color={ACCENT}
+                />
               </View>
 
               <View style={styles.infoText}>
-                <Text style={styles.infoName}>Pitch Flow</Text>
+                <Text style={styles.infoName}>
+                  Pitch Flow
+                </Text>
+
                 <Text style={styles.infoDescription}>
                   Follow the natural rise and fall of your voice.
                 </Text>
@@ -314,7 +374,10 @@ const stopFreeMode = async () => {
               </View>
 
               <View style={styles.infoText}>
-                <Text style={styles.infoName}>Listening</Text>
+                <Text style={styles.infoName}>
+                  Listening
+                </Text>
+
                 <Text style={styles.infoDescription}>
                   Focus on tone and stability without a score.
                 </Text>
@@ -334,6 +397,12 @@ const stopFreeMode = async () => {
               Explore your voice at a comfortable range.
             </Text>
           </View>
+
+          {error ? (
+            <Text style={styles.errorText}>
+              {error}
+            </Text>
+          ) : null}
         </View>
 
         <View
@@ -354,7 +423,12 @@ const stopFreeMode = async () => {
               <ActivityIndicator color={WHITE} />
             ) : (
               <>
-                <Ionicons name="mic" size={19} color={WHITE} />
+                <Ionicons
+                  name="mic"
+                  size={19}
+                  color={WHITE}
+                />
+
                 <Text style={styles.startButtonText}>
                   Start Free Mode
                 </Text>
@@ -366,7 +440,6 @@ const stopFreeMode = async () => {
     );
   }
 
-  // Exercise screen
   return (
     <SafeAreaView
       style={[
@@ -384,10 +457,17 @@ const stopFreeMode = async () => {
           style={styles.backButton}
           onPress={stopFreeMode}
         >
-          <Ionicons name="arrow-back" size={20} color={BROWN} />
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color={BROWN}
+          />
         </Pressable>
 
-        <Text style={styles.headerTitle}>Pitch Free Mode</Text>
+        <Text style={styles.headerTitle}>
+          Pitch Free Mode
+        </Text>
+
         <View style={styles.headerSpacer} />
       </View>
 
@@ -399,25 +479,39 @@ const stopFreeMode = async () => {
       >
         <View style={styles.exerciseTopRow}>
           <View>
-            <Text style={styles.modeLabel}>FREE PRACTICE</Text>
+            <Text style={styles.modeLabel}>
+              FREE PRACTICE
+            </Text>
+
             <Text style={styles.exerciseSubtitle}>
               Listen to your pitch naturally
             </Text>
           </View>
 
           <View style={styles.timeBadge}>
-            <Ionicons name="time-outline" size={16} color={ACCENT} />
-            <Text style={styles.timeText}>{formattedTime}</Text>
+            <Ionicons
+              name="time-outline"
+              size={16}
+              color={ACCENT}
+            />
+
+            <Text style={styles.timeText}>
+              {formattedTime}
+            </Text>
           </View>
         </View>
 
-        {/* Current pitch */}
         <View style={styles.liveCard}>
-          <Text style={styles.cardLabel}>CURRENT PITCH</Text>
+          <Text style={styles.cardLabel}>
+            CURRENT PITCH
+          </Text>
 
           <View style={styles.pitchDisplay}>
             <View>
-              <Text style={styles.noteValue}>{currentNote}</Text>
+              <Text style={styles.noteValue}>
+                {currentNote}
+              </Text>
+
               <Text style={styles.frequencyText}>
                 {detectedFrequency > 0
                   ? `${Math.round(detectedFrequency)} Hz`
@@ -443,7 +537,9 @@ const stopFreeMode = async () => {
                   {
                     height: `${Math.max(10, value * 100)}%`,
                     opacity:
-                      value === 0 ? 0.15 : 0.3 + value * 0.7,
+                      value === 0
+                        ? 0.15
+                        : 0.3 + value * 0.7,
                   },
                 ]}
               />
@@ -451,10 +547,11 @@ const stopFreeMode = async () => {
           </View>
         </View>
 
-        {/* Stability */}
         <View style={styles.stabilityCard}>
           <View>
-            <Text style={styles.cardLabel}>PITCH STABILITY</Text>
+            <Text style={styles.cardLabel}>
+              PITCH STABILITY
+            </Text>
 
             <Text style={styles.stabilityValue}>
               {detectedFrequency > 0 && stabilityReady
@@ -499,7 +596,12 @@ const stopFreeMode = async () => {
           style={styles.stopButton}
           onPress={stopFreeMode}
         >
-          <Ionicons name="stop" size={18} color={WHITE} />
+          <Ionicons
+            name="stop"
+            size={18}
+            color={WHITE}
+          />
+
           <Text style={styles.startButtonText}>
             Stop Free Mode
           </Text>
@@ -626,6 +728,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: MUTED,
+  },
+  errorText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#B42336',
+    textAlign: 'center',
+    marginTop: 12,
   },
   bottomAction: {
     paddingTop: 12,
