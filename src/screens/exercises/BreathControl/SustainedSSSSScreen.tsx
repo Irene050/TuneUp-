@@ -4,9 +4,8 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState
+  useState,
 } from 'react';
-
 import {
   ActivityIndicator,
   Pressable,
@@ -20,37 +19,28 @@ import type {
   SustainedExhaleParams,
   Tier,
 } from '@/constants/exercises/breathControl';
-
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-
-import {
-  measureSustainedSSSS,
-  type SustainedSSSSMeasurement,
-} from '@/services/measurement/breathControl/sustainedSSSS';
-
-import {
-  scoreSustainedSSSS,
-  type SustainedSSSSScoreResult,
-} from '@/services/scoring/breathControl/sustainedSSSS';
-
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-
-import { auth } from '@/services/firebase/config';
-
-import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-
-import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
-
-import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
+import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
+import {
+  measureSustainedSSSS,
+  type SustainedSSSSMeasurement,
+} from '@/services/measurement/breathControl/sustainedSSSS';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import {
+  fetchComponentProgress,
+  fetchExerciseRecords,
+} from '@/services/progress/progressRepo';
+import {
+  scoreSustainedSSSS,
+  type SustainedSSSSScoreResult,
+} from '@/services/scoring/breathControl/sustainedSSSS';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -61,7 +51,7 @@ const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 const PREPARATION_COUNTDOWN = 3;
 
-type Phases =
+type Phase =
   | 'instructions'
   | 'countdown'
   | 'recording'
@@ -81,74 +71,42 @@ interface Props {
 export default function SustainedSSSSScreen({
   tier: initialTier,
 }: Props) {
-
   const [tier, setTier] = useState<Tier | null>(
-    initialTier ?? null
+    initialTier ?? null,
   );
-
   const [params, setParams] =
     useState<SustainedExhaleParams | null>(null);
+  const [loadingParams, setLoadingParams] = useState(true);
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const [currentRep, setCurrentRep] = useState(1);
+  const [countdown, setCountdown] = useState(
+    PREPARATION_COUNTDOWN,
+  );
+  const [volume, setVolume] = useState<number | null>(null);
+  const [repResults, setRepResults] = useState<RepResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
 
-  const [loadingParams, setLoadingParams] =
-    useState(true);
+  const paramsRef = useRef<SustainedExhaleParams | null>(null);
+  const tierRef = useRef<Tier | null>(initialTier ?? null);
 
-  const [phase, setPhase] =
-    useState<Phases>('instructions');
-
-  const [currentRep, setCurrentRep] =
-    useState(1);
-
-  const [countdown, setCountdown] =
-    useState(PREPARATION_COUNTDOWN);
-
-  const [volume, setVolume] =
-    useState<number | null>(null);
-
-  const [repResults, setRepResults] =
-    useState<RepResult[]>([]);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const paramsRef =
-    useRef<SustainedExhaleParams | null>(null);
-
-  const tierRef =
-    useRef<Tier | null>(initialTier ?? null);
-
-  const countdownTimerRef = useRef<
-    ReturnType<typeof setInterval> | null
-  >(null);
-
-  const recordingTimerRef = useRef<
-    ReturnType<typeof setInterval> | null
-  >(null);
-
-  const processingTimerRef = useRef<
-    ReturnType<typeof setTimeout> | null
-  >(null);
-
-  const [elapsed, setElapsed] =
-    useState(0);
+  const countdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const processingTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mountedRef = useRef(true);
-
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
-
-  const repResultsRef =
-    useRef<RepResult[]>([]);
-
-  const currentRepRef =
-    useRef(1);
+  const repResultsRef = useRef<RepResult[]>([]);
+  const currentRepRef = useRef(1);
 
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-
-  const stopRecordingRef =
-    useRef<(() => void) | null>(null);
-
-
+  const stopRecordingRef = useRef<(() => void) | null>(null);
+  const beginCountdownRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,20 +115,16 @@ export default function SustainedSSSSScreen({
       try {
         setLoadingParams(true);
 
-        let currentTier: Tier =
-          initialTier ?? 'beginner';
-
+        let currentTier: Tier = initialTier ?? 'beginner';
         const user = auth.currentUser;
 
         if (!initialTier && user) {
-          const progress =
-            await fetchComponentProgress(
-              user.uid,
-              'breathControl'
-            );
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'breathControl',
+          );
 
-          currentTier =
-            progress?.currentTier ?? 'beginner';
+          currentTier = progress?.currentTier ?? 'beginner';
         }
 
         if (cancelled) {
@@ -180,46 +134,30 @@ export default function SustainedSSSSScreen({
         let recentScores: number[] = [];
 
         if (user) {
-          const records =
-            await fetchExerciseRecords(
-              user.uid,
-              'breathControl'
-            );
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'breathControl',
+          );
 
-          const currentExerciseRecords =
-            records.filter(
-              record =>
-                record.templateId ===
-                  'sustainedSSSS' &&
-                record.tier === currentTier
-            );
+          const currentExerciseRecords = records.filter(
+            record =>
+              record.templateId === 'sustainedSSSS' &&
+              record.tier === currentTier,
+          );
 
-          recentScores =
-            currentExerciseRecords
-              .slice(-5)
-              .map(
-                record =>
-                  record.scorePct
-              );
+          recentScores = currentExerciseRecords
+            .slice(-5)
+            .map(record => record.scorePct);
 
           if (recentScores.length === 0) {
-            const assessment =
-              await getLatestAssessment();
+            const assessment = await getLatestAssessment();
 
-            const assessmentScore =
-              assessment?.scores.find(
-                score =>
-                  score.componentId ===
-                  'breathControl'
-              )?.scorePct;
+            const assessmentScore = assessment?.scores.find(
+              score => score.componentId === 'breathControl',
+            )?.scorePct;
 
-            if (
-              typeof assessmentScore ===
-              'number'
-            ) {
-              recentScores = [
-                assessmentScore,
-              ];
+            if (typeof assessmentScore === 'number') {
+              recentScores = [assessmentScore];
             }
           }
         }
@@ -228,11 +166,10 @@ export default function SustainedSSSSScreen({
           return;
         }
 
-        const generatedParams =
-          generateSustainedSSSSParams({
-            tier: currentTier,
-            recentScores,
-          });
+        const generatedParams = generateSustainedSSSSParams({
+          tier: currentTier,
+          recentScores,
+        });
 
         if (cancelled) {
           return;
@@ -243,30 +180,18 @@ export default function SustainedSSSSScreen({
 
         tierRef.current = currentTier;
         paramsRef.current = generatedParams;
-
-        console.log(
-          '🎯 Sustained SSSS adaptive parameters:',
-          {
-            tier: currentTier,
-            recentScores,
-            generatedParams,
-          }
-        );
       } catch (initializationError) {
         console.error(
-          '❌ Failed to initialize Sustained SSSS ADS:',
-          initializationError
+          'Failed to initialize Sustained SSSS exercise:',
+          initializationError,
         );
 
         if (!cancelled) {
-          const fallbackTier: Tier =
-            initialTier ?? 'beginner';
-
-          const fallbackParams =
-            generateSustainedSSSSParams({
-              tier: fallbackTier,
-              recentScores: [],
-            });
+          const fallbackTier: Tier = initialTier ?? 'beginner';
+          const fallbackParams = generateSustainedSSSSParams({
+            tier: fallbackTier,
+            recentScores: [],
+          });
 
           setTier(fallbackTier);
           setParams(fallbackParams);
@@ -288,12 +213,6 @@ export default function SustainedSSSSScreen({
     };
   }, [initialTier]);
 
-  /*
-   * =================================================
-   * TIMER CLEANUP
-   * =================================================
-   */
-
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -311,244 +230,158 @@ export default function SustainedSSSSScreen({
     }
   }, []);
 
-  /*
-   * =================================================
-   * LIVE AUDIO
-   * =================================================
-   */
-
   const handleLiveFrame = useCallback(
-    (frame: { 
-      volume: number 
-    }) => {
+    (frame: { volume: number }) => {
       if (!mountedRef.current) {
         return;
       }
 
       setVolume(frame.volume);
     },
-    []
+    [],
   );
 
-  const handleRecordingStop =
-    useCallback(
-      (
-        samples: Float32Array,
-        sampleRate: number
-      ) => {
-        if (!mountedRef.current) {
-          return;
-        }
+  const handleRecordingStop = useCallback(
+    (
+      samples: Float32Array,
+      sampleRate: number,
+    ) => {
+      if (!mountedRef.current) {
+        return;
+      }
 
-        console.log(
-          '🛑 Sustained SSSS recording stopped'
+      clearTimers();
+      setPhase('processing');
+      setVolume(null);
+
+      startingRef.current = false;
+      finishingRef.current = false;
+
+      const adaptiveParams = paramsRef.current;
+      const currentTier = tierRef.current;
+
+      if (!adaptiveParams || !currentTier) {
+        setError(
+          'Exercise parameters are unavailable. Please try again.',
+        );
+        setPhase('instructions');
+        return;
+      }
+
+      try {
+        const measurement = measureSustainedSSSS(
+          samples,
+          adaptiveParams.detectionThreshold,
+          sampleRate,
         );
 
-        clearTimers();
+        const score = scoreSustainedSSSS(
+          measurement,
+          adaptiveParams,
+        );
 
-        setPhase('processing');
-        setVolume(null);
+        const result: RepResult = {
+          rep: currentRepRef.current,
+          measurement,
+          score,
+        };
 
-        startingRef.current = false;
-        finishingRef.current = false;
+        const updatedResults = [
+          ...repResultsRef.current,
+          result,
+        ];
 
-        const adaptiveParams =
-          paramsRef.current;
+        repResultsRef.current = updatedResults;
+        setRepResults(updatedResults);
 
-        const currentTier =
-          tierRef.current;
+        if (
+          currentRepRef.current <
+          adaptiveParams.repetitions
+        ) {
+          processingTimerRef.current = setTimeout(() => {
+            if (!mountedRef.current) {
+              return;
+            }
 
-        if (!adaptiveParams || !currentTier) {
-          console.error(
-            '❌ Sustained SSSS adaptive parameters are unavailable.'
-          );
+            const nextRep = currentRepRef.current + 1;
 
-          setError(
-            'Exercise parameters are unavailable. Please try again.'
-          );
+            currentRepRef.current = nextRep;
+            setCurrentRep(nextRep);
+            setElapsed(0);
+            setVolume(null);
 
-          setPhase('instructions');
+            startingRef.current = false;
+            finishingRef.current = false;
+
+            beginCountdownRef.current?.();
+          }, 1200);
+
           return;
         }
 
-        try {
-          const measurement =
-            measureSustainedSSSS(
-              samples,
-              adaptiveParams.detectionThreshold,
-              sampleRate
-            );
-
-          console.log(
-            '📊 SSSS measurement:',
-            measurement
-          );
-
-          const score =
-            scoreSustainedSSSS(
-              measurement,
-              adaptiveParams
-            );
-
-          console.log(
-            '📊 SSSS score:',
-            score
-          );
-
-          const result: RepResult = {
-            rep: currentRepRef.current,
-            measurement,
-            score,
-          };
-
-          const updatedResults = [
-            ...repResultsRef.current,
-            result,
-          ];
-
-          repResultsRef.current =
-            updatedResults;
-
-          setRepResults(
-            updatedResults
-          );
-
-          console.log(
-            `📊 Completed rep ${currentRepRef.current}/${adaptiveParams.repetitions}`
-          );
-
-          if (
-            currentRepRef.current <
-            adaptiveParams.repetitions
-          ) {
-            processingTimerRef.current =
-              setTimeout(() => {
-                if (!mountedRef.current) {
-                  return;
-                }
-
-                const nextRep =
-                  currentRepRef.current + 1;
-
-                currentRepRef.current =
-                  nextRep;
-
-                setCurrentRep(nextRep);
-                setElapsed(0);
-                setVolume(null);
-
-                startingRef.current =
-                  false;
-
-                finishingRef.current =
-                  false;
-
-                beginCountdown();
-              }, 1200);
-
+        processingTimerRef.current = setTimeout(async () => {
+          if (!mountedRef.current) {
             return;
           }
 
-          processingTimerRef.current =
-            setTimeout(async () => {
-              if (
-                !mountedRef.current
-              ) {
-                return;
-              }
+          const finalResults = repResultsRef.current;
+          const finalScore =
+            finalResults.length > 0
+              ? Math.round(
+                  finalResults.reduce(
+                    (sum, item) => sum + item.score.score,
+                    0,
+                  ) / finalResults.length,
+                )
+              : 0;
 
-              const finalResults =
-                repResultsRef.current;
-
-              const finalScore =
-                finalResults.length > 0
-                  ? Math.round(
-                      finalResults.reduce(
-                        (sum, item) =>
-                          sum +
-                          item.score.score,
-                        0
-                      ) /
-                        finalResults.length
-                    )
-                  : 0;
-
-              console.log(
-                '🏆 Final SSSS results:',
-                finalResults
-              );
-
-              console.log(
-                '🏆 Final SSSS score:',
-                finalScore
-              );
-
-              try {
-                await saveCompletedExercise(
-                  'breathControl',
-                  'sustainedSSSS',
-                  currentTier,
-                  finalScore
-                );
-
-                console.log(
-                  '💾 Sustained SSSS progress saved'
-                );
-              } catch (saveError) {
-                console.error(
-                  '❌ Failed to save Sustained SSSS progress:',
-                  saveError
-                );
-              }
-
-              if (
-                !mountedRef.current
-              ) {
-                return;
-              }
-
-              setRepResults(
-                finalResults
-              );
-
-              setPhase('results');
-
-              startingRef.current =
-                false;
-
-              finishingRef.current =
-                false;
-            }, 1200);
-        } catch (analysisError) {
-          console.error(
-            '❌ Sustained SSSS analysis failed:',
-            analysisError
-          );
+          try {
+            await saveCompletedExercise(
+              'breathControl',
+              'sustainedSSSS',
+              currentTier,
+              finalScore,
+            );
+          } catch (saveError) {
+            console.error(
+              'Failed to save Sustained SSSS progress:',
+              saveError,
+            );
+          }
 
           if (!mountedRef.current) {
             return;
           }
 
-          clearTimers();
-
-          setError(
-            'We could not analyze your recording. Please try again.'
-          );
-
-          setPhase('instructions');
+          setRepResults(finalResults);
+          setPhase('results');
 
           startingRef.current = false;
           finishingRef.current = false;
-        }
-      },
-      [clearTimers]
-    );
+        }, 1200);
+      } catch (analysisError) {
+        console.error(
+          'Sustained SSSS analysis failed:',
+          analysisError,
+        );
 
-  /*
-   * =================================================
-   * AUDIO RECORDER
-   * =================================================
-   */
+        if (!mountedRef.current) {
+          return;
+        }
+
+        clearTimers();
+
+        setError(
+          'We could not analyze your recording. Please try again.',
+        );
+        setPhase('instructions');
+
+        startingRef.current = false;
+        finishingRef.current = false;
+      }
+    },
+    [clearTimers],
+  );
 
   const {
     startRecording,
@@ -558,411 +391,259 @@ export default function SustainedSSSSScreen({
     onStop: handleRecordingStop,
   });
 
-  /*
-   * =================================================
-   * SYNCHRONIZE RECORDER REFS
-   * =================================================
-   */
+  useEffect(() => {
+    startRecordingRef.current = startRecording;
+    stopRecordingRef.current = stopRecording;
+  }, [startRecording, stopRecording]);
+
+  const startRecordingPhase = useCallback(async () => {
+    if (!mountedRef.current || startingRef.current) {
+      return;
+    }
+
+    const adaptiveParams = paramsRef.current;
+
+    if (!adaptiveParams) {
+      setError(
+        'Exercise parameters are not ready. Please try again.',
+      );
+      setPhase('instructions');
+      return;
+    }
+
+    const start = startRecordingRef.current;
+    const stop = stopRecordingRef.current;
+
+    if (!start || !stop) {
+      setError(
+        'Audio recorder is not ready. Please try again.',
+      );
+      setPhase('instructions');
+      return;
+    }
+
+    startingRef.current = true;
+    finishingRef.current = false;
+
+    clearTimers();
+
+    setElapsed(0);
+    setVolume(null);
+    setError(null);
+    setPhase('recording');
+
+    try {
+      await start();
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const startTime = Date.now();
+
+      recordingTimerRef.current = setInterval(() => {
+        if (
+          !mountedRef.current ||
+          finishingRef.current
+        ) {
+          return;
+        }
+
+        const seconds = (Date.now() - startTime) / 1000;
+        setElapsed(seconds);
+
+        if (
+          seconds >= adaptiveParams.durationRangeSec[1]
+        ) {
+          clearTimers();
+
+          if (!finishingRef.current) {
+            finishingRef.current = true;
+            stop();
+          }
+        }
+      }, 100);
+    } catch (recordingError) {
+      console.error(
+        'Failed to start Sustained SSSS recording:',
+        recordingError,
+      );
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      clearTimers();
+
+      setError(
+        'Microphone access or recording failed. Please try again.',
+      );
+      setPhase('instructions');
+
+      startingRef.current = false;
+      finishingRef.current = false;
+    }
+  }, [clearTimers]);
+
+  const beginCountdown = useCallback(() => {
+    if (!mountedRef.current || startingRef.current) {
+      return;
+    }
+
+    clearTimers();
+
+    setCountdown(PREPARATION_COUNTDOWN);
+    setPhase('countdown');
+
+    let value = PREPARATION_COUNTDOWN;
+
+    countdownTimerRef.current = setInterval(() => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      value -= 1;
+
+      if (value <= 0) {
+        clearTimers();
+        startRecordingPhase();
+        return;
+      }
+
+      setCountdown(value);
+    }, 1000);
+  }, [clearTimers, startRecordingPhase]);
 
   useEffect(() => {
-    startRecordingRef.current =
-      startRecording;
-
-    stopRecordingRef.current =
-      stopRecording;
-  }, [
-    startRecording,
-    stopRecording,
-  ]);
-
-  /*
-   * =================================================
-   * START RECORDING PHASE
-   * =================================================
-   */
-
-  const startRecordingPhase =
-    useCallback(async () => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      if (startingRef.current) {
-        return;
-      }
-
-      const adaptiveParams =
-        paramsRef.current;
-
-      if (!adaptiveParams) {
-        console.error(
-          '❌ Adaptive SSSS parameters are not ready.'
-        );
-
-        setError(
-          'Exercise parameters are not ready. Please try again.'
-        );
-
-        setPhase('instructions');
-
-        return;
-      }
-
-      const start =
-        startRecordingRef.current;
-
-      const stop =
-        stopRecordingRef.current;
-
-      if (!start || !stop) {
-        console.error(
-          '❌ Audio recorder is not ready.'
-        );
-
-        setError(
-          'Audio recorder is not ready. Please try again.'
-        );
-
-        setPhase('instructions');
-
-        return;
-      }
-
-      startingRef.current = true;
-      finishingRef.current = false;
-
-      clearTimers();
-
-      setElapsed(0);
-      setVolume(null);
-      setError(null);
-      setPhase('recording');
-
-      console.log(
-        '🎤 Starting Sustained SSSS recording...'
-      );
-
-      try {
-        await start();
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        console.log(
-          '🎤 Sustained SSSS recording started'
-        );
-
-        const startTime =
-          Date.now();
-
-        recordingTimerRef.current =
-          setInterval(() => {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            if (finishingRef.current) {
-              return;
-            }
-
-            const seconds =
-              (Date.now() - startTime) /
-              1000;
-
-            setElapsed(seconds);
-
-            if (
-              seconds >=
-              adaptiveParams.durationRangeSec[1]
-            ) {
-              console.log(
-                '⏱️ Maximum SSSS duration reached'
-              );
-
-              clearTimers();
-
-              if (!finishingRef.current) {
-                finishingRef.current = true;
-
-                stop();
-              }
-            }
-          }, 100);
-      } catch (recordingError) {
-        console.error(
-          '❌ Failed to start Sustained SSSS recording:',
-          recordingError
-        );
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        clearTimers();
-
-        setError(
-          'Microphone access or recording failed. Please try again.'
-        );
-
-        setPhase('instructions');
-
-        startingRef.current = false;
-        finishingRef.current = false;
-      }
-    }, [clearTimers]);
-
-  /*
-   * =================================================
-   * COUNTDOWN
-   * =================================================
-   */
-
-  const beginCountdown =
-    useCallback(() => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      if (startingRef.current) {
-        return;
-      }
-
-      clearTimers();
-
-      setCountdown(PREPARATION_COUNTDOWN);
-      setPhase('countdown');
-
-      let value = PREPARATION_COUNTDOWN;
-
-      console.log(
-        `⏳ Countdown started for rep ${currentRepRef.current}`
-      );
-
-      countdownTimerRef.current =
-        setInterval(() => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          value -= 1;
-
-          if (value <= 0) {
-            clearTimers();
-
-            console.log(
-              '⏳ Countdown finished'
-            );
-
-            startRecordingPhase();
-
-            return;
-          }
-
-          setCountdown(value);
-        }, 1000);
-    }, [
-      clearTimers,
-      startRecordingPhase,
-    ]);
-
-  /*
-   * =================================================
-   * COMPONENT CLEANUP
-   * =================================================
-   */
+    beginCountdownRef.current = beginCountdown;
+  }, [beginCountdown]);
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
-
       clearTimers();
-
       stopRecordingRef.current?.();
     };
   }, [clearTimers]);
 
-  /*
-   * =================================================
-   * START EXERCISE
-   * =================================================
-   */
+  const startExercise = useCallback(() => {
+    if (startingRef.current) {
+      return;
+    }
 
-  const startExercise =
-    useCallback(() => {
-      console.log(
-        '🟢 SSSS START EXERCISE PRESSED'
+    if (!paramsRef.current || !tierRef.current) {
+      setError(
+        'Exercise parameters are still loading. Please try again.',
       );
+      return;
+    }
 
-      if (startingRef.current) {
-        console.log(
-          '⚠️ SSSS already starting'
-        );
+    clearTimers();
 
-        return;
-      }
+    startingRef.current = false;
+    finishingRef.current = false;
 
-      /*
-       * Do not start until adaptive parameters
-       * have been initialized.
-       */
+    repResultsRef.current = [];
+    currentRepRef.current = 1;
 
-      if (!paramsRef.current || !tierRef.current) {
-        console.log(
-          '⚠️ SSSS parameters are not ready'
-        );
+    setRepResults([]);
+    setCurrentRep(1);
+    setElapsed(0);
+    setVolume(null);
+    setError(null);
+    setCountdown(PREPARATION_COUNTDOWN);
 
-        setError(
-          'Exercise parameters are still loading. Please try again.'
-        );
+    beginCountdown();
+  }, [beginCountdown, clearTimers]);
 
-        return;
-      }
+  const finishRecording = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      finishingRef.current
+    ) {
+      return;
+    }
 
-      clearTimers();
+    const stop = stopRecordingRef.current;
 
-      startingRef.current = false;
-      finishingRef.current = false;
+    if (!stop) {
+      console.error('Audio recorder is not ready.');
+      return;
+    }
 
-      repResultsRef.current = [];
+    clearTimers();
+    finishingRef.current = true;
+    stop();
+  }, [clearTimers]);
 
-      currentRepRef.current = 1;
+  const retryExercise = useCallback(() => {
+    clearTimers();
+    stopRecordingRef.current?.();
 
-      setRepResults([]);
-      setCurrentRep(1);
-      setElapsed(0);
-      setVolume(null);
-      setError(null);
-      setCountdown(PREPARATION_COUNTDOWN);
+    startingRef.current = false;
+    finishingRef.current = false;
 
-      console.log(
-        '🟢 Starting SSSS countdown'
-      );
+    repResultsRef.current = [];
+    currentRepRef.current = 1;
 
-      beginCountdown();
-    }, [
-      beginCountdown,
-      clearTimers,
-    ]);
+    setRepResults([]);
+    setCurrentRep(1);
+    setElapsed(0);
+    setVolume(null);
+    setError(null);
+    setCountdown(PREPARATION_COUNTDOWN);
+    setPhase('instructions');
+  }, [clearTimers]);
 
-  /*
-   * =================================================
-   * FINISH CURRENT REP
-   * =================================================
-   */
+  const goBack = useCallback(() => {
+    clearTimers();
 
-  const finishRecording =
-    useCallback(() => {
-      if (!mountedRef.current) {
-        return;
-      }
+    startingRef.current = false;
+    finishingRef.current = true;
 
-      if (finishingRef.current) {
-        return;
-      }
+    stopRecordingRef.current?.();
 
-      const stop =
-        stopRecordingRef.current;
+    router.replace('/dashboard?tab=exercises');
+  }, [clearTimers]);
 
-      if (!stop) {
-        console.error(
-          '❌ Audio recorder is not ready.'
-        );
+  const averageDuration =
+    repResults.length > 0
+      ? repResults.reduce(
+          (sum, item) =>
+            sum + item.measurement.actualDurationSec,
+          0,
+        ) / repResults.length
+      : 0;
 
-        return;
-      }
+  const averageConsistency =
+    repResults.length > 0
+      ? repResults.reduce(
+          (sum, item) =>
+            sum + item.measurement.consistencyPct,
+          0,
+        ) / repResults.length
+      : 0;
 
-      console.log(
-        '🛑 Finish Rep pressed'
-      );
+  const averageScore =
+    repResults.length > 0
+      ? Math.round(
+          repResults.reduce(
+            (sum, item) => sum + item.score.score,
+            0,
+          ) / repResults.length,
+        )
+      : 0;
 
-      clearTimers();
+  const passedReps = repResults.filter(
+    item => item.score.passed,
+  ).length;
 
-      finishingRef.current = true;
-
-      stop();
-    }, [clearTimers]);
-
-  /*
-   * =================================================
-   * RETRY
-   * =================================================
-   */
-
-  const retryExercise =
-    useCallback(() => {
-      console.log(
-        '🔄 Retrying Sustained SSSS'
-      );
-
-      clearTimers();
-
-      const stop =
-        stopRecordingRef.current;
-
-      if (stop) {
-        stop();
-      }
-
-      startingRef.current = false;
-      finishingRef.current = false;
-
-      repResultsRef.current = [];
-
-      currentRepRef.current = 1;
-
-      setRepResults([]);
-      setCurrentRep(1);
-      setElapsed(0);
-      setVolume(null);
-      setError(null);
-      setCountdown(PREPARATION_COUNTDOWN);
-      setPhase('instructions');
-    }, [clearTimers]);
-
-  /*
-   * =================================================
-   * GO BACK
-   * =================================================
-   */
-
-  const goBack =
-    useCallback(() => {
-      clearTimers();
-
-      startingRef.current = false;
-      finishingRef.current = true;
-
-      const stop =
-        stopRecordingRef.current;
-
-      if (stop) {
-        stop();
-      }
-
-      router.replace(
-        '/dashboard?tab=exercises'
-      );
-    }, [clearTimers]);
-
-  /*
-   * =================================================
-   * ADS LOADING
-   * =================================================
-   */
-
-  if (
-    loadingParams ||
-    !params ||
-    !tier
-  ) {
+  if (loadingParams || !params || !tier) {
     return (
       <View style={styles.centerScreen}>
-        <View
-          style={styles.largeIconCircle}
-        >
+        <View style={styles.largeIconCircle}>
           <Ionicons
             name="options-outline"
             size={44}
@@ -970,17 +651,12 @@ export default function SustainedSSSSScreen({
           />
         </View>
 
-        <Text
-          style={styles.processingTitle}
-        >
+        <Text style={styles.processingTitle}>
           Preparing Your Exercise
         </Text>
 
-        <Text
-          style={styles.processingSubtitle}
-        >
-          Adjusting the exercise to your
-          current difficulty level
+        <Text style={styles.processingSubtitle}>
+          Adjusting the exercise to your current difficulty level
         </Text>
 
         <ActivityIndicator
@@ -992,70 +668,30 @@ export default function SustainedSSSSScreen({
     );
   }
 
-   /*
-   * =================================================
-   * RESULT CALCULATIONS
-   * =================================================
-   */
-
-  const averageDuration =
-    repResults.length > 0
-      ? repResults.reduce(
-          (sum, item) =>
-            sum +
-            item.measurement
-              .actualDurationSec,
-          0
-        ) / repResults.length
-      : 0;
-
-  const averageConsistency =
-    repResults.length > 0
-      ? repResults.reduce(
-          (sum, item) =>
-            sum +
-            item.measurement
-              .consistencyPct,
-          0
-        ) / repResults.length
-      : 0;
-
-  const averageScore =
-    repResults.length > 0
-      ? Math.round(
-          repResults.reduce(
-            (sum, item) =>
-              sum +
-              item.score.score,
-            0
-          ) / repResults.length
-        )
-      : 0;
-
-  const passedReps =
-    repResults.filter(
-      item => item.score.passed
-    ).length;
-
-
-  /*
-   * =================================================
-   * INSTRUCTIONS
-   * =================================================
-   */
-
-    if (phase === 'instructions') {
+  if (phase === 'instructions') {
     return (
       <ExerciseScreen
-      category="Breath Control"
-      title={'Sustained "SSSS"'} 
-      icon="cloud-outline"
+        category="Breath Control"
+        title={'Sustained "SSSS"'}
+        icon="cloud-outline"
         instructions={'Take a comfortable breath, then release the air through your teeth using a steady "ssss" hissing sound.'}
         preparationSteps={[
-          { icon: 'leaf-outline', text: 'Sit or stand with a relaxed posture.' },
-          { icon: 'body-outline', text: 'Take a comfortable breath without overfilling your lungs.' },
-          { icon: 'volume-low-outline', text: 'Release the air using a continuous "ssss" sound.' },
-          { icon: 'mic-outline', text: 'Keep the sound steady and stay close to the microphone.' },
+          {
+            icon: 'leaf-outline',
+            text: 'Sit or stand with a relaxed posture.',
+          },
+          {
+            icon: 'body-outline',
+            text: 'Take a comfortable breath without overfilling your lungs.',
+          },
+          {
+            icon: 'volume-low-outline',
+            text: 'Release the air using a continuous "ssss" sound.',
+          },
+          {
+            icon: 'mic-outline',
+            text: 'Keep the sound steady and stay close to the microphone.',
+          },
         ]}
         targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
         targetHint={'sustained "ssss"'}
@@ -1069,12 +705,6 @@ export default function SustainedSSSSScreen({
     );
   }
 
-  /*
-   * =================================================
-   * COUNTDOWN
-   * =================================================
-   */
-
   if (phase === 'countdown') {
     return (
       <ExerciseCountdownScreen
@@ -1085,42 +715,23 @@ export default function SustainedSSSSScreen({
         countdown={countdown}
         promptTitle="Prepare to make a steady SSSS sound"
         prompt="Keep the hiss smooth and continuous."
+        onBack={goBack}
       />
     );
   }
 
-  /*
-   * =================================================
-   * RECORDING
-   * =================================================
-   */
-
   if (phase === 'recording') {
-    const maxDuration =
-      params.durationRangeSec[1];
-
-    const progress =
-      Math.min(
-        elapsed / maxDuration,
-        1
-      );
+    const maxDuration = params.durationRangeSec[1];
+    const progress = Math.min(elapsed / maxDuration, 1);
 
     return (
       <View style={styles.container}>
         <ScrollView
-          contentContainerStyle={
-            styles.recordingContent
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
+          contentContainerStyle={styles.recordingContent}
+          showsVerticalScrollIndicator={false}
         >
-          <View
-            style={styles.recordingHeader}
-          >
-            <View
-              style={styles.smallIconCircle}
-            >
+          <View style={styles.recordingHeader}>
+            <View style={styles.smallIconCircle}>
               <Ionicons
                 name="cloud-outline"
                 size={27}
@@ -1128,49 +739,30 @@ export default function SustainedSSSSScreen({
               />
             </View>
 
-            <View
-              style={styles.recordingHeaderText}
-            >
-              <Text
-                style={styles.recordingTitle}
-              >
+            <View style={styles.recordingHeaderText}>
+              <Text style={styles.recordingTitle}>
                 Sustain "SSSS"
               </Text>
 
-              <Text
-                style={
-                  styles.recordingSubtitle
-                }
-              >
-                Repetition {currentRep} of{' '}
-                {params.repetitions}
+              <Text style={styles.recordingSubtitle}>
+                Repetition {currentRep} of {params.repetitions}
               </Text>
             </View>
           </View>
 
-          <View
-            style={styles.sssssCard}
-          >
-            <Text
-              style={styles.sssssText}
-            >
+          <View style={styles.sssssCard}>
+            <Text style={styles.sssssText}>
               SSSSSSSSSS
             </Text>
 
-            <Text
-              style={styles.sssssHint}
-            >
+            <Text style={styles.sssssHint}>
               Keep the sound steady
             </Text>
           </View>
 
           <View style={styles.micArea}>
-            <View
-              style={styles.outerMicCircle}
-            >
-              <View
-                style={styles.innerMicCircle}
-              >
+            <View style={styles.outerMicCircle}>
+              <View style={styles.innerMicCircle}>
                 <Ionicons
                   name="mic"
                   size={48}
@@ -1179,83 +771,45 @@ export default function SustainedSSSSScreen({
               </View>
             </View>
 
-            <View
-              style={styles.recordingBadge}
-            >
-              <View
-                style={styles.recordingDot}
-              />
+            <View style={styles.recordingBadge}>
+              <View style={styles.recordingDot} />
 
-              <Text
-                style={
-                  styles.recordingBadgeText
-                }
-              >
+              <Text style={styles.recordingBadgeText}>
                 RECORDING
               </Text>
             </View>
           </View>
 
-          <Text
-            style={styles.timerText}
-          >
+          <Text style={styles.timerText}>
             {elapsed.toFixed(1)}s
           </Text>
 
-          <View
-            style={styles.progressTrack}
-          >
+          <View style={styles.progressTrack}>
             <View
               style={[
                 styles.progressFill,
-                {
-                  width: `${progress * 100}%`,
-                },
+                { width: `${progress * 100}%` },
               ]}
             />
           </View>
 
-          <View
-            style={styles.liveMetrics}
-          >
-            <View
-              style={styles.liveMetricCard}
-            >
-              <Text
-                style={
-                  styles.liveMetricLabel
-                }
-              >
+          <View style={styles.liveMetrics}>
+            <View style={styles.liveMetricCard}>
+              <Text style={styles.liveMetricLabel}>
                 AUDIO LEVEL
               </Text>
 
-              <Text
-                style={
-                  styles.liveMetricValue
-                }
-              >
-                {volume !== null
-                  ? volume.toFixed(1)
-                  : '--'}
+              <Text style={styles.liveMetricValue}>
+                {volume !== null ? volume.toFixed(1) : '--'}
               </Text>
             </View>
 
-            <View
-              style={styles.liveMetricCard}
-            >
-              <Text
-                style={
-                  styles.liveMetricLabel
-                }
-              >
+            <View style={styles.liveMetricCard}>
+              <Text style={styles.liveMetricLabel}>
                 TARGET
               </Text>
 
-              <Text
-                style={
-                  styles.liveMetricValue
-                }
-              >
+              <Text style={styles.liveMetricValue}>
                 {params.durationRangeSec[0]}–
                 {params.durationRangeSec[1]}s
               </Text>
@@ -1272,11 +826,7 @@ export default function SustainedSSSSScreen({
               color={WHITE}
             />
 
-            <Text
-              style={
-                styles.primaryButtonText
-              }
-            >
+            <Text style={styles.primaryButtonText}>
               Finish Rep
             </Text>
           </Pressable>
@@ -1285,16 +835,8 @@ export default function SustainedSSSSScreen({
     );
   }
 
-  /*
-   * =================================================
-   * PROCESSING
-   * =================================================
-   */
-
   if (phase === 'processing') {
-
-    const isFinalRep =
-      currentRep >= params.repetitions;
+    const isFinalRep = currentRep >= params.repetitions;
 
     return (
       <ExerciseProcessingScreen
@@ -1313,12 +855,6 @@ export default function SustainedSSSSScreen({
     );
   }
 
-  /*
-   * =================================================
-   * RESULTS
-   * =================================================
-   */
-
   return (
     <ExerciseResultsScreen
       title="Exercise Complete!"
@@ -1328,139 +864,85 @@ export default function SustainedSSSSScreen({
       onRetry={retryExercise}
       onExit={goBack}
     >
-      <View
-        style={styles.metricsGrid}
-      >
-        <View
-          style={styles.resultMetricCard}
-        >
+      <View style={styles.metricsGrid}>
+        <View style={styles.resultMetricCard}>
           <Ionicons
             name="timer-outline"
             size={24}
             color={BROWN}
           />
 
-          <Text
-            style={
-              styles.resultMetricValue
-            }
-          >
+          <Text style={styles.resultMetricValue}>
             {averageDuration.toFixed(1)}s
           </Text>
 
-          <Text
-            style={
-              styles.resultMetricLabel
-            }
-          >
+          <Text style={styles.resultMetricLabel}>
             Avg. Duration
           </Text>
         </View>
 
-        <View
-          style={styles.resultMetricCard}
-        >
+        <View style={styles.resultMetricCard}>
           <Ionicons
             name="pulse-outline"
             size={24}
             color={BROWN}
           />
 
-          <Text
-            style={
-              styles.resultMetricValue
-            }
-          >
-            {Math.round(
-              averageConsistency
-            )}
-            %
+          <Text style={styles.resultMetricValue}>
+            {Math.round(averageConsistency)}%
           </Text>
 
-          <Text
-            style={
-              styles.resultMetricLabel
-            }
-          >
+          <Text style={styles.resultMetricLabel}>
             Consistency
           </Text>
         </View>
 
-        <View
-          style={styles.resultMetricCard}
-        >
+        <View style={styles.resultMetricCard}>
           <Ionicons
             name="repeat-outline"
             size={24}
             color={BROWN}
           />
 
-          <Text
-            style={
-              styles.resultMetricValue
-            }
-          >
-            {repResults.length}/
-            {params.repetitions}
+          <Text style={styles.resultMetricValue}>
+            {repResults.length}/{params.repetitions}
           </Text>
 
-          <Text
-            style={
-              styles.resultMetricLabel
-            }
-          >
+          <Text style={styles.resultMetricLabel}>
             Repetitions
           </Text>
         </View>
 
-        <View
-          style={styles.resultMetricCard}
-        >
+        <View style={styles.resultMetricCard}>
           <Ionicons
             name="checkmark-circle-outline"
             size={24}
             color={BROWN}
           />
 
-          <Text
-            style={
-              styles.resultMetricValue
-            }
-          >
+          <Text style={styles.resultMetricValue}>
             {passedReps}
           </Text>
 
-          <Text
-            style={
-              styles.resultMetricLabel
-            }
-          >
+          <Text style={styles.resultMetricLabel}>
             Passed
           </Text>
         </View>
       </View>
 
-      <View
-        style={styles.feedbackCard}
-      >
+      <View style={styles.feedbackCard}>
         <Ionicons
           name="chatbubble-ellipses-outline"
           size={24}
           color={BROWN}
         />
 
-        <View
-          style={styles.feedbackContent}
-        >
-          <Text
-            style={styles.feedbackTitle}
-          >
+        <View style={styles.feedbackContent}>
+          <Text style={styles.feedbackTitle}>
             Feedback
           </Text>
 
-          <Text
-            style={styles.feedbackText}
-          >
+          <Text style={styles.feedbackText}>
             {averageScore >= 85
               ? 'Excellent control! Your SSSS sound was sustained with strong consistency.'
               : averageScore >= 70
@@ -1468,99 +950,53 @@ export default function SustainedSSSSScreen({
                 : averageScore >= 50
                   ? 'Keep practicing. Try to maintain a smoother and more consistent SSSS sound.'
                   : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous SSSS sound.'}
-          
           </Text>
         </View>
       </View>
 
-      <Text
-        style={styles.repResultsTitle}
-      >
+      <Text style={styles.repResultsTitle}>
         Repetition Results
       </Text>
 
-      {repResults.map(
-        result => (
-          <View
-            key={`rep-${result.rep}`}
-            style={
-              styles.repResultCard
-            }
-          >
-            <View
-              style={
-                styles.repResultLeft
-              }
-            >
-              <View
-                style={styles.repNumber}
-              >
-                <Text
-                  style={
-                    styles.repNumberText
-                  }
-                >
-                  {result.rep}
-                </Text>
-              </View>
-
-              <View>
-                <Text
-                  style={
-                    styles.repResultTitle
-                  }
-                >
-                  Repetition {result.rep}
-                </Text>
-
-                <Text
-                  style={
-                    styles.repResultSubtitle
-                  }
-                >
-                  {result.measurement.actualDurationSec.toFixed(
-                    1
-                  )}
-                  s •{' '}
-                  {Math.round(
-                    result.measurement
-                      .consistencyPct
-                  )}
-                  % consistency
-                </Text>
-              </View>
+      {repResults.map(result => (
+        <View
+          key={`rep-${result.rep}`}
+          style={styles.repResultCard}
+        >
+          <View style={styles.repResultLeft}>
+            <View style={styles.repNumber}>
+              <Text style={styles.repNumberText}>
+                {result.rep}
+              </Text>
             </View>
 
-            <View
-              style={styles.repScore}
-            >
-              <Text
-                style={styles.repScoreText}
-              >
-                {result.score.score}
+            <View>
+              <Text style={styles.repResultTitle}>
+                Repetition {result.rep}
               </Text>
 
-              <Text
-                style={
-                  styles.repScorePercent
-                }
-              >
-                %
+              <Text style={styles.repResultSubtitle}>
+                {result.measurement.actualDurationSec.toFixed(1)}
+                s • {Math.round(result.measurement.consistencyPct)}
+                % consistency
               </Text>
             </View>
           </View>
-        )
-      )}
 
+          <View style={styles.repScore}>
+            <Text style={styles.repScoreText}>
+              {result.score.score}
+            </Text>
+
+            <Text style={styles.repScorePercent}>
+              %
+            </Text>
+          </View>
+        </View>
+      ))}
     </ExerciseResultsScreen>
   );
 }
-
-/*
- * =====================================================
- * STYLES
- * =====================================================
- */
 
 const styles = StyleSheet.create({
   container: {

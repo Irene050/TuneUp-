@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  LiveAudioFrame,
+  type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { measureBreathControlFreeModeFrame } from '@/services/measurement/freemode/breathControl';
@@ -30,6 +30,7 @@ const WHITE = '#FFFFFF';
 type Phase = 'ready' | 'exercise';
 
 const BAR_COUNT = 20;
+const MIN_VOLUME_DB = -60;
 
 export default function BreathControlFreeModeScreen() {
   const insets = useSafeAreaInsets();
@@ -39,70 +40,33 @@ export default function BreathControlFreeModeScreen() {
   const [phase, setPhase] = useState<Phase>('ready');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
-
-  // ==========================================================
-  // LIVE BREATH DATA
-  // ==========================================================
-
   const [volumeDb, setVolumeDb] = useState(-100);
-  const [consistencyPct, setConsistencyPct] = useState(0);
-
-  /*
-   * Keep a short history of measured breath-flow values
-   * for the live bar visualization.
-   */
   const [flowHistory, setFlowHistory] = useState<number[]>(
     () => Array(BAR_COUNT).fill(0),
   );
 
-  // ==========================================================
-  // AUDIO RECORDER
-  // ==========================================================
+  const handleAudioFrame = useCallback((frame: LiveAudioFrame) => {
+    const reading = measureBreathControlFreeModeFrame(
+      frame.samples,
+      frame.sampleRate,
+    );
 
-  const handleAudioFrame = useCallback(
-    (frame: LiveAudioFrame) => {
-      const reading = measureBreathControlFreeModeFrame(
-        frame.samples,
-        frame.sampleRate,
-      );
+    setVolumeDb(reading.volumeDb);
 
-      setVolumeDb(reading.volumeDb);
-      setConsistencyPct(reading.consistencyPct);
+    const normalizedFlow = Math.max(
+      0,
+      Math.min(1, (reading.volumeDb - MIN_VOLUME_DB) / 60),
+    );
 
-      /*
-       * Convert the current volume into a normalized
-       * visualization value.
-       *
-       * This is NOT a performance score.
-       * It is only used to visualize the live signal.
-       */
-      const normalizedFlow = Math.max(
-        0,
-        Math.min(
-          1,
-          (reading.volumeDb + 60) / 60,
-        ),
-      );
+    setFlowHistory((previous) => [
+      ...previous.slice(-(BAR_COUNT - 1)),
+      normalizedFlow,
+    ]);
+  }, []);
 
-      setFlowHistory((previous) => [
-        ...previous.slice(-(BAR_COUNT - 1)),
-        normalizedFlow,
-      ]);
-    },
-    [],
-  );
-
-  const {
-    startRecording,
-    stopRecording,
-    isRecording,
-  } = useAudioRecorder({
+  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
     onFrame: handleAudioFrame,
   });
-
-  // ==========================================================
-  // TIMER
-  // ==========================================================
 
   useEffect(() => {
     if (phase !== 'exercise') {
@@ -120,14 +84,14 @@ export default function BreathControlFreeModeScreen() {
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
 
-    return `${String(minutes).padStart(2, '0')}:${String(
-      seconds,
-    ).padStart(2, '0')}`;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   }, [elapsedSeconds]);
 
-  // ==========================================================
-  // START FREE MODE
-  // ==========================================================
+  const resetExercise = useCallback(() => {
+    setElapsedSeconds(0);
+    setVolumeDb(-100);
+    setFlowHistory(Array(BAR_COUNT).fill(0));
+  }, []);
 
   const startFreeMode = async () => {
     if (isStarting || phase === 'exercise' || isRecording) {
@@ -137,56 +101,66 @@ export default function BreathControlFreeModeScreen() {
     setIsStarting(true);
 
     try {
-      setElapsedSeconds(0);
-
-      setVolumeDb(-100);
-      setConsistencyPct(0);
-
-      setFlowHistory(
-        Array(BAR_COUNT).fill(0),
-      );
-
+      resetExercise();
       await startRecording();
-
       setPhase('exercise');
     } catch (error) {
-      console.error(
-        '❌ FAILED TO START BREATH CONTROL FREE MODE:',
-        error,
-      );
+      console.error('Failed to start Breath Control Free Mode:', error);
     } finally {
       setIsStarting(false);
     }
   };
 
-  // ==========================================================
-  // STOP FREE MODE
-  // ==========================================================
-
   const stopFreeMode = async () => {
     try {
       await stopRecording();
     } catch (error) {
-      console.error(
-        '❌ FAILED TO STOP BREATH CONTROL FREE MODE:',
-        error,
-      );
+      console.error('Failed to stop Breath Control Free Mode:', error);
+    } finally {
+      resetExercise();
+      setPhase('ready');
     }
-
-    setElapsedSeconds(0);
-    setVolumeDb(-100);
-    setConsistencyPct(0);
-
-    setFlowHistory(
-      Array(BAR_COUNT).fill(0),
-    );
-
-    setPhase('ready');
   };
 
-  // ==========================================================
-  // READY SCREEN
-  // ==========================================================
+  const renderHeader = (onBack: () => void) => (
+    <View
+      style={[
+        styles.header,
+        { paddingHorizontal: horizontalPadding },
+      ]}
+    >
+      <Pressable
+        style={styles.backButton}
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+      >
+        <Ionicons name="arrow-back" size={20} color={BROWN} />
+      </Pressable>
+
+      <Text style={styles.headerTitle}>
+        Breath Control Free Mode
+      </Text>
+
+      <View style={styles.headerSpacer} />
+    </View>
+  );
+
+  const renderBottomAction = (
+    button: React.ReactNode,
+  ) => (
+    <View
+      style={[
+        styles.bottomAction,
+        {
+          paddingHorizontal: horizontalPadding,
+          paddingBottom: Math.max(8, insets.bottom),
+        },
+      ]}
+    >
+      {button}
+    </View>
+  );
 
   if (phase === 'ready') {
     return (
@@ -196,29 +170,7 @@ export default function BreathControlFreeModeScreen() {
           { paddingBottom: insets.bottom },
         ]}
       >
-        <View
-          style={[
-            styles.header,
-            { paddingHorizontal: horizontalPadding },
-          ]}
-        >
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={20}
-              color={BROWN}
-            />
-          </Pressable>
-
-          <Text style={styles.headerTitle}>
-            Breath Control Free Mode
-          </Text>
-
-          <View style={styles.headerSpacer} />
-        </View>
+        {renderHeader(() => router.back())}
 
         <View
           style={[
@@ -284,44 +236,37 @@ export default function BreathControlFreeModeScreen() {
           </View>
         </View>
 
-        <View
-          style={[
-            styles.bottomAction,
-            {
-              paddingHorizontal: horizontalPadding,
-              paddingBottom: Math.max(8, insets.bottom),
-            },
-          ]}
-        >
+        {renderBottomAction(
           <Pressable
-            style={styles.startButton}
+            style={[
+              styles.startButton,
+              isStarting && styles.disabledButton,
+            ]}
             onPress={startFreeMode}
             disabled={isStarting}
+            accessibilityRole="button"
           >
             {isStarting ? (
               <ActivityIndicator color={WHITE} />
             ) : (
               <>
-                <Ionicons
-                  name="mic"
-                  size={19}
-                  color={WHITE}
-                />
+                <Ionicons name="mic" size={19} color={WHITE} />
 
                 <Text style={styles.startButtonText}>
                   Start Free Mode
                 </Text>
               </>
             )}
-          </Pressable>
-        </View>
+          </Pressable>,
+        )}
       </SafeAreaView>
     );
   }
 
-  // ==========================================================
-  // EXERCISE SCREEN
-  // ==========================================================
+  const flowPercentage =
+    volumeDb <= MIN_VOLUME_DB
+      ? null
+      : Math.round(((volumeDb - MIN_VOLUME_DB) / 60) * 100);
 
   return (
     <SafeAreaView
@@ -330,29 +275,7 @@ export default function BreathControlFreeModeScreen() {
         { paddingBottom: insets.bottom },
       ]}
     >
-      <View
-        style={[
-          styles.header,
-          { paddingHorizontal: horizontalPadding },
-        ]}
-      >
-        <Pressable
-          style={styles.backButton}
-          onPress={stopFreeMode}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <Text style={styles.headerTitle}>
-          Breath Control Free Mode
-        </Text>
-
-        <View style={styles.headerSpacer} />
-      </View>
+      {renderHeader(stopFreeMode)}
 
       <View
         style={[
@@ -384,36 +307,24 @@ export default function BreathControlFreeModeScreen() {
           </View>
         </View>
 
-        {/* LIVE BREATH FLOW */}
-
         <View style={styles.liveCard}>
           <Text style={styles.cardLabel}>
             CURRENT BREATH FLOW
           </Text>
 
           <Text style={styles.valueText}>
-            {volumeDb <= -60
-              ? '--'
-              : `${Math.round(
-                  ((volumeDb + 60) / 60) * 100,
-                )}%`}
+            {flowPercentage === null ? '--' : `${flowPercentage}%`}
           </Text>
 
           <View style={styles.barRow}>
             {flowHistory.map((value, index) => (
               <View
-                key={`bar-${index}`}
+                key={index}
                 style={[
                   styles.bar,
                   {
-                    height: `${Math.max(
-                      12,
-                      value * 100,
-                    )}%`,
-                    opacity:
-                      value === 0
-                        ? 0.15
-                        : 0.25 + value * 0.75,
+                    height: `${Math.max(12, value * 100)}%`,
+                    opacity: value === 0 ? 0.15 : 0.25 + value * 0.75,
                   },
                 ]}
               />
@@ -435,30 +346,19 @@ export default function BreathControlFreeModeScreen() {
         </View>
       </View>
 
-      <View
-        style={[
-          styles.bottomAction,
-          {
-            paddingHorizontal: horizontalPadding,
-            paddingBottom: Math.max(8, insets.bottom),
-          },
-        ]}
-      >
+      {renderBottomAction(
         <Pressable
           style={styles.stopButton}
           onPress={stopFreeMode}
+          accessibilityRole="button"
         >
-          <Ionicons
-            name="stop"
-            size={18}
-            color={WHITE}
-          />
+          <Ionicons name="stop" size={18} color={WHITE} />
 
           <Text style={styles.startButtonText}>
             Stop Free Mode
           </Text>
-        </Pressable>
-      </View>
+        </Pressable>,
+      )}
     </SafeAreaView>
   );
 }
@@ -468,13 +368,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   header: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   backButton: {
     width: 34,
     height: 34,
@@ -483,7 +381,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -491,16 +388,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: BROWN,
   },
-
   headerSpacer: {
     width: 34,
   },
-
   readyContent: {
     flex: 1,
     justifyContent: 'center',
   },
-
   modeIcon: {
     width: 92,
     height: 92,
@@ -511,14 +405,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 18,
   },
-
   pageTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     color: BROWN,
     textAlign: 'center',
   },
-
   pageDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
@@ -527,7 +419,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-
   infoCard: {
     backgroundColor: LIGHT,
     borderRadius: 20,
@@ -536,7 +427,6 @@ const styles = StyleSheet.create({
     padding: 18,
     marginTop: 24,
   },
-
   infoTitle: {
     fontFamily: 'FredokaBold',
     color: BROWN,
@@ -544,13 +434,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: 12,
   },
-
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
   },
-
   infoIcon: {
     width: 36,
     height: 36,
@@ -560,17 +447,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   infoText: {
     flex: 1,
   },
-
   infoName: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   infoDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -578,7 +462,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 18,
   },
-
   noTargetCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -589,7 +472,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 18,
   },
-
   noTargetText: {
     flex: 1,
     marginLeft: 10,
@@ -598,11 +480,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: MUTED,
   },
-
   bottomAction: {
     paddingTop: 12,
   },
-
   startButton: {
     height: 52,
     borderRadius: 16,
@@ -612,40 +492,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
+  disabledButton: {
+    opacity: 0.7,
+  },
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   exerciseContent: {
     flex: 1,
     justifyContent: 'space-between',
     paddingTop: 12,
   },
-
   exerciseTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 18,
   },
-
   modeLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: ACCENT,
     letterSpacing: 1.4,
   },
-
   exerciseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
     marginTop: 5,
   },
-
   timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -657,13 +534,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   timeText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   liveCard: {
     backgroundColor: LIGHT,
     borderRadius: 24,
@@ -671,21 +546,18 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 18,
   },
-
   cardLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     color: BROWN,
     letterSpacing: 1.3,
   },
-
   valueText: {
     fontFamily: 'FredokaBold',
     fontSize: 32,
     color: BROWN,
     marginTop: 8,
   },
-
   barRow: {
     height: 150,
     flexDirection: 'row',
@@ -693,42 +565,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 20,
   },
-
   bar: {
     width: 10,
     borderRadius: 8,
     backgroundColor: ACCENT,
     minHeight: 12,
   },
-
-  stabilityCard: {
-    marginTop: 18,
-    padding: 18,
-    borderRadius: 20,
-    backgroundColor: LIGHT,
-    borderWidth: 1,
-    borderColor: BORDER,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  stabilityValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    marginTop: 5,
-  },
-
-  stabilityIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -739,7 +581,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   noteText: {
     flex: 1,
     marginLeft: 10,
@@ -748,7 +589,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: DARK,
   },
-
   stopButton: {
     height: 52,
     borderRadius: 16,

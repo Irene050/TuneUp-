@@ -12,31 +12,23 @@ import {
   type DiaphragmaticBreathingParams,
   type Tier,
 } from '@/constants/exercises/breathControl';
-
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-
+import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import { auth } from '@/services/firebase/config';
 import {
   measureDiaphragmaticBreathing,
   type DiaphragmaticBreathingMeasurement,
 } from '@/services/measurement/breathControl/diaphragmaticBreathing';
-
-import {
-  scoreDiaphragmaticBreathing,
-  type DiaphragmaticBreathingScoreResult,
-} from '@/services/scoring/breathControl/diaphragmaticBreathing';
-
-import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
-import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
-
-import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-
-import { auth } from '@/services/firebase/config';
+import {
+  scoreDiaphragmaticBreathing,
+  type DiaphragmaticBreathingScoreResult,
+} from '@/services/scoring/breathControl/diaphragmaticBreathing';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -75,109 +67,53 @@ interface RepResult {
 export default function DiaphragmaticBreathingScreen({
   tier: initialTier,
 }: Props) {
-  /*
-   * =====================================================
-   * ADAPTIVE PARAMETERS
-   * =====================================================
-   */
-
   const [params, setParams] =
     useState<DiaphragmaticBreathingParams | null>(null);
-
   const paramsRef =
     useRef<DiaphragmaticBreathingParams | null>(null);
 
   const [tier, setTier] =
     useState<Tier | null>(initialTier ?? null);
+  const tierRef = useRef<Tier>(initialTier ?? 'beginner');
+  const [paramsReady, setParamsReady] = useState(false);
 
-  const tierRef =
-    useRef<Tier>(initialTier ?? 'beginner');
-
-  const [paramsReady, setParamsReady] =
-    useState(false);
-
-  /*
-   * =====================================================
-   * EXERCISE STATE
-   * =====================================================
-   */
-
-  const [phase, setPhase] =
-    useState<Phase>('instructions');
-
-  const phaseRef =
-    useRef<Phase>('instructions');
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const phaseRef = useRef<Phase>('instructions');
 
   const [countdown, setCountdown] =
     useState(PREPARATION_COUNTDOWN);
+  const [elapsed, setElapsed] = useState(0);
+  const [volume, setVolume] = useState(0);
 
-  const [elapsed, setElapsed] =
-    useState(0);
+  const [currentRep, setCurrentRep] = useState(1);
+  const currentRepRef = useRef(1);
 
-  const [volume, setVolume] =
-    useState(0);
+  const [repResults, setRepResults] = useState<RepResult[]>([]);
+  const repResultsRef = useRef<RepResult[]>([]);
 
-  const [currentRep, setCurrentRep] =
-    useState(1);
-
-  const currentRepRef =
-    useRef(1);
-
-  const [repResults, setRepResults] =
-    useState<RepResult[]>([]);
-
-  const repResultsRef =
-    useRef<RepResult[]>([]);
-
-  /*
-   * =====================================================
-   * LIFECYCLE / RECORDER REFS
-   * =====================================================
-   */
-
-  const mountedRef =
-    useRef(true);
+  const mountedRef = useRef(true);
 
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-
   const stopRecordingRef =
     useRef<(() => void) | null>(null);
 
-  /*
-   * =====================================================
-   * TIMERS
-   * =====================================================
-   */
-
   const phaseTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
-
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
-
   const stopTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const startPhaseTimerRef =
-    useRef<((durationSec: number, stopRecorder?: boolean) => void) | null>(
-      null,
-    );
-
+  const startPhaseTimerRef = useRef<
+    ((durationSec: number, stopRecorder?: boolean) => void) | null
+  >(null);
   const startInhalePhaseRef =
     useRef<(() => void) | null>(null);
-
   const startExhalePhaseRef =
     useRef<(() => void) | null>(null);
-
   const startCountdownRef =
     useRef<(() => void) | null>(null);
-
-  /*
-   * =====================================================
-   * INITIALIZE ADAPTIVE PARAMETERS
-   * =====================================================
-   */
 
   useEffect(() => {
     let cancelled = false;
@@ -185,171 +121,85 @@ export default function DiaphragmaticBreathingScreen({
     const initializeParams = async () => {
       setParamsReady(false);
 
-      let currentTier: Tier =
-        initialTier ?? 'beginner';
-
+      let currentTier: Tier = initialTier ?? 'beginner';
       let recentScores: number[] = [];
-
-      /*
-       * -----------------------------------------------
-       * STEP 1: DETERMINE CURRENT TIER
-       * -----------------------------------------------
-       */
 
       try {
         const user = auth.currentUser;
 
         if (!initialTier && user) {
-          const progress =
-            await fetchComponentProgress(
-              user.uid,
-              'breathControl',
-            );
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'breathControl',
+          );
 
-          currentTier =
-            progress?.currentTier ??
-            'beginner';
+          currentTier = progress?.currentTier ?? 'beginner';
         }
       } catch (error) {
         console.error(
-          '❌ Failed to load Diaphragmatic Breathing current tier:',
+          'Failed to load Diaphragmatic Breathing current tier:',
           error,
         );
 
-        currentTier =
-          initialTier ?? 'beginner';
+        currentTier = initialTier ?? 'beginner';
       }
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
-      tierRef.current =
-        currentTier;
-
+      tierRef.current = currentTier;
       setTier(currentTier);
-
-      /*
-       * -----------------------------------------------
-       * STEP 2: LOAD EXERCISE HISTORY
-       * -----------------------------------------------
-       */
 
       try {
         const user = auth.currentUser;
 
         if (user) {
-          const records =
-            await fetchExerciseRecords(
-              user.uid,
-              'breathControl',
-            );
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'breathControl',
+          );
 
-          const currentExerciseRecords =
-            records.filter(
+          recentScores = records
+            .filter(
               record =>
-                record.templateId ===
-                  'diaphragmaticBreathing' &&
+                record.templateId === 'diaphragmaticBreathing' &&
                 record.tier === currentTier,
-            );
-
-          recentScores =
-            currentExerciseRecords
-              .slice(-5)
-              .map(
-                record =>
-                  record.scorePct,
-              );
-
-          if (recentScores.length > 0) {
-            console.log(
-              '📊 Diaphragmatic Breathing ADS reference from exercise history:',
-              recentScores,
-            );
-          }
+            )
+            .slice(-5)
+            .map(record => record.scorePct);
         }
 
-        /*
-         * ---------------------------------------------
-         * STEP 3: ASSESSMENT COLD-START FALLBACK
-         * ---------------------------------------------
-         */
-
         if (recentScores.length === 0) {
-          const assessment =
-            await getLatestAssessment();
+          const assessment = await getLatestAssessment();
 
-          const assessmentScore =
-            assessment?.scores.find(
-              score =>
-                score.componentId ===
-                'breathControl',
-            )?.scorePct;
+          const assessmentScore = assessment?.scores.find(
+            score => score.componentId === 'breathControl',
+          )?.scorePct;
 
-          if (
-            typeof assessmentScore ===
-            'number'
-          ) {
-            recentScores = [
-              assessmentScore,
-            ];
-
-            console.log(
-              '📋 Diaphragmatic Breathing ADS cold-start reference from assessment:',
-              assessmentScore,
-            );
-          } else {
-            console.log(
-              'ℹ️ No exercise history or assessment score. Using default parameters.',
-            );
+          if (typeof assessmentScore === 'number') {
+            recentScores = [assessmentScore];
           }
         }
       } catch (error) {
         console.error(
-          '❌ Failed to load Diaphragmatic Breathing ADS reference:',
+          'Failed to load Diaphragmatic Breathing ADS reference:',
           error,
         );
 
         recentScores = [];
       }
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
-      /*
-       * -----------------------------------------------
-       * STEP 4: GENERATE ADAPTIVE PARAMETERS
-       * -----------------------------------------------
-       */
+      const generatedParams = generateDiaphragmaticBreathingParams({
+        tier: currentTier,
+        recentScores,
+      });
 
-      const generatedParams =
-        generateDiaphragmaticBreathingParams({
-          tier: currentTier,
-          recentScores,
-        });
+      if (cancelled) return;
 
-      if (cancelled) {
-        return;
-      }
-
-      paramsRef.current =
-        generatedParams;
-
-      setParams(
-        generatedParams,
-      );
-
+      paramsRef.current = generatedParams;
+      setParams(generatedParams);
       setParamsReady(true);
-
-      console.log(
-        '🎯 Diaphragmatic Breathing adaptive parameters:',
-        {
-          tier: currentTier,
-          recentScores,
-          generatedParams,
-        },
-      );
     };
 
     initializeParams();
@@ -359,637 +209,334 @@ export default function DiaphragmaticBreathingScreen({
     };
   }, [initialTier]);
 
-  /*
-   * =====================================================
-   * TIMER CLEANUP
-   * =====================================================
-   */
+  const clearTimers = useCallback(() => {
+    if (phaseTimerRef.current) {
+      clearInterval(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
 
-  const clearTimers =
-    useCallback(() => {
-      if (phaseTimerRef.current) {
-        clearInterval(
-          phaseTimerRef.current,
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+  }, []);
+
+  const finishExercise = useCallback(async () => {
+    clearTimers();
+
+    if (!mountedRef.current) return;
+
+    const finalResults = repResultsRef.current;
+
+    const finalScore =
+      finalResults.length > 0
+        ? Math.round(
+            finalResults.reduce(
+              (sum, result) => sum + result.score.score,
+              0,
+            ) / finalResults.length,
+          )
+        : 0;
+
+    try {
+      await saveCompletedExercise(
+        'breathControl',
+        'diaphragmaticBreathing',
+        tierRef.current,
+        finalScore,
+      );
+    } catch (error) {
+      console.error(
+        'Failed to save Diaphragmatic Breathing progress:',
+        error,
+      );
+    }
+
+    if (!mountedRef.current) return;
+
+    phaseRef.current = 'results';
+    setPhase('results');
+  }, [clearTimers]);
+
+  const processRep = useCallback(
+    (exhaleSamples: Float32Array, sampleRate: number) => {
+      if (!mountedRef.current) return;
+
+      const adaptiveParams = paramsRef.current;
+
+      if (!adaptiveParams) {
+        console.error(
+          'Diaphragmatic Breathing parameters are not ready.',
         );
 
-        phaseTimerRef.current =
-          null;
-      }
-
-      if (countdownTimerRef.current) {
-        clearInterval(
-          countdownTimerRef.current,
-        );
-
-        countdownTimerRef.current =
-          null;
-      }
-
-      if (stopTimerRef.current) {
-        clearTimeout(
-          stopTimerRef.current,
-        );
-
-        stopTimerRef.current =
-          null;
-      }
-    }, []);
-
-  /*
-   * =====================================================
-   * FINISH EXERCISE
-   * =====================================================
-   */
-
-  const finishExercise =
-    useCallback(
-      async () => {
-        clearTimers();
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        const finalResults =
-          repResultsRef.current;
-
-        const finalScore =
-          finalResults.length > 0
-            ? Math.round(
-                finalResults.reduce(
-                  (sum, result) =>
-                    sum +
-                    result.score.score,
-                  0,
-                ) /
-                  finalResults.length,
-              )
-            : 0;
-
-        console.log(
-          '🏆 Final Diaphragmatic Breathing results:',
-          finalResults,
-        );
-
-        console.log(
-          '🏆 Final Diaphragmatic Breathing score:',
-          finalScore,
-        );
-
-        const activeTier =
-          tierRef.current;
-
-        try {
-          await saveCompletedExercise(
-            'breathControl',
-            'diaphragmaticBreathing',
-            activeTier,
-            finalScore,
-          );
-
-          console.log(
-            '💾 Diaphragmatic Breathing progress saved',
-          );
-        } catch (saveError) {
-          console.error(
-            '❌ Failed to save Diaphragmatic Breathing progress:',
-            saveError,
-          );
-        }
-
-        if (!mountedRef.current) {
-          return;
-        }
-
-        phaseRef.current =
-          'results';
-
-        setPhase('results');
-      },
-      [clearTimers],
-    );
-
-  /*
-   * =====================================================
-   * PROCESS REPETITION
-   * =====================================================
-   */
-
-  const processRep =
-    useCallback(
-      (
-        exhaleSamples: Float32Array,
-        sampleRate: number,
-      ) => {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        const adaptiveParams =
-          paramsRef.current;
-
-        if (!adaptiveParams) {
-          console.error(
-            '❌ Diaphragmatic Breathing parameters are not ready.',
-          );
-
-          phaseRef.current =
-            'instructions';
-
-          setPhase('instructions');
-
-          return;
-        }
-
-        const measurement =
-          measureDiaphragmaticBreathing(
-            exhaleSamples,
-            adaptiveParams.detectionThreshold,
-            sampleRate,
-          );
-
-        const score =
-          scoreDiaphragmaticBreathing(
-            measurement,
-            adaptiveParams,
-          );
-
-        const result: RepResult = {
-          rep: currentRepRef.current,
-          measurement,
-          score,
-        };
-
-        repResultsRef.current = [
-          ...repResultsRef.current,
-          result,
-        ];
-
-        setRepResults([
-          ...repResultsRef.current,
-        ]);
-
-        if (
-          currentRepRef.current >=
-          adaptiveParams.repetitions
-        ) {
-          finishExercise();
-          return;
-        }
-
-        currentRepRef.current += 1;
-
-        setCurrentRep(
-          currentRepRef.current,
-        );
-
-        stopTimerRef.current =
-          setTimeout(() => {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            startCountdownRef.current?.();
-          }, 700);
-      },
-      [finishExercise],
-    );
-
-  /*
-   * =====================================================
-   * HANDLE RECORDING STOP
-   * =====================================================
-   */
-
-  const handleRecordingStop =
-    useCallback(
-      (
-        samples: Float32Array,
-        sampleRate: number,
-      ) => {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        const stoppedPhase =
-          phaseRef.current;
-
-        /*
-         * -----------------------------------------------
-         * EXHALE FINISHED
-         * -----------------------------------------------
-         */
-
-        if (stoppedPhase === 'exhale') {
-          phaseRef.current =
-            'processing';
-
-          setPhase('processing');
-
-          setElapsed(0);
-          setVolume(0);
-
-          stopTimerRef.current =
-            setTimeout(() => {
-              if (!mountedRef.current) {
-                return;
-              }
-
-              processRep(
-                samples,
-                sampleRate,
-              );
-            }, 300);
-        }
-      },
-      [processRep],
-    );
-
-  /*
-   * =====================================================
-   * AUDIO RECORDER
-   * =====================================================
-   */
-
-  const {
-    startRecording,
-    stopRecording,
-  } = useAudioRecorder({
-    onFrame: frame => {
-      if (!mountedRef.current) {
+        phaseRef.current = 'instructions';
+        setPhase('instructions');
         return;
       }
 
-      setVolume(
-        frame.volume ?? 0,
+      const measurement = measureDiaphragmaticBreathing(
+        exhaleSamples,
+        adaptiveParams.detectionThreshold,
+        sampleRate,
       );
-    },
 
-    onStop:
-      handleRecordingStop,
+      const score = scoreDiaphragmaticBreathing(
+        measurement,
+        adaptiveParams,
+      );
+
+      const result: RepResult = {
+        rep: currentRepRef.current,
+        measurement,
+        score,
+      };
+
+      repResultsRef.current = [...repResultsRef.current, result];
+      setRepResults([...repResultsRef.current]);
+
+      if (currentRepRef.current >= adaptiveParams.repetitions) {
+        finishExercise();
+        return;
+      }
+
+      currentRepRef.current += 1;
+      setCurrentRep(currentRepRef.current);
+
+      stopTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+
+        startCountdownRef.current?.();
+      }, 700);
+    },
+    [finishExercise],
+  );
+
+  const handleRecordingStop = useCallback(
+    (samples: Float32Array, sampleRate: number) => {
+      if (!mountedRef.current) return;
+      if (phaseRef.current !== 'exhale') return;
+
+      phaseRef.current = 'processing';
+      setPhase('processing');
+      setElapsed(0);
+      setVolume(0);
+
+      stopTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+
+        processRep(samples, sampleRate);
+      }, 300);
+    },
+    [processRep],
+  );
+
+  const { startRecording, stopRecording } = useAudioRecorder({
+    onFrame: frame => {
+      if (!mountedRef.current) return;
+
+      setVolume(frame.volume ?? 0);
+    },
+    onStop: handleRecordingStop,
   });
 
-  /*
-   * =====================================================
-   * SYNCHRONIZE RECORDER REFS
-   * =====================================================
-   */
-
   useEffect(() => {
-    startRecordingRef.current =
-      startRecording;
+    startRecordingRef.current = startRecording;
+    stopRecordingRef.current = stopRecording;
+  }, [startRecording, stopRecording]);
 
-    stopRecordingRef.current =
-      stopRecording;
-  }, [
-    startRecording,
-    stopRecording,
-  ]);
+  const returnToInstructions = useCallback(() => {
+    phaseRef.current = 'instructions';
 
-  /*
-   * =====================================================
-   * RETURN TO INSTRUCTIONS
-   * =====================================================
-   */
+    clearTimers();
+    stopRecordingRef.current?.();
 
-  const returnToInstructions =
-    useCallback(() => {
-      phaseRef.current =
-        'instructions';
+    setElapsed(0);
+    setVolume(0);
+    setPhase('instructions');
+  }, [clearTimers]);
 
+  const startPhaseTimer = useCallback(
+    (durationSec: number, stopRecorder = true) => {
       clearTimers();
 
-      stopRecordingRef.current?.();
-
+      const startedAt = Date.now();
       setElapsed(0);
-      setVolume(0);
-      setPhase('instructions');
-    }, [clearTimers]);
 
-  /*
-   * =====================================================
-   * PHASE TIMER
-   * =====================================================
-   */
+      phaseTimerRef.current = setInterval(() => {
+        if (!mountedRef.current) return;
 
-  const startPhaseTimer =
-    useCallback(
-      (
-        durationSec: number,
-        stopRecorder = true,
-      ) => {
-        clearTimers();
+        const elapsedSec = (Date.now() - startedAt) / 1000;
 
-        const startedAt =
-          Date.now();
+        setElapsed(Math.min(elapsedSec, durationSec));
 
-        setElapsed(0);
+        if (elapsedSec >= durationSec) {
+          if (phaseTimerRef.current) {
+            clearInterval(phaseTimerRef.current);
+            phaseTimerRef.current = null;
+          }
 
-        phaseTimerRef.current =
-          setInterval(() => {
-            if (!mountedRef.current) {
-              return;
-            }
-
-            const elapsedSec =
-              (Date.now() -
-                startedAt) /
-              1000;
-
-            setElapsed(
-              Math.min(
-                elapsedSec,
-                durationSec,
-              ),
-            );
-
-            if (
-              elapsedSec >=
-              durationSec
-            ) {
-              if (phaseTimerRef.current) {
-                clearInterval(
-                  phaseTimerRef.current,
-                );
-
-                phaseTimerRef.current =
-                  null;
-              }
-
-              if (stopRecorder) {
-                stopRecordingRef.current?.();
-              }
-            }
-          }, 50);
-      },
-      [clearTimers],
-    );
+          if (stopRecorder) {
+            stopRecordingRef.current?.();
+          }
+        }
+      }, 50);
+    },
+    [clearTimers],
+  );
 
   useEffect(() => {
-    startPhaseTimerRef.current =
-      startPhaseTimer;
+    startPhaseTimerRef.current = startPhaseTimer;
   }, [startPhaseTimer]);
 
-  /*
-   * =====================================================
-   * EXHALE PHASE
-   * =====================================================
-   */
+  const startExhalePhase = useCallback(() => {
+    if (!mountedRef.current) return;
 
-  const startExhalePhase =
-    useCallback(() => {
-      if (!mountedRef.current) {
-        return;
-      }
+    const adaptiveParams = paramsRef.current;
+    if (!adaptiveParams) return;
 
-      const adaptiveParams =
-        paramsRef.current;
+    clearTimers();
 
-      if (!adaptiveParams) {
-        return;
-      }
+    phaseRef.current = 'exhale';
+    setPhase('exhale');
+    setElapsed(0);
+    setVolume(0);
 
-      clearTimers();
+    startRecordingRef.current?.();
 
-      phaseRef.current =
-        'exhale';
-
-      setPhase('exhale');
-
-      setElapsed(0);
-      setVolume(0);
-
-      startRecordingRef.current?.();
-
-      startPhaseTimerRef.current?.(
-        adaptiveParams.exhaleSec,
-        true,
-      );
-    }, [clearTimers]);
+    startPhaseTimerRef.current?.(
+      adaptiveParams.exhaleSec,
+      true,
+    );
+  }, [clearTimers]);
 
   useEffect(() => {
-    startExhalePhaseRef.current =
-      startExhalePhase;
+    startExhalePhaseRef.current = startExhalePhase;
   }, [startExhalePhase]);
 
-  /*
-   * =====================================================
-   * INHALE PHASE
-   * =====================================================
-   */
+  const startInhalePhase = useCallback(() => {
+    if (!mountedRef.current) return;
 
-  const startInhalePhase =
-    useCallback(() => {
-      if (!mountedRef.current) {
-        return;
-      }
+    const adaptiveParams = paramsRef.current;
+    if (!adaptiveParams) return;
 
-      const adaptiveParams =
-        paramsRef.current;
+    clearTimers();
 
-      if (!adaptiveParams) {
-        return;
-      }
+    phaseRef.current = 'inhale';
+    setPhase('inhale');
+    setElapsed(0);
+    setVolume(0);
 
-      clearTimers();
+    startPhaseTimerRef.current?.(
+      adaptiveParams.inhaleSec,
+      false,
+    );
 
-      phaseRef.current =
-        'inhale';
+    stopTimerRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
 
-      setPhase('inhale');
-
-      setElapsed(0);
-      setVolume(0);
-
-      startPhaseTimerRef.current?.(
-        adaptiveParams.inhaleSec,
-        false,
-      );
-
-      stopTimerRef.current =
-        setTimeout(() => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          startExhalePhaseRef.current?.();
-        }, adaptiveParams.inhaleSec * 1000);
-    }, [clearTimers]);
+      startExhalePhaseRef.current?.();
+    }, adaptiveParams.inhaleSec * 1000);
+  }, [clearTimers]);
 
   useEffect(() => {
-    startInhalePhaseRef.current =
-      startInhalePhase;
+    startInhalePhaseRef.current = startInhalePhase;
   }, [startInhalePhase]);
 
-  /*
-   * =====================================================
-   * COUNTDOWN
-   * =====================================================
-   */
+  const startCountdown = useCallback(() => {
+    if (!mountedRef.current) return;
 
-  const startCountdown =
-    useCallback(() => {
-      if (!mountedRef.current) {
+    clearTimers();
+
+    phaseRef.current = 'countdown';
+    setPhase('countdown');
+    setCountdown(PREPARATION_COUNTDOWN);
+    setElapsed(0);
+    setVolume(0);
+
+    let value = PREPARATION_COUNTDOWN;
+
+    countdownTimerRef.current = setInterval(() => {
+      if (!mountedRef.current) return;
+
+      value -= 1;
+
+      if (value <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+
+        startInhalePhaseRef.current?.();
         return;
       }
 
-      clearTimers();
-
-      phaseRef.current =
-        'countdown';
-
-      setPhase('countdown');
-
-      setCountdown(
-        PREPARATION_COUNTDOWN,
-      );
-
-      setElapsed(0);
-      setVolume(0);
-
-      let value =
-        PREPARATION_COUNTDOWN;
-
-      countdownTimerRef.current =
-        setInterval(() => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          value -= 1;
-
-          if (value <= 0) {
-            if (countdownTimerRef.current) {
-              clearInterval(
-                countdownTimerRef.current,
-              );
-
-              countdownTimerRef.current =
-                null;
-            }
-
-            startInhalePhaseRef.current?.();
-
-            return;
-          }
-
-          setCountdown(value);
-        }, 1000);
-    }, [clearTimers]);
+      setCountdown(value);
+    }, 1000);
+  }, [clearTimers]);
 
   useEffect(() => {
-    startCountdownRef.current =
-      startCountdown;
+    startCountdownRef.current = startCountdown;
   }, [startCountdown]);
 
-  /*
-   * =====================================================
-   * START EXERCISE
-   * =====================================================
-   */
+  const startExercise = useCallback(() => {
+    if (!paramsReady) return;
 
-  const startExercise =
-    useCallback(() => {
-      if (!paramsReady) {
-        console.log(
-          '⏳ Diaphragmatic Breathing parameters are still loading.',
-        );
-
-        return;
-      }
-
-      if (!paramsRef.current) {
-        console.error(
-          '❌ Cannot start exercise without adaptive parameters.',
-        );
-
-        return;
-      }
-
-      currentRepRef.current =
-        1;
-
-      repResultsRef.current =
-        [];
-
-      setCurrentRep(1);
-      setRepResults([]);
-      setElapsed(0);
-      setVolume(0);
-      setCountdown(
-        PREPARATION_COUNTDOWN,
+    if (!paramsRef.current) {
+      console.error(
+        'Cannot start exercise without adaptive parameters.',
       );
+      return;
+    }
 
-      startCountdownRef.current?.();
-    }, [paramsReady]);
+    currentRepRef.current = 1;
+    repResultsRef.current = [];
 
-  /*
-   * =====================================================
-   * RETRY
-   * =====================================================
-   */
+    setCurrentRep(1);
+    setRepResults([]);
+    setElapsed(0);
+    setVolume(0);
+    setCountdown(PREPARATION_COUNTDOWN);
 
-  const retryExercise =
-    useCallback(() => {
-      if (!paramsReady) {
-        return;
-      }
+    startCountdownRef.current?.();
+  }, [paramsReady]);
 
-      clearTimers();
+  const retryExercise = useCallback(() => {
+    if (!paramsReady) return;
 
-      stopRecordingRef.current?.();
+    clearTimers();
+    stopRecordingRef.current?.();
 
-      currentRepRef.current =
-        1;
+    currentRepRef.current = 1;
+    repResultsRef.current = [];
 
-      repResultsRef.current =
-        [];
+    setCurrentRep(1);
+    setRepResults([]);
+    setElapsed(0);
+    setVolume(0);
+    setCountdown(PREPARATION_COUNTDOWN);
 
-      setCurrentRep(1);
-      setRepResults([]);
-      setElapsed(0);
-      setVolume(0);
-      setCountdown(
-        PREPARATION_COUNTDOWN,
-      );
-
-      startCountdownRef.current?.();
-    }, [
-      clearTimers,
-      paramsReady,
-    ]);
-
-  /*
-   * =====================================================
-   * CLEANUP
-   * =====================================================
-   */
+    startCountdownRef.current?.();
+  }, [clearTimers, paramsReady]);
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
-      mountedRef.current =
-        false;
-
+      mountedRef.current = false;
       clearTimers();
-
       stopRecordingRef.current?.();
     };
   }, [clearTimers]);
 
-  /*
-   * =====================================================
-   * WAIT FOR ADAPTIVE PARAMETERS
-   * =====================================================
-   */
-
   if (!params || !tier) {
     return (
       <View style={styles.loadingScreen}>
-        <View
-          style={styles.loadingIconCircle}
-        >
+        <View style={styles.loadingIconCircle}>
           <Ionicons
             name="options-outline"
             size={44}
@@ -997,17 +544,12 @@ export default function DiaphragmaticBreathingScreen({
           />
         </View>
 
-        <Text
-          style={styles.loadingTitle}
-        >
+        <Text style={styles.loadingTitle}>
           Preparing Your Exercise
         </Text>
 
-        <Text
-          style={styles.loadingText}
-        >
-          Adjusting the exercise to your
-          current difficulty level
+        <Text style={styles.loadingText}>
+          Adjusting the exercise to your current difficulty level
         </Text>
 
         <ActivityIndicator
@@ -1019,22 +561,13 @@ export default function DiaphragmaticBreathingScreen({
     );
   }
 
-  /*
-   * =====================================================
-   * CALCULATED RESULTS
-   * =====================================================
-   */
-
   const averageScore =
     repResults.length > 0
       ? Math.round(
           repResults.reduce(
-            (sum, result) =>
-              sum +
-              result.score.score,
+            (sum, result) => sum + result.score.score,
             0,
-          ) /
-            repResults.length,
+          ) / repResults.length,
         )
       : 0;
 
@@ -1042,58 +575,34 @@ export default function DiaphragmaticBreathingScreen({
     repResults.length > 0
       ? repResults.reduce(
           (sum, result) =>
-            sum +
-            result.measurement
-              .exhaleDurationSec,
+            sum + result.measurement.exhaleDurationSec,
           0,
-        ) /
-        repResults.length
+        ) / repResults.length
       : 0;
 
   const averageConsistency =
     repResults.length > 0
       ? repResults.reduce(
           (sum, result) =>
-            sum +
-            result.measurement
-              .consistencyPct,
+            sum + result.measurement.consistencyPct,
           0,
-        ) /
-        repResults.length
+        ) / repResults.length
       : 0;
 
   const averageVolume =
     repResults.length > 0
       ? repResults.reduce(
-          (sum, result) =>
-            sum +
-            result.measurement
-              .volumeDb,
+          (sum, result) => sum + result.measurement.volumeDb,
           0,
-        ) /
-        repResults.length
+        ) / repResults.length
       : 0;
 
   const progress =
     phase === 'inhale'
-      ? Math.min(
-          elapsed /
-            params.inhaleSec,
-          1,
-        )
+      ? Math.min(elapsed / params.inhaleSec, 1)
       : phase === 'exhale'
-        ? Math.min(
-            elapsed /
-              params.exhaleSec,
-            1,
-          )
+        ? Math.min(elapsed / params.exhaleSec, 1)
         : 0;
-
-  /*
-   * =====================================================
-   * INSTRUCTIONS
-   * =====================================================
-   */
 
   if (phase === 'instructions') {
     return (
@@ -1125,19 +634,11 @@ export default function DiaphragmaticBreathingScreen({
         repetitions={params.repetitions}
         tip="Focus on maintaining a relaxed, controlled airflow instead of forcing each breath."
         tier={tier}
-        onBack={() =>
-          router.back()
-        }
+        onBack={() => router.back()}
         onStart={startExercise}
       />
     );
   }
-
-  /*
-   * =====================================================
-   * COUNTDOWN
-   * =====================================================
-   */
 
   if (phase === 'countdown') {
     return (
@@ -1149,82 +650,48 @@ export default function DiaphragmaticBreathingScreen({
         countdown={countdown}
         promptTitle="Prepare to breathe"
         prompt="Relax your shoulders and get ready to inhale slowly."
-        onBack={
-          returnToInstructions
-        }
+        onBack={returnToInstructions}
       />
     );
   }
 
-  /*
-   * =====================================================
-   * INHALE
-   * =====================================================
-   */
-
   if (phase === 'inhale') {
     return (
-      <View
-        style={styles.exerciseContainer}
-      >
-        <View
-          style={styles.exerciseContent}
-        >
-          <Text
-            style={styles.phaseLabel}
-          >
-            INHALE
+      <View style={styles.exerciseContainer}>
+        <View style={styles.exerciseContent}>
+          <Text style={styles.phaseLabel}>INHALE</Text>
+
+          <Text style={styles.repText}>
+            Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <Text
-            style={styles.repText}
-          >
-            Repetition {currentRep} of{' '}
-            {params.repetitions}
-          </Text>
-
-          <View
-            style={styles.breathCircle}
-          >
+          <View style={styles.breathCircle}>
             <Ionicons
               name="arrow-down-outline"
               size={42}
               color={BROWN}
             />
 
-            <Text
-              style={styles.phaseTime}
-            >
+            <Text style={styles.phaseTime}>
               {elapsed.toFixed(1)}
             </Text>
 
-            <Text
-              style={styles.phaseTarget}
-            >
+            <Text style={styles.phaseTarget}>
               / {params.inhaleSec.toFixed(1)}s
             </Text>
           </View>
 
-          <Text
-            style={styles.instructionTitle}
-          >
+          <Text style={styles.instructionTitle}>
             Breathe in slowly
           </Text>
 
-          <Text
-            style={styles.instructionText}
-          >
-            Take a comfortable, deep
-            breath using your diaphragm.
+          <Text style={styles.instructionText}>
+            Take a comfortable, deep breath using your diaphragm.
           </Text>
 
-          <ProgressBar
-            progress={progress}
-          />
+          <ProgressBar progress={progress} />
 
-          <Text
-            style={styles.smallHint}
-          >
+          <Text style={styles.smallHint}>
             Keep your shoulders relaxed.
           </Text>
         </View>
@@ -1232,104 +699,59 @@ export default function DiaphragmaticBreathingScreen({
     );
   }
 
-  /*
-   * =====================================================
-   * EXHALE
-   * =====================================================
-   */
-
   if (phase === 'exhale') {
     return (
-      <View
-        style={styles.exerciseContainer}
-      >
-        <View
-          style={styles.exerciseContent}
-        >
-          <Text
-            style={styles.phaseLabel}
-          >
-            EXHALE
+      <View style={styles.exerciseContainer}>
+        <View style={styles.exerciseContent}>
+          <Text style={styles.phaseLabel}>EXHALE</Text>
+
+          <Text style={styles.repText}>
+            Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <Text
-            style={styles.repText}
-          >
-            Repetition {currentRep} of{' '}
-            {params.repetitions}
-          </Text>
-
-          <View
-            style={styles.breathCircle}
-          >
+          <View style={styles.breathCircle}>
             <Ionicons
               name="arrow-up-outline"
               size={42}
               color={BROWN}
             />
 
-            <Text
-              style={styles.phaseTime}
-            >
+            <Text style={styles.phaseTime}>
               {elapsed.toFixed(1)}
             </Text>
 
-            <Text
-              style={styles.phaseTarget}
-            >
+            <Text style={styles.phaseTarget}>
               / {params.exhaleSec.toFixed(1)}s
             </Text>
           </View>
 
-          <Text
-            style={styles.instructionTitle}
-          >
+          <Text style={styles.instructionTitle}>
             Exhale gently
           </Text>
 
-          <Text
-            style={styles.instructionText}
-          >
-            Slowly release your breath
-            toward the microphone.
+          <Text style={styles.instructionText}>
+            Slowly release your breath toward the microphone.
           </Text>
 
-          <View
-            style={styles.volumeCard}
-          >
-            <Text
-              style={styles.volumeLabel}
-            >
+          <View style={styles.volumeCard}>
+            <Text style={styles.volumeLabel}>
               AIRFLOW LEVEL
             </Text>
 
-            <Text
-              style={styles.volumeValue}
-            >
+            <Text style={styles.volumeValue}>
               {volume.toFixed(2)}
             </Text>
           </View>
 
-          <ProgressBar
-            progress={progress}
-          />
+          <ProgressBar progress={progress} />
 
-          <Text
-            style={styles.smallHint}
-          >
-            Keep your airflow smooth and
-            consistent.
+          <Text style={styles.smallHint}>
+            Keep your airflow smooth and consistent.
           </Text>
         </View>
       </View>
     );
   }
-
-  /*
-   * =====================================================
-   * PROCESSING
-   * =====================================================
-   */
 
   if (phase === 'processing') {
     return (
@@ -1337,18 +759,10 @@ export default function DiaphragmaticBreathingScreen({
         icon="analytics-outline"
         title="Analyzing Your Breathing"
         message="Measuring duration, consistency, and volume..."
-        onBack={
-          returnToInstructions
-        }
+        onBack={returnToInstructions}
       />
     );
   }
-
-  /*
-   * =====================================================
-   * RESULTS
-   * =====================================================
-   */
 
   return (
     <ExerciseResultsScreen
@@ -1369,20 +783,14 @@ export default function DiaphragmaticBreathingScreen({
               ? 'Good effort!'
               : 'Keep practicing!'
       }
-      onBack={
-        returnToInstructions
-      }
+      onBack={returnToInstructions}
       onRetry={retryExercise}
       onExit={() =>
-        router.replace(
-          '/dashboard?tab=exercises',
-        )
+        router.replace('/dashboard?tab=exercises')
       }
     >
       <View>
-        <View
-          style={styles.statsGrid}
-        >
+        <View style={styles.statsGrid}>
           <ResultStat
             label="Avg. Exhale"
             value={`${averageExhale.toFixed(1)}s`}
@@ -1390,129 +798,78 @@ export default function DiaphragmaticBreathingScreen({
 
           <ResultStat
             label="Consistency"
-            value={`${Math.round(
-              averageConsistency,
-            )}%`}
+            value={`${Math.round(averageConsistency)}%`}
           />
 
           <ResultStat
             label="Avg. Volume"
             value={
-              Number.isFinite(
-                averageVolume,
-              )
+              Number.isFinite(averageVolume)
                 ? `${averageVolume.toFixed(1)} dB`
                 : '--'
             }
           />
         </View>
 
-        <Text
-          style={styles.sectionTitle}
-        >
+        <Text style={styles.sectionTitle}>
           Repetition Results
         </Text>
 
-        {repResults.map(
-          result => (
-            <View
-              key={`rep-${result.rep}`}
-              style={
-                styles.repResultCard
-              }
-            >
+        {repResults.map(result => (
+          <View
+            key={`rep-${result.rep}`}
+            style={styles.repResultCard}
+          >
+            <View style={styles.repResultHeader}>
+              <Text style={styles.repResultTitle}>
+                Repetition {result.rep}
+              </Text>
+
               <View
-                style={
-                  styles.repResultHeader
-                }
+                style={[
+                  styles.passBadge,
+                  !result.score.passed && styles.failBadge,
+                ]}
               >
-                <Text
-                  style={
-                    styles.repResultTitle
-                  }
-                >
-                  Repetition {result.rep}
+                <Text style={styles.passBadgeText}>
+                  {result.score.passed
+                    ? 'PASS'
+                    : 'KEEP PRACTICING'}
                 </Text>
-
-                <View
-                  style={[
-                    styles.passBadge,
-                    !result.score
-                      .passed &&
-                      styles.failBadge,
-                  ]}
-                >
-                  <Text
-                    style={
-                      styles.passBadgeText
-                    }
-                  >
-                    {result.score.passed
-                      ? 'PASS'
-                      : 'KEEP PRACTICING'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={
-                  styles.repMetrics
-                }
-              >
-                <Metric
-                  label="Exhale"
-                  value={`${result.measurement.exhaleDurationSec.toFixed(
-                    1,
-                  )}s`}
-                />
-
-                <Metric
-                  label="Consistency"
-                  value={`${Math.round(
-                    result.measurement
-                      .consistencyPct,
-                  )}%`}
-                />
-
-                <Metric
-                  label="Score"
-                  value={`${result.score.score}%`}
-                />
               </View>
             </View>
-          ),
-        )}
+
+            <View style={styles.repMetrics}>
+              <Metric
+                label="Exhale"
+                value={`${result.measurement.exhaleDurationSec.toFixed(1)}s`}
+              />
+
+              <Metric
+                label="Consistency"
+                value={`${Math.round(result.measurement.consistencyPct)}%`}
+              />
+
+              <Metric
+                label="Score"
+                value={`${result.score.score}%`}
+              />
+            </View>
+          </View>
+        ))}
       </View>
     </ExerciseResultsScreen>
   );
 }
 
-/*
- * =====================================================
- * UI COMPONENTS
- * =====================================================
- */
-
-function ProgressBar({
-  progress,
-}: {
-  progress: number;
-}) {
+function ProgressBar({ progress }: { progress: number }) {
   return (
-    <View
-      style={styles.progressTrack}
-    >
+    <View style={styles.progressTrack}>
       <View
         style={[
           styles.progressFill,
           {
-            width: `${Math.max(
-              0,
-              Math.min(
-                progress,
-                1,
-              ) * 100,
-            )}%`,
+            width: `${Math.max(0, Math.min(progress, 1) * 100)}%`,
           },
         ]}
       />
@@ -1528,20 +885,9 @@ function ResultStat({
   value: string;
 }) {
   return (
-    <View
-      style={styles.resultStat}
-    >
-      <Text
-        style={styles.resultStatValue}
-      >
-        {value}
-      </Text>
-
-      <Text
-        style={styles.resultStatLabel}
-      >
-        {label}
-      </Text>
+    <View style={styles.resultStat}>
+      <Text style={styles.resultStatValue}>{value}</Text>
+      <Text style={styles.resultStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -1554,29 +900,12 @@ function Metric({
   value: string;
 }) {
   return (
-    <View
-      style={styles.metric}
-    >
-      <Text
-        style={styles.metricLabel}
-      >
-        {label}
-      </Text>
-
-      <Text
-        style={styles.metricValue}
-      >
-        {value}
-      </Text>
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
-
-/*
- * =====================================================
- * STYLES
- * =====================================================
- */
 
 const styles = StyleSheet.create({
   loadingScreen: {
@@ -1586,7 +915,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   loadingIconCircle: {
     width: 96,
     height: 96,
@@ -1596,14 +924,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   loadingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   loadingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
@@ -1611,37 +937,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
-
   loadingSpinner: {
     marginTop: 28,
   },
-
   exerciseContainer: {
     flex: 1,
     backgroundColor: WHITE,
   },
-
   exerciseContent: {
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 25,
     paddingTop: 45,
   },
-
   phaseLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     letterSpacing: 1.5,
     color: BROWN,
   },
-
   repText: {
     marginTop: 5,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
   },
-
   breathCircle: {
     width: 220,
     height: 220,
@@ -1651,21 +971,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 42,
   },
-
   phaseTime: {
     marginTop: 8,
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
   },
-
   phaseTarget: {
     marginTop: 2,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: MUTED,
   },
-
   instructionTitle: {
     marginTop: 30,
     fontFamily: 'FredokaBold',
@@ -1673,7 +990,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     textAlign: 'center',
   },
-
   instructionText: {
     marginTop: 7,
     maxWidth: 320,
@@ -1683,7 +999,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   progressTrack: {
     width: '100%',
     height: 10,
@@ -1692,13 +1007,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 30,
   },
-
   progressFill: {
     height: '100%',
     borderRadius: 5,
     backgroundColor: BROWN,
   },
-
   smallHint: {
     marginTop: 18,
     fontFamily: 'FredokaRegular',
@@ -1706,7 +1019,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   volumeCard: {
     width: '100%',
     marginTop: 22,
@@ -1715,28 +1027,24 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     alignItems: 'center',
   },
-
   volumeLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
     letterSpacing: 1,
     color: MUTED,
   },
-
   volumeValue: {
     marginTop: 3,
     fontFamily: 'FredokaBold',
     fontSize: 28,
     color: BROWN,
   },
-
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 12,
   },
-
   resultStat: {
     width: '48%',
     flexGrow: 1,
@@ -1745,20 +1053,17 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
   },
-
   resultStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
   },
-
   resultStatLabel: {
     marginTop: 3,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
   },
-
   sectionTitle: {
     marginTop: 24,
     marginBottom: 10,
@@ -1766,7 +1071,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: BROWN,
   },
-
   repResultCard: {
     backgroundColor: WHITE,
     borderWidth: 1,
@@ -1775,53 +1079,44 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 10,
   },
-
   repResultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   repResultTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },
-
   passBadge: {
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 10,
     backgroundColor: PINK,
   },
-
   failBadge: {
     backgroundColor: LIGHT_GRAY,
   },
-
   passBadgeText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 9,
     color: BROWN,
   },
-
   repMetrics: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 13,
     gap: 8,
   },
-
   metric: {
     width: '47%',
   },
-
   metricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   metricValue: {
     marginTop: 2,
     fontFamily: 'FredokaSemiBold',
