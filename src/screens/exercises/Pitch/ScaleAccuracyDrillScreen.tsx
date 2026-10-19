@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -69,6 +70,12 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
+const GUIDE_GREEN = '#4F9B67';
+const GUIDE_YELLOW = '#D9A72E';
+const GUIDE_RED = '#D64F5A';
+
+const GUIDE_NEUTRAL = '#B8A9A4';
+
 const COUNTDOWN_SECONDS = 3;
 const NOTE_DURATION_SECONDS = 0.8;
 const RECORDING_MIN_DURATION_MS = 5000;
@@ -100,74 +107,11 @@ interface QuitExerciseModalProps {
   quitting: boolean;
 }
 
-function QuitExerciseModal({
-  visible,
-  message,
-  onContinue,
-  onQuit,
-  quitting,
-}: QuitExerciseModalProps) {
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onContinue}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.quitModalCard}>
-          <View style={styles.quitIconCircle}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.quitModalTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.quitModalMessage}>
-            {message}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={quitting}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.modalButtonPressed,
-              quitting && styles.modalButtonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={quitting}
-            onPress={onQuit}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.modalButtonPressed,
-              quitting && styles.modalButtonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {quitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
+interface LivePitchIndicatorProps {
+  targetNote: string;
+  targetFrequency: number | null;
+  detectedFrequency: number | null;
+  detectedNote: string | null;
 }
 
 function generateScale(
@@ -200,6 +144,18 @@ function averagePositive(values: number[]): number {
   return average(
     values.filter(value => Number.isFinite(value) && value > 0),
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatFrequency(frequency: number | null): string {
+  return frequency !== null &&
+    Number.isFinite(frequency) &&
+    frequency > 0
+    ? `${Math.round(frequency)} Hz`
+    : '-- Hz';
 }
 
 function aggregateScaleResults(
@@ -266,9 +222,332 @@ function aggregateScaleResults(
   };
 }
 
-export default function ScaleAccuracyDrillScreen({
-  tier,
-}: Props) {
+function LivePitchIndicator({
+  targetNote,
+  targetFrequency,
+  detectedFrequency,
+  detectedNote,
+}: LivePitchIndicatorProps) {
+  const hasTarget =
+    targetFrequency !== null &&
+    Number.isFinite(targetFrequency) &&
+    targetFrequency > 0;
+
+  const hasPitch =
+    detectedFrequency !== null &&
+    Number.isFinite(detectedFrequency) &&
+    detectedFrequency > 0;
+
+  const hasValidComparison = hasTarget && hasPitch;
+
+  const centsOffset = hasValidComparison
+    ? 1200 * Math.log2(detectedFrequency / targetFrequency)
+    : null;
+
+  const absoluteOffset =
+    centsOffset === null ? null : Math.abs(centsOffset);
+
+  // Keep the marker inside the track so it never gets clipped.
+  // Negative cents = flat/left; positive cents = sharp/right.
+  const markerPosition =
+    centsOffset === null
+      ? 50
+      : clamp(50 + (centsOffset / 100) * 43, 7, 93);
+
+  const guideColor = !hasValidComparison
+    ? GUIDE_NEUTRAL
+    : absoluteOffset !== null && absoluteOffset <= 25
+      ? GUIDE_GREEN
+      : absoluteOffset !== null && absoluteOffset <= 60
+        ? GUIDE_YELLOW
+        : GUIDE_RED;
+
+  const directionLabel = !hasValidComparison
+    ? 'LISTENING'
+    : absoluteOffset !== null && absoluteOffset <= 25
+      ? 'IN TUNE'
+      : centsOffset !== null && centsOffset < 0
+        ? 'TOO LOW'
+        : 'TOO HIGH';
+
+  const guideMessage = !hasValidComparison
+    ? 'Sing the highlighted note to activate the guide.'
+    : absoluteOffset !== null && absoluteOffset <= 25
+      ? 'Great! Keep your pitch steady.'
+      : centsOffset !== null && centsOffset < 0
+        ? 'Raise your pitch toward the center.'
+        : 'Lower your pitch toward the center.';
+
+  const markerIcon =
+    !hasValidComparison
+      ? 'mic-outline'
+      : absoluteOffset !== null && absoluteOffset <= 25
+        ? 'checkmark'
+        : centsOffset !== null && centsOffset < 0
+          ? 'arrow-back'
+          : 'arrow-forward';
+
+  return (
+    <View
+      style={styles.pitchGuide}
+      accessibilityLabel={
+        hasValidComparison
+          ? `Live pitch guide. Target ${targetNote}, detected ${
+              detectedNote ?? 'unknown note'
+            }, ${directionLabel}.`
+          : 'Live pitch guide waiting for a detected pitch.'
+      }
+    >
+      <View style={styles.pitchGuideHeader}>
+        <View style={styles.pitchGuideHeading}>
+          <View
+            style={[
+              styles.pitchGuideLiveDot,
+              { backgroundColor: guideColor },
+            ]}
+          />
+          <Text style={styles.pitchGuideTitle}>LIVE PITCH GUIDE</Text>
+        </View>
+
+        <View
+          style={[
+            styles.pitchStatusBadge,
+            { backgroundColor: `${guideColor}18` },
+          ]}
+        >
+          <Text
+            style={[
+              styles.pitchStatusText,
+              { color: guideColor },
+            ]}
+          >
+            {directionLabel}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.pitchGuideNotes}>
+        <View style={styles.pitchGuideNoteBlock}>
+          <Text style={styles.pitchGuideNoteLabel}>TARGET NOTE</Text>
+          <Text style={styles.pitchGuideTargetNote}>
+            {targetNote}
+          </Text>
+          <Text style={styles.pitchGuideFrequency}>
+            {formatFrequency(targetFrequency)}
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.pitchGuideArrow,
+            { backgroundColor: `${guideColor}18` },
+          ]}
+        >
+          <Ionicons
+            name={markerIcon}
+            size={22}
+            color={guideColor}
+          />
+        </View>
+
+        <View style={styles.pitchGuideNoteBlock}>
+          <Text style={styles.pitchGuideNoteLabel}>YOUR PITCH</Text>
+          <Text
+            style={[
+              styles.pitchGuideDetectedNote,
+              { color: guideColor },
+            ]}
+          >
+            {detectedNote ?? '--'}
+          </Text>
+          <Text style={styles.pitchGuideFrequency}>
+            {formatFrequency(detectedFrequency)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.pitchMeterLabels}>
+        <View style={styles.pitchMeterSide}>
+          <Ionicons
+            name="arrow-back"
+            size={11}
+            color={GUIDE_RED}
+          />
+          <Text style={[styles.pitchMeterSideLabel, { color: GUIDE_RED }]}>
+            LOW
+          </Text>
+        </View>
+
+        <Text style={styles.pitchMeterCenterLabel}>TARGET</Text>
+
+        <View style={styles.pitchMeterSide}>
+          <Text style={[styles.pitchMeterSideLabel, { color: GUIDE_RED }]}>
+            HIGH
+          </Text>
+          <Ionicons
+            name="arrow-forward"
+            size={11}
+            color={GUIDE_RED}
+          />
+        </View>
+      </View>
+
+      <View style={styles.pitchMeterContainer}>
+        <View style={styles.pitchMeterTrack}>
+          <View
+            style={[
+              styles.pitchMeterSegment,
+              styles.pitchMeterRedLeft,
+            ]}
+          />
+          <View
+            style={[
+              styles.pitchMeterSegment,
+              styles.pitchMeterYellowLeft,
+            ]}
+          />
+          <View
+            style={[
+              styles.pitchMeterSegment,
+              styles.pitchMeterGreen,
+            ]}
+          />
+          <View
+            style={[
+              styles.pitchMeterSegment,
+              styles.pitchMeterYellowRight,
+            ]}
+          />
+          <View
+            style={[
+              styles.pitchMeterSegment,
+              styles.pitchMeterRedRight,
+            ]}
+          />
+
+          <View style={styles.pitchMeterTargetLine} />
+
+          <View
+            style={[
+              styles.pitchMeterMarker,
+              {
+                left: `${markerPosition}%`,
+                borderColor: guideColor,
+                opacity: hasValidComparison ? 1 : 0.55,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.pitchMeterMarkerInner,
+                { backgroundColor: guideColor },
+              ]}
+            />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.pitchMeterScale}>
+        <Text style={styles.pitchMeterScaleText}>-100 cents</Text>
+        <Text style={styles.pitchMeterScaleText}>0</Text>
+        <Text style={styles.pitchMeterScaleText}>+100 cents</Text>
+      </View>
+
+      <View style={styles.pitchGuideFooter}>
+        <View style={styles.pitchGuideHintRow}>
+          <Ionicons
+            name={
+              hasValidComparison
+                ? absoluteOffset !== null && absoluteOffset <= 25
+                  ? 'checkmark-circle'
+                  : 'bulb-outline'
+                : 'ear-outline'
+            }
+            size={15}
+            color={guideColor}
+          />
+          <Text style={styles.pitchGuideHint}>{guideMessage}</Text>
+        </View>
+
+        {hasValidComparison && centsOffset !== null && (
+          <Text
+            style={[
+              styles.pitchCentsValue,
+              { color: guideColor },
+            ]}
+          >
+            {centsOffset > 0 ? '+' : ''}
+            {Math.round(centsOffset)}¢
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function QuitExerciseModal({
+  visible,
+  message,
+  onContinue,
+  onQuit,
+  quitting,
+}: QuitExerciseModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onContinue}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.quitModalCard}>
+          <View style={styles.quitIconCircle}>
+            <Ionicons name="exit-outline" size={30} color={BROWN} />
+          </View>
+
+          <Text style={styles.quitModalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.quitModalMessage}>{message}</Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={quitting}
+            onPress={onContinue}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.modalButtonPressed,
+              quitting && styles.modalButtonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={quitting}
+            onPress={onQuit}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.modalButtonPressed,
+              quitting && styles.modalButtonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {quitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const initialTier = tier ?? 'beginner';
 
   const [currentTier, setCurrentTier] = useState<Tier>(initialTier);
@@ -282,8 +561,7 @@ export default function ScaleAccuracyDrillScreen({
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
   const [currentRep, setCurrentRep] = useState(1);
-  const [vocalRange, setVocalRange] =
-    useState<VocalRange | null>(null);
+  const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
 
   const [targetNotes, setTargetNotes] = useState(() =>
     generateScale(
@@ -293,11 +571,11 @@ export default function ScaleAccuracyDrillScreen({
     ),
   );
 
-  const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(null);
+  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
   const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
-  const [result, setResult] =
-    useState<ScaleAccuracyScoreResult | null>(null);
+  const [result, setResult] = useState<ScaleAccuracyScoreResult | null>(
+    null,
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -331,8 +609,7 @@ export default function ScaleAccuracyDrillScreen({
   const transitionTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const stopRecordingRef =
-    useRef<(() => Promise<void>) | null>(null);
+  const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
   const beginRepCountdownRef = useRef<() => void>(() => {});
 
   const updatePhase = useCallback((nextPhase: Phase) => {
@@ -412,10 +689,6 @@ export default function ScaleAccuracyDrillScreen({
         recordingTimerRef.current = null;
       }
 
-      /*
-       * Consume the stop callback for an interrupted recording.
-       * Never score audio captured before or during the quit modal.
-       */
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         stopPendingForQuitRef.current = false;
@@ -464,8 +737,7 @@ export default function ScaleAccuracyDrillScreen({
       startingRecordingRef.current = false;
       recordingElapsedRef.current = 0;
 
-      const isLastRep =
-        currentRepRef.current >= params.repetitions;
+      const isLastRep = currentRepRef.current >= params.repetitions;
 
       if (!isLastRep) {
         const nextRep = currentRepRef.current + 1;
@@ -554,10 +826,7 @@ export default function ScaleAccuracyDrillScreen({
           return;
         }
 
-        const finalResult = aggregateScaleResults(
-          scores,
-          targetFreqs,
-        );
+        const finalResult = aggregateScaleResults(scores, targetFreqs);
 
         await saveCompletedExercise(
           'pitch',
@@ -596,12 +865,7 @@ export default function ScaleAccuracyDrillScreen({
         stopRequestedRef.current = false;
       }
     },
-    [
-      currentTier,
-      params,
-      resetLiveData,
-      updatePhase,
-    ],
+    [currentTier, params, resetLiveData, updatePhase],
   );
 
   const {
@@ -645,10 +909,6 @@ export default function ScaleAccuracyDrillScreen({
 
       await startRecording();
 
-      /*
-       * The modal can open while native recording startup is pending.
-       * Stop and discard that recording before allowing a restart.
-       */
       if (
         !mountedRef.current ||
         pausedRef.current ||
@@ -675,10 +935,7 @@ export default function ScaleAccuracyDrillScreen({
 
       recordingRef.current = true;
 
-      const noteCount = Math.max(
-        1,
-        targetNotesRef.current.length,
-      );
+      const noteCount = Math.max(1, targetNotesRef.current.length);
       const recordingDuration = Math.max(
         RECORDING_MIN_DURATION_MS,
         noteCount * RECORDING_MS_PER_NOTE,
@@ -760,7 +1017,7 @@ export default function ScaleAccuracyDrillScreen({
     } finally {
       startingRecordingRef.current = false;
     }
-  }, [resetLiveData, startRecording, updatePhase]);
+  }, [resetLiveData, startRecording, stopRecording, updatePhase]);
 
   const playScaleAndRecord = useCallback(async () => {
     if (
@@ -897,11 +1154,7 @@ export default function ScaleAccuracyDrillScreen({
 
     clearTimers();
 
-    const newScale = generateScale(
-      params,
-      currentTier,
-      vocalRange,
-    );
+    const newScale = generateScale(params, currentTier, vocalRange);
 
     targetNotesRef.current = newScale;
     setTargetNotes(newScale);
@@ -955,8 +1208,6 @@ export default function ScaleAccuracyDrillScreen({
         console.warn('Failed to stop recorder before retry:', error);
       });
 
-      // Do not start a new run while the previous native recorder is
-      // still stopping. The user can retry again if stopping fails.
       setErrorMessage(
         'The microphone is still stopping. Please retry in a moment.',
       );
@@ -976,18 +1227,10 @@ export default function ScaleAccuracyDrillScreen({
     setErrorMessage(null);
     updatePhase('instructions');
     pausedRef.current = false;
-  }, [
-    clearTimers,
-    isRecording,
-    resetRecordingState,
-    updatePhase,
-  ]);
+  }, [clearTimers, isRecording, resetRecordingState, updatePhase]);
 
   const openQuitModal = useCallback(() => {
-    if (
-      showQuitModalRef.current ||
-      isQuittingRef.current
-    ) {
+    if (showQuitModalRef.current || isQuittingRef.current) {
       return;
     }
 
@@ -1010,11 +1253,6 @@ export default function ScaleAccuracyDrillScreen({
       isRecording;
 
     if (recorderMayBeActive) {
-      /*
-       * AudioRecorder cannot safely pause and resume.
-       * Discard the current repetition's recording and restart it
-       * only after the interrupted stop callback has been consumed.
-       */
       discardNextStopRef.current = true;
       stopPendingForQuitRef.current = true;
       stopRequestedRef.current = true;
@@ -1066,10 +1304,6 @@ export default function ScaleAccuracyDrillScreen({
     }
 
     if (interruptedPhase === 'processing') {
-      /*
-       * Processing already in progress is allowed to finish. If its
-       * result is ready, return to the results screen.
-       */
       pausedRef.current = false;
 
       if (result) {
@@ -1080,11 +1314,6 @@ export default function ScaleAccuracyDrillScreen({
     }
 
     if (stopPendingForQuitRef.current) {
-      /*
-       * Keep the exercise paused until the recorder's interrupted
-       * stop callback has been consumed. That callback resumes the
-       * current repetition.
-       */
       resumeAfterDiscardRef.current = true;
       return;
     }
@@ -1123,9 +1352,7 @@ export default function ScaleAccuracyDrillScreen({
       startingRecordingRef.current = false;
 
       try {
-        await Promise.resolve(
-          stopRecordingRef.current?.(),
-        );
+        await Promise.resolve(stopRecordingRef.current?.());
       } catch (error) {
         console.warn('Could not stop recording while leaving:', error);
       }
@@ -1311,12 +1538,14 @@ export default function ScaleAccuracyDrillScreen({
       ? targetNotes[currentNoteIndex]
       : null;
 
+  const hasLivePitch =
+    liveFrame !== null &&
+    Number.isFinite(liveFrame.pitch) &&
+    liveFrame.pitch > 0;
+
   const liveAccuracy =
-    liveFrame && currentTarget && liveFrame.pitch > 0
-      ? calcPitchAccuracy(
-          liveFrame.pitch,
-          currentTarget.frequency,
-        )
+    hasLivePitch && currentTarget
+      ? calcPitchAccuracy(liveFrame.pitch, currentTarget.frequency)
       : 0;
 
   const liveStability = calcLiveStability(liveFrequencies);
@@ -1483,39 +1712,72 @@ export default function ScaleAccuracyDrillScreen({
           </Text>
 
           <View style={styles.liveCard}>
-            <Text style={styles.liveLabel}>Current Target</Text>
-
-            <Text style={styles.liveTarget}>
-              {currentTarget?.name ?? '--'}
-            </Text>
-
-            <View style={styles.liveDivider} />
-
-            <Text style={styles.liveLabel}>Your Note</Text>
-
-            <Text style={styles.liveNote}>
-              {liveFrame?.note ?? '--'}
-            </Text>
-
-            <Text style={styles.liveFrequency}>
-              {liveFrame && liveFrame.pitch > 0
-                ? `${Math.round(liveFrame.pitch)} Hz`
-                : '--'}
-            </Text>
+            <LivePitchIndicator
+              targetNote={currentTarget?.name ?? '--'}
+              targetFrequency={currentTarget?.frequency ?? null}
+              detectedFrequency={hasLivePitch ? liveFrame.pitch : null}
+              detectedNote={hasLivePitch ? liveFrame.note : null}
+            />
 
             <View style={styles.liveStats}>
               <View style={styles.liveStat}>
+                <View style={styles.liveStatIcon}>
+                  <Ionicons
+                    name="locate-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                </View>
+
                 <Text style={styles.liveStatLabel}>Accuracy</Text>
+
                 <Text style={styles.liveStatValue}>
-                  {Math.round(liveAccuracy)}%
+                  {hasLivePitch && currentTarget
+                    ? `${Math.round(liveAccuracy)}%`
+                    : '--'}
                 </Text>
               </View>
 
+              <View style={styles.liveStatsDivider} />
+
               <View style={styles.liveStat}>
+                <View style={styles.liveStatIcon}>
+                  <Ionicons
+                    name="pulse-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                </View>
+
                 <Text style={styles.liveStatLabel}>Stability</Text>
+
                 <Text style={styles.liveStatValue}>
-                  {Math.round(liveStability)}%
+                  {liveFrequencies.length > 0
+                    ? `${Math.round(liveStability)}%`
+                    : '--'}
                 </Text>
+              </View>
+
+              <View style={styles.liveStatsDivider} />
+
+              <View style={styles.liveStat}>
+                <View style={styles.liveStatIcon}>
+                  <Ionicons
+                    name="speedometer-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                </View>
+
+                <Text style={styles.liveStatLabel}>Frequency</Text>
+
+                <Text style={styles.liveStatValue}>
+                  {hasLivePitch
+                    ? `${Math.round(liveFrame.pitch)}`
+                    : '--'}
+                </Text>
+
+                <Text style={styles.liveStatUnit}>Hz</Text>
               </View>
             </View>
           </View>
@@ -1523,18 +1785,30 @@ export default function ScaleAccuracyDrillScreen({
           <View style={styles.scalePreview}>
             {targetNotes.map((note, index) => {
               const active = index === currentNoteIndex;
+              const completed = index < currentNoteIndex;
 
               return (
                 <View
                   key={`${note.name}-${index}`}
                   style={[
                     styles.previewNote,
+                    completed && styles.previewNoteCompleted,
                     active && styles.previewNoteActive,
                   ]}
                 >
+                  {completed && (
+                    <Ionicons
+                      name="checkmark"
+                      size={11}
+                      color={GUIDE_GREEN}
+                      style={styles.previewCheck}
+                    />
+                  )}
+
                   <Text
                     style={[
                       styles.previewNoteText,
+                      completed && styles.previewNoteTextCompleted,
                       active && styles.previewNoteTextActive,
                     ]}
                   >
@@ -1546,11 +1820,16 @@ export default function ScaleAccuracyDrillScreen({
           </View>
 
           <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
+            <View
+              style={[
+                styles.recordingDot,
+                isRecording && styles.recordingDotActive,
+              ]}
+            />
 
             <Text style={styles.recordingText}>
               {isRecording
-                ? 'Recording...'
+                ? 'Recording your voice'
                 : 'Preparing microphone...'}
             </Text>
           </View>
@@ -1627,9 +1906,7 @@ export default function ScaleAccuracyDrillScreen({
                 result.noteDeviations[index] ?? Infinity;
 
               const noteName =
-                detected > 0
-                  ? frequencyToNote(detected)
-                  : '--';
+                detected > 0 ? frequencyToNote(detected) : '--';
 
               const correct =
                 detected > 0 &&
@@ -1678,11 +1955,7 @@ export default function ScaleAccuracyDrillScreen({
           </View>
 
           <View style={styles.resultTip}>
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
+            <Ionicons name="bulb-outline" size={21} color={BROWN} />
 
             <Text style={styles.tipText}>
               {result.passed
@@ -1733,21 +2006,24 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
+
+  // Recording screen
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
   },
   recordingIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   recordingTitle: {
     fontFamily: 'FredokaBold',
@@ -1761,112 +2037,352 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 5,
   },
+
+  // Main live card
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 20,
-    marginTop: 25,
+    padding: 13,
+    marginTop: 19,
+  },
+
+  // Live pitch guide
+  pitchGuide: {
+    width: '100%',
+    padding: 13,
+    backgroundColor: WHITE,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  pitchGuideHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pitchGuideHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  pitchGuideLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 7,
+  },
+  pitchGuideTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: BROWN,
+  },
+  pitchStatusBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  pitchStatusText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    letterSpacing: 0.3,
+  },
+  pitchGuideNotes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    paddingTop: 17,
+    paddingBottom: 15,
+  },
+  pitchGuideNoteBlock: {
+    flex: 1,
     alignItems: 'center',
   },
-  liveLabel: {
+  pitchGuideNoteLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 9,
+    letterSpacing: 0.7,
     color: MUTED,
   },
-  liveTarget: {
+  pitchGuideTargetNote: {
     fontFamily: 'FredokaBold',
-    fontSize: 27,
+    fontSize: 25,
     color: BROWN,
     marginTop: 3,
   },
-  liveDivider: {
-    width: '70%',
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 12,
-  },
-  liveNote: {
+  pitchGuideDetectedNote: {
     fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: BROWN,
+    fontSize: 25,
     marginTop: 3,
   },
-  liveFrequency: {
+  pitchGuideFrequency: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 10,
     color: MUTED,
     marginTop: 2,
   },
-  liveStats: {
-    width: '100%',
+  pitchGuideArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+  },
+
+  // Horizontal tuning meter
+  pitchMeterLabels: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  pitchMeterSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  pitchMeterSideLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    letterSpacing: 0.4,
+  },
+  pitchMeterCenterLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: GUIDE_GREEN,
+  },
+  pitchMeterContainer: {
+    paddingVertical: 6,
+  },
+  pitchMeterTrack: {
+    height: 15,
+    width: '100%',
+    borderRadius: 8,
+    overflow: 'visible',
+    backgroundColor: LIGHT_GRAY,
+    flexDirection: 'row',
+    position: 'relative',
+  },
+  pitchMeterSegment: {
+    height: '100%',
+  },
+  pitchMeterRedLeft: {
+    width: '20%',
+    backgroundColor: GUIDE_RED,
+    borderTopLeftRadius: 8,
+    borderBottomLeftRadius: 8,
+  },
+  pitchMeterYellowLeft: {
+    width: '15%',
+    backgroundColor: GUIDE_YELLOW,
+  },
+  pitchMeterGreen: {
+    width: '30%',
+    backgroundColor: GUIDE_GREEN,
+  },
+  pitchMeterYellowRight: {
+    width: '15%',
+    backgroundColor: GUIDE_YELLOW,
+  },
+  pitchMeterRedRight: {
+    width: '20%',
+    backgroundColor: GUIDE_RED,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  pitchMeterTargetLine: {
+    position: 'absolute',
+    left: '50%',
+    top: -5,
+    bottom: -5,
+    width: 2,
+    marginLeft: -1,
+    backgroundColor: BROWN,
+    zIndex: 2,
+  },
+  pitchMeterMarker: {
+    position: 'absolute',
+    top: '50%',
+    width: 25,
+    height: 25,
+    marginLeft: -12.5,
+    marginTop: -12.5,
+    borderRadius: 13,
+    borderWidth: 3,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    elevation: 4,
+    shadowColor: BROWN,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+  },
+  pitchMeterMarkerInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  pitchMeterScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  pitchMeterScaleText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
+  pitchGuideFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 13,
+    gap: 8,
+  },
+  pitchGuideHintRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pitchGuideHint: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 15,
+    color: MUTED,
+  },
+  pitchCentsValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    minWidth: 48,
+    textAlign: 'right',
+  },
+
+  // Live stats
+  liveStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-around',
-    marginTop: 18,
+    marginTop: 14,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
   },
   liveStat: {
+    flex: 1,
     alignItems: 'center',
+  },
+  liveStatIcon: {
+    width: 29,
+    height: 29,
+    borderRadius: 10,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 5,
   },
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
+    fontSize: 9,
     color: MUTED,
   },
   liveStatValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 17,
+    fontSize: 15,
     color: BROWN,
     marginTop: 2,
   },
+  liveStatUnit: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+    marginTop: -1,
+  },
+  liveStatsDivider: {
+    height: 40,
+    width: 1,
+    backgroundColor: BORDER,
+  },
+
+  // Scale sequence
   scalePreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 24,
+    gap: 7,
+    marginTop: 18,
     maxWidth: 350,
   },
   previewNote: {
-    minWidth: 48,
-    height: 44,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    minWidth: 43,
+    height: 39,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     backgroundColor: LIGHT_GRAY,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   previewNoteActive: {
     backgroundColor: PINK,
+    borderWidth: 1,
+    borderColor: '#EBAAB9',
+  },
+  previewNoteCompleted: {
+    backgroundColor: '#EFF7F0',
+    borderWidth: 1,
+    borderColor: '#D4E9D8',
+  },
+  previewCheck: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
   },
   previewNoteText: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 12,
     color: MUTED,
   },
   previewNoteTextActive: {
     color: BROWN,
   },
+  previewNoteTextCompleted: {
+    color: GUIDE_GREEN,
+  },
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 22,
+    marginTop: 17,
   },
   recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: BROWN,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GUIDE_NEUTRAL,
     marginRight: 7,
+  },
+  recordingDotActive: {
+    backgroundColor: GUIDE_RED,
   },
   recordingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
+
+  // Listening scale preview
   sharedScalePreview: {
     width: '100%',
     flexDirection: 'row',
@@ -1890,6 +2406,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
+
+  // Results
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1968,7 +2486,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
   },
   noteStatusCorrect: {
-    backgroundColor: PINK,
+    backgroundColor: '#E5F2E7',
   },
   noteStatusText: {
     fontFamily: 'FredokaBold',
@@ -1992,6 +2510,8 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 10,
   },
+
+  // Quit modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
