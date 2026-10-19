@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -9,6 +10,8 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,15 +28,9 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
-import {
-  measureIntervalRecognition,
-} from '@/services/measurement/pitch/intervalRecognitionTask';
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import { measureIntervalRecognition } from '@/services/measurement/pitch/intervalRecognitionTask';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
@@ -47,18 +44,12 @@ import {
   calcPitchAccuracy,
   frequencyToNote,
 } from '@/utils/dsp/pitch';
-import {
-  playNoteSequence,
-} from '@/utils/music/notePlayer';
+import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
   createMusicalNote,
   getRandomIntervalNotes,
   type VocalRange,
 } from '@/utils/music/notes';
-
-// ============================================================
-// COLORS
-// ============================================================
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -67,10 +58,6 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
-
-// ============================================================
-// TYPES
-// ============================================================
 
 interface Props {
   tier?: Tier;
@@ -96,10 +83,6 @@ interface GeneratedInterval {
   interval: IntervalDefinition;
 }
 
-// ============================================================
-// INTERVAL DEFINITIONS
-// ============================================================
-
 const INTERVALS: IntervalDefinition[] = [
   {
     name: 'Major 3rd',
@@ -123,10 +106,6 @@ const INTERVALS: IntervalDefinition[] = [
   },
 ];
 
-// ============================================================
-// RECORDING TIMING
-// ============================================================
-
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;
 const RECORDING_BUFFER_SEC = 0.8;
 
@@ -134,18 +113,13 @@ function getRecordingDurationSec(
   params: IntervalRecognitionParams,
 ): number {
   const minimumDuration =
-    params.repetitions *
-    MIN_RESPONSE_TIME_PER_REPETITION_SEC;
+    params.repetitions * MIN_RESPONSE_TIME_PER_REPETITION_SEC;
 
   return Math.max(
     params.totalDurationSec,
     minimumDuration + RECORDING_BUFFER_SEC,
   );
 }
-
-// ============================================================
-// GENERATE INTERVAL
-// ============================================================
 
 function generateInterval(
   tier: Tier,
@@ -154,23 +128,18 @@ function generateInterval(
   const availableIntervals =
     tier === 'advanced'
       ? INTERVALS
-      : INTERVALS.filter(
-          item => item.name !== 'Octave',
-        );
+      : INTERVALS.filter(item => item.name !== 'Octave');
 
   const selectedInterval =
     availableIntervals[
-      Math.floor(
-        Math.random() * availableIntervals.length,
-      )
+      Math.floor(Math.random() * availableIntervals.length)
     ];
 
-  const [rootNote, targetNote] =
-    getRandomIntervalNotes(
-      tier,
-      selectedInterval.semitones,
-      vocalRange,
-    );
+  const [rootNote, targetNote] = getRandomIntervalNotes(
+    tier,
+    selectedInterval.semitones,
+    vocalRange,
+  );
 
   return {
     rootNote,
@@ -182,9 +151,74 @@ function generateInterval(
   };
 }
 
-// ============================================================
-// SCREEN
-// ============================================================
+interface QuitExerciseModalProps {
+  visible: boolean;
+  onContinue: () => void;
+  onQuit: () => void;
+}
+
+function QuitExerciseModal({
+  visible,
+  onContinue,
+  onQuit,
+}: QuitExerciseModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onContinue}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.quitModalCard}>
+          <View style={styles.quitIconCircle}>
+            <Ionicons
+              name="pause-circle-outline"
+              size={34}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.quitModalTitle}>
+            Pause Exercise?
+          </Text>
+
+          <Text style={styles.quitModalMessage}>
+            Your exercise is paused. Continue to resume, or quit
+            and return to your exercises.
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            style={styles.continueButton}
+            onPress={onContinue}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+
+            <Ionicons
+              name="arrow-forward"
+              size={18}
+              color={WHITE}
+            />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            style={styles.quitButton}
+            onPress={onQuit}
+          >
+            <Text style={styles.quitButtonText}>
+              Quit Exercise
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 export default function IntervalRecognitionTaskScreen({
   tier,
@@ -204,6 +238,7 @@ export default function IntervalRecognitionTaskScreen({
 
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(3);
+  const [showQuitModal, setShowQuitModal] = useState(false);
 
   const [rootNote, setRootNote] = useState(() =>
     createMusicalNote(60),
@@ -234,11 +269,12 @@ export default function IntervalRecognitionTaskScreen({
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
 
-  // ==========================================================
-  // REFS
-  // ==========================================================
-
   const mountedRef = useRef(true);
+  const phaseRef = useRef<Phase>('instructions');
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
+  const leavingRef = useRef(false);
+  const playbackRunRef = useRef(0);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -250,6 +286,21 @@ export default function IntervalRecognitionTaskScreen({
   const stopRequestedRef = useRef(false);
   const discardRecordingRef = useRef(false);
   const processingRef = useRef(false);
+  const recordingStartPendingRef = useRef(false);
+
+  // Tracks a recorder stop that has been requested but whose
+  // onStop callback has not yet confirmed completion.
+  const stopInFlightRef = useRef(false);
+
+  // If Continue is pressed before the discarded recording's
+  // onStop callback arrives, resume only after that callback.
+  const resumeAfterStopRef = useRef(false);
+
+  // Lets the recorder callback request a restart without creating
+  // a circular dependency between callbacks.
+  const startCountdownRef = useRef<
+    ((reuseCurrentExercise?: boolean) => void) | null
+  >(null);
 
   const recordingElapsedRef = useRef(0);
   const pitchHistoryRef = useRef<number[]>([]);
@@ -260,9 +311,15 @@ export default function IntervalRecognitionTaskScreen({
   const currentExerciseRef =
     useRef<GeneratedInterval | null>(null);
 
-  // ==========================================================
-  // TIMER CLEANUP
-  // ==========================================================
+  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
+
+  const setQuitModalVisible = useCallback((visible: boolean) => {
+    showQuitModalRef.current = visible;
+    setShowQuitModal(visible);
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -276,10 +333,6 @@ export default function IntervalRecognitionTaskScreen({
     }
   }, []);
 
-  // ==========================================================
-  // LOAD ADAPTIVE PARAMETERS
-  // ==========================================================
-
   useEffect(() => {
     let cancelled = false;
 
@@ -287,9 +340,7 @@ export default function IntervalRecognitionTaskScreen({
       setIsLoadingAdaptiveParams(true);
 
       try {
-        const { auth } = await import(
-          '@/services/firebase/config'
-        );
+        const { auth } = await import('@/services/firebase/config');
 
         if (cancelled) {
           return;
@@ -301,9 +352,7 @@ export default function IntervalRecognitionTaskScreen({
           const fallbackTier = tier ?? 'beginner';
 
           setCurrentTier(fallbackTier);
-          setParams(
-            INTERVAL_RECOGNITION_PARAMS[fallbackTier],
-          );
+          setParams(INTERVAL_RECOGNITION_PARAMS[fallbackTier]);
 
           return;
         }
@@ -335,8 +384,7 @@ export default function IntervalRecognitionTaskScreen({
           .filter(
             record =>
               record.tier === resolvedTier &&
-              record.templateId ===
-                'intervalRecognitionTask',
+              record.templateId === 'intervalRecognitionTask',
           )
           .sort((a, b) => a.timestamp - b.timestamp)
           .slice(-5)
@@ -348,14 +396,10 @@ export default function IntervalRecognitionTaskScreen({
           return;
         }
 
-        setVocalRange(
-          assessment?.vocalRange ?? null,
-        );
+        setVocalRange(assessment?.vocalRange ?? null);
 
         let recentScores = currentTierScores;
 
-        // Use the assessment score only when no matching
-        // exercise history exists for the current tier.
         if (recentScores.length === 0) {
           const pitchScore = assessment?.scores.find(
             score => score.componentId === 'pitch',
@@ -393,9 +437,7 @@ export default function IntervalRecognitionTaskScreen({
           const fallbackTier = tier ?? 'beginner';
 
           setCurrentTier(fallbackTier);
-          setParams(
-            INTERVAL_RECOGNITION_PARAMS[fallbackTier],
-          );
+          setParams(INTERVAL_RECOGNITION_PARAMS[fallbackTier]);
         }
       } finally {
         if (!cancelled) {
@@ -411,21 +453,19 @@ export default function IntervalRecognitionTaskScreen({
     };
   }, [tier]);
 
-  // ==========================================================
-  // SCREEN CLEANUP
-  // ==========================================================
-
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
+      pausedRef.current = true;
+      playbackRunRef.current += 1;
       clearTimers();
 
-      // Discard the unfinished recording when leaving.
       discardRecordingRef.current = true;
+      resumeAfterStopRef.current = false;
 
-      if (recordingRef.current) {
+      if (recordingRef.current || recordingStartPendingRef.current) {
         void stopRecordingRef.current?.().catch(error => {
           console.error(
             'Failed to stop recording during cleanup:',
@@ -436,22 +476,20 @@ export default function IntervalRecognitionTaskScreen({
     };
   }, [clearTimers]);
 
-  // ==========================================================
-  // LIVE AUDIO
-  // ==========================================================
-
   const handleLiveFrame = useCallback(
     (frame: LiveAudioFrame) => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
         return;
       }
 
       setLiveFrame(frame);
 
-      if (
-        Number.isFinite(frame.pitch) &&
-        frame.pitch > 0
-      ) {
+      if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
         pitchHistoryRef.current = [
           ...pitchHistoryRef.current,
           frame.pitch,
@@ -463,41 +501,54 @@ export default function IntervalRecognitionTaskScreen({
     [],
   );
 
-  // ==========================================================
-  // RECORDING STOP
-  // ==========================================================
-
   const handleRecordingStop = useCallback(
-    async (
-      samples: Float32Array,
-      sampleRate: number,
-    ) => {
-      // A discarded attempt must never be analyzed or saved.
-      if (discardRecordingRef.current) {
-        discardRecordingRef.current = false;
-        recordingRef.current = false;
-        stopRequestedRef.current = false;
-        processingRef.current = false;
-        return;
-      }
-
-      if (
-        !mountedRef.current ||
-        processingRef.current
-      ) {
-        recordingRef.current = false;
-        return;
-      }
-
-      processingRef.current = true;
+    async (samples: Float32Array, sampleRate: number) => {
       recordingRef.current = false;
+      recordingStartPendingRef.current = false;
+      stopInFlightRef.current = false;
 
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
 
-      setPhase('processing');
+      // A recording interrupted by the pause modal must never be
+      // passed to measurement or scoring.
+      if (discardRecordingRef.current) {
+        discardRecordingRef.current = false;
+        stopRequestedRef.current = false;
+        processingRef.current = false;
+
+        if (
+          resumeAfterStopRef.current &&
+          mountedRef.current &&
+          !pausedRef.current &&
+          !showQuitModalRef.current &&
+          !leavingRef.current
+        ) {
+          resumeAfterStopRef.current = false;
+
+          // Reuse the existing target interval. Restart this
+          // repetition from the reference playback.
+          startCountdownRef.current?.(true);
+        }
+
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        leavingRef.current ||
+        processingRef.current
+      ) {
+        stopRequestedRef.current = false;
+        return;
+      }
+
+      processingRef.current = true;
+      setCurrentPhase('processing');
 
       try {
         const exercise = currentExerciseRef.current;
@@ -522,6 +573,14 @@ export default function IntervalRecognitionTaskScreen({
           params,
         );
 
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          leavingRef.current
+        ) {
+          return;
+        }
+
         await saveCompletedExercise(
           'pitch',
           'intervalRecognitionTask',
@@ -529,36 +588,32 @@ export default function IntervalRecognitionTaskScreen({
           score.score,
         );
 
-        if (!mountedRef.current) {
+        if (!mountedRef.current || leavingRef.current) {
           return;
         }
 
         setResult(score);
-        setPhase('results');
+        setCurrentPhase('results');
       } catch (error) {
         console.error(
           'Interval recognition processing error:',
           error,
         );
 
-        if (mountedRef.current) {
+        if (mountedRef.current && !leavingRef.current) {
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
 
-          setPhase('instructions');
+          setCurrentPhase('instructions');
         }
       } finally {
         processingRef.current = false;
         stopRequestedRef.current = false;
       }
     },
-    [currentTier, params],
+    [currentTier, params, setCurrentPhase],
   );
-
-  // ==========================================================
-  // AUDIO RECORDER
-  // ==========================================================
 
   const {
     startRecording,
@@ -577,15 +632,16 @@ export default function IntervalRecognitionTaskScreen({
     };
   }, [stopRecording]);
 
-  // ==========================================================
-  // BEGIN RECORDING
-  // ==========================================================
-
   const beginRecording = useCallback(async () => {
     if (
       !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      leavingRef.current ||
       recordingRef.current ||
-      processingRef.current
+      recordingStartPendingRef.current ||
+      processingRef.current ||
+      stopInFlightRef.current
     ) {
       return;
     }
@@ -594,6 +650,7 @@ export default function IntervalRecognitionTaskScreen({
       discardRecordingRef.current = false;
       stopRequestedRef.current = false;
       processingRef.current = false;
+      recordingStartPendingRef.current = true;
 
       pitchHistoryRef.current = [];
       recordingElapsedRef.current = 0;
@@ -601,22 +658,53 @@ export default function IntervalRecognitionTaskScreen({
       setLiveFrequencies([]);
       setLiveFrame(null);
       setRecordingElapsedMs(0);
-      setPhase('recording');
+      setCurrentPhase('recording');
 
       await startRecording();
 
-      if (!mountedRef.current) {
+      // The modal may have opened while startRecording was pending.
+      // Stop the recorder, discard this attempt, and wait for onStop
+      // before allowing a new recording to begin.
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        leavingRef.current
+      ) {
+        recordingStartPendingRef.current = false;
+        discardRecordingRef.current = true;
+        stopRequestedRef.current = true;
+
+        if (!stopInFlightRef.current) {
+          stopInFlightRef.current = true;
+
+          try {
+            await stopRecording();
+          } catch (error) {
+            stopInFlightRef.current = false;
+            stopRequestedRef.current = false;
+
+            console.error(
+              'Failed to stop interrupted recording:',
+              error,
+            );
+          }
+        }
+
         return;
       }
 
+      recordingStartPendingRef.current = false;
       recordingRef.current = true;
 
-      const durationMs =
-        getRecordingDurationSec(params) * 1000;
+      const durationMs = getRecordingDurationSec(params) * 1000;
 
       recordingTimerRef.current = setInterval(() => {
         if (
           !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          leavingRef.current ||
           !recordingRef.current ||
           stopRequestedRef.current
         ) {
@@ -626,7 +714,6 @@ export default function IntervalRecognitionTaskScreen({
         recordingElapsedRef.current += 100;
 
         const elapsed = recordingElapsedRef.current;
-
         setRecordingElapsedMs(elapsed);
 
         if (elapsed < durationMs) {
@@ -643,6 +730,7 @@ export default function IntervalRecognitionTaskScreen({
         }
 
         stopRequestedRef.current = true;
+        stopInFlightRef.current = true;
 
         void stopRecording().catch(error => {
           console.error(
@@ -651,14 +739,15 @@ export default function IntervalRecognitionTaskScreen({
           );
 
           recordingRef.current = false;
+          stopInFlightRef.current = false;
           stopRequestedRef.current = false;
 
-          if (mountedRef.current) {
+          if (mountedRef.current && !leavingRef.current) {
             setErrorMessage(
               'We could not finish the recording. Please try again.',
             );
 
-            setPhase('instructions');
+            setCurrentPhase('instructions');
           }
         });
       }, 100);
@@ -669,11 +758,14 @@ export default function IntervalRecognitionTaskScreen({
       );
 
       recordingRef.current = false;
+      recordingStartPendingRef.current = false;
+      stopInFlightRef.current = false;
       stopRequestedRef.current = false;
       discardRecordingRef.current = false;
+      resumeAfterStopRef.current = false;
 
-      if (mountedRef.current) {
-        setPhase('instructions');
+      if (mountedRef.current && !leavingRef.current) {
+        setCurrentPhase('instructions');
 
         Alert.alert(
           'Microphone Error',
@@ -681,29 +773,41 @@ export default function IntervalRecognitionTaskScreen({
         );
       }
     }
-  }, [params, startRecording, stopRecording]);
-
-  // ==========================================================
-  // PLAY INTERVAL AND RECORD
-  // ==========================================================
+  }, [
+    params,
+    setCurrentPhase,
+    startRecording,
+    stopRecording,
+  ]);
 
   const playIntervalAndRecord = useCallback(
-    async (exercise: GeneratedInterval) => {
-      if (!mountedRef.current) {
+    async (exercise: GeneratedInterval, runId: number) => {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        leavingRef.current ||
+        runId !== playbackRunRef.current
+      ) {
         return;
       }
 
       try {
-        setPhase('playing');
+        setCurrentPhase('playing');
 
         const repetitions = Math.max(
           1,
           Math.round(params.repetitions),
         );
 
-        // Play the reference before opening the recording phase.
         for (let index = 0; index < repetitions; index++) {
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current ||
+            pausedRef.current ||
+            showQuitModalRef.current ||
+            leavingRef.current ||
+            runId !== playbackRunRef.current
+          ) {
             return;
           }
 
@@ -718,26 +822,53 @@ export default function IntervalRecognitionTaskScreen({
             },
           ]);
 
+          if (
+            !mountedRef.current ||
+            pausedRef.current ||
+            showQuitModalRef.current ||
+            leavingRef.current ||
+            runId !== playbackRunRef.current
+          ) {
+            return;
+          }
+
           if (index < repetitions - 1) {
             await new Promise<void>(resolve => {
               setTimeout(resolve, 350);
             });
+
+            if (
+              !mountedRef.current ||
+              pausedRef.current ||
+              showQuitModalRef.current ||
+              leavingRef.current ||
+              runId !== playbackRunRef.current
+            ) {
+              return;
+            }
           }
         }
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          leavingRef.current ||
+          runId !== playbackRunRef.current
+        ) {
           return;
         }
 
         await beginRecording();
       } catch (error) {
-        console.error(
-          'Failed to play interval:',
-          error,
-        );
+        console.error('Failed to play interval:', error);
 
-        if (mountedRef.current) {
-          setPhase('instructions');
+        if (
+          mountedRef.current &&
+          !pausedRef.current &&
+          !leavingRef.current
+        ) {
+          setCurrentPhase('instructions');
 
           Alert.alert(
             'Audio Error',
@@ -746,100 +877,306 @@ export default function IntervalRecognitionTaskScreen({
         }
       }
     },
-    [beginRecording, params.repetitions],
+    [beginRecording, params.repetitions, setCurrentPhase],
   );
 
-  // ==========================================================
-  // COUNTDOWN
-  // ==========================================================
+  const startCountdown = useCallback(
+    (reuseCurrentExercise = false) => {
+      if (
+        isLoadingAdaptiveParams ||
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        leavingRef.current ||
+        stopInFlightRef.current
+      ) {
+        return;
+      }
 
-  const startCountdown = useCallback(() => {
+      clearTimers();
+
+      let generated = reuseCurrentExercise
+        ? currentExerciseRef.current
+        : null;
+
+      if (!generated) {
+        generated = generateInterval(currentTier, vocalRange);
+        currentExerciseRef.current = generated;
+      }
+
+      setRootNote(generated.rootNote);
+      setTargetNote(generated.targetNote);
+      setIntervalValue(generated.interval);
+
+      setResult(null);
+      setErrorMessage(null);
+      setLiveFrame(null);
+      setLiveFrequencies([]);
+
+      pitchHistoryRef.current = [];
+      recordingElapsedRef.current = 0;
+
+      setRecordingElapsedMs(0);
+
+      processingRef.current = false;
+      stopRequestedRef.current = false;
+      recordingRef.current = false;
+      recordingStartPendingRef.current = false;
+
+      const runId = ++playbackRunRef.current;
+
+      setCountdown(3);
+      setCurrentPhase('countdown');
+
+      let remaining = 3;
+
+      countdownTimerRef.current = setInterval(() => {
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          leavingRef.current ||
+          runId !== playbackRunRef.current
+        ) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+
+          return;
+        }
+
+        remaining -= 1;
+
+        if (remaining <= 0) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+
+          void playIntervalAndRecord(generated!, runId);
+          return;
+        }
+
+        setCountdown(remaining);
+      }, 1000);
+    },
+    [
+      clearTimers,
+      currentTier,
+      isLoadingAdaptiveParams,
+      playIntervalAndRecord,
+      setCurrentPhase,
+      vocalRange,
+    ],
+  );
+
+  useEffect(() => {
+    startCountdownRef.current = startCountdown;
+
+    return () => {
+      startCountdownRef.current = null;
+    };
+  }, [startCountdown]);
+
+  const requestQuit = useCallback(() => {
     if (
-      isLoadingAdaptiveParams ||
-      !mountedRef.current
+      !mountedRef.current ||
+      leavingRef.current ||
+      phaseRef.current === 'processing' ||
+      showQuitModalRef.current
     ) {
       return;
     }
 
+    // Freeze all asynchronous playback and countdown work.
+    pausedRef.current = true;
+    playbackRunRef.current += 1;
     clearTimers();
 
-    const generated = generateInterval(
-      currentTier,
-      vocalRange,
-    );
+    setQuitModalVisible(true);
 
-    currentExerciseRef.current = generated;
+    // If recording is active or starting, discard that attempt.
+    // It must not be measured or scored after the user resumes.
+    if (
+      recordingRef.current ||
+      recordingStartPendingRef.current ||
+      isRecording
+    ) {
+      discardRecordingRef.current = true;
+      stopRequestedRef.current = true;
 
-    setRootNote(generated.rootNote);
-    setTargetNote(generated.targetNote);
-    setIntervalValue(generated.interval);
+      if (!stopInFlightRef.current) {
+        stopInFlightRef.current = true;
 
-    setResult(null);
-    setErrorMessage(null);
+        void stopRecordingRef.current?.().catch(error => {
+          console.error(
+            'Failed to stop recording when pausing:',
+            error,
+          );
+
+          stopInFlightRef.current = false;
+          stopRequestedRef.current = false;
+          recordingRef.current = false;
+          recordingStartPendingRef.current = false;
+
+          // Keep the exercise paused. Do not restart recording
+          // unless stopping the previous recorder was successful.
+          discardRecordingRef.current = true;
+        });
+      }
+    }
+
+    recordingElapsedRef.current = 0;
+    setRecordingElapsedMs(0);
     setLiveFrame(null);
     setLiveFrequencies([]);
+    pitchHistoryRef.current = [];
+  }, [
+    clearTimers,
+    isRecording,
+    setQuitModalVisible,
+  ]);
+
+  const continueExercise = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      leavingRef.current ||
+      !showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    setQuitModalVisible(false);
+    pausedRef.current = false;
+
+    setLiveFrame(null);
+    setLiveFrequencies([]);
+    setRecordingElapsedMs(0);
 
     pitchHistoryRef.current = [];
     recordingElapsedRef.current = 0;
 
-    setRecordingElapsedMs(0);
+    // The interrupted recording has not yet been confirmed stopped.
+    // Defer resuming until onStop consumes and discards its samples.
+    if (
+      stopInFlightRef.current ||
+      discardRecordingRef.current ||
+      recordingStartPendingRef.current
+    ) {
+      resumeAfterStopRef.current = true;
+      return;
+    }
 
+    recordingRef.current = false;
+    recordingStartPendingRef.current = false;
     processingRef.current = false;
     stopRequestedRef.current = false;
-    recordingRef.current = false;
 
-    setCountdown(3);
-    setPhase('countdown');
+    // Reuse the same generated interval. The current recording
+    // attempt is restarted from the beginning of its repetition.
+    startCountdown(true);
+  }, [setQuitModalVisible, startCountdown]);
 
-    let remaining = 3;
+  const quitExercise = useCallback(() => {
+    if (leavingRef.current) {
+      return;
+    }
 
-    countdownTimerRef.current = setInterval(() => {
-      remaining -= 1;
+    leavingRef.current = true;
+    pausedRef.current = true;
+    resumeAfterStopRef.current = false;
+    playbackRunRef.current += 1;
 
-      if (remaining <= 0) {
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-          countdownTimerRef.current = null;
-        }
+    clearTimers();
+    setQuitModalVisible(false);
 
-        void playIntervalAndRecord(generated);
-        return;
+    if (
+      recordingRef.current ||
+      recordingStartPendingRef.current ||
+      isRecording
+    ) {
+      discardRecordingRef.current = true;
+      stopRequestedRef.current = true;
+
+      if (!stopInFlightRef.current) {
+        stopInFlightRef.current = true;
+
+        void stopRecordingRef.current?.().catch(error => {
+          console.error(
+            'Failed to stop recording while quitting:',
+            error,
+          );
+
+          stopInFlightRef.current = false;
+        });
       }
+    }
 
-      setCountdown(remaining);
-    }, 1000);
+    router.replace('/dashboard?tab=exercises');
   }, [
     clearTimers,
-    currentTier,
-    isLoadingAdaptiveParams,
-    playIntervalAndRecord,
-    vocalRange,
+    isRecording,
+    setQuitModalVisible,
   ]);
 
-  // ==========================================================
-  // RETRY
-  // ==========================================================
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          continueExercise();
+          return true;
+        }
+
+        if (
+          phaseRef.current === 'processing' ||
+          leavingRef.current
+        ) {
+          return true;
+        }
+
+        requestQuit();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [continueExercise, requestQuit]);
 
   const retry = useCallback(() => {
     clearTimers();
 
-    if (recordingRef.current) {
-      // Keep this flag set until onStop receives the old audio.
+    pausedRef.current = false;
+    resumeAfterStopRef.current = false;
+    playbackRunRef.current += 1;
+
+    if (recordingRef.current || recordingStartPendingRef.current) {
       discardRecordingRef.current = true;
       stopRequestedRef.current = true;
 
-      void stopRecording().catch(error => {
-        console.error(
-          'Failed to stop recording during retry:',
-          error,
-        );
+      if (!stopInFlightRef.current) {
+        stopInFlightRef.current = true;
 
-        discardRecordingRef.current = false;
-        stopRequestedRef.current = false;
-      });
+        void stopRecording().catch(error => {
+          console.error(
+            'Failed to stop recording during retry:',
+            error,
+          );
+
+          stopInFlightRef.current = false;
+          discardRecordingRef.current = false;
+          stopRequestedRef.current = false;
+        });
+      }
     } else {
       discardRecordingRef.current = false;
     }
+
+    recordingRef.current = false;
+    recordingStartPendingRef.current = false;
+    processingRef.current = false;
+    stopRequestedRef.current = false;
 
     currentExerciseRef.current = null;
 
@@ -852,22 +1189,14 @@ export default function IntervalRecognitionTaskScreen({
 
     setRecordingElapsedMs(0);
     setErrorMessage(null);
-    setPhase('instructions');
-  }, [clearTimers, stopRecording]);
+    setCurrentPhase('instructions');
+  }, [clearTimers, setCurrentPhase, stopRecording]);
 
-  // ==========================================================
-  // DISPLAY VALUES
-  // ==========================================================
-
-  const recordingDurationMs =
-    getRecordingDurationSec(params) * 1000;
+  const recordingDurationMs = getRecordingDurationSec(params) * 1000;
 
   const recordingProgress =
     recordingDurationMs > 0
-      ? Math.min(
-          1,
-          recordingElapsedMs / recordingDurationMs,
-        )
+      ? Math.min(1, recordingElapsedMs / recordingDurationMs)
       : 0;
 
   const repetitionCount = Math.max(
@@ -881,647 +1210,611 @@ export default function IntervalRecognitionTaskScreen({
   );
 
   const currentRepetition = repetitionProgress + 1;
-
-  const phaseProgress =
-    (recordingProgress * repetitionCount) % 1;
-
+  const phaseProgress = (recordingProgress * repetitionCount) % 1;
   const firstHalf = phaseProgress < 0.5;
   const liveTarget = firstHalf ? rootNote : targetNote;
 
   const liveAccuracy =
     liveFrame && liveFrame.pitch > 0
-      ? calcPitchAccuracy(
-          liveFrame.pitch,
-          liveTarget.frequency,
-        )
+      ? calcPitchAccuracy(liveFrame.pitch, liveTarget.frequency)
       : 0;
 
-  const liveStability = calcLiveStability(
-    liveFrequencies,
-  );
+  const liveStability = calcLiveStability(liveFrequencies);
 
-  // ==========================================================
-  // PREPARING EXERCISE
-  // ==========================================================
-
-  if (
-    phase === 'instructions' &&
-    isLoadingAdaptiveParams
-  ) {
+  if (phase === 'instructions' && isLoadingAdaptiveParams) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.largeIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
+      <>
+        <View style={styles.centerScreen}>
+          <View style={styles.largeIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={44}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.processingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.processingSubtitle}>
+            Adjusting the exercise to your current difficulty level
+          </Text>
+
+          <ActivityIndicator
+            size="large"
             color={BROWN}
+            style={styles.spinner}
           />
         </View>
 
-        <Text style={styles.processingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.processingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
         />
-      </View>
+      </>
     );
   }
 
-  // ==========================================================
-  // INSTRUCTIONS
-  // ==========================================================
-
   if (phase === 'instructions') {
     return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            router.replace('/dashboard?tab=exercises')
-          }
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
+      <>
+        <View style={styles.screen}>
+          <Pressable
+            style={styles.backButton}
+            onPress={requestQuit}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={22}
+              color={BROWN}
+            />
+          </Pressable>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
-        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.content}
+          >
+            <View style={styles.iconCircle}>
+              <Ionicons
+                name="swap-vertical-outline"
+                size={34}
+                color={BROWN}
+              />
+            </View>
+
+            <Text style={styles.title}>
+              Interval Recognition Task
+            </Text>
+
+            <Text style={styles.subtitle}>Pitch</Text>
+
+            <View style={styles.instructionCard}>
+              <Text style={styles.cardTitle}>
+                Exercise Instructions
+              </Text>
+
+              <Text style={styles.instruction}>
+                Listen carefully to the reference interval.
+              </Text>
+
+              <Text style={styles.instruction}>
+                The same interval will be repeated {repetitionCount} times.
+              </Text>
+
+              <Text style={styles.instruction}>
+                After the reference playback, sing the first note, pause briefly,
+                then sing the second note. Repeat the same interval for each
+                repetition.
+              </Text>
+
+              <View style={styles.prepareCard}>
+                <View style={styles.prepareHeader}>
+                  <Ionicons
+                    name="mic-outline"
+                    size={21}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.prepareTitle}>
+                    Before You Begin
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="volume-mute-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.prepareText}>
+                    Find a quiet room or area with minimal background noise.
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="body-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.prepareText}>
+                    Sit upright or stand with your back straight and your
+                    shoulders relaxed.
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="mic-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.prepareText}>
+                    If available, an external microphone or audio recording
+                    equipment is recommended for clearer audio capture.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.targetBox}>
+                <Ionicons
+                  name="swap-vertical"
+                  size={25}
+                  color={BROWN}
+                />
+
+                <Text style={styles.targetText}>
+                  Match the interval
+                </Text>
+              </View>
+
+              <Text style={styles.helperText}>
+                Each detected repetition is scored individually, then combined
+                into the final exercise score.
+              </Text>
+            </View>
+
+            <View style={styles.tipCard}>
+              <Ionicons
+                name="bulb-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.tipText}>
+                Leave a short, clear pause between each pair of sung notes so
+                TuneUp! can detect every repetition separately.
+              </Text>
+            </View>
+
+            <View style={styles.difficultyRow}>
+              <Text style={styles.difficultyLabel}>
+                Difficulty
+              </Text>
+
+              <Text style={styles.difficultyValue}>
+                {currentTier}
+              </Text>
+            </View>
+
+            <Pressable
+              style={styles.startButton}
+              disabled={isLoadingAdaptiveParams}
+              onPress={() => startCountdown(false)}
+            >
+              {isLoadingAdaptiveParams ? (
+                <ActivityIndicator
+                  size="small"
+                  color={WHITE}
+                />
+              ) : (
+                <>
+                  <Text style={styles.startButtonText}>
+                    Start Exercise
+                  </Text>
+
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color={WHITE}
+                  />
+                </>
+              )}
+            </Pressable>
+
+            {errorMessage && (
+              <Text style={styles.errorText}>
+                {errorMessage}
+              </Text>
+            )}
+          </ScrollView>
+        </View>
+
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
+    );
+  }
+
+  if (phase === 'countdown') {
+    return (
+      <>
+        <View style={styles.centerScreen}>
           <View style={styles.iconCircle}>
             <Ionicons
-              name="swap-vertical-outline"
+              name="musical-notes-outline"
               size={34}
               color={BROWN}
             />
           </View>
 
-          <Text style={styles.title}>
-            Interval Recognition Task
+          <Text style={styles.phaseTitle}>Get Ready</Text>
+
+          <Text style={styles.countdownText}>{countdown}</Text>
+
+          <Text style={styles.phaseSubtitle}>
+            Listen carefully to the repeated interval.
           </Text>
-
-          <Text style={styles.subtitle}>Pitch</Text>
-
-          <View style={styles.instructionCard}>
-            <Text style={styles.cardTitle}>
-              Exercise Instructions
-            </Text>
-
-            <Text style={styles.instruction}>
-              Listen carefully to the reference interval.
-            </Text>
-
-            <Text style={styles.instruction}>
-              The same interval will be repeated{' '}
-              {repetitionCount} times.
-            </Text>
-
-            <Text style={styles.instruction}>
-              After the reference playback, sing the first
-              note, pause briefly, then sing the second note.
-              Repeat the same interval for each repetition.
-            </Text>
-
-            <View style={styles.prepareCard}>
-              <View style={styles.prepareHeader}>
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-
-                <Text style={styles.prepareTitle}>
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text style={styles.prepareText}>
-                  Find a quiet room or area with minimal
-                  background noise.
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text style={styles.prepareText}>
-                  Sit upright or stand with your back
-                  straight and your shoulders relaxed.
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="mic-outline"
-                  size={17}
-                  color={BROWN}
-                />
-
-                <Text style={styles.prepareText}>
-                  If available, an external microphone or
-                  audio recording equipment is recommended
-                  for clearer audio capture.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.targetBox}>
-              <Ionicons
-                name="swap-vertical"
-                size={25}
-                color={BROWN}
-              />
-
-              <Text style={styles.targetText}>
-                Match the interval
-              </Text>
-            </View>
-
-            <Text style={styles.helperText}>
-              Each detected repetition is scored individually,
-              then combined into the final exercise score.
-            </Text>
-          </View>
-
-          <View style={styles.tipCard}>
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text style={styles.tipText}>
-              Leave a short, clear pause between each pair of
-              sung notes so TuneUp! can detect every
-              repetition separately.
-            </Text>
-          </View>
-
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>
-              Difficulty
-            </Text>
-
-            <Text style={styles.difficultyValue}>
-              {currentTier}
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.startButton}
-            disabled={isLoadingAdaptiveParams}
-            onPress={startCountdown}
-          >
-            {isLoadingAdaptiveParams ? (
-              <ActivityIndicator
-                size="small"
-                color={WHITE}
-              />
-            ) : (
-              <>
-                <Text style={styles.startButtonText}>
-                  Start Exercise
-                </Text>
-
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={WHITE}
-                />
-              </>
-            )}
-          </Pressable>
-
-          {errorMessage && (
-            <Text style={styles.errorText}>
-              {errorMessage}
-            </Text>
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // COUNTDOWN
-  // ==========================================================
-
-  if (phase === 'countdown') {
-    return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
         </View>
 
-        <Text style={styles.phaseTitle}>
-          Get Ready
-        </Text>
-
-        <Text style={styles.countdownText}>
-          {countdown}
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Listen carefully to the repeated interval.
-        </Text>
-      </View>
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
     );
   }
-
-  // ==========================================================
-  // PLAYING
-  // ==========================================================
 
   if (phase === 'playing') {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="volume-high-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Listen to the Interval
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          The same interval is being repeated{' '}
-          {repetitionCount} times.
-        </Text>
-
-        <View style={styles.intervalPreview}>
-          <View style={styles.intervalNote}>
-            <Text style={styles.intervalNoteLabel}>
-              START
-            </Text>
-
-            <Text style={styles.intervalNoteName}>
-              {rootNote.name}
-            </Text>
-          </View>
-
-          <Ionicons
-            name="arrow-forward"
-            size={25}
-            color={BROWN}
-          />
-
-          <View style={styles.intervalNote}>
-            <Text style={styles.intervalNoteLabel}>
-              TARGET
-            </Text>
-
-            <Text style={styles.intervalNoteName}>
-              {targetNote.name}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.intervalNameBadge}>
-          <Text style={styles.intervalNameText}>
-            {interval.name}
-          </Text>
-        </View>
-
-        <ActivityIndicator
-          size="small"
-          color={BROWN}
-          style={styles.playingIndicator}
-        />
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // RECORDING
-  // ==========================================================
-
-  if (phase === 'recording') {
-    return (
-      <View style={styles.centerScreen}>
-        <View style={styles.recordingIcon}>
-          <Ionicons
-            name="mic"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Sing the Interval
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Repeat the same interval {repetitionCount} times.
-          Leave a short pause between notes and repetitions.
-        </Text>
-
-        <View style={styles.repetitionBadge}>
-          <Text style={styles.repetitionBadgeText}>
-            Repetition {currentRepetition} of {repetitionCount}
-          </Text>
-        </View>
-
-        <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>
-            Current Target
-          </Text>
-
-          <Text style={styles.liveTarget}>
-            {liveTarget.name}
-          </Text>
-
-          <View style={styles.liveDivider} />
-
-          <Text style={styles.liveLabel}>
-            Your Note
-          </Text>
-
-          <Text style={styles.liveNote}>
-            {liveFrame?.note ?? '--'}
-          </Text>
-
-          <Text style={styles.liveFrequency}>
-            {liveFrame && liveFrame.pitch > 0
-              ? `${Math.round(liveFrame.pitch)} Hz`
-              : '--'}
-          </Text>
-
-          <View style={styles.liveStats}>
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Accuracy
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {Math.round(liveAccuracy)}%
-              </Text>
-            </View>
-
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>
-                Stability
-              </Text>
-
-              <Text style={styles.liveStatValue}>
-                {Math.round(liveStability)}%
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.intervalProgress}>
-          <View
-            style={[
-              styles.intervalProgressNote,
-              firstHalf && styles.intervalProgressActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.intervalProgressText,
-                firstHalf &&
-                  styles.intervalProgressTextActive,
-              ]}
-            >
-              {rootNote.name}
-            </Text>
-          </View>
-
-          <View style={styles.progressLine} />
-
-          <View
-            style={[
-              styles.intervalProgressNote,
-              !firstHalf && styles.intervalProgressActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.intervalProgressText,
-                !firstHalf &&
-                  styles.intervalProgressTextActive,
-              ]}
-            >
-              {targetNote.name}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.recordingIndicator}>
-          <View style={styles.recordingDot} />
-
-          <Text style={styles.recordingText}>
-            {isRecording
-              ? 'Recording...'
-              : 'Preparing microphone...'}
-          </Text>
-        </View>
-
-        <View style={styles.recordingBar}>
-          <View
-            style={[
-              styles.recordingBarFill,
-              {
-                width: `${Math.round(
-                  recordingProgress * 100,
-                )}%`,
-              },
-            ]}
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // PROCESSING
-  // ==========================================================
-
-  if (phase === 'processing') {
-    return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="analytics-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.phaseTitle}>
-          Analyzing Your Singing
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Checking your repeated interval accuracy.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.processingIndicator}
-        />
-      </View>
-    );
-  }
-
-  // ==========================================================
-  // RESULTS
-  // ==========================================================
-
-  if (phase === 'results' && result) {
-    const detectedNote1 =
-      result.freq1 > 0
-        ? frequencyToNote(result.freq1)
-        : '--';
-
-    const detectedNote2 =
-      result.freq2 > 0
-        ? frequencyToNote(result.freq2)
-        : '--';
-
-    return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.resultsContent}
-        >
-          <View
-            style={[
-              styles.resultIcon,
-              result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
-            ]}
-          >
+      <>
+        <View style={styles.centerScreen}>
+          <View style={styles.iconCircle}>
             <Ionicons
-              name={result.passed ? 'checkmark' : 'refresh'}
-              size={40}
+              name="volume-high-outline"
+              size={34}
               color={BROWN}
             />
           </View>
 
-          <Text style={styles.resultTitle}>
-            {result.passed ? 'Great Job!' : 'Keep Practicing!'}
+          <Text style={styles.phaseTitle}>
+            Listen to the Interval
           </Text>
 
-          <Text style={styles.resultSubtitle}>
-            Interval Recognition Result
+          <Text style={styles.phaseSubtitle}>
+            The same interval is being repeated {repetitionCount} times.
           </Text>
 
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>
-              Overall Score
-            </Text>
+          <View style={styles.intervalPreview}>
+            <View style={styles.intervalNote}>
+              <Text style={styles.intervalNoteLabel}>START</Text>
 
-            <Text style={styles.scoreValue}>
-              {result.score}%
-            </Text>
+              <Text style={styles.intervalNoteName}>
+                {rootNote.name}
+              </Text>
+            </View>
 
-            <Text style={styles.scoreDescription}>
-              {result.passed
-                ? 'Your repeated interval attempts were within the target tolerance.'
-                : 'Try to reproduce the distance between the notes more accurately.'}
-            </Text>
-          </View>
+            <Ionicons
+              name="arrow-forward"
+              size={25}
+              color={BROWN}
+            />
 
-          <View style={styles.intervalResultCard}>
-            <Text style={styles.resultCardTitle}>
-              Target Interval
-            </Text>
+            <View style={styles.intervalNote}>
+              <Text style={styles.intervalNoteLabel}>TARGET</Text>
 
-            <View style={styles.intervalResultDisplay}>
-              <View style={styles.intervalResultNote}>
-                <Text style={styles.intervalResultLabel}>
-                  START
-                </Text>
-
-                <Text style={styles.intervalResultNoteName}>
-                  {rootNote.name}
-                </Text>
-              </View>
-
-              <View style={styles.intervalArrow}>
-                <Ionicons
-                  name="arrow-forward"
-                  size={23}
-                  color={BROWN}
-                />
-
-                <Text style={styles.intervalArrowLabel}>
-                  {result.intervalName}
-                </Text>
-              </View>
-
-              <View style={styles.intervalResultNote}>
-                <Text style={styles.intervalResultLabel}>
-                  TARGET
-                </Text>
-
-                <Text style={styles.intervalResultNoteName}>
-                  {targetNote.name}
-                </Text>
-              </View>
+              <Text style={styles.intervalNoteName}>
+                {targetNote.name}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Repetition Results
+          <View style={styles.intervalNameBadge}>
+            <Text style={styles.intervalNameText}>
+              {interval.name}
+            </Text>
+          </View>
+
+          <ActivityIndicator
+            size="small"
+            color={BROWN}
+            style={styles.playingIndicator}
+          />
+        </View>
+
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
+    );
+  }
+
+  if (phase === 'recording') {
+    return (
+      <>
+        <View style={styles.centerScreen}>
+          <View style={styles.recordingIcon}>
+            <Ionicons
+              name="mic"
+              size={34}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.phaseTitle}>Sing the Interval</Text>
+
+          <Text style={styles.phaseSubtitle}>
+            Repeat the same interval {repetitionCount} times. Leave a short
+            pause between notes and repetitions.
+          </Text>
+
+          <View style={styles.repetitionBadge}>
+            <Text style={styles.repetitionBadgeText}>
+              Repetition {currentRepetition} of {repetitionCount}
+            </Text>
+          </View>
+
+          <View style={styles.liveCard}>
+            <Text style={styles.liveLabel}>Current Target</Text>
+
+            <Text style={styles.liveTarget}>{liveTarget.name}</Text>
+
+            <View style={styles.liveDivider} />
+
+            <Text style={styles.liveLabel}>Your Note</Text>
+
+            <Text style={styles.liveNote}>
+              {liveFrame?.note ?? '--'}
             </Text>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Requested repetitions
-              </Text>
+            <Text style={styles.liveFrequency}>
+              {liveFrame && liveFrame.pitch > 0
+                ? `${Math.round(liveFrame.pitch)} Hz`
+                : '--'}
+            </Text>
 
-              <Text style={styles.resultRowValue}>
-                {repetitionCount}
+            <View style={styles.liveStats}>
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Accuracy</Text>
+
+                <Text style={styles.liveStatValue}>
+                  {Math.round(liveAccuracy)}%
+                </Text>
+              </View>
+
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Stability</Text>
+
+                <Text style={styles.liveStatValue}>
+                  {Math.round(liveStability)}%
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.intervalProgress}>
+            <View
+              style={[
+                styles.intervalProgressNote,
+                firstHalf && styles.intervalProgressActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.intervalProgressText,
+                  firstHalf && styles.intervalProgressTextActive,
+                ]}
+              >
+                {rootNote.name}
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Detected repetitions
-              </Text>
+            <View style={styles.progressLine} />
 
-              <Text style={styles.resultRowValue}>
-                {result.repetitionsCompleted}
+            <View
+              style={[
+                styles.intervalProgressNote,
+                !firstHalf && styles.intervalProgressActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.intervalProgressText,
+                  !firstHalf && styles.intervalProgressTextActive,
+                ]}
+              >
+                {targetNote.name}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.recordingIndicator}>
+            <View style={styles.recordingDot} />
+
+            <Text style={styles.recordingText}>
+              {isRecording ? 'Recording...' : 'Preparing microphone...'}
+            </Text>
+          </View>
+
+          <View style={styles.recordingBar}>
+            <View
+              style={[
+                styles.recordingBarFill,
+                {
+                  width: `${Math.round(recordingProgress * 100)}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
+    );
+  }
+
+  if (phase === 'processing') {
+    return (
+      <>
+        <View style={styles.centerScreen}>
+          <View style={styles.iconCircle}>
+            <Ionicons
+              name="analytics-outline"
+              size={34}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.phaseTitle}>
+            Analyzing Your Singing
+          </Text>
+
+          <Text style={styles.phaseSubtitle}>
+            Checking your repeated interval accuracy.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.processingIndicator}
+          />
+        </View>
+
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
+    );
+  }
+
+  if (phase === 'results' && result) {
+    const detectedNote1 =
+      result.freq1 > 0 ? frequencyToNote(result.freq1) : '--';
+
+    const detectedNote2 =
+      result.freq2 > 0 ? frequencyToNote(result.freq2) : '--';
+
+    return (
+      <>
+        <View style={styles.screen}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.resultsContent}
+          >
+            <View
+              style={[
+                styles.resultIcon,
+                result.passed
+                  ? styles.resultIconPassed
+                  : styles.resultIconFailed,
+              ]}
+            >
+              <Ionicons
+                name={result.passed ? 'checkmark' : 'refresh'}
+                size={40}
+                color={BROWN}
+              />
+            </View>
+
+            <Text style={styles.resultTitle}>
+              {result.passed ? 'Great Job!' : 'Keep Practicing!'}
+            </Text>
+
+            <Text style={styles.resultSubtitle}>
+              Interval Recognition Result
+            </Text>
+
+            <View style={styles.scoreCard}>
+              <Text style={styles.scoreLabel}>Overall Score</Text>
+
+              <Text style={styles.scoreValue}>{result.score}%</Text>
+
+              <Text style={styles.scoreDescription}>
+                {result.passed
+                  ? 'Your repeated interval attempts were within the target tolerance.'
+                  : 'Try to reproduce the distance between the notes more accurately.'}
               </Text>
             </View>
 
-            {result.repetitionScores.map(
-              (repetitionScore, index) => (
+            <View style={styles.intervalResultCard}>
+              <Text style={styles.resultCardTitle}>
+                Target Interval
+              </Text>
+
+              <View style={styles.intervalResultDisplay}>
+                <View style={styles.intervalResultNote}>
+                  <Text style={styles.intervalResultLabel}>START</Text>
+
+                  <Text style={styles.intervalResultNoteName}>
+                    {rootNote.name}
+                  </Text>
+                </View>
+
+                <View style={styles.intervalArrow}>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={23}
+                    color={BROWN}
+                  />
+
+                  <Text style={styles.intervalArrowLabel}>
+                    {result.intervalName}
+                  </Text>
+                </View>
+
+                <View style={styles.intervalResultNote}>
+                  <Text style={styles.intervalResultLabel}>TARGET</Text>
+
+                  <Text style={styles.intervalResultNoteName}>
+                    {targetNote.name}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.resultCard}>
+              <Text style={styles.resultCardTitle}>
+                Repetition Results
+              </Text>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Requested repetitions
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {repetitionCount}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Detected repetitions
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {result.repetitionsCompleted}
+                </Text>
+              </View>
+
+              {result.repetitionScores.map((repetitionScore, index) => (
                 <View
                   key={`repetition-${index}`}
                   style={styles.resultRow}
@@ -1534,144 +1827,148 @@ export default function IntervalRecognitionTaskScreen({
                     {repetitionScore}%
                   </Text>
                 </View>
-              ),
-            )}
-          </View>
+              ))}
+            </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Your Performance
-            </Text>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Detected first note
+            <View style={styles.resultCard}>
+              <Text style={styles.resultCardTitle}>
+                Your Performance
               </Text>
 
-              <Text style={styles.resultRowValue}>
-                {detectedNote1}
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Detected first note
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {detectedNote1}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Detected second note
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {detectedNote2}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Target ratio
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {result.targetRatio.toFixed(3)}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Median detected ratio
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {result.detectedRatio > 0
+                    ? result.detectedRatio.toFixed(3)
+                    : '--'}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Average interval deviation
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {result.deviationPct.toFixed(1)}%
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.resultCard}>
+              <Text style={styles.resultCardTitle}>
+                Audio Quality
+              </Text>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  First note clarity
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {Math.round(result.firstNoteClarity * 100)}%
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultRowLabel}>
+                  Second note clarity
+                </Text>
+
+                <Text style={styles.resultRowValue}>
+                  {Math.round(result.secondNoteClarity * 100)}%
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.tipCard}>
+              <Ionicons
+                name="bulb-outline"
+                size={21}
+                color={BROWN}
+              />
+
+              <Text style={styles.tipText}>
+                {result.passed
+                  ? 'Nice interval matching! Keep focusing on hearing the distance between notes before you sing.'
+                  : 'Listen carefully to the reference interval and keep a clear pause between every sung note pair.'}
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Detected second note
+            <Pressable
+              style={styles.startButton}
+              onPress={retry}
+            >
+              <Text style={styles.startButtonText}>
+                Try Again
               </Text>
 
-              <Text style={styles.resultRowValue}>
-                {detectedNote2}
-              </Text>
-            </View>
+              <Ionicons
+                name="refresh"
+                size={18}
+                color={WHITE}
+              />
+            </Pressable>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Target ratio
-              </Text>
+            <Pressable
+              style={styles.doneButton}
+              onPress={quitExercise}
+            >
+              <Text style={styles.doneButtonText}>Done</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
 
-              <Text style={styles.resultRowValue}>
-                {result.targetRatio.toFixed(3)}
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Median detected ratio
-              </Text>
-
-              <Text style={styles.resultRowValue}>
-                {result.detectedRatio > 0
-                  ? result.detectedRatio.toFixed(3)
-                  : '--'}
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Average interval deviation
-              </Text>
-
-              <Text style={styles.resultRowValue}>
-                {result.deviationPct.toFixed(1)}%
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Audio Quality
-            </Text>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                First note clarity
-              </Text>
-
-              <Text style={styles.resultRowValue}>
-                {Math.round(result.firstNoteClarity * 100)}%
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
-                Second note clarity
-              </Text>
-
-              <Text style={styles.resultRowValue}>
-                {Math.round(result.secondNoteClarity * 100)}%
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.tipCard}>
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
-            <Text style={styles.tipText}>
-              {result.passed
-                ? 'Nice interval matching! Keep focusing on hearing the distance between notes before you sing.'
-                : 'Listen carefully to the reference interval and keep a clear pause between every sung note pair.'}
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.startButton}
-            onPress={retry}
-          >
-            <Text style={styles.startButtonText}>
-              Try Again
-            </Text>
-
-            <Ionicons
-              name="refresh"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.doneButton}
-            onPress={() =>
-              router.replace('/dashboard?tab=exercises')
-            }
-          >
-            <Text style={styles.doneButtonText}>
-              Done
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </View>
+        <QuitExerciseModal
+          visible={showQuitModal}
+          onContinue={continueExercise}
+          onQuit={quitExercise}
+        />
+      </>
     );
   }
 
-  return null;
+  return (
+    <QuitExerciseModal
+      visible={showQuitModal}
+      onContinue={continueExercise}
+      onQuit={quitExercise}
+    />
+  );
 }
-
-// ============================================================
-// STYLES
-// ============================================================
 
 const styles = StyleSheet.create({
   centerScreen: {
@@ -2233,6 +2530,81 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   doneButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(30, 18, 14, 0.48)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  quitModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 26,
+    paddingBottom: 22,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  quitIconCircle: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  quitModalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  quitModalMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 9,
+    marginBottom: 22,
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 50,
+    borderRadius: 25,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: WHITE,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 24,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  quitButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,

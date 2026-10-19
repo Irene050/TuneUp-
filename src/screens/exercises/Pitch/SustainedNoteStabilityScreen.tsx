@@ -9,6 +9,8 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,50 +23,42 @@ import {
   type SustainedNoteStabilityParams,
   type Tier,
 } from '@/constants/exercises/pitch';
-
+import {
+  useAudioRecorder,
+  type LiveAudioFrame,
+} from '@/hooks/useAudioRecorder';
 import {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
   ExerciseProcessingScreen,
 } from '@/screens/exercises/ExerciseScreen';
-
-import {
-  useAudioRecorder,
-  type LiveAudioFrame,
-} from '@/hooks/useAudioRecorder';
-
+import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import {
   measureSustainedNoteStability,
   type SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
-
-import {
-  scoreSustainedNoteStabilityRepetitions,
-  type SustainedNoteStabilityScoreResult,
-} from '@/services/scoring/pitch/sustainedNoteStability';
-
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-
-import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
-
-import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-
 import {
-  createMusicalNote,
-  getRandomPitchNote,
-} from '@/utils/music/notes';
-
-import { playSingleNote } from '@/utils/music/notePlayer';
-
+  scoreSustainedNoteStabilityRepetitions,
+  type SustainedNoteStabilityScoreResult,
+} from '@/services/scoring/pitch/sustainedNoteStability';
 import {
   calcLiveStability,
   calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
+import {
+  disposeNotePlayer,
+  playSingleNote,
+} from '@/utils/music/notePlayer';
+import {
+  createMusicalNote,
+  getRandomPitchNote,
+} from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -77,6 +71,7 @@ const BORDER = '#F2DDE5';
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
 const RECORDING_INTERVAL_MS = 100;
+const COUNTDOWN_SECONDS = 3;
 
 interface Props {
   tier?: Tier;
@@ -99,81 +94,93 @@ export default function SustainedNoteStabilityScreen({
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
   );
-
   const [params, setParams] =
     useState<SustainedNoteStabilityParams>(
       SUSTAINED_NOTE_STABILITY_PARAMS[tier ?? 'beginner'],
     );
-
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
-
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [currentRep, setCurrentRep] = useState(1);
-
+  const [isQuitModalVisible, setIsQuitModalVisible] = useState(false);
+  const [isStoppingForModal, setIsStoppingForModal] = useState(false);
   const [targetNote, setTargetNote] = useState<MusicalNote>(
     () => createMusicalNote(60),
   );
-
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
-
-  const [liveFrequencies, setLiveFrequencies] =
-    useState<number[]>([]);
-
+  const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
-
   const [result, setResult] =
     useState<SustainedNoteStabilityScoreResult | null>(null);
-
-  const [errorMessage, setErrorMessage] =
-    useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const phaseRef = useRef<Phase>('instructions');
+
   const recordingRef = useRef(false);
+  const startingRecordingRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const stopInFlightRef = useRef(false);
   const processingRef = useRef(false);
   const discardRecordingRef = useRef(false);
 
+  const pausedRef = useRef(false);
+  const modalVisibleRef = useRef(false);
+  const navigatingAwayRef = useRef(false);
+  const stopPendingForModalRef = useRef(false);
+
+  const interruptedPhaseRef = useRef<Phase>('instructions');
+
   const elapsedRef = useRef(0);
   const currentRepRef = useRef(1);
+  const targetNoteRef = useRef<MusicalNote>(createMusicalNote(60));
 
   const measurementsRef =
     useRef<SustainedNoteStabilityMeasurement[]>([]);
-
   const pitchHistoryRef = useRef<number[]>([]);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
-
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Store recorder methods in refs so callbacks can safely use them
-  // without referencing variables declared later in the component.
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-
   const stopRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
 
+  // Store the recorder's startup promise so stopping can wait for startup.
+  const recorderStartPromiseRef = useRef<Promise<void> | null>(null);
+
   const playTargetAndRecordRef =
     useRef<((note: MusicalNote) => Promise<void>) | null>(null);
+  const resumeCurrentRepRef = useRef<(() => void) | null>(null);
+
+  const changePhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
 
   const clearCountdownTimer = useCallback(() => {
-    if (countdownTimerRef.current) {
+    if (countdownTimerRef.current !== null) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
   }, []);
 
   const clearRecordingTimer = useCallback(() => {
-    if (recordingTimerRef.current) {
+    if (recordingTimerRef.current !== null) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
   }, []);
+
+  const clearTimers = useCallback(() => {
+    clearCountdownTimer();
+    clearRecordingTimer();
+  }, [clearCountdownTimer, clearRecordingTimer]);
 
   const resetLiveMeasurements = useCallback(() => {
     pitchHistoryRef.current = [];
@@ -183,11 +190,10 @@ export default function SustainedNoteStabilityScreen({
     setElapsedMs(0);
   }, []);
 
-  // Load the user's current tier and adaptive exercise parameters.
   useEffect(() => {
     let cancelled = false;
 
-    const loadAdaptiveParams = async () => {
+    async function loadAdaptiveParams() {
       setIsLoadingAdaptiveParams(true);
 
       let resolvedTier: Tier = tier ?? 'beginner';
@@ -217,37 +223,38 @@ export default function SustainedNoteStabilityScreen({
             COMPONENT_ID,
           );
 
-          const matchingRecords = records
+          if (cancelled) return;
+
+          recentScores = records
             .filter(
               record =>
                 record.tier === resolvedTier &&
                 record.templateId === EXERCISE_ID,
             )
-            .sort((a, b) => a.timestamp - b.timestamp);
-
-          recentScores = matchingRecords
+            .sort((a, b) => a.timestamp - b.timestamp)
             .slice(-5)
             .map(record => record.scorePct);
         }
 
-        // Use the assessment only when no matching exercise history exists.
+        // Use the assessment score only when no matching exercise history exists.
         if (recentScores.length === 0) {
           const assessment = await getLatestAssessment();
+
+          if (cancelled) return;
 
           const pitchScore = assessment?.scores.find(
             score => score.componentId === COMPONENT_ID,
           );
 
-          if (pitchScore) {
+          if (typeof pitchScore?.scorePct === 'number') {
             recentScores = [pitchScore.scorePct];
           }
         }
 
-        const generatedParams =
-          generateSustainedNoteStabilityParams({
-            tier: resolvedTier,
-            recentScores,
-          });
+        const generatedParams = generateSustainedNoteStabilityParams({
+          tier: resolvedTier,
+          recentScores,
+        });
 
         if (cancelled) return;
 
@@ -260,16 +267,14 @@ export default function SustainedNoteStabilityScreen({
 
         if (!cancelled) {
           setCurrentTier(resolvedTier);
-          setParams(
-            SUSTAINED_NOTE_STABILITY_PARAMS[resolvedTier],
-          );
+          setParams(SUSTAINED_NOTE_STABILITY_PARAMS[resolvedTier]);
         }
       } finally {
         if (!cancelled) {
           setIsLoadingAdaptiveParams(false);
         }
       }
-    };
+    }
 
     void loadAdaptiveParams();
 
@@ -278,115 +283,237 @@ export default function SustainedNoteStabilityScreen({
     };
   }, [tier]);
 
-  // Clean up timers and stop the microphone when leaving the screen.
+  /**
+   * Stops an interrupted recording without scoring it.
+   * If recorder startup is pending, stopping waits until startup resolves.
+   */
+  const stopAndDiscardRecording = useCallback(async () => {
+    discardRecordingRef.current = true;
+    stopRequestedRef.current = true;
+    stopPendingForModalRef.current = true;
+
+    clearRecordingTimer();
+
+    if (startingRecordingRef.current && !recordingRef.current) {
+      if (mountedRef.current) {
+        setIsStoppingForModal(true);
+      }
+      return;
+    }
+
+    if (!recordingRef.current && !stopInFlightRef.current) {
+      discardRecordingRef.current = false;
+      stopRequestedRef.current = false;
+      stopPendingForModalRef.current = false;
+
+      if (mountedRef.current) {
+        setIsStoppingForModal(false);
+      }
+      return;
+    }
+
+    const stop = stopRecordingRef.current;
+
+    if (!stop || stopInFlightRef.current) {
+      if (mountedRef.current) {
+        setIsStoppingForModal(stopInFlightRef.current);
+      }
+      return;
+    }
+
+    stopInFlightRef.current = true;
+
+    if (mountedRef.current) {
+      setIsStoppingForModal(true);
+    }
+
+    try {
+      await stop();
+    } catch (error) {
+      console.error(
+        'Failed to stop interrupted sustained note recording:',
+        error,
+      );
+
+      stopInFlightRef.current = false;
+      recordingRef.current = false;
+      startingRecordingRef.current = false;
+      stopRequestedRef.current = false;
+      discardRecordingRef.current = false;
+      stopPendingForModalRef.current = false;
+
+      if (mountedRef.current) {
+        setIsStoppingForModal(false);
+      }
+    }
+  }, [clearRecordingTimer]);
+
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
+      pausedRef.current = true;
+      modalVisibleRef.current = false;
+      navigatingAwayRef.current = true;
+      discardRecordingRef.current = true;
 
-      clearCountdownTimer();
-      clearRecordingTimer();
+      clearTimers();
 
-      if (recordingRef.current) {
-        void stopRecordingRef.current?.().catch(error => {
-          console.error(
-            'Failed to stop recording during cleanup:',
-            error,
-          );
-        });
+      const stop = stopRecordingRef.current;
+
+      if (
+        stop &&
+        !stopInFlightRef.current &&
+        (recordingRef.current || startingRecordingRef.current)
+      ) {
+        stopInFlightRef.current = true;
+
+        void (async () => {
+          try {
+            await recorderStartPromiseRef.current?.catch(() => undefined);
+            await stop();
+          } catch (error) {
+            console.warn(
+              'Failed to stop recording during cleanup:',
+              error,
+            );
+          }
+        })();
       }
+
+      void disposeNotePlayer().catch(error => {
+        console.warn('Failed to dispose note player:', error);
+      });
     };
-  }, [clearCountdownTimer, clearRecordingTimer]);
+  }, [clearTimers]);
 
   const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      modalVisibleRef.current ||
+      navigatingAwayRef.current ||
+      discardRecordingRef.current ||
+      phaseRef.current !== 'recording'
+    ) {
+      return;
+    }
 
     setLiveFrame(frame);
 
     if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
-      pitchHistoryRef.current = [
+      const nextHistory = [
         ...pitchHistoryRef.current,
         frame.pitch,
       ].slice(-30);
 
-      setLiveFrequencies(pitchHistoryRef.current);
+      pitchHistoryRef.current = nextHistory;
+      setLiveFrequencies(nextHistory);
     }
   }, []);
 
   const beginRecording = useCallback(async () => {
     if (
       !mountedRef.current ||
+      pausedRef.current ||
+      modalVisibleRef.current ||
+      navigatingAwayRef.current ||
       recordingRef.current ||
-      processingRef.current
+      startingRecordingRef.current ||
+      processingRef.current ||
+      discardRecordingRef.current
     ) {
       return;
     }
 
+    const start = startRecordingRef.current;
+
+    if (!start) {
+      setErrorMessage(
+        'The audio recorder is not ready. Please try again.',
+      );
+      changePhase('instructions');
+      return;
+    }
+
+    startingRecordingRef.current = true;
+    stopRequestedRef.current = false;
+
     try {
       resetLiveMeasurements();
+      changePhase('recording');
 
-      stopRequestedRef.current = false;
-      discardRecordingRef.current = false;
+      // Keep the raw startup promise so pause and quit can coordinate with it.
+      const startPromise = start();
+      recorderStartPromiseRef.current = startPromise;
 
-      setPhase('recording');
-
-      const start = startRecordingRef.current;
-
-      if (!start) {
-        throw new Error('Audio recorder is not ready.');
-      }
-
-      await start();
-
-      if (!mountedRef.current) {
-        // The screen was unmounted while the microphone was starting.
-        void stopRecordingRef.current?.().catch(error => {
-          console.error(
-            'Failed to stop recording after unmount:',
-            error,
-          );
-        });
-
-        return;
+      try {
+        await startPromise;
+      } finally {
+        if (recorderStartPromiseRef.current === startPromise) {
+          recorderStartPromiseRef.current = null;
+        }
       }
 
       recordingRef.current = true;
+      startingRecordingRef.current = false;
+
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        modalVisibleRef.current ||
+        navigatingAwayRef.current ||
+        discardRecordingRef.current ||
+        stopRequestedRef.current
+      ) {
+        if (navigatingAwayRef.current) return;
+
+        await stopAndDiscardRecording();
+        return;
+      }
 
       const durationMs = params.durationSec * 1000;
+      const startTime = Date.now();
 
       clearRecordingTimer();
 
       recordingTimerRef.current = setInterval(() => {
         if (
           !mountedRef.current ||
+          pausedRef.current ||
+          modalVisibleRef.current ||
+          navigatingAwayRef.current ||
           !recordingRef.current ||
           stopRequestedRef.current
         ) {
           return;
         }
 
-        elapsedRef.current += RECORDING_INTERVAL_MS;
+        const elapsed = Date.now() - startTime;
+        elapsedRef.current = Math.min(elapsed, durationMs);
         setElapsedMs(elapsedRef.current);
 
-        if (elapsedRef.current < durationMs) return;
+        if (elapsed < durationMs) return;
 
         clearRecordingTimer();
 
         if (stopRequestedRef.current) return;
 
         stopRequestedRef.current = true;
+        stopInFlightRef.current = true;
 
         const stop = stopRecordingRef.current;
 
         if (!stop) {
+          stopInFlightRef.current = false;
           recordingRef.current = false;
           stopRequestedRef.current = false;
 
           setErrorMessage(
             'The microphone could not be stopped. Please try again.',
           );
-          setPhase('instructions');
+          changePhase('instructions');
           return;
         }
 
@@ -396,84 +523,147 @@ export default function SustainedNoteStabilityScreen({
             error,
           );
 
+          stopInFlightRef.current = false;
           recordingRef.current = false;
           stopRequestedRef.current = false;
           processingRef.current = false;
 
-          if (mountedRef.current) {
+          if (
+            mountedRef.current &&
+            !pausedRef.current &&
+            !navigatingAwayRef.current
+          ) {
             setErrorMessage(
               'We could not finish the recording. Please try again.',
             );
-            setPhase('instructions');
+            changePhase('instructions');
           }
         });
       }, RECORDING_INTERVAL_MS);
     } catch (error) {
-      console.error('Failed to start sustained note recording:', error);
-
+      startingRecordingRef.current = false;
       recordingRef.current = false;
+      stopInFlightRef.current = false;
       stopRequestedRef.current = false;
 
-      if (mountedRef.current) {
-        setPhase('instructions');
+      console.error('Failed to start sustained note recording:', error);
+
+      if (
+        mountedRef.current &&
+        !pausedRef.current &&
+        !navigatingAwayRef.current
+      ) {
+        changePhase('instructions');
 
         Alert.alert(
           'Microphone Error',
           'Unable to start the microphone. Please check your microphone permission and try again.',
         );
       }
+
+      if (mountedRef.current) {
+        setIsStoppingForModal(false);
+      }
+
+      stopPendingForModalRef.current = false;
+      discardRecordingRef.current = false;
     }
   }, [
+    changePhase,
     clearRecordingTimer,
     params.durationSec,
     resetLiveMeasurements,
+    stopAndDiscardRecording,
   ]);
 
   const playTargetAndRecord = useCallback(
     async (note: MusicalNote) => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        modalVisibleRef.current ||
+        navigatingAwayRef.current
+      ) {
+        return;
+      }
 
       try {
-        setPhase('playing');
+        changePhase('playing');
 
         await playSingleNote(note.frequency, 1.5);
 
-        if (!mountedRef.current) return;
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          modalVisibleRef.current ||
+          navigatingAwayRef.current
+        ) {
+          return;
+        }
 
         await beginRecording();
       } catch (error) {
         console.error('Failed to play target note:', error);
 
-        if (mountedRef.current) {
-          setPhase('instructions');
-
-          Alert.alert(
-            'Audio Error',
+        if (
+          mountedRef.current &&
+          !pausedRef.current &&
+          !navigatingAwayRef.current
+        ) {
+          setErrorMessage(
             'Unable to play the target note. Please try again.',
           );
+          changePhase('instructions');
         }
       }
     },
-    [beginRecording],
+    [beginRecording, changePhase],
   );
 
-  // Keep the latest playback callback available to the stop handler.
-  playTargetAndRecordRef.current = playTargetAndRecord;
+  useEffect(() => {
+    playTargetAndRecordRef.current = playTargetAndRecord;
+  }, [playTargetAndRecord]);
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
       recordingRef.current = false;
+      startingRecordingRef.current = false;
+      stopInFlightRef.current = false;
       clearRecordingTimer();
 
-      // A discarded recording must never be measured or saved.
       if (discardRecordingRef.current) {
         discardRecordingRef.current = false;
         stopRequestedRef.current = false;
         processingRef.current = false;
+        stopPendingForModalRef.current = false;
+
+        if (mountedRef.current) {
+          setIsStoppingForModal(false);
+        }
+
+        // Resume only after the recorder has completely stopped.
+        if (
+          mountedRef.current &&
+          !modalVisibleRef.current &&
+          !pausedRef.current &&
+          !navigatingAwayRef.current
+        ) {
+          resumeCurrentRepRef.current?.();
+        }
+
         return;
       }
 
-      if (!mountedRef.current || processingRef.current) return;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        modalVisibleRef.current ||
+        navigatingAwayRef.current ||
+        processingRef.current
+      ) {
+        stopRequestedRef.current = false;
+        return;
+      }
 
       processingRef.current = true;
 
@@ -496,16 +686,19 @@ export default function SustainedNoteStabilityScreen({
 
           currentRepRef.current = nextRep;
           setCurrentRep(nextRep);
-
           resetLiveMeasurements();
+
           stopRequestedRef.current = false;
           processingRef.current = false;
 
-          await playTargetAndRecordRef.current?.(targetNote);
+          await playTargetAndRecordRef.current?.(
+            targetNoteRef.current,
+          );
+
           return;
         }
 
-        setPhase('processing');
+        changePhase('processing');
 
         const score = scoreSustainedNoteStabilityRepetitions(
           measurementsRef.current,
@@ -519,21 +712,28 @@ export default function SustainedNoteStabilityScreen({
           score.score,
         );
 
-        if (!mountedRef.current) return;
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          navigatingAwayRef.current
+        ) {
+          return;
+        }
 
         setResult(score);
-        setPhase('results');
+        changePhase('results');
       } catch (error) {
-        console.error(
-          'Sustained note processing error:',
-          error,
-        );
+        console.error('Sustained note processing error:', error);
 
-        if (mountedRef.current) {
+        if (
+          mountedRef.current &&
+          !pausedRef.current &&
+          !navigatingAwayRef.current
+        ) {
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          setPhase('instructions');
+          changePhase('instructions');
         }
       } finally {
         processingRef.current = false;
@@ -541,11 +741,11 @@ export default function SustainedNoteStabilityScreen({
       }
     },
     [
+      changePhase,
       clearRecordingTimer,
       currentTier,
       params,
       resetLiveMeasurements,
-      targetNote,
     ],
   );
 
@@ -558,8 +758,6 @@ export default function SustainedNoteStabilityScreen({
     onStop: handleRecordingStop,
   });
 
-  // Assign the recorder methods after the hook declares them.
-  // Callbacks use these refs, avoiding use-before-declaration errors.
   useEffect(() => {
     startRecordingRef.current = startRecording;
     stopRecordingRef.current = stopRecording;
@@ -571,18 +769,30 @@ export default function SustainedNoteStabilityScreen({
   }, [startRecording, stopRecording]);
 
   const startCountdown = useCallback(() => {
-    if (isLoadingAdaptiveParams) return;
+    if (
+      isLoadingAdaptiveParams ||
+      pausedRef.current ||
+      modalVisibleRef.current ||
+      navigatingAwayRef.current ||
+      startingRecordingRef.current ||
+      recordingRef.current ||
+      stopInFlightRef.current ||
+      processingRef.current
+    ) {
+      return;
+    }
 
-    clearCountdownTimer();
+    clearTimers();
 
     const generatedNote = getRandomPitchNote(currentTier);
 
+    targetNoteRef.current = generatedNote;
     setTargetNote(generatedNote);
     setResult(null);
     setErrorMessage(null);
 
-    setCurrentRep(1);
     currentRepRef.current = 1;
+    setCurrentRep(1);
 
     measurementsRef.current = [];
     resetLiveMeasurements();
@@ -590,18 +800,27 @@ export default function SustainedNoteStabilityScreen({
     processingRef.current = false;
     stopRequestedRef.current = false;
     discardRecordingRef.current = false;
-    recordingRef.current = false;
+    stopPendingForModalRef.current = false;
 
-    let value = 3;
+    let remaining = COUNTDOWN_SECONDS;
 
-    setCountdown(value);
-    setPhase('countdown');
+    setCountdown(remaining);
+    changePhase('countdown');
 
     countdownTimerRef.current = setInterval(() => {
-      value -= 1;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        modalVisibleRef.current ||
+        navigatingAwayRef.current
+      ) {
+        return;
+      }
 
-      if (value > 0) {
-        setCountdown(value);
+      remaining -= 1;
+
+      if (remaining > 0) {
+        setCountdown(remaining);
         return;
       }
 
@@ -611,19 +830,228 @@ export default function SustainedNoteStabilityScreen({
       void playTargetAndRecordRef.current?.(generatedNote);
     }, 1000);
   }, [
-    clearCountdownTimer,
+    changePhase,
+    clearTimers,
     currentTier,
     isLoadingAdaptiveParams,
     resetLiveMeasurements,
   ]);
 
-  const retry = useCallback(() => {
+  const requestPause = useCallback(() => {
+    if (
+      pausedRef.current ||
+      modalVisibleRef.current ||
+      navigatingAwayRef.current ||
+      phaseRef.current === 'processing' ||
+      phaseRef.current === 'results'
+    ) {
+      return;
+    }
+
+    interruptedPhaseRef.current = phaseRef.current;
+
+    pausedRef.current = true;
+    modalVisibleRef.current = true;
+
+    clearTimers();
+    setIsQuitModalVisible(true);
+
+    if (
+      recordingRef.current ||
+      startingRecordingRef.current ||
+      isRecording
+    ) {
+      if (isRecording) recordingRef.current = true;
+
+      void stopAndDiscardRecording();
+    } else {
+      setIsStoppingForModal(false);
+    }
+  }, [clearTimers, isRecording, stopAndDiscardRecording]);
+
+  const resumeCurrentRep = useCallback(() => {
+    if (
+      navigatingAwayRef.current ||
+      stopPendingForModalRef.current ||
+      stopInFlightRef.current ||
+      startingRecordingRef.current ||
+      recordingRef.current
+    ) {
+      return;
+    }
+
+    setIsQuitModalVisible(false);
+    modalVisibleRef.current = false;
+    pausedRef.current = false;
+    setIsStoppingForModal(false);
+    setErrorMessage(null);
+
+    const interruptedPhase = interruptedPhaseRef.current;
+
+    if (interruptedPhase === 'instructions') {
+      changePhase('instructions');
+      return;
+    }
+
+    if (interruptedPhase === 'processing') {
+      changePhase('processing');
+      return;
+    }
+
+    if (interruptedPhase === 'results') {
+      changePhase('results');
+      return;
+    }
+
+    // Restart the interrupted repetition without changing completed results.
+    resetLiveMeasurements();
+
+    let remaining = COUNTDOWN_SECONDS;
+
+    setCountdown(remaining);
+    changePhase('countdown');
     clearCountdownTimer();
-    clearRecordingTimer();
+
+    countdownTimerRef.current = setInterval(() => {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        modalVisibleRef.current ||
+        navigatingAwayRef.current
+      ) {
+        return;
+      }
+
+      remaining -= 1;
+
+      if (remaining > 0) {
+        setCountdown(remaining);
+        return;
+      }
+
+      clearCountdownTimer();
+      setCountdown(0);
+
+      void playTargetAndRecordRef.current?.(targetNoteRef.current);
+    }, 1000);
+  }, [
+    changePhase,
+    clearCountdownTimer,
+    resetLiveMeasurements,
+  ]);
+
+  useEffect(() => {
+    resumeCurrentRepRef.current = resumeCurrentRep;
+  }, [resumeCurrentRep]);
+
+  const quitExercise = useCallback(async () => {
+    if (navigatingAwayRef.current) return;
+
+    navigatingAwayRef.current = true;
+    pausedRef.current = true;
+    modalVisibleRef.current = false;
+    discardRecordingRef.current = true;
+    stopRequestedRef.current = true;
+    stopPendingForModalRef.current = false;
+
+    clearTimers();
+    setIsQuitModalVisible(false);
+
+    try {
+      // Wait for startup to finish before attempting to stop the recorder.
+      await recorderStartPromiseRef.current?.catch(error => {
+        console.warn('Recorder startup ended with an error:', error);
+      });
+
+      if (
+        recordingRef.current ||
+        startingRecordingRef.current ||
+        isRecording
+      ) {
+        const stop = stopRecordingRef.current;
+
+        if (stop && !stopInFlightRef.current) {
+          stopInFlightRef.current = true;
+          await stop();
+        }
+      }
+    } catch (error) {
+      console.error(
+        'Failed to stop recording when quitting:',
+        error,
+      );
+    } finally {
+      recordingRef.current = false;
+      startingRecordingRef.current = false;
+      stopInFlightRef.current = false;
+    }
+
+    try {
+      await disposeNotePlayer();
+    } catch (error) {
+      console.warn('Failed to dispose note player:', error);
+    }
+
+    if (mountedRef.current) {
+      router.replace('/dashboard?tab=exercises');
+    }
+  }, [clearTimers, isRecording]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (modalVisibleRef.current) return true;
+
+        if (
+          phaseRef.current === 'processing' ||
+          phaseRef.current === 'results'
+        ) {
+          return false;
+        }
+
+        requestPause();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [requestPause]);
+
+  const retry = useCallback(() => {
+    clearTimers();
+
+    if (
+      recordingRef.current ||
+      startingRecordingRef.current ||
+      isRecording
+    ) {
+      discardRecordingRef.current = true;
+      stopRequestedRef.current = true;
+
+      const stop = stopRecordingRef.current;
+
+      if (
+        stop &&
+        !stopInFlightRef.current &&
+        !startingRecordingRef.current
+      ) {
+        stopInFlightRef.current = true;
+
+        void stop().catch(error => {
+          console.error(
+            'Failed to stop recorder before retry:',
+            error,
+          );
+
+          stopInFlightRef.current = false;
+          recordingRef.current = false;
+        });
+      }
+    }
 
     setResult(null);
     setErrorMessage(null);
-
     setCurrentRep(1);
     currentRepRef.current = 1;
 
@@ -631,24 +1059,25 @@ export default function SustainedNoteStabilityScreen({
     resetLiveMeasurements();
 
     processingRef.current = false;
-    stopRequestedRef.current = false;
-    discardRecordingRef.current = false;
-    recordingRef.current = false;
+    pausedRef.current = false;
+    modalVisibleRef.current = false;
+    navigatingAwayRef.current = false;
+    stopPendingForModalRef.current = false;
 
-    setCountdown(3);
-    setPhase('instructions');
+    setIsQuitModalVisible(false);
+    setIsStoppingForModal(false);
+    setCountdown(COUNTDOWN_SECONDS);
+    changePhase('instructions');
   }, [
-    clearCountdownTimer,
-    clearRecordingTimer,
+    changePhase,
+    clearTimers,
+    isRecording,
     resetLiveMeasurements,
   ]);
 
   const durationMs = params.durationSec * 1000;
-
   const progress =
-    durationMs > 0
-      ? Math.min(1, elapsedMs / durationMs)
-      : 0;
+    durationMs > 0 ? Math.min(1, elapsedMs / durationMs) : 0;
 
   const liveAccuracy =
     liveFrame && liveFrame.pitch > 0
@@ -663,330 +1092,370 @@ export default function SustainedNoteStabilityScreen({
 
   const liveStability = calcLiveStability(liveFrequencies);
 
+  const quitMessage = isStoppingForModal
+    ? 'Your exercise is paused while the microphone stops safely. The interrupted recording will not be scored, and your completed repetitions will be kept.'
+    : interruptedPhaseRef.current === 'instructions'
+      ? 'Are you sure you want to leave Sustained Note Stability?'
+      : interruptedPhaseRef.current === 'recording'
+        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
+
+  const quitModal = (
+    <QuitExerciseModal
+      visible={isQuitModalVisible}
+      isStopping={isStoppingForModal}
+      message={quitMessage}
+      onContinue={resumeCurrentRep}
+      onQuit={() => {
+        void quitExercise();
+      }}
+    />
+  );
+
   if (
     phase === 'preparing' ||
     (phase === 'instructions' && isLoadingAdaptiveParams)
   ) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={34}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.title}>Preparing Your Exercise</Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Setting up your personalized exercise...
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.loadingIndicator}
-        />
-      </View>
-    );
-  }
-
-  if (phase === 'instructions') {
-    return (
-      <View style={styles.screen}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            router.replace('/dashboard?tab=exercises')
-          }
-        >
-          <Ionicons name="arrow-back" size={22} color={BROWN} />
-        </Pressable>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
-        >
+      <>
+        <View style={styles.centerScreen}>
           <View style={styles.iconCircle}>
             <Ionicons
-              name="radio-outline"
+              name="musical-notes-outline"
               size={34}
               color={BROWN}
             />
           </View>
 
-          <Text style={styles.title}>
-            Sustained Note Stability
+          <Text style={styles.title}>Preparing Your Exercise</Text>
+
+          <Text style={styles.phaseSubtitle}>
+            Setting up your personalized exercise...
           </Text>
 
-          <Text style={styles.subtitle}>Pitch</Text>
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.loadingIndicator}
+          />
+        </View>
+        {quitModal}
+      </>
+    );
+  }
 
-          <View style={styles.instructionCard}>
-            <Text style={styles.cardTitle}>
-              Exercise Instructions
-            </Text>
+  if (phase === 'instructions') {
+    return (
+      <>
+        <View style={styles.screen}>
+          <Pressable
+            style={styles.backButton}
+            onPress={requestPause}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={22} color={BROWN} />
+          </Pressable>
 
-            <Text style={styles.instruction}>
-              Listen to the reference note before each recording.
-            </Text>
-
-            <Text style={styles.instruction}>
-              Sing the same comfortable note and hold it steadily
-              for {params.durationSec} seconds.
-            </Text>
-
-            <Text style={styles.instruction}>
-              Complete {params.repetitions} repetitions while
-              keeping your pitch steady without drifting sharp
-              or flat.
-            </Text>
-
-            <View style={styles.prepareCard}>
-              <View style={styles.prepareHeader}>
-                <Ionicons
-                  name="mic-outline"
-                  size={21}
-                  color={BROWN}
-                />
-                <Text style={styles.prepareTitle}>
-                  Before You Begin
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="volume-mute-outline"
-                  size={17}
-                  color={BROWN}
-                />
-                <Text style={styles.prepareText}>
-                  Find a quiet room or area with minimal
-                  background noise.
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="body-outline"
-                  size={17}
-                  color={BROWN}
-                />
-                <Text style={styles.prepareText}>
-                  Sit upright or stand with your back straight
-                  and your shoulders relaxed.
-                </Text>
-              </View>
-
-              <View style={styles.prepareItem}>
-                <Ionicons
-                  name="mic-outline"
-                  size={17}
-                  color={BROWN}
-                />
-                <Text style={styles.prepareText}>
-                  Sing toward the microphone for clearer
-                  audio capture.
-                </Text>
-              </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.content}
+          >
+            <View style={styles.iconCircle}>
+              <Ionicons
+                name="radio-outline"
+                size={34}
+                color={BROWN}
+              />
             </View>
 
-            <View style={styles.targetBox}>
-              <Ionicons name="remove" size={25} color={BROWN} />
-              <Text style={styles.targetText}>
-                Keep the note steady
+            <Text style={styles.title}>
+              Sustained Note Stability
+            </Text>
+
+            <Text style={styles.subtitle}>Pitch</Text>
+
+            <View style={styles.instructionCard}>
+              <Text style={styles.cardTitle}>
+                Exercise Instructions
+              </Text>
+
+              <Text style={styles.instruction}>
+                Listen to the reference note before each recording.
+              </Text>
+
+              <Text style={styles.instruction}>
+                Sing the same comfortable note and hold it steadily
+                for {params.durationSec} seconds.
+              </Text>
+
+              <Text style={styles.instruction}>
+                Complete {params.repetitions} repetitions while
+                keeping your pitch steady without drifting sharp
+                or flat.
+              </Text>
+
+              <View style={styles.prepareCard}>
+                <View style={styles.prepareHeader}>
+                  <Ionicons
+                    name="mic-outline"
+                    size={21}
+                    color={BROWN}
+                  />
+                  <Text style={styles.prepareTitle}>
+                    Before You Begin
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="volume-mute-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+                  <Text style={styles.prepareText}>
+                    Find a quiet room or area with minimal
+                    background noise.
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="body-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+                  <Text style={styles.prepareText}>
+                    Sit upright or stand with your back straight
+                    and your shoulders relaxed.
+                  </Text>
+                </View>
+
+                <View style={styles.prepareItem}>
+                  <Ionicons
+                    name="mic-outline"
+                    size={17}
+                    color={BROWN}
+                  />
+                  <Text style={styles.prepareText}>
+                    Sing toward the microphone for clearer
+                    audio capture.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.targetBox}>
+                <Ionicons name="remove" size={25} color={BROWN} />
+                <Text style={styles.targetText}>
+                  Keep the note steady
+                </Text>
+              </View>
+
+              <Text style={styles.helperText}>
+                TuneUp! measures pitch stability across all
+                repetitions.
               </Text>
             </View>
 
-            <Text style={styles.helperText}>
-              TuneUp! measures pitch stability across all
-              repetitions.
-            </Text>
-          </View>
+            <View style={styles.tipCard}>
+              <Ionicons name="bulb-outline" size={21} color={BROWN} />
+              <Text style={styles.tipText}>
+                Avoid intentionally changing pitch. Focus on
+                maintaining one relaxed, consistent note.
+              </Text>
+            </View>
 
-          <View style={styles.tipCard}>
-            <Ionicons name="bulb-outline" size={21} color={BROWN} />
-            <Text style={styles.tipText}>
-              Avoid intentionally changing pitch. Focus on
-              maintaining one relaxed, consistent note.
-            </Text>
-          </View>
+            <View style={styles.difficultyRow}>
+              <Text style={styles.difficultyLabel}>Difficulty</Text>
+              <Text style={styles.difficultyValue}>
+                {currentTier}
+              </Text>
+            </View>
 
-          <View style={styles.difficultyRow}>
-            <Text style={styles.difficultyLabel}>Difficulty</Text>
-            <Text style={styles.difficultyValue}>
-              {currentTier}
-            </Text>
-          </View>
+            <Pressable
+              style={[
+                styles.startButton,
+                isLoadingAdaptiveParams && styles.disabledButton,
+              ]}
+              onPress={startCountdown}
+              disabled={isLoadingAdaptiveParams}
+              accessibilityRole="button"
+            >
+              {isLoadingAdaptiveParams ? (
+                <ActivityIndicator size="small" color={WHITE} />
+              ) : (
+                <>
+                  <Text style={styles.startButtonText}>
+                    Start Exercise
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color={WHITE}
+                  />
+                </>
+              )}
+            </Pressable>
 
-          <Pressable
-            style={[
-              styles.startButton,
-              isLoadingAdaptiveParams && styles.disabledButton,
-            ]}
-            onPress={startCountdown}
-            disabled={isLoadingAdaptiveParams}
-          >
-            {isLoadingAdaptiveParams ? (
-              <ActivityIndicator size="small" color={WHITE} />
-            ) : (
-              <>
-                <Text style={styles.startButtonText}>
-                  Start Exercise
-                </Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={WHITE}
-                />
-              </>
+            {errorMessage && (
+              <Text style={styles.errorText}>{errorMessage}</Text>
             )}
-          </Pressable>
-
-          {errorMessage && (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          )}
-        </ScrollView>
-      </View>
+          </ScrollView>
+        </View>
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="musical-notes-outline"
-        title="Get Ready"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Get ready"
-        prompt="A reference note will play next."
-        onBack={() =>
-          router.replace('/dashboard?tab=exercises')
-        }
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="musical-notes-outline"
+          title="Get Ready"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Get ready"
+          prompt="A reference note will play next."
+          onBack={requestPause}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'playing') {
     return (
-      <ExerciseListeningScreen
-        icon="volume-high-outline"
-        title="Listen Carefully"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        promptTitle="Listen to the reference note"
-        prompt="Listen to the reference note, then sing it steadily."
-        liveContent={
-          <View style={styles.targetCard}>
-            <Text style={styles.targetLabel}>TARGET NOTE</Text>
-            <Text style={styles.targetNote}>{targetNote.name}</Text>
-            <Text style={styles.targetFrequency}>
-              {Math.round(targetNote.frequency)} Hz
-            </Text>
-          </View>
-        }
-        onBack={() =>
-          router.replace('/dashboard?tab=exercises')
-        }
-      />
+      <>
+        <ExerciseListeningScreen
+          icon="volume-high-outline"
+          title="Listen Carefully"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          promptTitle="Listen to the reference note"
+          prompt="Listen to the reference note, then sing it steadily."
+          liveContent={
+            <View style={styles.targetCard}>
+              <Text style={styles.targetLabel}>TARGET NOTE</Text>
+              <Text style={styles.targetNote}>{targetNote.name}</Text>
+              <Text style={styles.targetFrequency}>
+                {Math.round(targetNote.frequency)} Hz
+              </Text>
+            </View>
+          }
+          onBack={requestPause}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'recording') {
     return (
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.recordingContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.recordingIcon}>
-          <Ionicons name="mic" size={34} color={BROWN} />
-        </View>
+      <>
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.recordingContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Pressable
+            style={styles.activeBackButton}
+            onPress={requestPause}
+            accessibilityRole="button"
+            accessibilityLabel="Pause exercise"
+          >
+            <Ionicons name="arrow-back" size={22} color={BROWN} />
+          </Pressable>
 
-        <Text style={styles.phaseTitle}>
-          Hold {targetNote.name}
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Repetition {currentRep} of {params.repetitions}
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Keep your pitch as steady as possible.
-        </Text>
-
-        <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>Target</Text>
-          <Text style={styles.liveTarget}>{targetNote.name}</Text>
-
-          <View style={styles.liveDivider} />
-
-          <Text style={styles.liveLabel}>Your Note</Text>
-          <Text style={styles.liveNote}>
-            {liveFrame?.note ?? '--'}
-          </Text>
-
-          <Text style={styles.liveFrequency}>
-            {liveFrame && liveFrame.pitch > 0
-              ? `${Math.round(liveFrame.pitch)} Hz`
-              : '--'}
-          </Text>
-
-          <View style={styles.liveStats}>
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Accuracy</Text>
-              <Text style={styles.liveStatValue}>
-                {Math.round(liveAccuracy)}%
-              </Text>
-            </View>
-
-            <View style={styles.liveStat}>
-              <Text style={styles.liveStatLabel}>Stability</Text>
-              <Text style={styles.liveStatValue}>
-                {Math.round(liveStability)}%
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.progressContainer}>
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
+          <View style={styles.recordingIcon}>
+            <Ionicons name="mic" size={34} color={BROWN} />
           </View>
 
-          <Text style={styles.progressText}>
-            {(elapsedMs / 1000).toFixed(1)}s / {params.durationSec}s
+          <Text style={styles.phaseTitle}>
+            Hold {targetNote.name}
           </Text>
-        </View>
 
-        <View style={styles.recordingIndicator}>
-          <View style={styles.recordingDot} />
-          <Text style={styles.recordingText}>
-            {isRecording
-              ? 'Recording...'
-              : 'Preparing microphone...'}
+          <Text style={styles.phaseSubtitle}>
+            Repetition {currentRep} of {params.repetitions}
           </Text>
-        </View>
-      </ScrollView>
+
+          <Text style={styles.phaseSubtitle}>
+            Keep your pitch as steady as possible.
+          </Text>
+
+          <View style={styles.liveCard}>
+            <Text style={styles.liveLabel}>Target</Text>
+            <Text style={styles.liveTarget}>{targetNote.name}</Text>
+
+            <View style={styles.liveDivider} />
+
+            <Text style={styles.liveLabel}>Your Note</Text>
+            <Text style={styles.liveNote}>
+              {liveFrame?.note ?? '--'}
+            </Text>
+
+            <Text style={styles.liveFrequency}>
+              {liveFrame && liveFrame.pitch > 0
+                ? `${Math.round(liveFrame.pitch)} Hz`
+                : '--'}
+            </Text>
+
+            <View style={styles.liveStats}>
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Accuracy</Text>
+                <Text style={styles.liveStatValue}>
+                  {Math.round(liveAccuracy)}%
+                </Text>
+              </View>
+
+              <View style={styles.liveStat}>
+                <Text style={styles.liveStatLabel}>Stability</Text>
+                <Text style={styles.liveStatValue}>
+                  {Math.round(liveStability)}%
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.progressContainer}>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${progress * 100}%` },
+                ]}
+              />
+            </View>
+
+            <Text style={styles.progressText}>
+              {(elapsedMs / 1000).toFixed(1)}s / {params.durationSec}s
+            </Text>
+          </View>
+
+          <View style={styles.recordingIndicator}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingText}>
+              {isRecording ? 'Recording...' : 'Preparing microphone...'}
+            </Text>
+          </View>
+        </ScrollView>
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'processing') {
     return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title="Analyzing Your Singing"
-        message="Measuring your pitch stability across all repetitions."
-        onBack={() =>
-          router.replace('/dashboard?tab=exercises')
-        }
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Singing"
+          message="Measuring your pitch stability across all repetitions."
+          onBack={requestPause}
+        />
+        {quitModal}
+      </>
     );
   }
 
@@ -1072,15 +1541,13 @@ export default function SustainedNoteStabilityScreen({
               Scores by Repetition
             </Text>
 
-            {result.repetitionScores.map(
-              (repetitionScore, index) => (
-                <ResultRow
-                  key={`repetition-${index}`}
-                  label={`Repetition ${index + 1}`}
-                  value={`${repetitionScore}%`}
-                />
-              ),
-            )}
+            {result.repetitionScores.map((repetitionScore, index) => (
+              <ResultRow
+                key={`repetition-${index}`}
+                label={`Repetition ${index + 1}`}
+                value={`${repetitionScore}%`}
+              />
+            ))}
           </View>
 
           <View style={styles.tipCard}>
@@ -1099,9 +1566,9 @@ export default function SustainedNoteStabilityScreen({
 
           <Pressable
             style={styles.doneButton}
-            onPress={() =>
-              router.replace('/dashboard?tab=exercises')
-            }
+            onPress={() => {
+              void quitExercise();
+            }}
           >
             <Text style={styles.doneButtonText}>Done</Text>
           </Pressable>
@@ -1111,6 +1578,80 @@ export default function SustainedNoteStabilityScreen({
   }
 
   return null;
+}
+
+function QuitExerciseModal({
+  visible,
+  isStopping,
+  message,
+  onContinue,
+  onQuit,
+}: {
+  visible: boolean;
+  isStopping: boolean;
+  message: string;
+  onContinue: () => void;
+  onQuit: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onContinue}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.modalMessage}>{message}</Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isStopping}
+            onPress={onContinue}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isStopping && styles.buttonDisabled,
+            ]}
+          >
+            {isStopping ? (
+              <ActivityIndicator size="small" color={BROWN} />
+            ) : (
+              <Text style={styles.continueButtonText}>
+                Continue Exercise
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            onPress={onQuit}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              Quit Exercise
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 function ResultRow({
@@ -1133,7 +1674,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1141,7 +1681,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1149,16 +1688,14 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
     alignItems: 'center',
   },
-
   recordingContent: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingTop: 50,
+    paddingTop: 70,
     paddingBottom: 40,
   },
-
   resultsContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -1166,7 +1703,6 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-
   backButton: {
     position: 'absolute',
     top: 55,
@@ -1175,7 +1711,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-
+  activeBackButton: {
+    position: 'absolute',
+    top: 12,
+    left: 4,
+    zIndex: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
   iconCircle: {
     width: 76,
     height: 76,
@@ -1185,14 +1728,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
   },
-
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
     color: BROWN,
     textAlign: 'center',
   },
-
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -1200,7 +1741,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: 24,
   },
-
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1209,7 +1749,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   prepareCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -1219,26 +1758,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   prepareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-
   prepareTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
     color: BROWN,
     marginLeft: 9,
   },
-
   prepareItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginTop: 8,
   },
-
   prepareText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -1247,14 +1782,12 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 9,
   },
-
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
     color: BROWN,
     marginBottom: 14,
   },
-
   instruction: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1262,7 +1795,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginBottom: 10,
   },
-
   targetBox: {
     backgroundColor: PINK,
     borderRadius: 14,
@@ -1273,13 +1805,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginVertical: 8,
   },
-
   targetText: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
   },
-
   helperText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1288,7 +1818,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
-
   tipCard: {
     width: '100%',
     flexDirection: 'row',
@@ -1298,7 +1827,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 14,
   },
-
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -1307,7 +1835,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 10,
   },
-
   difficultyRow: {
     width: '100%',
     flexDirection: 'row',
@@ -1316,20 +1843,17 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 20,
   },
-
   difficultyLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   difficultyValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
     textTransform: 'capitalize',
   },
-
   startButton: {
     width: '100%',
     minHeight: 54,
@@ -1341,17 +1865,14 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
   },
-
   disabledButton: {
     opacity: 0.7,
   },
-
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   errorText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -1359,18 +1880,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-
   loadingIndicator: {
     marginTop: 20,
   },
-
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -1379,7 +1897,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   targetCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1390,28 +1907,24 @@ const styles = StyleSheet.create({
     padding: 24,
     marginTop: 28,
   },
-
   targetLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
     letterSpacing: 0.5,
   },
-
   targetNote: {
     fontFamily: 'FredokaBold',
     fontSize: 42,
     color: BROWN,
     marginTop: 4,
   },
-
   targetFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   recordingIcon: {
     width: 76,
     height: 76,
@@ -1421,7 +1934,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
   },
-
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1432,71 +1944,60 @@ const styles = StyleSheet.create({
     marginTop: 25,
     alignItems: 'center',
   },
-
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   liveTarget: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     marginTop: 3,
   },
-
   liveDivider: {
     width: '70%',
     height: 1,
     backgroundColor: BORDER,
     marginVertical: 12,
   },
-
   liveNote: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
     color: BROWN,
     marginTop: 3,
   },
-
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   liveStats: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 18,
   },
-
   liveStat: {
     alignItems: 'center',
   },
-
   liveStatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
   },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginTop: 2,
   },
-
   progressContainer: {
     width: '100%',
     marginTop: 22,
     alignItems: 'center',
   },
-
   progressTrack: {
     width: '100%',
     height: 9,
@@ -1504,26 +2005,22 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_GRAY,
     overflow: 'hidden',
   },
-
   progressFill: {
     height: '100%',
     backgroundColor: PINK,
     borderRadius: 5,
   },
-
   progressText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 7,
   },
-
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 20,
   },
-
   recordingDot: {
     width: 9,
     height: 9,
@@ -1531,13 +2028,11 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginRight: 7,
   },
-
   recordingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   resultIcon: {
     width: 82,
     height: 82,
@@ -1546,22 +2041,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   resultIconPassed: {
     backgroundColor: PINK,
   },
-
   resultIconFailed: {
     backgroundColor: LIGHT_GRAY,
   },
-
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     textAlign: 'center',
   },
-
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -1570,7 +2061,6 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     textAlign: 'center',
   },
-
   scoreCard: {
     width: '100%',
     backgroundColor: PINK,
@@ -1578,27 +2068,23 @@ const styles = StyleSheet.create({
     padding: 22,
     alignItems: 'center',
   },
-
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
   },
-
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
     color: BROWN,
     marginVertical: 3,
   },
-
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     textAlign: 'center',
   },
-
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -1608,46 +2094,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
     marginBottom: 10,
   },
-
   noteDisplay: {
     alignItems: 'center',
     paddingVertical: 4,
   },
-
   resultNote: {
     fontFamily: 'FredokaBold',
     fontSize: 31,
     color: BROWN,
   },
-
   resultFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     marginTop: 2,
   },
-
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
   },
-
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
     flex: 1,
   },
-
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
@@ -1655,7 +2134,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flexShrink: 0,
   },
-
   doneButton: {
     width: '100%',
     height: 50,
@@ -1665,10 +2143,88 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
-
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,
+  },
+
+  // Quit modal — matched to the Note Matching modal.
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });
