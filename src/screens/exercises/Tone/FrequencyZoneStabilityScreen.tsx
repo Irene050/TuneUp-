@@ -9,6 +9,9 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -47,9 +50,11 @@ import {
 } from '@/utils/dsp/spectral';
 
 const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
+const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
 const COUNTDOWN_SECONDS = 3;
@@ -84,15 +89,19 @@ function formatNumber(value: number, decimals = 1) {
 function zoneLabel(zone: FrequencyZone) {
   return zone
     .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+    .replace(/\b\w/g, character => character.toUpperCase());
 }
 
-export default function FrequencyZoneStabilityScreen({ tier }: Props) {
+export default function FrequencyZoneStabilityScreen({
+  tier,
+}: Props) {
   const user = auth.currentUser;
 
-  const [currentTier, setCurrentTier] = useState<Tier>('beginner');
+  const [currentTier, setCurrentTier] = useState<Tier>(
+    tier ?? 'beginner',
+  );
   const [params, setParams] = useState<FrequencyZoneStabilityParams>(
-    FREQUENCY_ZONE_STABILITY_PARAMS.beginner,
+    FREQUENCY_ZONE_STABILITY_PARAMS[tier ?? 'beginner'],
   );
   const [loadingParams, setLoadingParams] = useState(true);
   const [phase, setPhase] = useState<Phase>('instructions');
@@ -110,6 +119,14 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     passed: boolean;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
+
+  const phaseRef = useRef<Phase>('instructions');
+  const paramsRef = useRef<FrequencyZoneStabilityParams>(
+    FREQUENCY_ZONE_STABILITY_PARAMS[tier ?? 'beginner'],
+  );
+  const tierRef = useRef<Tier>(tier ?? 'beginner');
 
   const mountedRef = useRef(true);
   const countdownTimerRef =
@@ -121,11 +138,35 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
 
   const recordingRef = useRef(false);
   const processingRef = useRef(false);
+  const finishingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const elapsedRef = useRef(0);
   const repetitionRef = useRef(1);
   const resultsRef = useRef<RepetitionResult[]>([]);
   const pitchHistoryRef = useRef<number[]>([]);
+
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+  const discardNextStopRef = useRef(false);
+  const pausedPhaseRef = useRef<Phase>('instructions');
+  const progressSavedRef = useRef(false);
+
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const stopRecordingRef =
+    useRef<(() => void | Promise<void>) | null>(null);
+  const beginCountdownRef = useRef<(() => void) | null>(null);
+  const beginRestRef = useRef<(() => void) | null>(null);
+  const finishExerciseRef =
+    useRef<((results: RepetitionResult[]) => Promise<void>) | null>(
+      null,
+    );
+
+  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -144,86 +185,16 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     }
   }, []);
 
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-      clearTimers();
-    };
-  }, [clearTimers]);
-
-  const loadParams = useCallback(async () => {
-    if (!user) {
-      setCurrentTier(tier ?? 'beginner');
-      setParams(FREQUENCY_ZONE_STABILITY_PARAMS[tier ?? 'beginner']);
-      setLoadingParams(false);
+  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
+      phaseRef.current !== 'recording'
+    ) {
       return;
     }
-
-    try {
-      setLoadingParams(true);
-
-      const progress = await fetchComponentProgress(user.uid, 'tone');
-      const resolvedTier = tier ?? progress?.currentTier ?? 'beginner';
-
-      if (!mountedRef.current) return;
-
-      setCurrentTier(resolvedTier);
-
-      const records = await fetchExerciseRecords(user.uid, 'tone');
-
-      const matchingRecords = records
-        .filter(
-          (record) =>
-            record.templateId === 'frequencyZoneStability' &&
-            record.tier === resolvedTier,
-        )
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      let recentScores = matchingRecords
-        .slice(-5)
-        .map((record) => record.scorePct);
-
-      if (recentScores.length === 0) {
-        const assessment = await getLatestAssessment();
-        const assessmentScore = assessment?.scores.find(
-          (score) => score.componentId === 'tone',
-        )?.scorePct;
-
-        if (typeof assessmentScore === 'number') {
-          recentScores = [assessmentScore];
-        }
-      }
-
-      const generatedParams = generateFrequencyZoneStabilityParams({
-        tier: resolvedTier,
-        recentScores,
-      });
-
-      if (!mountedRef.current) return;
-
-      setParams(generatedParams);
-    } catch (error) {
-      console.error('Failed to load Frequency Zone Stability parameters:', error);
-
-      if (!mountedRef.current) return;
-
-      const fallbackTier = tier ?? 'beginner';
-
-      setCurrentTier(fallbackTier);
-      setParams(FREQUENCY_ZONE_STABILITY_PARAMS[fallbackTier]);
-    } finally {
-      if (mountedRef.current) {
-        setLoadingParams(false);
-      }
-    }
-  }, [tier, user]);
-
-  useEffect(() => {
-    void loadParams();
-  }, [loadParams]);
-
-  const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
-    if (!mountedRef.current) return;
 
     setLiveFrame(frame);
 
@@ -235,56 +206,192 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadParams() {
+      setLoadingParams(true);
+
+      try {
+        let resolvedTier: Tier = tier ?? 'beginner';
+
+        if (user && !tier) {
+          const progress = await fetchComponentProgress(
+            user.uid,
+            'tone',
+          );
+
+          resolvedTier = progress?.currentTier ?? 'beginner';
+        }
+
+        if (cancelled || !mountedRef.current) return;
+
+        let recentScores: number[] = [];
+
+        if (user) {
+          const records = await fetchExerciseRecords(
+            user.uid,
+            'tone',
+          );
+
+          if (cancelled || !mountedRef.current) return;
+
+          const matchingRecords = records
+            .filter(
+              record =>
+                record.templateId === 'frequencyZoneStability' &&
+                record.tier === resolvedTier,
+            )
+            .sort((a, b) => a.timestamp - b.timestamp);
+
+          recentScores = matchingRecords
+            .slice(-5)
+            .map(record => record.scorePct);
+
+          if (recentScores.length === 0) {
+            const assessment = await getLatestAssessment();
+
+            if (cancelled || !mountedRef.current) return;
+
+            const assessmentScore = assessment?.scores.find(
+              score => score.componentId === 'tone',
+            )?.scorePct;
+
+            if (typeof assessmentScore === 'number') {
+              recentScores = [assessmentScore];
+            }
+          }
+        }
+
+        if (cancelled || !mountedRef.current) return;
+
+        const generatedParams = generateFrequencyZoneStabilityParams({
+          tier: resolvedTier,
+          recentScores,
+        });
+
+        paramsRef.current = generatedParams;
+        tierRef.current = resolvedTier;
+
+        setCurrentTier(resolvedTier);
+        setParams(generatedParams);
+      } catch (error) {
+        console.error(
+          'Failed to load Frequency Zone Stability parameters:',
+          error,
+        );
+
+        if (cancelled || !mountedRef.current) return;
+
+        const fallbackTier = tier ?? 'beginner';
+        const fallbackParams =
+          FREQUENCY_ZONE_STABILITY_PARAMS[fallbackTier];
+
+        paramsRef.current = fallbackParams;
+        tierRef.current = fallbackTier;
+
+        setCurrentTier(fallbackTier);
+        setParams(fallbackParams);
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          setLoadingParams(false);
+        }
+      }
+    }
+
+    void loadParams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier, user]);
+
   const finishExercise = useCallback(
     async (results: RepetitionResult[]) => {
-      if (results.length === 0) {
-        setErrorMessage('No recording results were detected.');
-        setPhase('instructions');
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        finishingRef.current
+      ) {
         return;
       }
+
+      if (results.length === 0) {
+        setErrorMessage('No recording results were detected.');
+        setCurrentPhase('instructions');
+        return;
+      }
+
+      finishingRef.current = true;
+      setCurrentPhase('processing');
 
       const averageScore =
         results.reduce((sum, item) => sum + item.score.score, 0) /
         results.length;
 
       const finalScore = Math.round(clamp(averageScore, 0, 100));
-      const allPassed = results.every((item) => item.score.passed);
+      const allPassed = results.every(item => item.score.passed);
 
-      if (user) {
-        try {
-          await saveCompletedExercise(
-            'tone',
-            'frequencyZoneStability',
-            currentTier,
-            finalScore,
-          );
-        } catch (error) {
-          console.error('Failed to save Frequency Zone Stability result:', error);
-
-          if (mountedRef.current) {
-            Alert.alert(
-              'Progress Save Error',
-              'Your score was calculated, but the progress could not be saved.',
+      try {
+        if (!progressSavedRef.current) {
+          if (user) {
+            await saveCompletedExercise(
+              'tone',
+              'frequencyZoneStability',
+              tierRef.current,
+              finalScore,
             );
           }
+
+          progressSavedRef.current = true;
         }
+      } catch (error) {
+        console.error(
+          'Failed to save Frequency Zone Stability result:',
+          error,
+        );
+
+        if (
+          mountedRef.current &&
+          !pausedRef.current &&
+          !showQuitModalRef.current &&
+          !quitInProgressRef.current
+        ) {
+          Alert.alert(
+            'Progress Save Error',
+            'Your score was calculated, but the progress could not be saved.',
+          );
+        }
+      } finally {
+        finishingRef.current = false;
       }
 
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        return;
+      }
 
       setResult({
         score: finalScore,
         passed: allPassed,
       });
-      setPhase('results');
+
+      setCurrentPhase('results');
     },
-    [currentTier, user],
+    [setCurrentPhase, user],
   );
 
-  const handleRecordingStop = useCallback(() => {
-    if (!mountedRef.current || processingRef.current) return;
+  useEffect(() => {
+    finishExerciseRef.current = finishExercise;
+  }, [finishExercise]);
 
-    processingRef.current = true;
+  const handleRecordingStop = useCallback(() => {
     recordingRef.current = false;
 
     if (recordingTimerRef.current) {
@@ -292,77 +399,154 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
       recordingTimerRef.current = null;
     }
 
-    const measurement = measureFrequencyZoneStability(
-      pitchHistoryRef.current,
-      elapsedRef.current / 1000,
-    );
-
-    const score = scoreFrequencyZoneStability(measurement, params);
-
-    const repetitionResult: RepetitionResult = {
-      measurement,
-      score,
-    };
-
-    const updatedResults = [...resultsRef.current, repetitionResult];
-    resultsRef.current = updatedResults;
-
-    if (!mountedRef.current) {
+    // Ignore audio returned by a recording interrupted by the quit modal.
+    if (discardNextStopRef.current) {
+      discardNextStopRef.current = false;
       processingRef.current = false;
       return;
     }
 
-    setRepetitionResults(updatedResults);
-    setLiveFrame(null);
-    setLiveZone(null);
-    pitchHistoryRef.current = [];
-    processingRef.current = false;
-
-    if (repetitionRef.current < params.repetitions) {
-      setRestCountdown(REST_SECONDS);
-      setPhase('rest');
-    } else {
-      setPhase('processing');
-      void finishExercise(updatedResults);
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
+      phaseRef.current !== 'recording' ||
+      processingRef.current
+    ) {
+      return;
     }
-  }, [finishExercise, params]);
 
-  const { startRecording, stopRecording } = useAudioRecorder({
+    processingRef.current = true;
+
+    try {
+      const measurement = measureFrequencyZoneStability(
+        pitchHistoryRef.current,
+        elapsedRef.current / 1000,
+      );
+
+      const score = scoreFrequencyZoneStability(
+        measurement,
+        paramsRef.current,
+      );
+
+      const repetitionResult: RepetitionResult = {
+        measurement,
+        score,
+      };
+
+      const updatedResults = [
+        ...resultsRef.current,
+        repetitionResult,
+      ];
+
+      resultsRef.current = updatedResults;
+
+      setRepetitionResults(updatedResults);
+      setLiveFrame(null);
+      setLiveZone(null);
+      pitchHistoryRef.current = [];
+
+      if (
+        repetitionRef.current <
+        paramsRef.current.repetitions
+      ) {
+        setRestCountdown(REST_SECONDS);
+        setCurrentPhase('rest');
+      } else {
+        setCurrentPhase('processing');
+        void finishExerciseRef.current?.(updatedResults);
+      }
+    } catch (error) {
+      console.error(
+        'Failed to analyze Frequency Zone Stability recording:',
+        error,
+      );
+
+      if (mountedRef.current) {
+        setErrorMessage(
+          'We could not analyze your recording. Please try again.',
+        );
+        setCurrentPhase('instructions');
+      }
+    } finally {
+      processingRef.current = false;
+    }
+  }, [setCurrentPhase]);
+
+  const {
+    startRecording,
+    stopRecording,
+  } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });
 
+  useEffect(() => {
+    startRecordingRef.current = startRecording;
+    stopRecordingRef.current = stopRecording;
+  }, [startRecording, stopRecording]);
+
   const startRecordingPhase = useCallback(async () => {
     if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
       recordingRef.current ||
-      processingRef.current ||
-      !mountedRef.current
+      processingRef.current
     ) {
       return;
     }
 
     try {
+      clearTimers();
+
       setErrorMessage(null);
       setElapsedMs(0);
       elapsedRef.current = 0;
       pitchHistoryRef.current = [];
       recordingRef.current = true;
       stopRequestedRef.current = false;
+
       setLiveFrame(null);
       setLiveZone(null);
+      setCurrentPhase('recording');
 
-      await startRecording();
+      // This is a fresh recording, not the interrupted recording.
+      discardNextStopRef.current = false;
 
-      if (!mountedRef.current) return;
+      await startRecordingRef.current?.();
+
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
 
       recordingTimerRef.current = setInterval(() => {
-        elapsedRef.current += RECORDING_INTERVAL_MS;
-
-        if (mountedRef.current) {
-          setElapsedMs(elapsedRef.current);
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          quitInProgressRef.current ||
+          phaseRef.current !== 'recording'
+        ) {
+          return;
         }
 
-        if (elapsedRef.current >= params.durationSec * 1000) {
+        elapsedRef.current += RECORDING_INTERVAL_MS;
+
+        setElapsedMs(elapsedRef.current);
+
+        if (
+          elapsedRef.current >=
+          paramsRef.current.durationSec * 1000
+        ) {
           if (recordingTimerRef.current) {
             clearInterval(recordingTimerRef.current);
             recordingTimerRef.current = null;
@@ -370,47 +554,80 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
 
           if (!stopRequestedRef.current) {
             stopRequestedRef.current = true;
-            stopRecording();
+
+            try {
+              void Promise.resolve(
+                stopRecordingRef.current?.(),
+              ).catch(error => {
+                console.error(
+                  'Failed to stop Frequency Zone Stability recording:',
+                  error,
+                );
+              });
+            } catch (error) {
+              console.error(
+                'Failed to stop Frequency Zone Stability recording:',
+                error,
+              );
+            }
           }
         }
       }, RECORDING_INTERVAL_MS);
-
-      setPhase('recording');
     } catch (error) {
       console.error('Failed to start recording:', error);
 
       recordingRef.current = false;
       pitchHistoryRef.current = [];
 
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
+      clearTimers();
 
-      if (mountedRef.current) {
+      if (
+        mountedRef.current &&
+        !pausedRef.current &&
+        !quitInProgressRef.current
+      ) {
         setErrorMessage(
           'Unable to start recording. Please check microphone permission and try again.',
         );
-        setPhase('instructions');
+        setCurrentPhase('instructions');
       }
     }
-  }, [params.durationSec, startRecording, stopRecording]);
+  }, [clearTimers, setCurrentPhase]);
 
   const beginCountdown = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
     }
+
+    clearTimers();
 
     setErrorMessage(null);
     setCountdown(COUNTDOWN_SECONDS);
-    setPhase('countdown');
+    setElapsedMs(0);
+    elapsedRef.current = 0;
+    setLiveFrame(null);
+    setLiveZone(null);
+    setCurrentPhase('countdown');
 
     let value = COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
-      value -= 1;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'countdown'
+      ) {
+        return;
+      }
 
-      if (!mountedRef.current) return;
+      value -= 1;
 
       if (value <= 0) {
         if (countdownTimerRef.current) {
@@ -424,42 +641,42 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
 
       setCountdown(value);
     }, 1000);
-  }, [startRecordingPhase]);
+  }, [clearTimers, setCurrentPhase, startRecordingPhase]);
 
-  const startExercise = useCallback(() => {
-    clearTimers();
-
-    resultsRef.current = [];
-    repetitionRef.current = 1;
-    pitchHistoryRef.current = [];
-    elapsedRef.current = 0;
-    recordingRef.current = false;
-    processingRef.current = false;
-    stopRequestedRef.current = false;
-
-    setRepetitionResults([]);
-    setResult(null);
-    setRepetition(1);
-    setElapsedMs(0);
-    setLiveFrame(null);
-    setLiveZone(null);
-    setErrorMessage(null);
-
-    beginCountdown();
-  }, [beginCountdown, clearTimers]);
+  useEffect(() => {
+    beginCountdownRef.current = beginCountdown;
+  }, [beginCountdown]);
 
   const handleRest = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
     if (restTimerRef.current) {
       clearInterval(restTimerRef.current);
+      restTimerRef.current = null;
     }
 
     let value = REST_SECONDS;
     setRestCountdown(value);
 
     restTimerRef.current = setInterval(() => {
-      value -= 1;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'rest'
+      ) {
+        return;
+      }
 
-      if (!mountedRef.current) return;
+      value -= 1;
 
       if (value <= 0) {
         if (restTimerRef.current) {
@@ -482,6 +699,10 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
   }, [startRecordingPhase]);
 
   useEffect(() => {
+    beginRestRef.current = handleRest;
+  }, [handleRest]);
+
+  useEffect(() => {
     if (phase === 'rest') {
       handleRest();
     }
@@ -494,16 +715,149 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     };
   }, [phase, handleRest]);
 
-  const handleRetry = useCallback(() => {
+  const pauseForExitPrompt = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    const currentPhase = phaseRef.current;
+
+    pausedPhaseRef.current = currentPhase;
+    pausedRef.current = true;
+    showQuitModalRef.current = true;
+
     clearTimers();
+
+    if (currentPhase === 'recording') {
+      // Discard this incomplete attempt when the stop callback arrives.
+      discardNextStopRef.current = true;
+      stopRequestedRef.current = true;
+      recordingRef.current = false;
+      processingRef.current = false;
+
+      setElapsedMs(0);
+      elapsedRef.current = 0;
+      setLiveFrame(null);
+      setLiveZone(null);
+      pitchHistoryRef.current = [];
+
+      try {
+        void Promise.resolve(
+          stopRecordingRef.current?.(),
+        ).catch(error => {
+          console.error(
+            'Failed to stop recording while pausing:',
+            error,
+          );
+        });
+      } catch (error) {
+        console.error(
+          'Failed to stop recording while pausing:',
+          error,
+        );
+      }
+    } else if (currentPhase === 'countdown') {
+      setCountdown(COUNTDOWN_SECONDS);
+    } else if (currentPhase === 'rest') {
+      setRestCountdown(REST_SECONDS);
+    }
+
+    setShowQuitModal(true);
+  }, [clearTimers]);
+
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) return;
+
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
+    pausedRef.current = false;
+
+    const pausedPhase = pausedPhaseRef.current;
+
+    if (
+      pausedPhase === 'countdown' ||
+      pausedPhase === 'recording'
+    ) {
+      // The current repetition restarts; completed repetitions remain.
+      recordingRef.current = false;
+      processingRef.current = false;
+      finishingRef.current = false;
+      stopRequestedRef.current = false;
+      discardNextStopRef.current = false;
+
+      setElapsedMs(0);
+      elapsedRef.current = 0;
+      setLiveFrame(null);
+      setLiveZone(null);
+      pitchHistoryRef.current = [];
+
+      beginCountdownRef.current?.();
+      return;
+    }
+
+    if (pausedPhase === 'rest') {
+      // Resume the break before starting the next repetition.
+      setCurrentPhase('rest');
+      beginRestRef.current?.();
+      return;
+    }
+
+    if (pausedPhase === 'processing') {
+      // Reuse already measured repetitions; do not score them twice.
+      if (progressSavedRef.current) {
+        const savedResults = resultsRef.current;
+
+        const averageScore =
+          savedResults.reduce(
+            (sum, item) => sum + item.score.score,
+            0,
+          ) / Math.max(savedResults.length, 1);
+
+        setResult({
+          score: Math.round(clamp(averageScore, 0, 100)),
+          passed: savedResults.every(item => item.score.passed),
+        });
+
+        setCurrentPhase('results');
+        return;
+      }
+
+      if (!finishingRef.current) {
+        void finishExerciseRef.current?.(resultsRef.current);
+      }
+    }
+  }, [setCurrentPhase]);
+
+  const startExercise = useCallback(() => {
+    if (
+      !paramsRef.current ||
+      !tierRef.current ||
+      loadingParams ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
+    clearTimers();
+
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+    quitInProgressRef.current = false;
+    discardNextStopRef.current = false;
+    stopRequestedRef.current = false;
+    recordingRef.current = false;
+    processingRef.current = false;
+    finishingRef.current = false;
+    progressSavedRef.current = false;
 
     resultsRef.current = [];
     repetitionRef.current = 1;
     pitchHistoryRef.current = [];
     elapsedRef.current = 0;
-    recordingRef.current = false;
-    processingRef.current = false;
-    stopRequestedRef.current = false;
 
     setRepetitionResults([]);
     setResult(null);
@@ -512,24 +866,150 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     setLiveFrame(null);
     setLiveZone(null);
     setErrorMessage(null);
-    setPhase('instructions');
-  }, [clearTimers]);
+    setCountdown(COUNTDOWN_SECONDS);
+    setRestCountdown(REST_SECONDS);
+    setShowQuitModal(false);
+    setIsQuitting(false);
 
-  const handleExit = useCallback(() => {
+    beginCountdown();
+  }, [beginCountdown, clearTimers, loadingParams]);
+
+  const handleRetry = useCallback(() => {
     clearTimers();
 
-    if (recordingRef.current) {
-      stopRequestedRef.current = true;
-      stopRecording();
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+    discardNextStopRef.current = true;
+
+    stopRequestedRef.current = true;
+    recordingRef.current = false;
+    processingRef.current = false;
+    finishingRef.current = false;
+
+    try {
+      void Promise.resolve(
+        stopRecordingRef.current?.(),
+      ).catch(error => {
+        console.error(
+          'Failed to stop recording before retry:',
+          error,
+        );
+      });
+    } catch (error) {
+      console.error(
+        'Failed to stop recording before retry:',
+        error,
+      );
     }
 
+    resultsRef.current = [];
+    repetitionRef.current = 1;
+    pitchHistoryRef.current = [];
+    elapsedRef.current = 0;
+    progressSavedRef.current = false;
+
+    setRepetitionResults([]);
+    setResult(null);
+    setRepetition(1);
+    setElapsedMs(0);
+    setLiveFrame(null);
+    setLiveZone(null);
+    setErrorMessage(null);
+    setCountdown(COUNTDOWN_SECONDS);
+    setRestCountdown(REST_SECONDS);
+    setShowQuitModal(false);
+    setIsQuitting(false);
+    setCurrentPhase('instructions');
+  }, [clearTimers, setCurrentPhase]);
+
+  const quitExercise = useCallback(async () => {
+    if (quitInProgressRef.current) return;
+
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    showQuitModalRef.current = false;
+    discardNextStopRef.current = true;
+    stopRequestedRef.current = true;
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
+
+    clearTimers();
+
     recordingRef.current = false;
-    router.back();
-  }, [clearTimers, stopRecording]);
+    processingRef.current = false;
+    finishingRef.current = true;
+
+    try {
+      await Promise.resolve(stopRecordingRef.current?.());
+    } catch (error) {
+      console.error(
+        'Failed to stop recording before leaving:',
+        error,
+      );
+    } finally {
+      if (mountedRef.current) {
+        router.replace('/dashboard?tab=exercises');
+      }
+    }
+  }, [clearTimers]);
+
+  const handleBack = useCallback(() => {
+    pauseForExitPrompt();
+  }, [pauseForExitPrompt]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        handleBack();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [handleBack]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      pausedRef.current = true;
+      showQuitModalRef.current = false;
+      discardNextStopRef.current = true;
+
+      clearTimers();
+
+      try {
+        void Promise.resolve(
+          stopRecordingRef.current?.(),
+        ).catch(error => {
+          console.error(
+            'Failed to stop recording during cleanup:',
+            error,
+          );
+        });
+      } catch (error) {
+        console.error(
+          'Failed to stop recording during cleanup:',
+          error,
+        );
+      }
+    };
+  }, [clearTimers]);
 
   const recordingProgress =
     params.durationSec > 0
-      ? clamp((elapsedMs / 1000) / params.durationSec, 0, 1) * 100
+      ? clamp(
+          elapsedMs / 1000 / params.durationSec,
+          0,
+          1,
+        ) * 100
       : 0;
 
   const livePitch =
@@ -558,7 +1038,7 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
       : 0;
 
   const passedRepetitions = repetitionResults.filter(
-    (item) => item.score.passed,
+    item => item.score.passed,
   ).length;
 
   const preparationSteps: ExercisePreparationStep[] = [
@@ -594,185 +1074,309 @@ export default function FrequencyZoneStabilityScreen({ tier }: Props) {
     },
   ];
 
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>
+            Quit exercise?
+          </Text>
+
+          <Text style={styles.modalMessage}>
+            {pausedPhaseRef.current === 'instructions' ||
+            pausedPhaseRef.current === 'results'
+              ? 'Are you sure you want to leave Frequency Zone Stability?'
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                : pausedPhaseRef.current === 'countdown'
+                  ? 'Your exercise is paused. Your completed repetitions will be kept, and the countdown will restart when you continue.'
+                  : pausedPhaseRef.current === 'rest'
+                    ? 'Your exercise is paused. Your completed repetitions will be kept, and your rest period will resume when you continue.'
+                    : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
+            onPress={() => {
+              void quitExercise();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loadingParams) {
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={32} color={BROWN} />
+      <>
+        <View style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={32}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.preparingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level and
+            preparing your vocal range.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.preparingSpinner}
+          />
         </View>
 
-        <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
-
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and preparing
-          your vocal range.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.preparingSpinner}
-        />
-      </View>
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'instructions') {
     return (
-      <ExerciseScreen
-        title="Frequency Zone Stability"
-        category="Tone"
-        icon="pulse"
-        instructions="Sing steadily while maintaining a consistent frequency zone throughout each repetition."
-        preparationSteps={preparationSteps}
-        summary={summary}
-        tip="Focus on keeping your voice steady rather than changing pitch during the repetition."
-        tier={currentTier}
-        onBack={handleExit}
-        onStart={startExercise}
-        error={errorMessage}
-      >
-        <View style={styles.disclaimerCard}>
-          <Ionicons
-            name="information-circle-outline"
-            size={20}
-            color={BROWN}
-          />
+      <>
+        <ExerciseScreen
+          title="Frequency Zone Stability"
+          category="Tone"
+          icon="pulse"
+          instructions="Sing steadily while maintaining a consistent frequency zone throughout each repetition."
+          preparationSteps={preparationSteps}
+          summary={summary}
+          tip="Focus on keeping your voice steady rather than changing pitch during the repetition."
+          tier={currentTier}
+          onBack={handleBack}
+          onStart={startExercise}
+          error={errorMessage}
+        >
+          <View style={styles.disclaimerCard}>
+            <Ionicons
+              name="information-circle-outline"
+              size={20}
+              color={BROWN}
+            />
 
-          <Text style={styles.disclaimerText}>
-            This is a frequency-based training indicator, not a direct
-            measurement of physical resonance placement.
-          </Text>
-        </View>
-      </ExerciseScreen>
+            <Text style={styles.disclaimerText}>
+              This is a frequency-based training indicator, not a direct
+              measurement of physical resonance placement.
+            </Text>
+          </View>
+        </ExerciseScreen>
+
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="pulse"
-        title="Frequency Zone Stability"
-        currentRep={repetition}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Get Ready"
-        prompt="Prepare to sing steadily and maintain a consistent frequency zone."
-        onBack={handleExit}
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="pulse"
+          title="Frequency Zone Stability"
+          currentRep={repetition}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Get Ready"
+          prompt="Prepare to sing steadily and maintain a consistent frequency zone."
+          onBack={handleBack}
+        />
+
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'recording') {
     return (
-      <ExerciseListeningScreen
-        icon="pulse"
-        title="Frequency Zone Stability"
-        currentRep={repetition}
-        repetitions={params.repetitions}
-        elapsed={elapsedMs / 1000}
-        targetDuration={params.durationSec}
-        promptTitle="Stabilize Your Frequency"
-        prompt="Sing steadily and maintain a consistent frequency zone."
-        progress={recordingProgress}
-        liveContent={
-          <View style={styles.liveFrequencyCard}>
-            <Text style={styles.liveLabel}>LIVE FREQUENCY</Text>
+      <>
+        <ExerciseListeningScreen
+          icon="pulse"
+          title="Frequency Zone Stability"
+          currentRep={repetition}
+          repetitions={params.repetitions}
+          elapsed={elapsedMs / 1000}
+          targetDuration={params.durationSec}
+          promptTitle="Stabilize Your Frequency"
+          prompt="Sing steadily and maintain a consistent frequency zone."
+          progress={recordingProgress}
+          liveContent={
+            <View style={styles.liveFrequencyCard}>
+              <Text style={styles.liveLabel}>
+                LIVE FREQUENCY
+              </Text>
 
-            <Text style={styles.liveValue}>
-              {livePitch !== null ? `${formatNumber(livePitch, 0)} Hz` : '--'}
-            </Text>
+              <Text style={styles.liveValue}>
+                {livePitch !== null
+                  ? `${formatNumber(livePitch, 0)} Hz`
+                  : '--'}
+              </Text>
 
-            <View style={styles.liveZoneRow}>
-              <Text style={styles.liveZoneLabel}>Zone</Text>
+              <View style={styles.liveZoneRow}>
+                <Text style={styles.liveZoneLabel}>
+                  Zone
+                </Text>
 
-              <Text style={styles.liveZoneValue}>
-                {liveZone ? zoneLabel(liveZone) : '--'}
+                <Text style={styles.liveZoneValue}>
+                  {liveZone ? zoneLabel(liveZone) : '--'}
+                </Text>
+              </View>
+
+              <Text style={styles.liveDisclaimer}>
+                Live frequency is a training indicator.
               </Text>
             </View>
+          }
+          onBack={handleBack}
+        />
 
-            <Text style={styles.liveDisclaimer}>
-              Live frequency is a training indicator.
-            </Text>
-          </View>
-        }
-        onBack={handleExit}
-      />
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'rest') {
     return (
-      <ExerciseCountdownScreen
-        icon="pulse"
-        title="Frequency Zone Stability"
-        currentRep={repetition}
-        repetitions={params.repetitions}
-        countdown={restCountdown}
-        promptTitle="Rest"
-        prompt="Relax your voice and prepare for the next repetition."
-        onBack={handleExit}
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="pulse"
+          title="Frequency Zone Stability"
+          currentRep={repetition}
+          repetitions={params.repetitions}
+          countdown={restCountdown}
+          promptTitle="Rest"
+          prompt="Relax your voice and prepare for the next repetition."
+          onBack={handleBack}
+        />
+
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'processing') {
     return (
-      <ExerciseProcessingScreen
-        icon="pulse"
-        title="Analyzing Your Performance"
-        message="Analyzing your frequency stability..."
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="pulse"
+          title="Analyzing Your Performance"
+          message="Analyzing your frequency stability..."
+          onBack={handleBack}
+        />
+
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'results' && result) {
     return (
-      <ExerciseResultsScreen
-        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
-        subtitle="Frequency Zone Stability"
-        score={result.score}
-        resultIcon={result.passed ? 'checkmark-circle' : 'refresh-circle'}
-        scoreMessage={
-          result.passed
-            ? 'You maintained good frequency stability.'
-            : 'Try to keep your vocal frequency more consistent.'
-        }
-        onRetry={handleRetry}
-        onExit={handleExit}
-      >
-        <View style={styles.resultDetailsCard}>
-          <View style={styles.resultDetailRow}>
-            <Text style={styles.resultDetailLabel}>Stability</Text>
+      <>
+        <ExerciseResultsScreen
+          title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
+          subtitle="Frequency Zone Stability"
+          score={result.score}
+          resultIcon={
+            result.passed ? 'checkmark-circle' : 'refresh-circle'
+          }
+          scoreMessage={
+            result.passed
+              ? 'You maintained good frequency stability.'
+              : 'Try to keep your vocal frequency more consistent.'
+          }
+          onRetry={handleRetry}
+          onExit={handleBack}
+        >
+          <View style={styles.resultDetailsCard}>
+            <View style={styles.resultDetailRow}>
+              <Text style={styles.resultDetailLabel}>
+                Stability
+              </Text>
 
-            <Text style={styles.resultDetailValue}>
-              {formatNumber(averageStability)}%
-            </Text>
+              <Text style={styles.resultDetailValue}>
+                {formatNumber(averageStability)}%
+              </Text>
+            </View>
+
+            <View style={styles.resultDivider} />
+
+            <View style={styles.resultDetailRow}>
+              <Text style={styles.resultDetailLabel}>
+                Repetitions
+              </Text>
+
+              <Text style={styles.resultDetailValue}>
+                {passedRepetitions}/{repetitionResults.length}
+              </Text>
+            </View>
+
+            <View style={styles.resultDivider} />
+
+            <View style={styles.resultDetailRow}>
+              <Text style={styles.resultDetailLabel}>
+                Average Score
+              </Text>
+
+              <Text style={styles.resultDetailValue}>
+                {averageScore}%
+              </Text>
+            </View>
           </View>
+        </ExerciseResultsScreen>
 
-          <View style={styles.resultDivider} />
-
-          <View style={styles.resultDetailRow}>
-            <Text style={styles.resultDetailLabel}>Repetitions</Text>
-
-            <Text style={styles.resultDetailValue}>
-              {passedRepetitions}/{repetitionResults.length}
-            </Text>
-          </View>
-
-          <View style={styles.resultDivider} />
-
-          <View style={styles.resultDetailRow}>
-            <Text style={styles.resultDetailLabel}>Average Score</Text>
-
-            <Text style={styles.resultDetailValue}>{averageScore}%</Text>
-          </View>
-        </View>
-      </ExerciseResultsScreen>
+        {quitModal}
+      </>
     );
   }
 
-  return null;
+  return <>{quitModal}</>;
 }
 
 const styles = StyleSheet.create({
@@ -787,7 +1391,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#FCD6DD',
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -899,5 +1503,82 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: BORDER,
     marginVertical: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

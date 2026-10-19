@@ -9,6 +9,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -149,6 +151,8 @@ export default function ToneConsistencyExerciseScreen({
   });
   const [result, setResult] = useState<ResultState | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const generatedTarget = useMemo(
     () => getRandomPitchNote(currentTier, vocalRange),
@@ -165,6 +169,12 @@ export default function ToneConsistencyExerciseScreen({
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const currentRepRef = useRef(1);
+  const screenRef = useRef<Screen>('instructions');
+
+  const pausedRef = useRef(false);
+  const showQuitModalRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+  const discardNextStopRef = useRef(false);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,10 +186,44 @@ export default function ToneConsistencyExerciseScreen({
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
   const repetitionFFTFramesRef = useRef<Float32Array[][]>([]);
 
-  const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
-  const stopRecordingRef = useRef<(() => void) | null>(null);
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const stopRecordingRef =
+    useRef<(() => void | Promise<void>) | null>(null);
   const isRecordingRef = useRef(false);
 
+  const startExerciseRef = useRef<(() => void) | null>(null);
+  const listenToTargetNoteRef =
+    useRef<(() => Promise<boolean>) | null>(null);
+  const startRecordingAttemptRef =
+    useRef<(() => Promise<void>) | null>(null);
+
+  const setCurrentScreen = useCallback((nextScreen: Screen) => {
+    screenRef.current = nextScreen;
+
+    if (mountedRef.current) {
+      setScreen(nextScreen);
+    }
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (listeningTimerRef.current) {
+      clearInterval(listeningTimerRef.current);
+      listeningTimerRef.current = null;
+    }
+  }, []);
+
+  // Load adaptive difficulty and the user's assessed vocal range.
   useEffect(() => {
     let cancelled = false;
 
@@ -239,6 +283,8 @@ export default function ToneConsistencyExerciseScreen({
             setVocalRange(assessment.vocalRange ?? null);
           }
 
+          // Use assessment as the initial reference only when
+          // this template has no records at the resolved tier.
           if (recentScores.length === 0) {
             const assessmentScore = assessment?.scores.find(
               score => score.componentId === 'tone',
@@ -276,29 +322,12 @@ export default function ToneConsistencyExerciseScreen({
       }
     }
 
-    loadAdaptiveParameters();
+    void loadAdaptiveParameters();
 
     return () => {
       cancelled = true;
     };
   }, [tier]);
-
-  const clearTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-
-    if (listeningTimerRef.current) {
-      clearInterval(listeningTimerRef.current);
-      listeningTimerRef.current = null;
-    }
-  }, []);
 
   const handleLiveFrame = useCallback(
     (frame: {
@@ -307,7 +336,12 @@ export default function ToneConsistencyExerciseScreen({
       clarity: number;
       volume: number;
     }) => {
-      if (!mountedRef.current || exitingRef.current) {
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current
+      ) {
         return;
       }
 
@@ -325,18 +359,28 @@ export default function ToneConsistencyExerciseScreen({
   );
 
   const listenToTargetNote = useCallback(async () => {
-    if (!mountedRef.current || exitingRef.current) {
+    if (
+      !mountedRef.current ||
+      exitingRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current
+    ) {
       return false;
     }
 
     clearTimers();
     setListenElapsedSeconds(0);
-    setScreen('listening');
+    setCurrentScreen('listening');
 
     const startTime = Date.now();
 
     listeningTimerRef.current = setInterval(() => {
-      if (!mountedRef.current || exitingRef.current) {
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current
+      ) {
         return;
       }
 
@@ -359,11 +403,17 @@ export default function ToneConsistencyExerciseScreen({
       console.error('Failed to play target note:', error);
       clearTimers();
 
-      if (mountedRef.current && !exitingRef.current) {
+      if (
+        mountedRef.current &&
+        !exitingRef.current &&
+        !pausedRef.current &&
+        !quitInProgressRef.current
+      ) {
         setErrorMessage(
           'We could not play the reference note. Please try again.',
         );
-        setScreen('instructions');
+        setCurrentScreen('instructions');
+        startingRef.current = false;
       }
 
       return false;
@@ -371,19 +421,34 @@ export default function ToneConsistencyExerciseScreen({
 
     clearTimers();
 
-    if (!mountedRef.current || exitingRef.current) {
+    if (
+      !mountedRef.current ||
+      exitingRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current
+    ) {
       return false;
     }
 
     setListenElapsedSeconds(TARGET_NOTE_DURATION_SECONDS);
 
     return true;
-  }, [clearTimers, generatedTarget]);
+  }, [clearTimers, generatedTarget, setCurrentScreen]);
+
+  useEffect(() => {
+    listenToTargetNoteRef.current = listenToTargetNote;
+
+    return () => {
+      listenToTargetNoteRef.current = null;
+    };
+  }, [listenToTargetNote]);
 
   const startRecordingAttempt = useCallback(async () => {
     if (
       !mountedRef.current ||
       exitingRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current ||
       !startRecordingRef.current ||
       isRecordingRef.current
     ) {
@@ -399,12 +464,25 @@ export default function ToneConsistencyExerciseScreen({
       volume: -100,
     });
     setElapsedSeconds(0);
-    setScreen('recording');
+    setCurrentScreen('recording');
 
     try {
+      // A new attempt must not inherit a stale stop callback.
+      discardNextStopRef.current = false;
+
       await startRecordingRef.current();
 
-      if (!mountedRef.current || exitingRef.current) {
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current ||
+        screenRef.current !== 'recording'
+      ) {
+        discardNextStopRef.current = true;
+        isRecordingRef.current = false;
+
+        void stopRecordingRef.current?.();
         return;
       }
 
@@ -413,11 +491,16 @@ export default function ToneConsistencyExerciseScreen({
       console.error('Failed to start recording:', error);
       isRecordingRef.current = false;
 
-      if (mountedRef.current && !exitingRef.current) {
+      if (
+        mountedRef.current &&
+        !exitingRef.current &&
+        !pausedRef.current &&
+        !quitInProgressRef.current
+      ) {
         setErrorMessage(
           'We could not start the exercise. Please check your microphone permission and try again.',
         );
-        setScreen('instructions');
+        setCurrentScreen('instructions');
       }
 
       startingRef.current = false;
@@ -427,31 +510,63 @@ export default function ToneConsistencyExerciseScreen({
     const startTime = Date.now();
 
     recordingTimerRef.current = setInterval(() => {
-      if (!mountedRef.current || exitingRef.current) {
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current ||
+        !isRecordingRef.current
+      ) {
         return;
       }
 
       const elapsed = (Date.now() - startTime) / 1000;
 
-      setElapsedSeconds(Math.min(elapsed, params.intervalSec));
+      setElapsedSeconds(
+        Math.min(elapsed, params.intervalSec),
+      );
 
       if (elapsed >= params.intervalSec) {
-        clearTimers();
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
 
         if (!finishingRef.current) {
           finishingRef.current = true;
-          stopRecordingRef.current?.();
+          void stopRecordingRef.current?.();
         }
       }
     }, 50);
-  }, [clearTimers, params.intervalSec]);
+  }, [clearTimers, params.intervalSec, setCurrentScreen]);
+
+  useEffect(() => {
+    startRecordingAttemptRef.current = startRecordingAttempt;
+
+    return () => {
+      startRecordingAttemptRef.current = null;
+    };
+  }, [startRecordingAttempt]);
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
       clearTimers();
       isRecordingRef.current = false;
 
-      if (!mountedRef.current || exitingRef.current) {
+      // An interrupted recording must never be counted as a rep.
+      if (discardNextStopRef.current) {
+        discardNextStopRef.current = false;
+        finishingRef.current = false;
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current
+      ) {
+        finishingRef.current = false;
         return;
       }
 
@@ -469,6 +584,10 @@ export default function ToneConsistencyExerciseScreen({
           FFT_SIZE,
           FFT_HOP_SIZE,
         );
+
+        if (fftFrames.length === 0) {
+          throw new Error('No FFT frames could be generated.');
+        }
 
         repetitionSamplesRef.current.push(samples);
         repetitionFFTFramesRef.current.push(fftFrames);
@@ -491,21 +610,23 @@ export default function ToneConsistencyExerciseScreen({
             volume: -100,
           });
 
-          const played = await listenToTargetNote();
+          const played = await listenToTargetNoteRef.current?.();
 
           if (
             !played ||
             !mountedRef.current ||
-            exitingRef.current
+            exitingRef.current ||
+            pausedRef.current ||
+            quitInProgressRef.current
           ) {
             return;
           }
 
-          await startRecordingAttempt();
+          await startRecordingAttemptRef.current?.();
           return;
         }
 
-        setScreen('processing');
+        setCurrentScreen('processing');
 
         const measurement = measureToneConsistency(
           repetitionSamplesRef.current,
@@ -551,7 +672,12 @@ export default function ToneConsistencyExerciseScreen({
           scored.score,
         );
 
-        if (!mountedRef.current || exitingRef.current) {
+        if (
+          !mountedRef.current ||
+          exitingRef.current ||
+          pausedRef.current ||
+          quitInProgressRef.current
+        ) {
           return;
         }
 
@@ -561,15 +687,21 @@ export default function ToneConsistencyExerciseScreen({
           averageCentroidHz: averageCentroid,
           averageAmplitude: averageAmplitudeValue,
         });
-        setScreen('results');
+
+        setCurrentScreen('results');
       } catch (error) {
         console.error('Tone consistency analysis error:', error);
 
-        if (mountedRef.current && !exitingRef.current) {
+        if (
+          mountedRef.current &&
+          !exitingRef.current &&
+          !pausedRef.current &&
+          !quitInProgressRef.current
+        ) {
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          setScreen('instructions');
+          setCurrentScreen('instructions');
         }
       } finally {
         finishingRef.current = false;
@@ -579,9 +711,8 @@ export default function ToneConsistencyExerciseScreen({
     [
       clearTimers,
       currentTier,
-      listenToTargetNote,
       params,
-      startRecordingAttempt,
+      setCurrentScreen,
     ],
   );
 
@@ -594,34 +725,23 @@ export default function ToneConsistencyExerciseScreen({
     onStop: handleRecordingStop,
   });
 
-  stopRecordingRef.current = stopRecording;
-  startRecordingRef.current = startRecording;
-
   useEffect(() => {
-    mountedRef.current = true;
-    exitingRef.current = false;
+    startRecordingRef.current = startRecording;
+    stopRecordingRef.current = stopRecording;
 
     return () => {
-      mountedRef.current = false;
-      clearTimers();
-
-      if (isRecordingRef.current) {
-        stopRecordingRef.current?.();
-      }
-
-      isRecordingRef.current = false;
-
-      disposeNotePlayer().catch(error => {
-        console.warn('Failed to dispose note player:', error);
-      });
+      startRecordingRef.current = null;
+      stopRecordingRef.current = null;
     };
-  }, [clearTimers]);
+  }, [startRecording, stopRecording]);
 
   const startExercise = useCallback(() => {
     if (
       startingRef.current ||
       isLoadingAdaptiveParams ||
-      !mountedRef.current
+      !mountedRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -629,6 +749,8 @@ export default function ToneConsistencyExerciseScreen({
     startingRef.current = true;
     exitingRef.current = false;
     finishingRef.current = false;
+    discardNextStopRef.current = false;
+
     lockedTargetRef.current = generatedTarget;
 
     clearTimers();
@@ -649,12 +771,17 @@ export default function ToneConsistencyExerciseScreen({
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
     setCountdown(COUNTDOWN_SECONDS);
-    setScreen('countdown');
+    setCurrentScreen('countdown');
 
     let remaining = COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
-      if (!mountedRef.current || exitingRef.current) {
+      if (
+        !mountedRef.current ||
+        exitingRef.current ||
+        pausedRef.current ||
+        quitInProgressRef.current
+      ) {
         return;
       }
 
@@ -665,23 +792,31 @@ export default function ToneConsistencyExerciseScreen({
         return;
       }
 
-      clearTimers();
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+
       setCountdown(0);
 
-      listenToTargetNote()
-        .then(async played => {
+      void (async () => {
+        try {
+          const played =
+            await listenToTargetNoteRef.current?.();
+
           if (
             !played ||
             !mountedRef.current ||
-            exitingRef.current
+            exitingRef.current ||
+            pausedRef.current ||
+            quitInProgressRef.current
           ) {
             startingRef.current = false;
             return;
           }
 
-          await startRecordingAttempt();
-        })
-        .catch(error => {
+          await startRecordingAttemptRef.current?.();
+        } catch (error) {
           console.error(
             'Failed to start tone consistency exercise:',
             error,
@@ -689,49 +824,78 @@ export default function ToneConsistencyExerciseScreen({
 
           startingRef.current = false;
 
-          if (mountedRef.current && !exitingRef.current) {
+          if (
+            mountedRef.current &&
+            !exitingRef.current &&
+            !pausedRef.current &&
+            !quitInProgressRef.current
+          ) {
             setErrorMessage(
               'We could not start the exercise. Please check your microphone permission and try again.',
             );
-            setScreen('instructions');
+            setCurrentScreen('instructions');
           }
-        });
+        }
+      })();
     }, 1000);
   }, [
     clearTimers,
     generatedTarget,
     isLoadingAdaptiveParams,
-    listenToTargetNote,
-    startRecordingAttempt,
+    setCurrentScreen,
   ]);
 
+  useEffect(() => {
+    startExerciseRef.current = startExercise;
+
+    return () => {
+      startExerciseRef.current = null;
+    };
+  }, [startExercise]);
+
   const finishRecording = useCallback(() => {
-    if (!isRecording || finishingRef.current) {
+    if (
+      !isRecordingRef.current ||
+      finishingRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current
+    ) {
       return;
     }
 
     finishingRef.current = true;
     clearTimers();
-    stopRecording();
-  }, [clearTimers, isRecording, stopRecording]);
+    void stopRecordingRef.current?.();
+  }, [clearTimers]);
 
   const retryExercise = useCallback(() => {
     clearTimers();
 
-    disposeNotePlayer().catch(error => {
+    void disposeNotePlayer().catch(error => {
       console.warn('Failed to stop note player:', error);
     });
 
+    if (isRecordingRef.current || isRecording) {
+      discardNextStopRef.current = true;
+      void stopRecordingRef.current?.();
+    }
+
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+    quitInProgressRef.current = false;
+    exitingRef.current = false;
     startingRef.current = false;
     finishingRef.current = false;
-    exitingRef.current = false;
     isRecordingRef.current = false;
+    discardNextStopRef.current = false;
     lockedTargetRef.current = null;
 
     repetitionSamplesRef.current = [];
     repetitionFFTFramesRef.current = [];
     currentRepRef.current = 1;
 
+    setShowQuitModal(false);
+    setIsQuitting(false);
     setCurrentRep(1);
     setResult(null);
     setErrorMessage('');
@@ -744,340 +908,644 @@ export default function ToneConsistencyExerciseScreen({
       clarity: 0,
       volume: -100,
     });
-    setScreen('instructions');
-  }, [clearTimers]);
 
-  const goBack = useCallback(() => {
-    exitingRef.current = true;
+    setCurrentScreen('instructions');
+  }, [clearTimers, isRecording, setCurrentScreen]);
+
+  const openQuitModal = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    pausedRef.current = true;
+    showQuitModalRef.current = true;
+
     clearTimers();
 
-    disposeNotePlayer().catch(error => {
-      console.warn('Failed to stop note player:', error);
+    // Stop note playback if the exercise was in its listening phase.
+    void disposeNotePlayer().catch(error => {
+      console.warn('Failed to pause reference note:', error);
     });
 
-    if (isRecordingRef.current) {
-      stopRecordingRef.current?.();
+    if (
+      screenRef.current === 'recording' ||
+      isRecordingRef.current ||
+      isRecording
+    ) {
+      // Discard the partial repetition instead of scoring it.
+      discardNextStopRef.current = true;
+      finishingRef.current = true;
+
+      if (isRecordingRef.current || isRecording) {
+        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+          console.warn(
+            'Failed to stop interrupted tone-consistency recording:',
+            error,
+          );
+        });
+      }
+
+      isRecordingRef.current = false;
+      finishingRef.current = false;
+    }
+
+    setShowQuitModal(true);
+  }, [clearTimers, isRecording]);
+
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    const previousScreen = screenRef.current;
+
+    showQuitModalRef.current = false;
+    pausedRef.current = false;
+    setShowQuitModal(false);
+
+    if (
+      previousScreen === 'recording' ||
+      previousScreen === 'listening' ||
+      previousScreen === 'countdown'
+    ) {
+      // Restart the exercise as a fresh attempt so interrupted audio
+      // is never included in the score.
+      startingRef.current = false;
+      finishingRef.current = false;
+      isRecordingRef.current = false;
+      discardNextStopRef.current = false;
+      lockedTargetRef.current = null;
+
+      repetitionSamplesRef.current = [];
+      repetitionFFTFramesRef.current = [];
+      currentRepRef.current = 1;
+
+      setCurrentRep(1);
+      setResult(null);
+      setErrorMessage('');
+      setElapsedSeconds(0);
+      setListenElapsedSeconds(0);
+      setCountdown(COUNTDOWN_SECONDS);
+      setLiveTone({
+        pitch: 0,
+        note: '--',
+        clarity: 0,
+        volume: -100,
+      });
+
+      startExerciseRef.current?.();
+      return;
+    }
+
+    if (previousScreen === 'processing') {
+      // Processing continues while the modal is displayed. Do not
+      // trigger a second analysis or duplicate progress save.
+      return;
+    }
+
+    if (previousScreen === 'instructions') {
+      setCurrentScreen('instructions');
+      return;
+    }
+
+    setCurrentScreen(previousScreen);
+  }, [setCurrentScreen]);
+
+  const quitExercise = useCallback(() => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    showQuitModalRef.current = false;
+    exitingRef.current = true;
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
+
+    clearTimers();
+
+    void disposeNotePlayer().catch(error => {
+      console.warn('Failed to stop reference note:', error);
+    });
+
+    if (isRecordingRef.current || isRecording) {
+      discardNextStopRef.current = true;
+
+      void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+        console.warn(
+          'Failed to stop recording while quitting:',
+          error,
+        );
+      });
     }
 
     isRecordingRef.current = false;
 
     router.replace('/dashboard?tab=exercises');
+  }, [clearTimers, isRecording]);
+
+  const goBack = useCallback(() => {
+    openQuitModal();
+  }, [openQuitModal]);
+
+  // Android hardware back should open the same quit modal.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (quitInProgressRef.current) {
+          return true;
+        }
+
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        openQuitModal();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [openQuitModal]);
+
+  // Cleanup when this screen unmounts.
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      pausedRef.current = true;
+      showQuitModalRef.current = false;
+      exitingRef.current = true;
+      discardNextStopRef.current = true;
+
+      clearTimers();
+
+      if (isRecordingRef.current) {
+        void Promise.resolve(stopRecordingRef.current?.()).catch(
+          () => undefined,
+        );
+      }
+
+      isRecordingRef.current = false;
+
+      void disposeNotePlayer().catch(error => {
+        console.warn('Failed to dispose note player:', error);
+      });
+    };
   }, [clearTimers]);
+
+  const listenProgress =
+    clamp(
+      listenElapsedSeconds / TARGET_NOTE_DURATION_SECONDS,
+      0,
+      1,
+    ) * 100;
+
+  const recordingProgress = clamp(
+    elapsedSeconds / params.intervalSec,
+    0,
+    1,
+  );
+
+  const quitMessage =
+    screen === 'recording'
+      ? 'Your current repetition will be discarded. If you continue, the exercise will restart from the countdown.'
+      : screen === 'listening'
+        ? 'Reference-note playback will stop. If you continue, the exercise will restart from the countdown.'
+        : screen === 'countdown'
+          ? 'Your countdown will restart if you continue the exercise.'
+          : screen === 'processing'
+            ? 'Your completed repetitions are being analyzed. You can return to the exercise while analysis continues.'
+            : screen === 'results'
+              ? 'Are you sure you want to leave Tone Consistency? Your completed result has already been saved.'
+              : 'Are you sure you want to leave Tone Consistency?';
+
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>
+            Quit Exercise?
+          </Text>
+
+          <Text style={styles.modalMessage}>
+            {quitMessage}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isQuitting}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isQuitting}
+            onPress={quitExercise}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            {isQuitting ? (
+              <ActivityIndicator color={BROWN} />
+            ) : (
+              <Text style={styles.quitButtonText}>
+                Quit Exercise
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (screen === 'instructions' && isLoadingAdaptiveParams) {
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={32} color={BROWN} />
+      <>
+        <View style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={32}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.preparingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level and
+            preparing your vocal range.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.preparingSpinner}
+          />
         </View>
-
-        <Text style={styles.preparingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and
-          preparing your vocal range.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.preparingSpinner}
-        />
-      </View>
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'instructions') {
     return (
-      <ExerciseScreen
-        title="Tone Consistency Exercise"
-        category="Tone"
-        icon="musical-note-outline"
-        instructions={
-          'Listen carefully to the target note first.\n\n' +
-          'After the reference note finishes, sing the same note back.\n\n' +
-          'Repeat the exercise while keeping your tone and vocal output as consistent as possible.'
-        }
-        preparationSteps={[
-          {
-            icon: 'volume-mute-outline',
-            text: 'Find a quiet room or area with minimal background noise.',
-          },
-          {
-            icon: 'body-outline',
-            text: 'Sit upright or stand with your back straight and your shoulders relaxed.',
-          },
-          {
-            icon: 'mic-outline',
-            text: 'If available, an external microphone or audio recording equipment is recommended.',
-          },
-        ]}
-        summary={[
-          { label: 'Target Note', value: targetNote },
-          {
-            label: 'Frequency',
-            value: formatFrequency(targetFrequency),
-          },
-          {
-            label: 'Repetitions',
-            value: String(params.repetitions),
-          },
-          {
-            label: 'Sing Duration',
-            value: `${params.intervalSec}s`,
-          },
-        ]}
-        tip="Listen to the reference note before every repetition and use the same target note each time."
-        tier={currentTier}
-        onBack={goBack}
-        onStart={startExercise}
-        error={errorMessage}
-        startDisabled={isLoadingAdaptiveParams}
-      />
+      <>
+        <ExerciseScreen
+          title="Tone Consistency Exercise"
+          category="Tone"
+          icon="musical-note-outline"
+          instructions={
+            'Listen carefully to the target note first.\n\n' +
+            'After the reference note finishes, sing the same note back.\n\n' +
+            'Repeat the exercise while keeping your tone and vocal output as consistent as possible.'
+          }
+          preparationSteps={[
+            {
+              icon: 'volume-mute-outline',
+              text: 'Find a quiet room or area with minimal background noise.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Sit upright or stand with your back straight and your shoulders relaxed.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'If available, an external microphone or audio recording equipment is recommended.',
+            },
+          ]}
+          summary={[
+            { label: 'Target Note', value: targetNote },
+            {
+              label: 'Frequency',
+              value: formatFrequency(targetFrequency),
+            },
+            {
+              label: 'Repetitions',
+              value: String(params.repetitions),
+            },
+            {
+              label: 'Sing Duration',
+              value: `${params.intervalSec}s`,
+            },
+          ]}
+          tip="Listen to the reference note before every repetition and use the same target note each time."
+          tier={currentTier}
+          onBack={goBack}
+          onStart={startExercise}
+          error={errorMessage}
+          startDisabled={isLoadingAdaptiveParams}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="musical-notes-outline"
-        title="Get Ready"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Your target note is"
-        prompt={`${targetNote} • ${formatFrequency(targetFrequency)}`}
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="musical-notes-outline"
+          title="Get Ready"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Your target note is"
+          prompt={`${targetNote} • ${formatFrequency(targetFrequency)}`}
+          onBack={goBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'listening') {
-    const listenProgress =
-      clamp(
-        listenElapsedSeconds / TARGET_NOTE_DURATION_SECONDS,
-        0,
-        1,
-      ) * 100;
-
     return (
-      <ExerciseListeningScreen
-        icon="volume-high-outline"
-        title="Listen to the Note"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        elapsed={listenElapsedSeconds}
-        targetDuration={TARGET_NOTE_DURATION_SECONDS}
-        promptTitle="Listen to the reference note"
-        prompt="Listen carefully. After the note finishes, sing the same note."
-        liveContent={
-          <View style={styles.sharedListenNoteBox}>
-            <Text style={styles.listenLabel}>TARGET NOTE</Text>
-            <Text style={styles.largeNote}>{targetNote}</Text>
-            <Text style={styles.stateFrequency}>
-              {formatFrequency(targetFrequency)}
-            </Text>
-          </View>
-        }
-        progress={listenProgress}
-      />
+      <>
+        <ExerciseListeningScreen
+          icon="volume-high-outline"
+          title="Listen to the Note"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          elapsed={listenElapsedSeconds}
+          targetDuration={TARGET_NOTE_DURATION_SECONDS}
+          promptTitle="Listen to the reference note"
+          prompt="Listen carefully. After the note finishes, sing the same note."
+          liveContent={
+            <View style={styles.sharedListenNoteBox}>
+              <Text style={styles.listenLabel}>TARGET NOTE</Text>
+              <Text style={styles.largeNote}>{targetNote}</Text>
+              <Text style={styles.stateFrequency}>
+                {formatFrequency(targetFrequency)}
+              </Text>
+            </View>
+          }
+          progress={listenProgress}
+          onBack={goBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'recording') {
-    const progress = clamp(
-      elapsedSeconds / params.intervalSec,
-      0,
-      1,
-    );
-
     return (
-      <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.recordingContent}
-        >
-          <View style={styles.recordingIcon}>
-            <Ionicons name="mic" size={34} color={BROWN} />
-          </View>
-
-          <Text style={styles.recordingTitle}>Sing the Note</Text>
-
-          <Text style={styles.recordingSubtitle}>
-            Repetition {currentRep} of {params.repetitions}
-          </Text>
-
-          <View style={styles.smallTargetCard}>
-            <View>
-              <Text style={styles.smallLabel}>TARGET</Text>
-              <Text style={styles.smallNote}>{targetNote}</Text>
+      <>
+        <View style={styles.screen}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.recordingContent}
+          >
+            <View style={styles.recordingIcon}>
+              <Ionicons name="mic" size={34} color={BROWN} />
             </View>
 
-            <Text style={styles.smallHz}>
-              {formatFrequency(targetFrequency)}
+            <Text style={styles.recordingTitle}>
+              Sing the Note
             </Text>
-          </View>
 
-          <View style={styles.microphoneArea}>
-            <View style={styles.outerMicCircle}>
-              <View style={styles.innerMicCircle}>
-                <Ionicons name="mic" size={52} color={BROWN} />
+            <Text style={styles.recordingSubtitle}>
+              Repetition {currentRep} of {params.repetitions}
+            </Text>
+
+            <View style={styles.smallTargetCard}>
+              <View>
+                <Text style={styles.smallLabel}>TARGET</Text>
+                <Text style={styles.smallNote}>{targetNote}</Text>
+              </View>
+
+              <Text style={styles.smallHz}>
+                {formatFrequency(targetFrequency)}
+              </Text>
+            </View>
+
+            <View style={styles.microphoneArea}>
+              <View style={styles.outerMicCircle}>
+                <View style={styles.innerMicCircle}>
+                  <Ionicons name="mic" size={52} color={BROWN} />
+                </View>
+              </View>
+
+              <View style={styles.recordingBadge}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingBadgeText}>
+                  RECORDING
+                </Text>
               </View>
             </View>
 
-            <View style={styles.recordingBadge}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingBadgeText}>RECORDING</Text>
+            <View style={styles.detectedArea}>
+              <Text style={styles.detectedLabel}>
+                CURRENT NOTE
+              </Text>
+              <Text style={styles.detectedNote}>
+                {liveTone.note}
+              </Text>
+              <Text style={styles.detectedFrequency}>
+                {formatFrequency(liveTone.pitch)}
+              </Text>
+              <Text style={styles.pitchMessage}>
+                {liveTone.pitch > 0
+                  ? 'Keep the tone steady'
+                  : 'Listening...'}
+              </Text>
             </View>
-          </View>
 
-          <View style={styles.detectedArea}>
-            <Text style={styles.detectedLabel}>CURRENT NOTE</Text>
-            <Text style={styles.detectedNote}>{liveTone.note}</Text>
-            <Text style={styles.detectedFrequency}>
-              {formatFrequency(liveTone.pitch)}
+            <View style={styles.metricsGrid}>
+              <MetricCard
+                label="PITCH"
+                value={
+                  liveTone.pitch > 0
+                    ? formatFrequency(liveTone.pitch)
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="CLARITY"
+                value={
+                  liveTone.clarity > 0
+                    ? `${Math.round(liveTone.clarity * 100)}%`
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="VOLUME"
+                value={formatVolume(liveTone.volume)}
+              />
+              <MetricCard
+                label="REP"
+                value={`${currentRep}/${params.repetitions}`}
+              />
+            </View>
+
+            <Text style={styles.timerText}>
+              {elapsedSeconds.toFixed(1)} /{' '}
+              {params.intervalSec.toFixed(1)}s
             </Text>
-            <Text style={styles.pitchMessage}>
-              {liveTone.pitch > 0
-                ? 'Keep the tone steady'
-                : 'Listening...'}
-            </Text>
-          </View>
 
-          <View style={styles.metricsGrid}>
-            <MetricCard
-              label="PITCH"
-              value={
-                liveTone.pitch > 0
-                  ? formatFrequency(liveTone.pitch)
-                  : '--'
-              }
-            />
-            <MetricCard
-              label="CLARITY"
-              value={
-                liveTone.clarity > 0
-                  ? `${Math.round(liveTone.clarity * 100)}%`
-                  : '--'
-              }
-            />
-            <MetricCard
-              label="VOLUME"
-              value={formatVolume(liveTone.volume)}
-            />
-            <MetricCard
-              label="REP"
-              value={`${currentRep}/${params.repetitions}`}
-            />
-          </View>
+            <View style={styles.timerTrack}>
+              <View
+                style={[
+                  styles.timerFill,
+                  { width: `${recordingProgress * 100}%` },
+                ]}
+              />
+            </View>
 
-          <Text style={styles.timerText}>
-            {elapsedSeconds.toFixed(1)} / {params.intervalSec.toFixed(1)}s
-          </Text>
-
-          <View style={styles.timerTrack}>
-            <View
-              style={[
-                styles.timerFill,
-                { width: `${progress * 100}%` },
+            <Pressable
+              style={({ pressed }) => [
+                styles.finishButton,
+                pressed && styles.buttonPressed,
               ]}
-            />
-          </View>
-
-          <Pressable
-            style={styles.finishButton}
-            onPress={finishRecording}
-          >
-            <Ionicons name="stop" size={20} color={BROWN} />
-            <Text style={styles.finishButtonText}>Finish</Text>
-          </Pressable>
-        </ScrollView>
-      </View>
+              onPress={finishRecording}
+            >
+              <Ionicons name="stop" size={20} color={BROWN} />
+              <Text style={styles.finishButtonText}>
+                Finish
+              </Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'processing') {
     return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title="Analyzing Your Singing"
-        message="Comparing your repetitions for tone and vocal consistency."
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Singing"
+          message="Comparing your repetitions for tone and vocal consistency."
+          onBack={goBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (screen === 'results' && result) {
     return (
-      <ExerciseResultsScreen
-        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
-        subtitle={`Tone Consistency Result • ${params.repetitions} repetitions`}
-        score={result.score}
-        resultIcon={result.passed ? 'checkmark' : 'refresh'}
-        scoreMessage={
-          result.passed
-            ? 'Your tone and vocal output stayed consistent across the repetitions.'
-            : 'Keep practicing the same target note with a steady and consistent tone.'
-        }
-        onRetry={retryExercise}
-        onExit={goBack}
-      >
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>Tone Consistency</Text>
-
-          <View style={styles.resultTarget}>
-            <Text style={styles.resultTargetLabel}>TARGET NOTE</Text>
-            <Text style={styles.resultTargetNote}>{targetNote}</Text>
-            <Text style={styles.resultTargetFrequency}>
-              {formatFrequency(targetFrequency)}
+      <>
+        <ExerciseResultsScreen
+          title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
+          subtitle={`Tone Consistency Result • ${params.repetitions} repetitions`}
+          score={result.score}
+          resultIcon={result.passed ? 'checkmark' : 'refresh'}
+          scoreMessage={
+            result.passed
+              ? 'Your tone and vocal output stayed consistent across the repetitions.'
+              : 'Keep practicing the same target note with a steady and consistent tone.'
+          }
+          onRetry={retryExercise}
+          onExit={goBack}
+          onBack={goBack}
+        >
+          <View style={styles.resultCard}>
+            <Text style={styles.resultCardTitle}>
+              Tone Consistency
             </Text>
+
+            <View style={styles.resultTarget}>
+              <Text style={styles.resultTargetLabel}>
+                TARGET NOTE
+              </Text>
+              <Text style={styles.resultTargetNote}>
+                {targetNote}
+              </Text>
+              <Text style={styles.resultTargetFrequency}>
+                {formatFrequency(targetFrequency)}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.resultsGrid}>
-          <MetricCard
-            label="OVERALL SCORE"
-            value={`${result.score}%`}
-          />
-          <MetricCard
-            label="AVG. CENTROID"
-            value={
-              result.averageCentroidHz > 0
-                ? `${Math.round(result.averageCentroidHz)} Hz`
-                : '--'
-            }
-          />
-          <MetricCard
-            label="AVG. AMPLITUDE"
-            value={
-              result.averageAmplitude > 0
-                ? result.averageAmplitude.toFixed(3)
-                : '--'
-            }
-          />
-          <MetricCard
-            label="REPETITIONS"
-            value={String(params.repetitions)}
-          />
-        </View>
-
-        <View style={styles.feedbackCard}>
-          <Ionicons name="bulb-outline" size={21} color={BROWN} />
-
-          <View style={styles.feedbackContent}>
-            <Text style={styles.feedbackTitle}>Feedback</Text>
-            <Text style={styles.feedbackText}>
-              {result.passed
-                ? `Excellent consistency! Your voice maintained a stable tone while repeating ${targetNote}. Keep practicing with the same controlled vocal output.`
-                : `Your tone varied between repetitions. Listen carefully to the reference note before each attempt and focus on maintaining the same vocal quality throughout ${targetNote}.`}
-            </Text>
+          <View style={styles.resultsGrid}>
+            <MetricCard
+              label="OVERALL SCORE"
+              value={`${result.score}%`}
+            />
+            <MetricCard
+              label="AVG. CENTROID"
+              value={
+                result.averageCentroidHz > 0
+                  ? `${Math.round(result.averageCentroidHz)} Hz`
+                  : '--'
+              }
+            />
+            <MetricCard
+              label="AVG. AMPLITUDE"
+              value={
+                result.averageAmplitude > 0
+                  ? result.averageAmplitude.toFixed(3)
+                  : '--'
+              }
+            />
+            <MetricCard
+              label="REPETITIONS"
+              value={String(params.repetitions)}
+            />
           </View>
-        </View>
-      </ExerciseResultsScreen>
+
+          <View style={styles.feedbackCard}>
+            <Ionicons
+              name="bulb-outline"
+              size={21}
+              color={BROWN}
+            />
+
+            <View style={styles.feedbackContent}>
+              <Text style={styles.feedbackTitle}>Feedback</Text>
+              <Text style={styles.feedbackText}>
+                {result.passed
+                  ? `Excellent consistency! Your voice maintained a stable tone while repeating ${targetNote}. Keep practicing with the same controlled vocal output.`
+                  : `Your tone varied between repetitions. Listen carefully to the reference note before each attempt and focus on maintaining the same vocal quality throughout ${targetNote}.`}
+              </Text>
+            </View>
+          </View>
+        </ExerciseResultsScreen>
+        {quitModal}
+      </>
     );
   }
 
-  return null;
+  return quitModal;
 }
 
 function MetricCard({
@@ -1422,5 +1890,82 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: BROWN,
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });
