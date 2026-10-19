@@ -91,6 +91,7 @@ export default function ControlledBreathReleaseScreen({
 
   const [phase, setPhase] = useState<Phase>('instructions');
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
   const [countdown, setCountdown] = useState(PREPARATION_COUNTDOWN);
   const [elapsed, setElapsed] = useState(0);
   const [targetRecordingDuration, setTargetRecordingDuration] =
@@ -115,11 +116,15 @@ export default function ControlledBreathReleaseScreen({
   const quitModalOpenRef = useRef(false);
   const leavingRef = useRef(false);
 
-  // The recorder has no pause/resume API. If a repetition is
-  // interrupted by the quit modal, restart that repetition on Continue.
+  // The recorder cannot pause/resume. An interrupted repetition
+  // must restart instead of scoring audio captured before the modal.
   const pausedForQuitRef = useRef(false);
   const restartCurrentRepRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
+
+  // Discard the callback from a recording deliberately stopped
+  // because of interruption, retry, or navigation.
+  const discardNextStopRef = useRef(false);
 
   const currentRepRef = useRef(1);
   const repResultsRef = useRef<RepResult[]>([]);
@@ -179,11 +184,11 @@ export default function ControlledBreathReleaseScreen({
   }, [resetLiveRecordingState]);
 
   /**
-   * Open the quit modal without clearing completed repetitions.
+   * Open the quit modal while retaining completed repetitions.
    *
-   * Countdown and processing timers are paused. If recording is in
-   * progress, stop the recorder and restart the same repetition when
-   * the user chooses Continue Exercise.
+   * An interrupted recording is discarded and the same repetition
+   * restarts from the countdown when Continue Exercise is selected.
+   * An already analyzed repetition resumes processing instead.
    */
   const openQuitModal = useCallback(() => {
     if (
@@ -208,11 +213,15 @@ export default function ControlledBreathReleaseScreen({
     ) {
       restartCurrentRepRef.current = true;
 
-      // Set the guard before stopping because onStop may be called
-      // asynchronously by the recorder.
+      // Set the guards before stopping because onStop may arrive
+      // asynchronously after stopRecording is called.
       cancellingRef.current = true;
+      discardNextStopRef.current = true;
       startingRef.current = false;
       finishingRef.current = false;
+      processingRef.current = false;
+
+      resetLiveRecordingState();
 
       try {
         stopRecordingRef.current?.();
@@ -222,40 +231,37 @@ export default function ControlledBreathReleaseScreen({
           stopError,
         );
       }
-
-      resetLiveRecordingState();
-      cancellingRef.current = false;
     }
 
     setShowQuitModal(true);
   }, [clearTimers, resetLiveRecordingState]);
 
   /**
-   * Resume after dismissing the quit modal.
-   * An interrupted repetition restarts from its preparation countdown.
+   * Continue the exercise after the quit modal is dismissed.
    */
   const dismissQuitModal = useCallback(() => {
     if (leavingRef.current || !quitModalOpenRef.current) {
       return;
     }
 
+    const previousPhase = pausedPhaseRef.current;
+
     quitModalOpenRef.current = false;
-    pausedForQuitRef.current = false;
     setShowQuitModal(false);
+    pausedForQuitRef.current = false;
 
     if (restartCurrentRepRef.current) {
-      restartCurrentRepRef.current = false;
-      cancellingRef.current = false;
+      // Discard the interrupted repetition. Do not clear its result
+      // history or increment currentRepRef.
       startingRef.current = false;
       finishingRef.current = false;
       processingRef.current = false;
+      cancellingRef.current = false;
 
       resetLiveRecordingState();
       startCountdownRef.current?.();
       return;
     }
-
-    const previousPhase = pausedPhaseRef.current;
 
     if (previousPhase === 'countdown') {
       startCountdownRef.current?.();
@@ -263,19 +269,21 @@ export default function ControlledBreathReleaseScreen({
     }
 
     if (previousPhase === 'processing') {
-      // Keep the analyzed repetition and resume its transition.
+      // The current repetition has already been analyzed and stored
+      // in memory. Resume its transition without analyzing it again.
       transitionTimerRef.current = setTimeout(() => {
         transitionTimerRef.current = null;
 
         if (
           !mountedRef.current ||
           quitModalOpenRef.current ||
-          leavingRef.current
+          leavingRef.current ||
+          cancellingRef.current ||
+          phaseRef.current !== 'processing'
         ) {
           return;
         }
 
-        // finishExercise may already be saving the final result.
         if (processingRef.current) {
           return;
         }
@@ -291,11 +299,17 @@ export default function ControlledBreathReleaseScreen({
         setCurrentRep(currentRepRef.current);
         startCountdownRef.current?.();
       }, PROCESSING_DELAY_MS);
+
+      return;
     }
+
+    // Instructions and results do not have an active recording
+    // or transition that needs to be resumed.
+    cancellingRef.current = false;
   }, [resetLiveRecordingState]);
 
   /**
-   * Stop the recorder and leave the exercise screen.
+   * Stop recording and leave the exercise screen.
    */
   const exitExercise = useCallback(() => {
     if (leavingRef.current) {
@@ -307,6 +321,7 @@ export default function ControlledBreathReleaseScreen({
     quitModalOpenRef.current = false;
     pausedForQuitRef.current = false;
     restartCurrentRepRef.current = false;
+    discardNextStopRef.current = true;
 
     clearTimers();
 
@@ -328,6 +343,9 @@ export default function ControlledBreathReleaseScreen({
   }, [clearTimers]);
 
   const confirmQuitExercise = useCallback(() => {
+    if (leavingRef.current) return;
+
+    setIsQuitting(true);
     exitExercise();
   }, [exitExercise]);
 
@@ -340,7 +358,6 @@ export default function ControlledBreathReleaseScreen({
         'hardwareBackPress',
         () => {
           if (quitModalOpenRef.current) {
-            dismissQuitModal();
             return true;
           }
 
@@ -350,7 +367,7 @@ export default function ControlledBreathReleaseScreen({
       );
 
       return () => subscription.remove();
-    }, [dismissQuitModal, openQuitModal]),
+    }, [openQuitModal]),
   );
 
   /**
@@ -503,7 +520,8 @@ export default function ControlledBreathReleaseScreen({
     if (
       !mountedRef.current ||
       cancellingRef.current ||
-      leavingRef.current
+      leavingRef.current ||
+      quitModalOpenRef.current
     ) {
       processingRef.current = false;
       return;
@@ -522,18 +540,33 @@ export default function ControlledBreathReleaseScreen({
   }, [finishExercise]);
 
   const handleRecordingStop = useCallback(
-    (
-      samples: Float32Array,
-      sampleRate: number,
-    ) => {
+    (samples: Float32Array, sampleRate: number) => {
       if (!mountedRef.current) return;
 
-      // Ignore callbacks from recordings stopped for the quit modal,
-      // retry, or navigation. They must never be scored or saved.
+      // A deliberate stop must never be treated as a completed rep.
+      if (discardNextStopRef.current) {
+        discardNextStopRef.current = false;
+
+        startingRef.current = false;
+        finishingRef.current = false;
+
+        // Keep cancellation active while the modal is open or the
+        // screen is leaving. Continue explicitly releases this guard.
+        if (
+          !pausedForQuitRef.current &&
+          !leavingRef.current
+        ) {
+          cancellingRef.current = false;
+        }
+
+        return;
+      }
+
       if (
         cancellingRef.current ||
         leavingRef.current ||
         pausedForQuitRef.current ||
+        quitModalOpenRef.current ||
         restartCurrentRepRef.current
       ) {
         startingRef.current = false;
@@ -592,6 +625,7 @@ export default function ControlledBreathReleaseScreen({
             cancellingRef.current ||
             leavingRef.current ||
             quitModalOpenRef.current ||
+            pausedForQuitRef.current ||
             phaseRef.current !== 'processing'
           ) {
             return;
@@ -631,6 +665,7 @@ export default function ControlledBreathReleaseScreen({
         finishingRef.current = false;
 
         clearTimers();
+
         setError(
           'We could not analyze this recording. Please try again.',
         );
@@ -651,6 +686,7 @@ export default function ControlledBreathReleaseScreen({
         cancellingRef.current ||
         leavingRef.current ||
         quitModalOpenRef.current ||
+        pausedForQuitRef.current ||
         phaseRef.current !== 'recording'
       ) {
         return;
@@ -679,7 +715,8 @@ export default function ControlledBreathReleaseScreen({
       startingRef.current ||
       cancellingRef.current ||
       leavingRef.current ||
-      quitModalOpenRef.current
+      quitModalOpenRef.current ||
+      pausedForQuitRef.current
     ) {
       return;
     }
@@ -709,6 +746,11 @@ export default function ControlledBreathReleaseScreen({
     setTargetRecordingDuration(guideDuration);
     setVolume(null);
 
+    // The previous interrupted stop callback should have been
+    // discarded during the countdown before a new recording begins.
+    discardNextStopRef.current = false;
+    restartCurrentRepRef.current = false;
+
     const firstPulse =
       adaptiveParams.pulseCount > 0 ? 1 : 0;
 
@@ -720,13 +762,12 @@ export default function ControlledBreathReleaseScreen({
       try {
         await start();
 
-        // If the user opened the quit modal during startup, stop this
-        // recording and do not allow its callback to score anything.
         if (
           !mountedRef.current ||
           cancellingRef.current ||
           leavingRef.current ||
           quitModalOpenRef.current ||
+          pausedForQuitRef.current ||
           phaseRef.current !== 'recording'
         ) {
           stopRecordingRef.current?.();
@@ -743,6 +784,7 @@ export default function ControlledBreathReleaseScreen({
             cancellingRef.current ||
             leavingRef.current ||
             quitModalOpenRef.current ||
+            pausedForQuitRef.current ||
             (phaseRef.current !== 'recording' &&
               phaseRef.current !== 'finishing')
           ) {
@@ -784,7 +826,22 @@ export default function ControlledBreathReleaseScreen({
             clearTimers();
             setElapsed(guideDuration);
             finishingRef.current = true;
-            stopRecordingRef.current?.();
+
+            try {
+              stopRecordingRef.current?.();
+            } catch (stopError) {
+              console.error(
+                'Failed to stop Controlled Breath Release recording:',
+                stopError,
+              );
+
+              finishingRef.current = false;
+              processingRef.current = false;
+              setError(
+                'Recording could not be stopped. Please try again.',
+              );
+              setCurrentPhase('instructions');
+            }
           }
         }, 50);
       } catch (recordingError) {
@@ -825,7 +882,8 @@ export default function ControlledBreathReleaseScreen({
       !mountedRef.current ||
       cancellingRef.current ||
       leavingRef.current ||
-      quitModalOpenRef.current
+      quitModalOpenRef.current ||
+      pausedForQuitRef.current
     ) {
       return;
     }
@@ -843,7 +901,8 @@ export default function ControlledBreathReleaseScreen({
         !mountedRef.current ||
         cancellingRef.current ||
         leavingRef.current ||
-        quitModalOpenRef.current
+        quitModalOpenRef.current ||
+        pausedForQuitRef.current
       ) {
         return;
       }
@@ -876,6 +935,7 @@ export default function ControlledBreathReleaseScreen({
       cancellingRef.current = true;
       pausedForQuitRef.current = false;
       restartCurrentRepRef.current = false;
+      discardNextStopRef.current = true;
 
       clearTimers();
 
@@ -903,6 +963,7 @@ export default function ControlledBreathReleaseScreen({
     cancellingRef.current = false;
     pausedForQuitRef.current = false;
     restartCurrentRepRef.current = false;
+    discardNextStopRef.current = false;
     processingRef.current = false;
     finishingRef.current = false;
 
@@ -924,6 +985,7 @@ export default function ControlledBreathReleaseScreen({
     cancellingRef.current = true;
     pausedForQuitRef.current = false;
     restartCurrentRepRef.current = false;
+    discardNextStopRef.current = true;
 
     try {
       stopRecordingRef.current?.();
@@ -943,8 +1005,8 @@ export default function ControlledBreathReleaseScreen({
     setCountdown(PREPARATION_COUNTDOWN);
     setCurrentPhase('instructions');
 
-    // Allow the next attempt to start after the previous stop callback
-    // has been guarded against scoring.
+    // The old stop callback is guarded by discardNextStopRef.
+    // Release cancellation for the next user-initiated attempt.
     cancellingRef.current = false;
   }, [clearTimers, resetRepetitionResults, setCurrentPhase]);
 
@@ -1034,29 +1096,38 @@ export default function ControlledBreathReleaseScreen({
         <View
           accessibilityRole="alert"
           accessibilityLabel="Quit exercise confirmation"
-          style={styles.confirmationCard}
+          style={styles.modalCard}
         >
-          <View style={styles.modalIconCircle}>
+          <View style={styles.modalIcon}>
             <Ionicons
-              name="pause-circle-outline"
-              size={34}
+              name="exit-outline"
+              size={30}
               color={BROWN}
             />
           </View>
 
-          <Text style={styles.modalTitle}>Quit Exercise?</Text>
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
 
           <Text style={styles.modalMessage}>
-            Your exercise is paused while you decide. Continue to
-            resume your exercise, or quit to return to the dashboard.
-            If a repetition was interrupted, you will repeat that same
-            repetition. Your completed repetitions will be kept.
+            {pausedPhaseRef.current === 'instructions' ||
+            pausedPhaseRef.current === 'results'
+              ? 'Are you sure you want to leave Controlled Breath Release?'
+              : pausedPhaseRef.current === 'recording' ||
+                  pausedPhaseRef.current === 'finishing'
+                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
           </Text>
 
           <Pressable
             accessibilityRole="button"
-            style={styles.continueButton}
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting}
             onPress={dismissQuitModal}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
           >
             <Text style={styles.continueButtonText}>
               Continue Exercise
@@ -1065,10 +1136,18 @@ export default function ControlledBreathReleaseScreen({
 
           <Pressable
             accessibilityRole="button"
-            style={styles.quitButton}
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
             onPress={confirmQuitExercise}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
           >
-            <Text style={styles.quitButtonText}>Quit Exercise</Text>
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -1989,84 +2068,79 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(38, 24, 20, 0.42)',
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  confirmationCard: {
+  modalCard: {
     width: '100%',
-    maxWidth: 360,
-    backgroundColor: WHITE,
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 20,
+    maxWidth: 380,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
-    elevation: 10,
-    shadowColor: BROWN,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
   },
-  modalIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: LIGHT_PINK,
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    lineHeight: 29,
     color: BROWN,
     textAlign: 'center',
-    marginBottom: 8,
   },
   modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
     fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
     color: MUTED,
     textAlign: 'center',
-    marginBottom: 20,
   },
   continueButton: {
     width: '100%',
     minHeight: 48,
-    borderRadius: 15,
-    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
   },
   continueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
     color: BROWN,
-    textAlign: 'center',
   },
   quitButton: {
     width: '100%',
-    minHeight: 46,
-    borderRadius: 15,
-    backgroundColor: WHITE,
-    borderWidth: 1,
-    borderColor: BORDER,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    marginTop: 9,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
   },
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: BROWN,
-    textAlign: 'center',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

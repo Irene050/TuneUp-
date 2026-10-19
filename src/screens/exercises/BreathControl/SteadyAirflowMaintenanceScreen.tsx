@@ -1533,12 +1533,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
   },
+
+  // Quit confirmation modal
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: 'rgba(35, 22, 17, 0.45)',
   },
   modalCard: {
     width: '100%',
@@ -1547,6 +1549,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: BORDER,
     backgroundColor: WHITE,
   },
   modalIcon: {

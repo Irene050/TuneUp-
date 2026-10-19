@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -93,6 +94,7 @@ export default function DiaphragmaticBreathingScreen({
   const [elapsed, setElapsed] = useState(0);
   const [volume, setVolume] = useState(0);
   const [showExitPrompt, setShowExitPrompt] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const showExitPromptRef = useRef(false);
   const pausedForExitRef = useRef(false);
@@ -287,7 +289,7 @@ export default function DiaphragmaticBreathingScreen({
     clearTimers();
     processingRef.current = true;
 
-    const finalResults = repResultsRef.current;
+    const finalResults = [...repResultsRef.current];
 
     const finalScore =
       finalResults.length > 0
@@ -613,11 +615,7 @@ export default function DiaphragmaticBreathingScreen({
         setCurrentPhase('instructions');
       }
     })();
-  }, [
-    clearTimers,
-    resetLiveState,
-    setCurrentPhase,
-  ]);
+  }, [clearTimers, resetLiveState, setCurrentPhase]);
 
   useEffect(() => {
     startExhalePhaseRef.current = startExhalePhase;
@@ -726,6 +724,7 @@ export default function DiaphragmaticBreathingScreen({
     restartCurrentRepRef.current = false;
     leavingRef.current = false;
 
+    setIsQuitting(false);
     clearTimers();
     resetRepetitionResults();
     setCountdown(PREPARATION_COUNTDOWN);
@@ -748,6 +747,7 @@ export default function DiaphragmaticBreathingScreen({
     pausedForExitRef.current = false;
     restartCurrentRepRef.current = false;
 
+    setIsQuitting(false);
     clearTimers();
     stopRecordingRef.current?.();
 
@@ -783,10 +783,8 @@ export default function DiaphragmaticBreathingScreen({
 
     if (attemptIsActive) {
       /*
-       * Pause all exercise timers. The recorder API does not expose
-       * a confirmed pause/resume operation, so discard only the
-       * interrupted repetition and restart that same repetition
-       * when the user continues.
+       * The recorder does not provide a confirmed pause/resume
+       * operation. Restart the interrupted repetition instead.
        */
       pausedForExitRef.current = true;
 
@@ -800,10 +798,6 @@ export default function DiaphragmaticBreathingScreen({
       clearTimers();
 
       if (recordingWasActive) {
-        /*
-         * Guard the stop callback before stopping the recorder.
-         * Audio from this interrupted repetition must not be scored.
-         */
         cancellingRef.current = true;
 
         try {
@@ -824,6 +818,7 @@ export default function DiaphragmaticBreathingScreen({
       resetLiveState();
     }
 
+    setIsQuitting(false);
     setExitPromptVisible(true);
   }, [
     clearTimers,
@@ -848,9 +843,8 @@ export default function DiaphragmaticBreathingScreen({
     processingRef.current = false;
 
     /*
-     * Restart the current repetition only if its recording or
-     * analysis was interrupted. Completed repetitions stay saved
-     * in memory and currentRepRef is intentionally not reset.
+     * Restart the interrupted repetition while retaining completed
+     * repetitions and the current repetition number.
      */
     if (restartCurrentRepRef.current) {
       restartCurrentRepRef.current = false;
@@ -860,8 +854,7 @@ export default function DiaphragmaticBreathingScreen({
     }
 
     /*
-     * Countdown and inhale phases resume safely from a fresh
-     * countdown for the same repetition.
+     * Countdown and inhale phases restart with a fresh countdown.
      */
     startCountdownRef.current?.();
   }, [resetLiveState, setExitPromptVisible]);
@@ -876,6 +869,7 @@ export default function DiaphragmaticBreathingScreen({
     processingRef.current = false;
     startingRef.current = false;
 
+    setIsQuitting(true);
     clearTimers();
 
     try {
@@ -895,6 +889,10 @@ export default function DiaphragmaticBreathingScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (showExitPromptRef.current) {
+          return true;
+        }
+
         handleBack();
         return true;
       },
@@ -927,9 +925,86 @@ export default function DiaphragmaticBreathingScreen({
     };
   }, [clearTimers]);
 
+  const quitMessage =
+    phaseRef.current === 'instructions' ||
+    phaseRef.current === 'results'
+      ? 'Are you sure you want to leave Diaphragmatic Breathing?'
+      : phaseRef.current === 'exhale' ||
+          restartCurrentRepRef.current
+        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
+
+  const quitModal = (
+    <Modal
+      visible={showExitPrompt}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View
+          accessibilityRole="alert"
+          accessibilityLabel="Exercise exit confirmation"
+          style={styles.confirmationCard}
+        >
+          <View style={styles.confirmationIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={32}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.confirmationTitle}>
+            Quit exercise?
+          </Text>
+
+          <Text style={styles.confirmationMessage}>
+            {quitMessage}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            onPress={continueExercise}
+            disabled={isQuitting}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            onPress={quitExercise}
+            disabled={isQuitting}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (!params || !tier || !paramsReady) {
     return (
       <View style={styles.loadingScreen}>
+        {quitModal}
+
         <View style={styles.loadingIconCircle}>
           <Ionicons
             name="options-outline"
@@ -1000,6 +1075,8 @@ export default function DiaphragmaticBreathingScreen({
 
   return (
     <View style={styles.screen}>
+      {quitModal}
+
       {phase === 'instructions' && (
         <ExerciseScreen
           category="Breath Control"
@@ -1052,7 +1129,7 @@ export default function DiaphragmaticBreathingScreen({
         <View style={styles.exerciseContainer}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel="Pause exercise"
             onPress={handleBack}
             style={styles.backButton}
           >
@@ -1133,12 +1210,31 @@ export default function DiaphragmaticBreathingScreen({
       )}
 
       {phase === 'processing' && (
-        <ExerciseProcessingScreen
-          icon="analytics-outline"
-          title="Analyzing Your Breathing"
-          message="Measuring duration, consistency, and relative microphone level..."
-          onBack={handleBack}
-        />
+        <>
+          <ExerciseProcessingScreen
+            icon="analytics-outline"
+            title="Analyzing Your Breathing"
+            message="Measuring duration, consistency, and relative microphone level..."
+            onBack={handleBack}
+          />
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Pause exercise"
+            style={styles.processingPauseButton}
+            onPress={handleBack}
+          >
+            <Ionicons
+              name="pause-circle-outline"
+              size={25}
+              color={BROWN}
+            />
+
+            <Text style={styles.processingPauseText}>
+              Pause
+            </Text>
+          </Pressable>
+        </>
       )}
 
       {phase === 'results' && (
@@ -1235,69 +1331,6 @@ export default function DiaphragmaticBreathingScreen({
           </View>
         </ExerciseResultsScreen>
       )}
-
-      <Modal
-        visible={showExitPrompt}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={continueExercise}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            accessibilityRole="alert"
-            accessibilityLabel="Exercise exit confirmation"
-            style={styles.confirmationCard}
-          >
-            <View style={styles.confirmationIcon}>
-              <Ionicons
-                name="pause-circle-outline"
-                size={34}
-                color={BROWN}
-              />
-            </View>
-
-            <Text style={styles.confirmationTitle}>
-              Quit Exercise?
-            </Text>
-
-            <Text style={styles.confirmationMessage}>
-              Your exercise is paused while you decide. Continue
-              to resume your exercise, or quit to return to the
-              dashboard. If a repetition was interrupted, you
-              will repeat that same repetition.
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Continue exercise"
-              onPress={continueExercise}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>
-                Continue Exercise
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Quit exercise"
-              onPress={quitExercise}
-              style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.quitButtonText}>
-                Quit Exercise
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1491,6 +1524,25 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: BROWN,
   },
+  processingPauseButton: {
+    position: 'absolute',
+    right: 22,
+    top: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  processingPauseText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 13,
+    color: BROWN,
+    marginLeft: 5,
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1596,9 +1648,9 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
   },
   confirmationIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: LIGHT_PINK,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1622,7 +1674,7 @@ const styles = StyleSheet.create({
   continueButton: {
     width: '100%',
     minHeight: 49,
-    backgroundColor: BROWN,
+    backgroundColor: PINK,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1631,7 +1683,7 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: WHITE,
+    color: BROWN,
   },
   quitButton: {
     width: '100%',
@@ -1652,5 +1704,8 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

@@ -51,6 +51,7 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
+
 const PREPARATION_COUNTDOWN = 3;
 const PROCESSING_DELAY_MS = 1200;
 
@@ -90,6 +91,7 @@ export default function SustainedSSSSScreen({
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const paramsRef = useRef<SustainedExhaleParams | null>(null);
   const tierRef = useRef<Tier | null>(initialTier ?? null);
@@ -108,16 +110,13 @@ export default function SustainedSSSSScreen({
   const quittingRef = useRef(false);
   const showQuitModalRef = useRef(false);
 
-  // The recorder cannot safely resume the same PCM recording.
-  // An interrupted repetition is discarded and restarted.
   const discardNextStopRef = useRef(false);
 
   const repResultsRef = useRef<RepResult[]>([]);
   const currentRepRef = useRef(1);
   const phaseRef = useRef<Phase>('instructions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
 
-  // Tracks whether a repetition has already been analyzed.
-  // Processing can pause without analyzing it again.
   const pendingProcessingRef = useRef(false);
   const pendingFinalRepRef = useRef(false);
   const saveInProgressRef = useRef(false);
@@ -236,7 +235,7 @@ export default function SustainedSSSSScreen({
       }
     }
 
-    initializeAdaptiveExercise();
+    void initializeAdaptiveExercise();
 
     return () => {
       cancelled = true;
@@ -388,16 +387,11 @@ export default function SustainedSSSSScreen({
   }, []);
 
   const handleRecordingStop = useCallback(
-    (
-      samples: Float32Array,
-      sampleRate: number,
-    ) => {
+    (samples: Float32Array, sampleRate: number) => {
       if (!mountedRef.current) {
         return;
       }
 
-      // If the user opened the modal during recording, do not
-      // analyze the interrupted audio or add a repetition result.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         startingRef.current = false;
@@ -537,7 +531,6 @@ export default function SustainedSSSSScreen({
     updatePhase('recording');
 
     try {
-      // Only accept audio from the new, uninterrupted recording.
       discardNextStopRef.current = false;
 
       await start();
@@ -633,7 +626,7 @@ export default function SustainedSSSSScreen({
           countdownTimerRef.current = null;
         }
 
-        startRecordingPhase();
+        void startRecordingPhase();
         return;
       }
 
@@ -657,10 +650,7 @@ export default function SustainedSSSSScreen({
   }, [clearTimers]);
 
   const startExercise = useCallback(() => {
-    if (
-      startingRef.current ||
-      quittingRef.current
-    ) {
+    if (startingRef.current || quittingRef.current) {
       return;
     }
 
@@ -673,6 +663,9 @@ export default function SustainedSSSSScreen({
 
     pausedRef.current = false;
     quittingRef.current = false;
+    setIsQuitting(false);
+    setQuitModalVisible(false);
+
     discardNextStopRef.current = false;
     pendingProcessingRef.current = false;
     pendingFinalRepRef.current = false;
@@ -694,7 +687,7 @@ export default function SustainedSSSSScreen({
     setCountdown(PREPARATION_COUNTDOWN);
 
     beginCountdown();
-  }, [beginCountdown, clearTimers]);
+  }, [beginCountdown, clearTimers, setQuitModalVisible]);
 
   const finishRecording = useCallback(() => {
     if (
@@ -728,39 +721,35 @@ export default function SustainedSSSSScreen({
     }
 
     const currentPhase = phaseRef.current;
+    pausedPhaseRef.current = currentPhase;
+
+    pausedRef.current = true;
+    clearTimers();
 
     if (
-      currentPhase === 'results' ||
-      currentPhase === 'instructions'
+      currentPhase === 'instructions' ||
+      currentPhase === 'results'
     ) {
-      // These phases have no active recording to pause.
-      pausedRef.current = true;
-      clearTimers();
       setQuitModalVisible(true);
       return;
     }
 
-    pausedRef.current = true;
-    clearTimers();
     setVolume(null);
 
     if (currentPhase === 'recording') {
-      // Discard this repetition, but retain all earlier results.
+      // Discard the interrupted repetition, preserving earlier results.
       discardNextStopRef.current = true;
       startingRef.current = false;
       finishingRef.current = true;
 
       stopRecordingRef.current?.();
-
       setElapsed(0);
     } else if (currentPhase === 'countdown') {
-      // Resume this repetition with a fresh countdown.
+      // Continue with a fresh countdown for the same repetition.
       setCountdown(PREPARATION_COUNTDOWN);
-    } else if (currentPhase === 'processing') {
-      // Keep the analyzed result and resume its pending transition.
-      // Do not call the analysis function again.
     }
 
+    // If processing, retain the analyzed result and pending transition.
     setQuitModalVisible(true);
   }, [clearTimers, setQuitModalVisible]);
 
@@ -776,11 +765,10 @@ export default function SustainedSSSSScreen({
     setQuitModalVisible(false);
     pausedRef.current = false;
 
-    const previousPhase = phaseRef.current;
+    const previousPhase = pausedPhaseRef.current;
 
     if (previousPhase === 'recording') {
-      // The recorder cannot safely resume the previous PCM buffer.
-      // Restart only the current repetition after a new countdown.
+      // Restart only the interrupted repetition.
       startingRef.current = false;
       finishingRef.current = false;
       setElapsed(0);
@@ -800,8 +788,6 @@ export default function SustainedSSSSScreen({
       if (pendingProcessingRef.current) {
         scheduleProcessingCompletion();
       } else {
-        // A recorder stop may still be completing asynchronously.
-        // Keep the same repetition and prepare a fresh attempt.
         startingRef.current = false;
         finishingRef.current = false;
         setElapsed(0);
@@ -811,24 +797,26 @@ export default function SustainedSSSSScreen({
     }
   }, [scheduleProcessingCompletion, setQuitModalVisible]);
 
-  const quitExercise = useCallback(() => {
+  const quitExercise = useCallback(async () => {
     if (quittingRef.current) {
       return;
     }
 
     quittingRef.current = true;
     pausedRef.current = true;
+    setIsQuitting(true);
     setQuitModalVisible(false);
     clearTimers();
 
     startingRef.current = false;
     finishingRef.current = true;
-
-    // Any asynchronous stop callback must not be analyzed on exit.
     discardNextStopRef.current = true;
-    stopRecordingRef.current?.();
 
-    router.replace('/dashboard?tab=exercises');
+    try {
+      stopRecordingRef.current?.();
+    } finally {
+      router.replace('/dashboard?tab=exercises');
+    }
   }, [clearTimers, setQuitModalVisible]);
 
   const goBack = useCallback(() => {
@@ -854,6 +842,7 @@ export default function SustainedSSSSScreen({
   const retryExercise = useCallback(() => {
     pausedRef.current = false;
     quittingRef.current = false;
+    setIsQuitting(false);
     setQuitModalVisible(false);
 
     clearTimers();
@@ -910,6 +899,14 @@ export default function SustainedSSSSScreen({
     item => item.score.passed,
   ).length;
 
+  const quitMessage =
+    pausedPhaseRef.current === 'instructions' ||
+    pausedPhaseRef.current === 'results'
+      ? 'Are you sure you want to leave Sustained "SSSS"?'
+      : pausedPhaseRef.current === 'recording'
+        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
+
   const quitModal = (
     <Modal
       visible={showQuitModal}
@@ -919,11 +916,11 @@ export default function SustainedSSSSScreen({
       onRequestClose={continueExercise}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.quitModalCard}>
-          <View style={styles.modalIconCircle}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
             <Ionicons
               name="exit-outline"
-              size={32}
+              size={30}
               color={BROWN}
             />
           </View>
@@ -933,9 +930,7 @@ export default function SustainedSSSSScreen({
           </Text>
 
           <Text style={styles.modalMessage}>
-            Your current repetition will be paused. You can
-            continue your exercise or quit and return to the
-            exercises page.
+            {quitMessage}
           </Text>
 
           <Pressable
@@ -943,15 +938,11 @@ export default function SustainedSSSSScreen({
             style={({ pressed }) => [
               styles.continueButton,
               pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
             ]}
             onPress={continueExercise}
+            disabled={isQuitting}
           >
-            <Ionicons
-              name="play"
-              size={19}
-              color={WHITE}
-            />
-
             <Text style={styles.continueButtonText}>
               Continue Exercise
             </Text>
@@ -962,11 +953,15 @@ export default function SustainedSSSSScreen({
             style={({ pressed }) => [
               styles.quitButton,
               pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
             ]}
-            onPress={quitExercise}
+            onPress={() => {
+              void quitExercise();
+            }}
+            disabled={isQuitting}
           >
             <Text style={styles.quitButtonText}>
-              Quit Exercise
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
             </Text>
           </Pressable>
         </View>
@@ -976,31 +971,33 @@ export default function SustainedSSSSScreen({
 
   if (loadingParams || !params || !tier) {
     return (
-      <View style={styles.centerScreen}>
+      <>
         {quitModal}
 
-        <View style={styles.largeIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
+        <View style={styles.centerScreen}>
+          <View style={styles.largeIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={44}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.processingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.processingSubtitle}>
+            Adjusting the exercise to your current difficulty level
+          </Text>
+
+          <ActivityIndicator
+            size="large"
             color={BROWN}
+            style={styles.spinner}
           />
         </View>
-
-        <Text style={styles.processingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.processingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-      </View>
+      </>
     );
   }
 
@@ -1177,6 +1174,7 @@ export default function SustainedSSSSScreen({
           </View>
 
           <Pressable
+            accessibilityRole="button"
             style={styles.primaryButton}
             onPress={finishRecording}
           >
@@ -1605,87 +1603,80 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(45, 29, 23, 0.48)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 26,
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  quitModalCard: {
+  modalCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: WHITE,
-    borderRadius: 26,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 24,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
-    elevation: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
   },
-  modalIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: PINK,
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 24,
+    fontSize: 23,
     color: BROWN,
     textAlign: 'center',
   },
   modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
     fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 22,
   },
   continueButton: {
     width: '100%',
-    minHeight: 52,
-    borderRadius: 26,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
   },
   continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 16,
-    color: WHITE,
-    marginLeft: 8,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: LIGHT_PINK,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingHorizontal: 16,
-  },
-  quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
   buttonPressed: {
-    opacity: 0.82,
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   metricsGrid: {
     flexDirection: 'row',
