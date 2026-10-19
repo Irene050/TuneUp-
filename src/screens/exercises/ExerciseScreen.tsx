@@ -307,25 +307,9 @@ export function ExerciseCountdownScreen({
   countdown,
   promptTitle,
   prompt,
-  onBack,
 }: CountdownScreenProps) {
   return (
     <View style={styles.phaseScreen}>
-      {onBack ? (
-        <Pressable
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          style={styles.phaseBackButton}
-          onPress={onBack}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={25}
-            color={BROWN}
-          />
-        </Pressable>
-      ) : null}
-
       <View style={styles.phaseContent}>
         <View style={styles.phaseIconCircle}>
           <Ionicons
@@ -499,20 +483,6 @@ export function ExerciseProcessingScreen({
 }: ProcessingScreenProps) {
   return (
     <View style={styles.phaseScreen}>
-      {onBack ? (
-        <Pressable
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          style={styles.phaseBackButton}
-          onPress={onBack}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={25}
-            color={BROWN}
-          />
-        </Pressable>
-      ) : null}
 
       <View style={styles.phaseContent}>
         <View style={styles.phaseIconCircle}>
@@ -909,17 +879,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
-  phaseBackButton: {
-    position: 'absolute',
-    top: 14,
-    left: 16,
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
+  
   phaseContent: {
     width: '100%',
     alignItems: 'center',

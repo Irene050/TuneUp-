@@ -1,3 +1,4 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -8,6 +9,9 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -74,7 +78,7 @@ export default function SustainedExhaleScreen({
   tier: initialTier,
 }: Props) {
   const [tier, setTier] = useState<Tier | null>(
-    initialTier ?? null
+    initialTier ?? null,
   );
   const [params, setParams] =
     useState<SustainedExhaleParams | null>(null);
@@ -82,15 +86,18 @@ export default function SustainedExhaleScreen({
   const [phase, setPhase] = useState<Phase>('instructions');
   const [currentRep, setCurrentRep] = useState(1);
   const [countdown, setCountdown] = useState(
-    PREPARATION_COUNTDOWN
+    PREPARATION_COUNTDOWN,
   );
   const [elapsed, setElapsed] = useState(0);
   const [volume, setVolume] = useState<number | null>(null);
   const [repResults, setRepResults] = useState<RepResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const paramsRef = useRef<SustainedExhaleParams | null>(null);
   const tierRef = useRef<Tier | null>(initialTier ?? null);
+  const phaseRef = useRef<Phase>('instructions');
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -105,10 +112,57 @@ export default function SustainedExhaleScreen({
   const repResultsRef = useRef<RepResult[]>([]);
   const currentRepRef = useRef(1);
 
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+  const discardNextStopRef = useRef(false);
+  const pausedPhaseRef = useRef<Phase>('instructions');
+
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-  const stopRecordingRef = useRef<(() => void) | null>(null);
+  const stopRecordingRef =
+    useRef<(() => void | Promise<void>) | null>(null);
   const beginCountdownRef = useRef<(() => void) | null>(null);
+  const resumeProcessingRef = useRef<(() => void) | null>(null);
+
+  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (processingTimerRef.current) {
+      clearTimeout(processingTimerRef.current);
+      processingTimerRef.current = null;
+    }
+  }, []);
+
+  const handleLiveFrame = useCallback(
+    (frame: { volume: number }) => {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
+
+      setVolume(frame.volume);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +177,7 @@ export default function SustainedExhaleScreen({
         if (!initialTier && user) {
           const progress = await fetchComponentProgress(
             user.uid,
-            'breathControl'
+            'breathControl',
           );
 
           currentTier = progress?.currentTier ?? 'beginner';
@@ -136,20 +190,20 @@ export default function SustainedExhaleScreen({
         if (user) {
           const records = await fetchExerciseRecords(
             user.uid,
-            'breathControl'
+            'breathControl',
           );
 
           if (cancelled) return;
 
           const matchingRecords = records.filter(
-            (record) =>
+            record =>
               record.templateId === 'sustainedExhale' &&
-              record.tier === currentTier
+              record.tier === currentTier,
           );
 
           recentScores = matchingRecords
             .slice(-5)
-            .map((record) => record.scorePct);
+            .map(record => record.scorePct);
 
           if (recentScores.length === 0) {
             const assessment = await getLatestAssessment();
@@ -157,7 +211,7 @@ export default function SustainedExhaleScreen({
             if (cancelled) return;
 
             const assessmentScore = assessment?.scores.find(
-              (score) => score.componentId === 'breathControl'
+              score => score.componentId === 'breathControl',
             )?.scorePct;
 
             if (typeof assessmentScore === 'number') {
@@ -181,7 +235,7 @@ export default function SustainedExhaleScreen({
       } catch (initializationError) {
         console.error(
           'Failed to initialize Sustained Exhale:',
-          initializationError
+          initializationError,
         );
 
         if (cancelled) return;
@@ -211,64 +265,164 @@ export default function SustainedExhaleScreen({
     };
   }, [initialTier]);
 
-  const clearTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
+  /**
+   * Resume the processing step after a modal interruption.
+   * The current repetition has already been analyzed in this phase,
+   * so it should not be recorded or scored a second time.
+   */
+  const scheduleAfterProcessing = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
     }
 
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
+    const adaptiveParams = paramsRef.current;
+    const currentTier = tierRef.current;
+
+    if (!adaptiveParams || !currentTier) {
+      setError(
+        'Exercise parameters are unavailable. Please try again.',
+      );
+      setCurrentPhase('instructions');
+      return;
     }
 
-    if (processingTimerRef.current) {
-      clearTimeout(processingTimerRef.current);
+    clearTimers();
+
+    processingTimerRef.current = setTimeout(() => {
       processingTimerRef.current = null;
-    }
-  }, []);
 
-  const handleLiveFrame = useCallback(
-    (frame: { volume: number }) => {
-      if (mountedRef.current) {
-        setVolume(frame.volume);
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        return;
       }
-    },
-    []
-  );
+
+      if (currentRepRef.current < adaptiveParams.repetitions) {
+        const nextRep = currentRepRef.current + 1;
+
+        currentRepRef.current = nextRep;
+        setCurrentRep(nextRep);
+        setElapsed(0);
+        setVolume(null);
+
+        startingRef.current = false;
+        finishingRef.current = false;
+
+        beginCountdownRef.current?.();
+        return;
+      }
+
+      if (finishingRef.current) return;
+
+      finishingRef.current = true;
+
+      void (async () => {
+        const finalResults = repResultsRef.current;
+        const finalScore =
+          finalResults.length > 0
+            ? Math.round(
+                finalResults.reduce(
+                  (sum, item) => sum + item.score.score,
+                  0,
+                ) / finalResults.length,
+              )
+            : 0;
+
+        try {
+          await saveCompletedExercise(
+            'breathControl',
+            'sustainedExhale',
+            currentTier,
+            finalScore,
+          );
+        } catch (saveError) {
+          console.error(
+            'Failed to save Sustained Exhale progress:',
+            saveError,
+          );
+        }
+
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          quitInProgressRef.current
+        ) {
+          finishingRef.current = false;
+          return;
+        }
+
+        setRepResults(finalResults);
+        setCurrentPhase('results');
+        startingRef.current = false;
+        finishingRef.current = false;
+      })();
+    }, PROCESSING_DELAY_MS);
+  }, [clearTimers, setCurrentPhase]);
+
+  useEffect(() => {
+    resumeProcessingRef.current = scheduleAfterProcessing;
+  }, [scheduleAfterProcessing]);
 
   const handleRecordingStop = useCallback(
     (samples: Float32Array, sampleRate: number) => {
-      if (!mountedRef.current) return;
+      // If the recorder is returning audio from an interrupted
+      // repetition, discard it instead of scoring it.
+      if (discardNextStopRef.current) {
+        discardNextStopRef.current = false;
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
 
       clearTimers();
-      setPhase('processing');
-      setVolume(null);
-
-      startingRef.current = false;
-      finishingRef.current = false;
 
       const adaptiveParams = paramsRef.current;
       const currentTier = tierRef.current;
 
       if (!adaptiveParams || !currentTier) {
         setError(
-          'Exercise parameters are unavailable. Please try again.'
+          'Exercise parameters are unavailable. Please try again.',
         );
-        setPhase('instructions');
+        setCurrentPhase('instructions');
+        startingRef.current = false;
+        finishingRef.current = false;
         return;
       }
+
+      setCurrentPhase('processing');
+      setElapsed(0);
+      setVolume(null);
+
+      startingRef.current = false;
+      finishingRef.current = false;
 
       try {
         const measurement = measureSustainedExhale(
           samples,
           adaptiveParams.detectionThreshold,
-          sampleRate
+          sampleRate,
         );
 
         const score = scoreSustainedExhale(
           measurement,
-          adaptiveParams
+          adaptiveParams,
         );
 
         const result: RepResult = {
@@ -285,84 +439,25 @@ export default function SustainedExhaleScreen({
         repResultsRef.current = updatedResults;
         setRepResults(updatedResults);
 
-        if (
-          currentRepRef.current <
-          adaptiveParams.repetitions
-        ) {
-          processingTimerRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-
-            const nextRep = currentRepRef.current + 1;
-
-            currentRepRef.current = nextRep;
-            setCurrentRep(nextRep);
-            setElapsed(0);
-            setVolume(null);
-
-            startingRef.current = false;
-            finishingRef.current = false;
-
-            beginCountdownRef.current?.();
-          }, PROCESSING_DELAY_MS);
-
-          return;
-        }
-
-        processingTimerRef.current = setTimeout(() => {
-          void (async () => {
-            if (!mountedRef.current) return;
-
-            const finalResults = repResultsRef.current;
-            const finalScore =
-              finalResults.length > 0
-                ? Math.round(
-                    finalResults.reduce(
-                      (sum, item) => sum + item.score.score,
-                      0
-                    ) / finalResults.length
-                  )
-                : 0;
-
-            try {
-              await saveCompletedExercise(
-                'breathControl',
-                'sustainedExhale',
-                currentTier,
-                finalScore
-              );
-            } catch (saveError) {
-              console.error(
-                'Failed to save Sustained Exhale progress:',
-                saveError
-              );
-            }
-
-            if (!mountedRef.current) return;
-
-            setRepResults(finalResults);
-            setPhase('results');
-            startingRef.current = false;
-            finishingRef.current = false;
-          })();
-        }, PROCESSING_DELAY_MS);
+        scheduleAfterProcessing();
       } catch (analysisError) {
         console.error(
           'Failed to analyze Sustained Exhale:',
-          analysisError
+          analysisError,
         );
 
         if (!mountedRef.current) return;
 
         clearTimers();
         setError(
-          'We could not analyze your recording. Please try again.'
+          'We could not analyze your recording. Please try again.',
         );
-        setPhase('instructions');
+        setCurrentPhase('instructions');
         startingRef.current = false;
         finishingRef.current = false;
       }
     },
-    [clearTimers]
+    [clearTimers, scheduleAfterProcessing, setCurrentPhase],
   );
 
   const {
@@ -379,15 +474,23 @@ export default function SustainedExhaleScreen({
   }, [startRecording, stopRecording]);
 
   const startRecordingPhase = useCallback(async () => {
-    if (!mountedRef.current || startingRef.current) return;
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
+      startingRef.current
+    ) {
+      return;
+    }
 
     const adaptiveParams = paramsRef.current;
 
     if (!adaptiveParams) {
       setError(
-        'Exercise parameters are not ready. Please try again.'
+        'Exercise parameters are not ready. Please try again.',
       );
-      setPhase('instructions');
+      setCurrentPhase('instructions');
       return;
     }
 
@@ -396,9 +499,9 @@ export default function SustainedExhaleScreen({
 
     if (!start || !stop) {
       setError(
-        'Audio recorder is not ready. Please try again.'
+        'Audio recorder is not ready. Please try again.',
       );
-      setPhase('instructions');
+      setCurrentPhase('instructions');
       return;
     }
 
@@ -409,17 +512,37 @@ export default function SustainedExhaleScreen({
     setElapsed(0);
     setVolume(null);
     setError(null);
-    setPhase('recording');
+    setCurrentPhase('recording');
+
+    // The interrupted recorder's stop callback should normally
+    // have arrived before this new repetition begins. Clear the
+    // discard guard only when beginning a fresh recording.
+    discardNextStopRef.current = false;
 
     try {
       await start();
 
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
 
       const startTime = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
-        if (!mountedRef.current || finishingRef.current) {
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          showQuitModalRef.current ||
+          quitInProgressRef.current ||
+          finishingRef.current ||
+          phaseRef.current !== 'recording'
+        ) {
           return;
         }
 
@@ -427,43 +550,68 @@ export default function SustainedExhaleScreen({
         setElapsed(seconds);
 
         if (seconds >= adaptiveParams.durationRangeSec[1]) {
-          clearTimers();
+          if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
 
           if (!finishingRef.current) {
             finishingRef.current = true;
-            stop();
+            void Promise.resolve(stop()).catch(recordingError => {
+              console.error(
+                'Failed to stop Sustained Exhale recording:',
+                recordingError,
+              );
+            });
           }
         }
       }, 100);
     } catch (recordingError) {
       console.error(
         'Failed to start Sustained Exhale recording:',
-        recordingError
+        recordingError,
       );
 
       if (!mountedRef.current) return;
 
       clearTimers();
       setError(
-        'Microphone access or recording failed. Please try again.'
+        'Microphone access or recording failed. Please try again.',
       );
-      setPhase('instructions');
+      setCurrentPhase('instructions');
       startingRef.current = false;
       finishingRef.current = false;
     }
-  }, [clearTimers]);
+  }, [clearTimers, setCurrentPhase]);
 
   const beginCountdown = useCallback(() => {
-    if (!mountedRef.current || startingRef.current) return;
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
+      startingRef.current
+    ) {
+      return;
+    }
 
     clearTimers();
     setCountdown(PREPARATION_COUNTDOWN);
-    setPhase('countdown');
+    setElapsed(0);
+    setVolume(null);
+    setCurrentPhase('countdown');
 
     let value = PREPARATION_COUNTDOWN;
 
     countdownTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        return;
+      }
 
       value -= 1;
 
@@ -475,34 +623,111 @@ export default function SustainedExhaleScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers, startRecordingPhase]);
+  }, [clearTimers, setCurrentPhase, startRecordingPhase]);
 
   useEffect(() => {
     beginCountdownRef.current = beginCountdown;
   }, [beginCountdown]);
 
-  useEffect(() => {
-    mountedRef.current = true;
+  const pauseForExitPrompt = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
 
-    return () => {
-      mountedRef.current = false;
-      clearTimers();
-      stopRecordingRef.current?.();
-    };
+    const currentPhase = phaseRef.current;
+
+    pausedPhaseRef.current = currentPhase;
+    pausedRef.current = true;
+    showQuitModalRef.current = true;
+
+    clearTimers();
+
+    if (currentPhase === 'recording') {
+      // Do not analyze an incomplete recording after resuming.
+      // The same repetition will restart from its countdown.
+      discardNextStopRef.current = true;
+      startingRef.current = false;
+      finishingRef.current = true;
+      setElapsed(0);
+      setVolume(null);
+
+      try {
+        void Promise.resolve(
+          stopRecordingRef.current?.(),
+        ).catch(recordingError => {
+          console.error(
+            'Failed to stop Sustained Exhale while paused:',
+            recordingError,
+          );
+        });
+      } catch (recordingError) {
+        console.error(
+          'Failed to stop Sustained Exhale while paused:',
+          recordingError,
+        );
+      }
+    } else if (currentPhase === 'countdown') {
+      // Keep the current repetition; restart its countdown on resume.
+      setCountdown(PREPARATION_COUNTDOWN);
+    }
+
+    setShowQuitModal(true);
   }, [clearTimers]);
+
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) return;
+
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
+
+    const pausedPhase = pausedPhaseRef.current;
+
+    pausedRef.current = false;
+
+    if (
+      pausedPhase === 'countdown' ||
+      pausedPhase === 'recording'
+    ) {
+      // Recording cannot be safely paused/resumed with this hook.
+      // Restart only the current repetition, retaining earlier results.
+      startingRef.current = false;
+      finishingRef.current = false;
+      discardNextStopRef.current = false;
+      setElapsed(0);
+      setVolume(null);
+      beginCountdownRef.current?.();
+      return;
+    }
+
+    if (pausedPhase === 'processing') {
+      // The repetition was already analyzed. Continue processing
+      // it without adding a duplicate result or advancing early.
+      finishingRef.current = false;
+      resumeProcessingRef.current?.();
+    }
+  }, []);
 
   const startExercise = useCallback(() => {
     if (startingRef.current) return;
 
     if (!paramsRef.current || !tierRef.current) {
       setError(
-        'Exercise parameters are still loading. Please try again.'
+        'Exercise parameters are still loading. Please try again.',
       );
       return;
     }
 
     clearTimers();
 
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+    quitInProgressRef.current = false;
+    discardNextStopRef.current = false;
+
     startingRef.current = false;
     finishingRef.current = false;
 
@@ -515,13 +740,33 @@ export default function SustainedExhaleScreen({
     setVolume(null);
     setError(null);
     setCountdown(PREPARATION_COUNTDOWN);
+    setShowQuitModal(false);
 
     beginCountdown();
   }, [beginCountdown, clearTimers]);
 
   const retryExercise = useCallback(() => {
     clearTimers();
-    stopRecordingRef.current?.();
+
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+    discardNextStopRef.current = true;
+
+    try {
+      void Promise.resolve(
+        stopRecordingRef.current?.(),
+      ).catch(recordingError => {
+        console.error(
+          'Failed to stop Sustained Exhale before retry:',
+          recordingError,
+        );
+      });
+    } catch (recordingError) {
+      console.error(
+        'Failed to stop Sustained Exhale before retry:',
+        recordingError,
+      );
+    }
 
     startingRef.current = false;
     finishingRef.current = false;
@@ -535,45 +780,185 @@ export default function SustainedExhaleScreen({
     setVolume(null);
     setError(null);
     setCountdown(PREPARATION_COUNTDOWN);
-    setPhase('instructions');
-  }, [clearTimers]);
+    setShowQuitModal(false);
+    setCurrentPhase('instructions');
+  }, [clearTimers, setCurrentPhase]);
 
-  const goBack = useCallback(() => {
+  const quitExercise = useCallback(async () => {
+    if (quitInProgressRef.current) return;
+
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    showQuitModalRef.current = false;
+    discardNextStopRef.current = true;
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
+
     clearTimers();
-
     startingRef.current = false;
     finishingRef.current = true;
 
-    stopRecordingRef.current?.();
-
-    router.replace('/dashboard?tab=exercises');
+    try {
+      await Promise.resolve(stopRecordingRef.current?.());
+    } catch (recordingError) {
+      console.error(
+        'Failed to stop Sustained Exhale before leaving:',
+        recordingError,
+      );
+    } finally {
+      if (mountedRef.current) {
+        router.replace('/dashboard?tab=exercises');
+      }
+    }
   }, [clearTimers]);
+
+  const handleBack = useCallback(() => {
+    pauseForExitPrompt();
+  }, [pauseForExitPrompt]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        handleBack();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [handleBack]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      pausedRef.current = true;
+      showQuitModalRef.current = false;
+      discardNextStopRef.current = true;
+
+      clearTimers();
+
+      try {
+        void Promise.resolve(
+          stopRecordingRef.current?.(),
+        ).catch(recordingError => {
+          console.error(
+            'Failed to stop Sustained Exhale during cleanup:',
+            recordingError,
+          );
+        });
+      } catch (recordingError) {
+        console.error(
+          'Failed to stop Sustained Exhale during cleanup:',
+          recordingError,
+        );
+      }
+    };
+  }, [clearTimers]);
+
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>
+            Quit exercise?
+          </Text>
+
+          <Text style={styles.modalMessage}>
+            {pausedPhaseRef.current === 'instructions' ||
+            pausedPhaseRef.current === 'results'
+              ? 'Are you sure you want to leave Sustained Exhale?'
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
+            onPress={() => {
+              void quitExercise();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (loadingParams || !params || !tier) {
     return (
-      <View style={styles.centerScreen}>
-        <View style={styles.largeIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
+      <>
+        <View style={styles.centerScreen}>
+          <View style={styles.largeIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={44}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.processingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.processingSubtitle}>
+            Adjusting the exercise to your current difficulty level
+          </Text>
+
+          <ActivityIndicator
+            size="large"
             color={BROWN}
+            style={styles.spinner}
           />
         </View>
-
-        <Text style={styles.processingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.processingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-      </View>
+        {quitModal}
+      </>
     );
   }
 
@@ -582,7 +967,7 @@ export default function SustainedExhaleScreen({
       ? repResults.reduce(
           (sum, result) =>
             sum + result.measurement.actualDurationSec,
-          0
+          0,
         ) / repResults.length
       : 0;
 
@@ -591,7 +976,7 @@ export default function SustainedExhaleScreen({
       ? repResults.reduce(
           (sum, result) =>
             sum + result.measurement.consistencyPct,
-          0
+          0,
         ) / repResults.length
       : 0;
 
@@ -600,18 +985,18 @@ export default function SustainedExhaleScreen({
       ? Math.round(
           repResults.reduce(
             (sum, result) => sum + result.score.score,
-            0
-          ) / repResults.length
+            0,
+          ) / repResults.length,
         )
       : 0;
 
   const passedReps = repResults.filter(
-    (result) => result.score.passed
+    result => result.score.passed,
   ).length;
 
   const durationProgress = Math.min(
     elapsed / params.durationRangeSec[1],
-    1
+    1,
   );
 
   const targetDuration =
@@ -621,53 +1006,59 @@ export default function SustainedExhaleScreen({
 
   if (phase === 'instructions') {
     return (
-      <ExerciseScreen
-        category="Breath Control"
-        title="Sustained Exhale"
-        icon="cloud-outline"
-        instructions="Take a comfortable breath in, then slowly exhale through your mouth. Keep the airflow steady and controlled for as long as you comfortably can."
-        preparationSteps={[
-          {
-            icon: 'leaf-outline',
-            text: 'Sit or stand with a relaxed posture.',
-          },
-          {
-            icon: 'body-outline',
-            text: 'Take a comfortable breath without forcing it.',
-          },
-          {
-            icon: 'volume-low-outline',
-            text: 'Exhale gently and steadily.',
-          },
-          {
-            icon: 'mic-outline',
-            text: 'Stay close enough to the microphone for consistent audio.',
-          },
-        ]}
-        targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
-        targetHint="sustained exhale"
-        repetitions={params.repetitions}
-        tip="Focus on keeping your airflow steady rather than trying to force a longer exhale."
-        tier={tier}
-        error={error}
-        onBack={goBack}
-        onStart={startExercise}
-      />
+      <>
+        <ExerciseScreen
+          category="Breath Control"
+          title="Sustained Exhale"
+          icon="cloud-outline"
+          instructions="Take a comfortable breath in, then slowly exhale through your mouth. Keep the airflow steady and controlled for as long as you comfortably can."
+          preparationSteps={[
+            {
+              icon: 'leaf-outline',
+              text: 'Sit or stand with a relaxed posture.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Take a comfortable breath without forcing it.',
+            },
+            {
+              icon: 'volume-low-outline',
+              text: 'Exhale gently and steadily.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'Stay close enough to the microphone for consistent audio.',
+            },
+          ]}
+          targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
+          targetHint="sustained exhale"
+          repetitions={params.repetitions}
+          tip="Focus on keeping your airflow steady rather than trying to force a longer exhale."
+          tier={tier}
+          error={error}
+          onBack={handleBack}
+          onStart={startExercise}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="cloud-outline"
-        title="Get Ready"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Take a comfortable breath in"
-        prompt="Prepare for a slow, steady exhale."
-        onBack={goBack}
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="cloud-outline"
+          title="Get Ready"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Take a comfortable breath in"
+          prompt="Prepare for a slow, steady exhale."
+          onBack={handleBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
@@ -785,6 +1176,7 @@ export default function SustainedExhaleScreen({
             </View>
           </View>
         </ScrollView>
+        {quitModal}
       </View>
     );
   }
@@ -793,140 +1185,147 @@ export default function SustainedExhaleScreen({
     const isFinalRep = currentRep >= params.repetitions;
 
     return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title={
-          isFinalRep
-            ? 'Analyzing Your Results'
-            : 'Analyzing Your Exhale'
-        }
-        message={
-          isFinalRep
-            ? 'Calculating your overall breath control score'
-            : `Processing repetition ${currentRep}`
-        }
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title={
+            isFinalRep
+              ? 'Analyzing Your Results'
+              : 'Analyzing Your Exhale'
+          }
+          message={
+            isFinalRep
+              ? 'Calculating your overall breath control score'
+              : `Processing repetition ${currentRep}`
+          }
+          onBack={handleBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
   return (
-    <ExerciseResultsScreen
-      title="Exercise Complete"
-      subtitle="Sustained Exhale"
-      score={averageScore}
-      resultIcon="checkmark"
-      scoreDetails={
-        <View style={styles.scoreBar}>
-          <View
-            style={[
-              styles.scoreBarFill,
-              { width: `${averageScore}%` },
-            ]}
-          />
-        </View>
-      }
-      onRetry={retryExercise}
-      onExit={goBack}
-    >
-      <View style={styles.resultsContent}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>
-            Your Performance
-          </Text>
-
-          <View style={styles.metricsGrid}>
-            <MetricCard
-              icon="time-outline"
-              label="Avg. Duration"
-              value={`${averageDuration.toFixed(1)}s`}
-            />
-
-            <MetricCard
-              icon="pulse-outline"
-              label="Consistency"
-              value={`${Math.round(averageConsistency)}%`}
-            />
-
-            <MetricCard
-              icon="repeat-outline"
-              label="Repetitions"
-              value={`${repResults.length}/${params.repetitions}`}
-            />
-
-            <MetricCard
-              icon="checkmark-circle-outline"
-              label="Passed"
-              value={`${passedReps}/${repResults.length}`}
+    <>
+      <ExerciseResultsScreen
+        title="Exercise Complete"
+        subtitle="Sustained Exhale"
+        score={averageScore}
+        resultIcon="checkmark"
+        scoreDetails={
+          <View style={styles.scoreBar}>
+            <View
+              style={[
+                styles.scoreBarFill,
+                { width: `${averageScore}%` },
+              ]}
             />
           </View>
-        </View>
+        }
+        onRetry={retryExercise}
+        onExit={handleBack}
+      >
+        <View style={styles.resultsContent}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.sectionTitle}>
+              Your Performance
+            </Text>
 
-        <View style={styles.repResultsCard}>
-          <Text style={styles.sectionTitle}>
-            Repetition Results
-          </Text>
+            <View style={styles.metricsGrid}>
+              <MetricCard
+                icon="time-outline"
+                label="Avg. Duration"
+                value={`${averageDuration.toFixed(1)}s`}
+              />
 
-          {repResults.map((result) => (
-            <View
-              key={`rep-${result.rep}`}
-              style={styles.repResultRow}
-            >
+              <MetricCard
+                icon="pulse-outline"
+                label="Consistency"
+                value={`${Math.round(averageConsistency)}%`}
+              />
+
+              <MetricCard
+                icon="repeat-outline"
+                label="Repetitions"
+                value={`${repResults.length}/${params.repetitions}`}
+              />
+
+              <MetricCard
+                icon="checkmark-circle-outline"
+                label="Passed"
+                value={`${passedReps}/${repResults.length}`}
+              />
+            </View>
+          </View>
+
+          <View style={styles.repResultsCard}>
+            <Text style={styles.sectionTitle}>
+              Repetition Results
+            </Text>
+
+            {repResults.map(result => (
               <View
-                style={[
-                  styles.repNumber,
-                  result.score.passed && styles.repNumberPassed,
-                ]}
+                key={`rep-${result.rep}`}
+                style={styles.repResultRow}
               >
-                <Text style={styles.repNumberText}>
-                  {result.rep}
+                <View
+                  style={[
+                    styles.repNumber,
+                    result.score.passed && styles.repNumberPassed,
+                  ]}
+                >
+                  <Text style={styles.repNumberText}>
+                    {result.rep}
+                  </Text>
+                </View>
+
+                <View style={styles.repResultInfo}>
+                  <Text style={styles.repResultTitle}>
+                    Repetition {result.rep}
+                  </Text>
+
+                  <Text style={styles.repResultDetails}>
+                    {result.measurement.actualDurationSec.toFixed(1)}s
+                    {' • '}
+                    {Math.round(result.measurement.consistencyPct)}%
+                    {' consistency'}
+                  </Text>
+                </View>
+
+                <Text style={styles.repResultScore}>
+                  {result.score.score}
                 </Text>
               </View>
+            ))}
+          </View>
 
-              <View style={styles.repResultInfo}>
-                <Text style={styles.repResultTitle}>
-                  Repetition {result.rep}
-                </Text>
+          <View style={styles.feedbackCard}>
+            <Ionicons
+              name="bulb-outline"
+              size={23}
+              color={BROWN}
+            />
 
-                <Text style={styles.repResultDetails}>
-                  {result.measurement.actualDurationSec.toFixed(1)}s
-                  {' • '}
-                  {Math.round(result.measurement.consistencyPct)}%
-                  {' consistency'}
-                </Text>
-              </View>
+            <View style={styles.feedbackContent}>
+              <Text style={styles.feedbackTitle}>
+                Feedback
+              </Text>
 
-              <Text style={styles.repResultScore}>
-                {result.score.score}
+              <Text style={styles.feedbackText}>
+                {averageScore >= 85
+                  ? 'Excellent control! Your exhale was sustained with strong consistency.'
+                  : averageScore >= 70
+                    ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
+                    : averageScore >= 50
+                      ? 'Keep practicing. Try to maintain a smoother and more consistent exhalation.'
+                      : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous exhale.'}
               </Text>
             </View>
-          ))}
-        </View>
-
-        <View style={styles.feedbackCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={23}
-            color={BROWN}
-          />
-
-          <View style={styles.feedbackContent}>
-            <Text style={styles.feedbackTitle}>
-              Feedback
-            </Text>
-
-            <Text style={styles.feedbackText}>
-              {averageScore >= 85
-                ? 'Excellent control! Your exhale was sustained with strong consistency.'
-                : averageScore >= 70
-                  ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
-                  : averageScore >= 50
-                    ? 'Keep practicing. Try to maintain a smoother and more consistent exhalation.'
-                    : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous exhale.'}
-            </Text>
           </View>
         </View>
-      </View>
-    </ExerciseResultsScreen>
+      </ExerciseResultsScreen>
+      {quitModal}
+    </>
   );
 }
 
@@ -1273,5 +1672,82 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: BROWN,
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

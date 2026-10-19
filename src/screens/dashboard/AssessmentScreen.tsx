@@ -1,4 +1,3 @@
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -10,6 +9,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -283,14 +284,22 @@ export default function AssessmentScreen() {
   const [isPlayingNote, setIsPlayingNote] = useState(false);
   const [hasPlayedNote, setHasPlayedNote] = useState(false);
   const [agilityMatchedCount, setAgilityMatchedCount] = useState(0);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const recordingStepRef = useRef<AssessmentStep | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stoppingRef = useRef(false);
+  const quittingRef = useRef(false);
+  const startingSectionRef = useRef(false);
   const agilityTargetIndexRef = useRef(0);
   const agilityConfirmationCountRef = useRef(0);
   const agilityCompletionTriggeredRef = useRef(false);
+  const playbackGenerationRef = useRef(0);
+
+  // Keep current recorder functions available to asynchronous cleanup.
   const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
+  const cancelRecordingRef = useRef<(() => Promise<void>) | null>(null);
 
   const targetNotes = useMemo(() => {
     if (!vocalRange) {
@@ -301,6 +310,8 @@ export default function AssessmentScreen() {
   }, [vocalRange]);
 
   const needsReferenceNote = NOTE_GUIDED_STEPS.includes(step);
+  const isAssessmentInProgress =
+    step !== 'intro' && step !== 'results';
 
   useEffect(() => {
     setHasPlayedNote(false);
@@ -316,24 +327,52 @@ export default function AssessmentScreen() {
   const playReferenceNote = useCallback(async () => {
     const notes = getStepReferenceNotes(step, targetNotes);
 
-    if (notes.length === 0 || isPlayingNote || isRecordingSection) {
+    if (
+      notes.length === 0 ||
+      isPlayingNote ||
+      isRecordingSection ||
+      quittingRef.current
+    ) {
       return;
     }
+
+    const playbackGeneration = playbackGenerationRef.current;
 
     try {
       setError(null);
       setIsPlayingNote(true);
+
       await playNoteSequence(notes);
-      setHasPlayedNote(true);
+
+      if (
+        !quittingRef.current &&
+        playbackGeneration === playbackGenerationRef.current
+      ) {
+        setHasPlayedNote(true);
+      }
     } catch (err) {
       console.error('Failed to play reference note:', err);
-      setError('Could not play the reference note. You can still continue.');
+
+      if (
+        !quittingRef.current &&
+        playbackGeneration === playbackGenerationRef.current
+      ) {
+        setError(
+          'Could not play the reference note. You can still continue.',
+        );
+      }
     } finally {
-      setIsPlayingNote(false);
+      if (playbackGeneration === playbackGenerationRef.current) {
+        setIsPlayingNote(false);
+      }
     }
   }, [step, targetNotes, isPlayingNote, isRecordingSection]);
 
   const moveToNextStep = useCallback((currentStep: AssessmentStep) => {
+    if (quittingRef.current) {
+      return;
+    }
+
     const index = STEP_ORDER.indexOf(currentStep);
 
     if (index === -1) {
@@ -345,6 +384,10 @@ export default function AssessmentScreen() {
 
   const handleAudioFrame = useCallback(
     (frame: LiveAudioFrame) => {
+      if (quittingRef.current) {
+        return;
+      }
+
       setLiveAudio(frame);
 
       if (
@@ -418,15 +461,19 @@ export default function AssessmentScreen() {
       clearRecordingTimer();
       setRemainingSeconds(0);
 
+      // This is a normal completion, so retain the recorded audio.
       const stopPromise = stopRecordingRef.current?.();
 
       stopPromise?.catch(err => {
         console.error('Agility automatic stop error:', err);
-        stoppingRef.current = false;
-        agilityCompletionTriggeredRef.current = false;
-        setError(
-          'The sequence was detected, but recording could not stop automatically. Please stop the recording manually.',
-        );
+
+        if (!quittingRef.current) {
+          stoppingRef.current = false;
+          agilityCompletionTriggeredRef.current = false;
+          setError(
+            'The sequence was detected, but recording could not stop automatically. Please stop the recording manually.',
+          );
+        }
       });
     },
     [targetNotes, clearRecordingTimer],
@@ -443,7 +490,8 @@ export default function AssessmentScreen() {
       setRemainingSeconds(0);
       stoppingRef.current = false;
 
-      if (!recordedStep) {
+      // Discard callbacks belonging to an abandoned or cancelled session.
+      if (quittingRef.current || !recordedStep) {
         return;
       }
 
@@ -494,7 +542,7 @@ export default function AssessmentScreen() {
       }
 
       if (recordedStep === 'lowHum') {
-        setTimeout(() => moveToNextStep(recordedStep), 100);
+        moveToNextStep(recordedStep);
         return;
       }
 
@@ -507,15 +555,22 @@ export default function AssessmentScreen() {
   const {
     startRecording,
     stopRecording,
+    cancelRecording,
     isRecording,
   } = useAudioRecorder({
     onFrame: handleAudioFrame,
     onStop: handleAudioStop,
   });
 
+  // Refresh these references on each render for cleanup and frame callbacks.
   stopRecordingRef.current = stopRecording;
+  cancelRecordingRef.current = cancelRecording;
 
   const restartRangeRecordings = useCallback((message: string) => {
+    if (quittingRef.current) {
+      return;
+    }
+
     setError(message);
     setCompletedStep(null);
 
@@ -531,7 +586,7 @@ export default function AssessmentScreen() {
   }, []);
 
   useEffect(() => {
-    if (step !== 'processingHum') {
+    if (step !== 'processingHum' || quittingRef.current) {
       return;
     }
 
@@ -578,6 +633,10 @@ export default function AssessmentScreen() {
         highNote: frequencyToNoteName(range.highHz),
       });
 
+      if (quittingRef.current) {
+        return;
+      }
+
       setVocalRange(range);
       setError(null);
       setCompletedStep('highHum');
@@ -600,7 +659,13 @@ export default function AssessmentScreen() {
   ]);
 
   const beginSection = useCallback(async () => {
-    if (isRecording || isRecordingSection) {
+    if (
+      isRecording ||
+      isRecordingSection ||
+      startingSectionRef.current ||
+      isQuitting ||
+      quittingRef.current
+    ) {
       return;
     }
 
@@ -616,6 +681,7 @@ export default function AssessmentScreen() {
       return;
     }
 
+    startingSectionRef.current = true;
     clearRecordingTimer();
     setError(null);
     setLiveAudio(null);
@@ -632,11 +698,32 @@ export default function AssessmentScreen() {
 
     try {
       await startRecording();
+
+      // Quit may have been confirmed while microphone startup was pending.
+      // Cancel instead of stopping normally so the abandoned audio is discarded.
+      if (quittingRef.current) {
+        try {
+          await cancelRecording();
+        } catch (cancelError) {
+          console.error(
+            'Failed to cancel recorder after a pending start:',
+            cancelError,
+          );
+        }
+
+        return;
+      }
+
       setIsRecordingSection(true);
 
       let remaining = duration;
 
       timerRef.current = setInterval(() => {
+        if (quittingRef.current) {
+          clearRecordingTimer();
+          return;
+        }
+
         remaining -= 1;
         setRemainingSeconds(Math.max(remaining, 0));
 
@@ -646,49 +733,63 @@ export default function AssessmentScreen() {
 
         clearRecordingTimer();
 
-        if (stoppingRef.current) {
+        if (stoppingRef.current || quittingRef.current) {
           return;
         }
 
         stoppingRef.current = true;
 
+        // Timer completion should preserve and process the recorded audio.
         stopRecording().catch(err => {
           console.error('Assessment automatic stop error:', err);
-          stoppingRef.current = false;
-          setIsRecordingSection(false);
-          setError(
-            'Recording could not stop automatically. Please try stopping the section again.',
-          );
+
+          if (!quittingRef.current) {
+            stoppingRef.current = false;
+            setIsRecordingSection(false);
+            setError(
+              'Recording could not stop automatically. Please try stopping the section again.',
+            );
+          }
         });
       }, 1000);
     } catch (err) {
       console.error('Assessment recording error:', err);
 
       clearRecordingTimer();
-      recordingStepRef.current = null;
-      stoppingRef.current = false;
-      setIsRecordingSection(false);
-      setLiveAudio(null);
-      setRemainingSeconds(0);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to start the microphone. Please check your microphone permission and try again.',
-      );
+      if (!quittingRef.current) {
+        recordingStepRef.current = null;
+        stoppingRef.current = false;
+        setIsRecordingSection(false);
+        setLiveAudio(null);
+        setRemainingSeconds(0);
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to start the microphone. Please check your microphone permission and try again.',
+        );
+      }
+    } finally {
+      startingSectionRef.current = false;
     }
   }, [
     step,
     hasPlayedNote,
     isRecording,
     isRecordingSection,
+    isQuitting,
     clearRecordingTimer,
     startRecording,
     stopRecording,
+    cancelRecording,
   ]);
 
   const handleManualStop = useCallback(async () => {
-    if ((!isRecording && !isRecordingSection) || stoppingRef.current) {
+    if (
+      (!isRecording && !isRecordingSection) ||
+      stoppingRef.current ||
+      quittingRef.current
+    ) {
       return;
     }
 
@@ -696,14 +797,18 @@ export default function AssessmentScreen() {
     clearRecordingTimer();
 
     try {
+      // Manual stop is a normal completion; keep the captured audio.
       await stopRecording();
     } catch (err) {
       console.error('Failed to stop assessment recording:', err);
-      stoppingRef.current = false;
-      setIsRecordingSection(false);
-      setError(
-        'Something went wrong while stopping the recording. Please try this section again.',
-      );
+
+      if (!quittingRef.current) {
+        stoppingRef.current = false;
+        setIsRecordingSection(false);
+        setError(
+          'Something went wrong while stopping the recording. Please try this section again.',
+        );
+      }
     }
   }, [
     isRecording,
@@ -712,11 +817,136 @@ export default function AssessmentScreen() {
     stopRecording,
   ]);
 
+  const handleQuitAssessment = useCallback(() => {
+    if (isQuitting || quittingRef.current) {
+      return;
+    }
+
+    setShowQuitModal(true);
+  }, [isQuitting]);
+
+  const confirmQuitAssessment = useCallback(async () => {
+    if (isQuitting || quittingRef.current) {
+      return;
+    }
+
+    // Block onStop and all delayed callbacks before cancelling the recorder.
+    quittingRef.current = true;
+    playbackGenerationRef.current += 1;
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
+    clearRecordingTimer();
+
+    stoppingRef.current = true;
+    agilityCompletionTriggeredRef.current = true;
+
+    try {
+      // Include pending startup, not just React's recording state.
+      const recorderMayBeActive =
+        isRecording ||
+        isRecordingSection ||
+        startingSectionRef.current ||
+        recordingStepRef.current !== null;
+
+      if (recorderMayBeActive) {
+        // Quit discards the recording; it must not invoke normal completion.
+        await cancelRecording();
+      }
+    } catch (err) {
+      console.error(
+        'Failed to cancel assessment recording while quitting:',
+        err,
+      );
+    } finally {
+      clearRecordingTimer();
+
+      recordingStepRef.current = null;
+      startingSectionRef.current = false;
+      stoppingRef.current = false;
+      agilityTargetIndexRef.current = 0;
+      agilityConfirmationCountRef.current = 0;
+      agilityCompletionTriggeredRef.current = false;
+
+      setSections({});
+      setVocalRange(null);
+      setResult(null);
+      setError(null);
+      setLiveAudio(null);
+      setRemainingSeconds(0);
+      setIsRecordingSection(false);
+      setHasPlayedNote(false);
+      setIsPlayingNote(false);
+      setAgilityMatchedCount(0);
+      setCompletedStep(null);
+      setShowQuitModal(false);
+      setStep('intro');
+      setIsQuitting(false);
+
+      // Keep the abandoned-session guard enabled until a new session starts.
+    }
+  }, [
+    isQuitting,
+    isRecording,
+    isRecordingSection,
+    clearRecordingTimer,
+    cancelRecording,
+  ]);
+
+  // Handle Android hardware Back throughout the assessment.
+  useEffect(() => {
+    if (!isAssessmentInProgress) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (isQuitting || quittingRef.current) {
+          return true;
+        }
+
+        if (showQuitModal) {
+          setShowQuitModal(false);
+          return true;
+        }
+
+        setShowQuitModal(true);
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [isAssessmentInProgress, showQuitModal, isQuitting]);
+
+  // Cancel the recorder when navigation removes this screen.
+  // Refs ensure cleanup uses the most recent recorder callback.
   useEffect(() => {
     return () => {
-      clearRecordingTimer();
+      quittingRef.current = true;
+      playbackGenerationRef.current += 1;
+
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
+      recordingStepRef.current = null;
+      startingSectionRef.current = false;
+      stoppingRef.current = true;
+
+      const cancel = cancelRecordingRef.current;
+
+      if (cancel) {
+        void cancel().catch(err => {
+          console.error(
+            'Failed to cancel assessment recorder on unmount:',
+            err,
+          );
+        });
+      }
     };
-  }, [clearRecordingTimer]);
+  }, []);
 
   const createAssessmentBundle = useCallback((): AssessmentAudioBundle => {
     const empty = new Float32Array(0);
@@ -738,6 +968,10 @@ export default function AssessmentScreen() {
   }, [sections]);
 
   const processAssessment = useCallback(async () => {
+    if (quittingRef.current) {
+      return;
+    }
+
     try {
       setError(null);
 
@@ -789,7 +1023,15 @@ export default function AssessmentScreen() {
           audio.highestComfortableNoteSamples.length / audio.sampleRate,
       });
 
-      const assessmentResult = runAssessment(audio, vocalRange ?? undefined);
+      const assessmentResult = runAssessment(
+        audio,
+        vocalRange ?? undefined,
+      );
+
+      if (quittingRef.current) {
+        return;
+      }
+
       setResult(assessmentResult);
 
       try {
@@ -797,14 +1039,23 @@ export default function AssessmentScreen() {
         console.log('Assessment successfully saved.');
       } catch (saveError) {
         console.error('Could not save assessment to Firebase:', saveError);
-        setError(
-          'Your assessment was completed, but we could not save it to your account. Please check your internet connection and try again later.',
-        );
+
+        if (!quittingRef.current) {
+          setError(
+            'Your assessment was completed, but we could not save it to your account. Please check your internet connection and try again later.',
+          );
+        }
       }
 
-      setStep('results');
+      if (!quittingRef.current) {
+        setStep('results');
+      }
     } catch (err) {
       console.error('Assessment processing error:', err);
+
+      if (quittingRef.current) {
+        return;
+      }
 
       setError(
         err instanceof Error
@@ -826,7 +1077,10 @@ export default function AssessmentScreen() {
     clearRecordingTimer();
 
     recordingStepRef.current = null;
+    startingSectionRef.current = false;
     stoppingRef.current = false;
+    quittingRef.current = false;
+    playbackGenerationRef.current += 1;
     agilityTargetIndexRef.current = 0;
     agilityConfirmationCountRef.current = 0;
     agilityCompletionTriggeredRef.current = false;
@@ -839,14 +1093,86 @@ export default function AssessmentScreen() {
     setRemainingSeconds(0);
     setIsRecordingSection(false);
     setHasPlayedNote(false);
+    setIsPlayingNote(false);
     setAgilityMatchedCount(0);
     setCompletedStep(null);
+    setShowQuitModal(false);
+    setIsQuitting(false);
     setStep('intro');
   }, [clearRecordingTimer]);
+
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={() => {
+        if (!isQuitting && !quittingRef.current) {
+          setShowQuitModal(false);
+        }
+      }}
+    >
+      <View style={styles.quitModalOverlay}>
+        <View style={styles.quitModalCard}>
+          <View style={styles.quitModalIcon}>
+            <Ionicons name="mic-off-outline" size={34} color={BROWN} />
+          </View>
+
+          <Text style={styles.quitModalTitle}>Quit Assessment?</Text>
+
+          <Text style={styles.quitModalMessage}>
+            Are you sure you want to quit assessment?
+          </Text>
+
+          <Text style={styles.quitModalHint}>
+            Your current progress will not be saved.
+          </Text>
+
+          <View style={styles.quitModalActions}>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.quitContinueButton,
+                pressed && styles.buttonPressed,
+              ]}
+              disabled={isQuitting}
+              onPress={() => setShowQuitModal(false)}
+            >
+              <Text style={styles.quitContinueButtonText}>
+                No, Continue
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.quitConfirmButton,
+                pressed && styles.buttonPressed,
+                isQuitting && styles.quitButtonDisabled,
+              ]}
+              disabled={isQuitting}
+              onPress={() => {
+                void confirmQuitAssessment();
+              }}
+            >
+              {isQuitting ? (
+                <ActivityIndicator size="small" color={WHITE} />
+              ) : (
+                <Text style={styles.quitConfirmButtonText}>Yes, Quit</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (step === 'processingHum') {
     return (
       <View style={styles.centerScreen}>
+        {quitModal}
+
         <View style={styles.humProcessingIcon}>
           <Ionicons name="musical-notes" size={42} color={BROWN} />
         </View>
@@ -895,12 +1221,10 @@ export default function AssessmentScreen() {
 
     return (
       <View style={styles.centerScreen}>
+        {quitModal}
+
         <View style={styles.completionIcon}>
-          <Ionicons
-            name="checkmark-circle"
-            size={54}
-            color="#0FE608"
-          />
+          <Ionicons name="checkmark-circle" size={54} color="#0FE608" />
         </View>
 
         <Text style={styles.completionTitle}>{completionTitle}</Text>
@@ -947,7 +1271,12 @@ export default function AssessmentScreen() {
 
         <Pressable
           style={styles.primaryButton}
+          disabled={isQuitting}
           onPress={() => {
+            if (quittingRef.current) {
+              return;
+            }
+
             const finishedStep = completedStep;
             setCompletedStep(null);
 
@@ -970,6 +1299,8 @@ export default function AssessmentScreen() {
   if (step === 'processing') {
     return (
       <View style={styles.centerScreen}>
+        {quitModal}
+
         <ActivityIndicator size="large" color={BROWN} />
 
         <Text style={styles.processingTitle}>Analyzing your voice...</Text>
@@ -986,7 +1317,10 @@ export default function AssessmentScreen() {
 
         <Pressable
           style={styles.primaryButton}
-          onPress={processAssessment}
+          disabled={isQuitting || quittingRef.current}
+          onPress={() => {
+            void processAssessment();
+          }}
         >
           <Text style={styles.primaryButtonText}>Analyze My Voice</Text>
         </Pressable>
@@ -1130,9 +1464,33 @@ export default function AssessmentScreen() {
 
         <Pressable
           style={styles.primaryButton}
+          disabled={isQuitting}
           onPress={() => {
+            // Start a fresh session after a previous quit.
+            quittingRef.current = false;
+            startingSectionRef.current = false;
+            stoppingRef.current = false;
+            recordingStepRef.current = null;
+
+            clearRecordingTimer();
+
+            agilityTargetIndexRef.current = 0;
+            agilityConfirmationCountRef.current = 0;
+            agilityCompletionTriggeredRef.current = false;
+
+            setSections({});
+            setVocalRange(null);
+            setResult(null);
             setError(null);
+            setLiveAudio(null);
+            setRemainingSeconds(0);
+            setIsRecordingSection(false);
+            setHasPlayedNote(false);
+            setIsPlayingNote(false);
+            setAgilityMatchedCount(0);
             setCompletedStep(null);
+            setShowQuitModal(false);
+            setIsQuitting(false);
             setStep('lowHum');
           }}
         >
@@ -1167,290 +1525,314 @@ export default function AssessmentScreen() {
   const isRangeRecording = step === 'lowHum' || step === 'highHum';
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Pressable
-        style={styles.backButton}
-        onPress={() => {
-          if (isRecordingSection || isRecording) {
-            return;
-          }
+    <>
+      {quitModal}
 
-          router.back();
-        }}
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        <Ionicons name="arrow-back" size={22} color={BROWN} />
-      </Pressable>
-
-      <View style={styles.progressHeader}>
-        <Text style={styles.progressText}>
-          Step {stepIndex + 1} of {STEP_ORDER.length}
-        </Text>
-      </View>
-
-      <View style={styles.progressBackground}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${progress * 100}%` },
-          ]}
-        />
-      </View>
-
-      <View style={styles.sectionIcon}>
-        <Ionicons
-          name={needsReferenceNote ? 'musical-notes-outline' : 'mic-outline'}
-          size={30}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.title}>{getStepTitle(step)}</Text>
-
-      <Text style={styles.description}>{getStepInstruction(step)}</Text>
-
-      {needsReferenceNote && (
-        <View style={styles.noteCard}>
-          {targetNoteLabel && (
-            <Text style={styles.noteLabel}>Target: {targetNoteLabel}</Text>
-          )}
-
-          <Pressable
-            style={[
-              styles.playButton,
-              isPlayingNote && styles.playButtonDisabled,
-            ]}
-            disabled={isPlayingNote || isRecordingSection}
-            onPress={playReferenceNote}
-          >
-            <Ionicons
-              name={isPlayingNote ? 'volume-high' : 'play'}
-              size={20}
-              color={WHITE}
-            />
-
-            <Text style={styles.playButtonText}>
-              {isPlayingNote
-                ? 'Playing...'
-                : hasPlayedNote
-                  ? 'Play Again'
-                  : 'Play Note'}
-            </Text>
-          </Pressable>
-
-          {!hasPlayedNote && (
-            <Text style={styles.noteHelperText}>
-              Listen to the note before recording.
-            </Text>
-          )}
-        </View>
-      )}
-
-      <View style={styles.timerCircle}>
-        <Text style={styles.timerText}>
-          {isRecordingSection ? remainingSeconds : duration}
-        </Text>
-        <Text style={styles.timerLabel}>seconds</Text>
-      </View>
-
-      {isRecordingSection && (
-        <View style={styles.liveCard}>
-          <Text style={styles.liveTitle}>{getLiveTitle(step)}</Text>
-
-          {step === 'breathControl' && (
-            <>
-              <Text style={styles.metricCaption}>Current sound level</Text>
-
-              <Text style={styles.heroMetric}>
-                {liveAudio && Number.isFinite(liveAudio.volume)
-                  ? `${liveAudio.volume.toFixed(1)} dBFS`
-                  : '--'}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                Keep your “sss” sound as steady as possible. This is a
-                relative audio-level indicator, not a direct airflow
-                measurement.
-              </Text>
-            </>
-          )}
-
-          {step === 'pitch' && (
-            <>
-              <Text style={styles.metricCaption}>Target note</Text>
-              <Text style={styles.heroMetric}>{targetNoteLabel ?? '--'}</Text>
-
-              <View style={styles.metricDivider} />
-
-              <Text style={styles.metricCaption}>Detected note</Text>
-              <Text style={styles.heroMetric}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? liveAudio.note ?? '--'
-                  : '--'}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? `${liveAudio.pitch.toFixed(1)} Hz`
-                  : 'Sing the target note steadily.'}
-              </Text>
-            </>
-          )}
-
-          {step === 'tone' && (
-            <>
-              <Text style={styles.metricCaption}>Vowel exercise</Text>
-              <Text style={styles.heroMetric}>“AH”</Text>
-
-              <View style={styles.metricDivider} />
-
-              <Text style={styles.metricCaption}>Detected frequency</Text>
-              <Text style={styles.heroMetric}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? `${liveAudio.pitch.toFixed(1)} Hz`
-                  : '--'}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                Hold the vowel smoothly. The displayed frequency is your
-                detected pitch, not the spectral centroid.
-              </Text>
-            </>
-          )}
-
-          {step === 'volume' && (
-            <>
-              <Text style={styles.metricCaption}>
-                Current relative sound level
-              </Text>
-
-              <Text style={styles.heroMetric}>
-                {liveAudio && Number.isFinite(liveAudio.volume)
-                  ? `${liveAudio.volume.toFixed(1)} dBFS`
-                  : '--'}
-              </Text>
-
-              <View style={styles.volumeGuide}>
-                <View style={styles.volumeGuideItem}>
-                  <Ionicons name="volume-low" size={22} color={BROWN} />
-                  <Text style={styles.volumeGuideText}>Soft</Text>
-                </View>
-
-                <Ionicons name="arrow-forward" size={18} color={MUTED} />
-
-                <View style={styles.volumeGuideItem}>
-                  <Ionicons name="volume-high" size={22} color={BROWN} />
-                  <Text style={styles.volumeGuideText}>Loud</Text>
-                </View>
-
-                <Ionicons name="arrow-forward" size={18} color={MUTED} />
-
-                <View style={styles.volumeGuideItem}>
-                  <Ionicons name="volume-low" size={22} color={BROWN} />
-                  <Text style={styles.volumeGuideText}>Soft</Text>
-                </View>
-              </View>
-
-              <Text style={styles.metricHint}>
-                Follow the soft–loud–soft pattern. Your recording level
-                depends on microphone distance and device settings.
-              </Text>
-            </>
-          )}
-
-          {step === 'agility' && (
-            <>
-              <Text style={styles.metricCaption}>Target note sequence</Text>
-              <Text style={styles.sequenceText}>{targetNoteLabel ?? '--'}</Text>
-
-              <View style={styles.metricDivider} />
-
-              <Text style={styles.metricCaption}>
-                Currently detected note
-              </Text>
-              <Text style={styles.heroMetric}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? liveAudio.note ?? '--'
-                  : '--'}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                Notes matched: {agilityMatchedCount}/
-                {targetNotes?.agilityRun.length ?? 7}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                Sing each note in order, clearly and without unnecessary
-                pauses. Recording stops when the complete sequence is
-                detected.
-              </Text>
-            </>
-          )}
-
-          {(step === 'lowHum' || step === 'highHum') && (
-            <>
-              <Text style={styles.metricCaption}>Detected note</Text>
-              <Text style={styles.heroMetric}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? liveAudio.note ?? '--'
-                  : '--'}
-              </Text>
-
-              <Text style={styles.metricHint}>
-                {liveAudio && liveAudio.pitch > 0
-                  ? `${liveAudio.pitch.toFixed(1)} Hz`
-                  : 'Hum one comfortable note steadily.'}
-              </Text>
-            </>
-          )}
-        </View>
-      )}
-
-      <Pressable
-        style={[
-          styles.recordButton,
-          (isRecordingSection || !canRecord) && styles.recordingButton,
-        ]}
-        disabled={isRecordingSection || isRecording || !canRecord}
-        onPress={beginSection}
-      >
-        <Ionicons
-          name={isRecordingSection ? 'radio' : 'mic'}
-          size={30}
-          color={WHITE}
-        />
-
-        <Text style={styles.recordButtonText}>
-          {isRecordingSection ? 'Recording...' : 'Record'}
-        </Text>
-      </Pressable>
-
-      {isRecordingSection && (
         <Pressable
-          style={styles.manualStopButton}
-          onPress={handleManualStop}
+          style={styles.backButton}
+          disabled={isQuitting}
+          onPress={handleQuitAssessment}
         >
-          <Text style={styles.manualStopText}>Stop Early</Text>
+          <Ionicons name="arrow-back" size={22} color={BROWN} />
         </Pressable>
-      )}
 
-      {error && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressText}>
+            Step {stepIndex + 1} of {STEP_ORDER.length}
+          </Text>
         </View>
-      )}
 
-      <Text style={styles.helperText}>
-        {isRangeRecording
-          ? 'For the most accurate range, keep the same note steady until the timer reaches zero.'
-          : step === 'agility'
-            ? 'Recording stops after the full note sequence is detected, or when the timer reaches zero.'
-            : 'Recording will automatically stop when the timer reaches zero.'}
-      </Text>
-    </ScrollView>
+        <View style={styles.progressBackground}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${progress * 100}%` },
+            ]}
+          />
+        </View>
+
+        <View style={styles.sectionIcon}>
+          <Ionicons
+            name={needsReferenceNote ? 'musical-notes-outline' : 'mic-outline'}
+            size={30}
+            color={BROWN}
+          />
+        </View>
+
+        <Text style={styles.title}>{getStepTitle(step)}</Text>
+
+        <Text style={styles.description}>{getStepInstruction(step)}</Text>
+
+        {needsReferenceNote && (
+          <View style={styles.noteCard}>
+            {targetNoteLabel && (
+              <Text style={styles.noteLabel}>Target: {targetNoteLabel}</Text>
+            )}
+
+            <Pressable
+              style={[
+                styles.playButton,
+                isPlayingNote && styles.playButtonDisabled,
+              ]}
+              disabled={
+                isPlayingNote ||
+                isRecordingSection ||
+                isQuitting
+              }
+              onPress={() => {
+                void playReferenceNote();
+              }}
+            >
+              <Ionicons
+                name={isPlayingNote ? 'volume-high' : 'play'}
+                size={20}
+                color={WHITE}
+              />
+
+              <Text style={styles.playButtonText}>
+                {isPlayingNote
+                  ? 'Playing...'
+                  : hasPlayedNote
+                    ? 'Play Again'
+                    : 'Play Note'}
+              </Text>
+            </Pressable>
+
+            {!hasPlayedNote && (
+              <Text style={styles.noteHelperText}>
+                Listen to the note before recording.
+              </Text>
+            )}
+          </View>
+        )}
+
+        <View style={styles.timerCircle}>
+          <Text style={styles.timerText}>
+            {isRecordingSection ? remainingSeconds : duration}
+          </Text>
+          <Text style={styles.timerLabel}>seconds</Text>
+        </View>
+
+        {isRecordingSection && (
+          <View style={styles.liveCard}>
+            <Text style={styles.liveTitle}>{getLiveTitle(step)}</Text>
+
+            {step === 'breathControl' && (
+              <>
+                <Text style={styles.metricCaption}>Current sound level</Text>
+
+                <Text style={styles.heroMetric}>
+                  {liveAudio && Number.isFinite(liveAudio.volume)
+                    ? `${liveAudio.volume.toFixed(1)} dBFS`
+                    : '--'}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  Keep your “sss” sound as steady as possible. This is a
+                  relative audio-level indicator, not a direct airflow
+                  measurement.
+                </Text>
+              </>
+            )}
+
+            {step === 'pitch' && (
+              <>
+                <Text style={styles.metricCaption}>Target note</Text>
+                <Text style={styles.heroMetric}>
+                  {targetNoteLabel ?? '--'}
+                </Text>
+
+                <View style={styles.metricDivider} />
+
+                <Text style={styles.metricCaption}>Detected note</Text>
+                <Text style={styles.heroMetric}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? liveAudio.note ?? '--'
+                    : '--'}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? `${liveAudio.pitch.toFixed(1)} Hz`
+                    : 'Sing the target note steadily.'}
+                </Text>
+              </>
+            )}
+
+            {step === 'tone' && (
+              <>
+                <Text style={styles.metricCaption}>Vowel exercise</Text>
+                <Text style={styles.heroMetric}>“AH”</Text>
+
+                <View style={styles.metricDivider} />
+
+                <Text style={styles.metricCaption}>Detected frequency</Text>
+                <Text style={styles.heroMetric}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? `${liveAudio.pitch.toFixed(1)} Hz`
+                    : '--'}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  Hold the vowel smoothly. The displayed frequency is your
+                  detected pitch, not the spectral centroid.
+                </Text>
+              </>
+            )}
+
+            {step === 'volume' && (
+              <>
+                <Text style={styles.metricCaption}>
+                  Current relative sound level
+                </Text>
+
+                <Text style={styles.heroMetric}>
+                  {liveAudio && Number.isFinite(liveAudio.volume)
+                    ? `${liveAudio.volume.toFixed(1)} dBFS`
+                    : '--'}
+                </Text>
+
+                <View style={styles.volumeGuide}>
+                  <View style={styles.volumeGuideItem}>
+                    <Ionicons name="volume-low" size={22} color={BROWN} />
+                    <Text style={styles.volumeGuideText}>Soft</Text>
+                  </View>
+
+                  <Ionicons name="arrow-forward" size={18} color={MUTED} />
+
+                  <View style={styles.volumeGuideItem}>
+                    <Ionicons name="volume-high" size={22} color={BROWN} />
+                    <Text style={styles.volumeGuideText}>Loud</Text>
+                  </View>
+
+                  <Ionicons name="arrow-forward" size={18} color={MUTED} />
+
+                  <View style={styles.volumeGuideItem}>
+                    <Ionicons name="volume-low" size={22} color={BROWN} />
+                    <Text style={styles.volumeGuideText}>Soft</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.metricHint}>
+                  Follow the soft–loud–soft pattern. Your recording level
+                  depends on microphone distance and device settings.
+                </Text>
+              </>
+            )}
+
+            {step === 'agility' && (
+              <>
+                <Text style={styles.metricCaption}>Target note sequence</Text>
+                <Text style={styles.sequenceText}>
+                  {targetNoteLabel ?? '--'}
+                </Text>
+
+                <View style={styles.metricDivider} />
+
+                <Text style={styles.metricCaption}>
+                  Currently detected note
+                </Text>
+                <Text style={styles.heroMetric}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? liveAudio.note ?? '--'
+                    : '--'}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  Notes matched: {agilityMatchedCount}/
+                  {targetNotes?.agilityRun.length ?? 7}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  Sing each note in order, clearly and without unnecessary
+                  pauses. Recording stops when the complete sequence is
+                  detected.
+                </Text>
+              </>
+            )}
+
+            {(step === 'lowHum' || step === 'highHum') && (
+              <>
+                <Text style={styles.metricCaption}>Detected note</Text>
+                <Text style={styles.heroMetric}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? liveAudio.note ?? '--'
+                    : '--'}
+                </Text>
+
+                <Text style={styles.metricHint}>
+                  {liveAudio && liveAudio.pitch > 0
+                    ? `${liveAudio.pitch.toFixed(1)} Hz`
+                    : 'Hum one comfortable note steadily.'}
+                </Text>
+              </>
+            )}
+          </View>
+        )}
+
+        <Pressable
+          style={[
+            styles.recordButton,
+            (isRecordingSection || !canRecord) && styles.recordingButton,
+          ]}
+          disabled={
+            isRecordingSection ||
+            isRecording ||
+            startingSectionRef.current ||
+            !canRecord ||
+            isQuitting
+          }
+          onPress={() => {
+            void beginSection();
+          }}
+        >
+          <Ionicons
+            name={isRecordingSection ? 'radio' : 'mic'}
+            size={30}
+            color={WHITE}
+          />
+
+          <Text style={styles.recordButtonText}>
+            {isRecordingSection
+              ? 'Recording...'
+              : startingSectionRef.current
+                ? 'Starting...'
+                : 'Record'}
+          </Text>
+        </Pressable>
+
+        {isRecordingSection && (
+          <Pressable
+            style={styles.manualStopButton}
+            disabled={isQuitting}
+            onPress={() => {
+              void handleManualStop();
+            }}
+          >
+            <Text style={styles.manualStopText}>Stop Early</Text>
+          </Pressable>
+        )}
+
+        {error && (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
+        <Text style={styles.helperText}>
+          {isRangeRecording
+            ? 'For the most accurate range, keep the same note steady until the timer reaches zero.'
+            : step === 'agility'
+              ? 'Recording stops after the full note sequence is detected, or when the timer reaches zero.'
+              : 'Recording will automatically stop when the timer reaches zero.'}
+        </Text>
+      </ScrollView>
+    </>
   );
 }
 
@@ -1498,7 +1880,7 @@ const styles = StyleSheet.create({
     width: 82,
     height: 82,
     borderRadius: 100,
-    backgroundColor: '#FFD BE1'.replace(' ', ''),
+    backgroundColor: '#FFD8E1',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -1964,5 +2346,108 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: MUTED,
     marginTop: 8,
+  },
+  quitModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(35, 22, 17, 0.48)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  quitModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: WHITE,
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+    elevation: 10,
+    shadowColor: BROWN,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+  },
+  quitModalIcon: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  quitModalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    lineHeight: 31,
+    color: BROWN,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  quitModalMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  quitModalHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  quitModalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  quitContinueButton: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: BROWN,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quitContinueButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  quitConfirmButton: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    borderRadius: 24,
+    backgroundColor: BROWN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quitConfirmButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: WHITE,
+    textAlign: 'center',
+  },
+  quitButtonDisabled: {
+    opacity: 0.65,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.98 }],
   },
 });

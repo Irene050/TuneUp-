@@ -1,8 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -84,6 +92,12 @@ export default function DiaphragmaticBreathingScreen({
     useState(PREPARATION_COUNTDOWN);
   const [elapsed, setElapsed] = useState(0);
   const [volume, setVolume] = useState(0);
+  const [showExitPrompt, setShowExitPrompt] = useState(false);
+
+  const showExitPromptRef = useRef(false);
+  const pausedForExitRef = useRef(false);
+  const restartCurrentRepRef = useRef(false);
+  const leavingRef = useRef(false);
 
   const [currentRep, setCurrentRep] = useState(1);
   const currentRepRef = useRef(1);
@@ -92,6 +106,9 @@ export default function DiaphragmaticBreathingScreen({
   const repResultsRef = useRef<RepResult[]>([]);
 
   const mountedRef = useRef(true);
+  const cancellingRef = useRef(false);
+  const processingRef = useRef(false);
+  const startingRef = useRef(false);
 
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
@@ -114,6 +131,16 @@ export default function DiaphragmaticBreathingScreen({
     useRef<(() => void) | null>(null);
   const startCountdownRef =
     useRef<(() => void) | null>(null);
+
+  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
+
+  const setExitPromptVisible = useCallback((visible: boolean) => {
+    showExitPromptRef.current = visible;
+    setShowExitPrompt(visible);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +185,8 @@ export default function DiaphragmaticBreathingScreen({
             'breathControl',
           );
 
+          if (cancelled) return;
+
           recentScores = records
             .filter(
               record =>
@@ -168,8 +197,12 @@ export default function DiaphragmaticBreathingScreen({
             .map(record => record.scorePct);
         }
 
+        if (cancelled) return;
+
         if (recentScores.length === 0) {
           const assessment = await getLatestAssessment();
+
+          if (cancelled) return;
 
           const assessmentScore = assessment?.scores.find(
             score => score.componentId === 'breathControl',
@@ -202,7 +235,7 @@ export default function DiaphragmaticBreathingScreen({
       setParamsReady(true);
     };
 
-    initializeParams();
+    void initializeParams();
 
     return () => {
       cancelled = true;
@@ -226,10 +259,33 @@ export default function DiaphragmaticBreathingScreen({
     }
   }, []);
 
-  const finishExercise = useCallback(async () => {
-    clearTimers();
+  const resetLiveState = useCallback(() => {
+    setElapsed(0);
+    setVolume(0);
+  }, []);
 
-    if (!mountedRef.current) return;
+  const resetRepetitionResults = useCallback(() => {
+    currentRepRef.current = 1;
+    repResultsRef.current = [];
+
+    setCurrentRep(1);
+    setRepResults([]);
+    resetLiveState();
+  }, [resetLiveState]);
+
+  const finishExercise = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      cancellingRef.current ||
+      pausedForExitRef.current ||
+      leavingRef.current ||
+      processingRef.current
+    ) {
+      return;
+    }
+
+    clearTimers();
+    processingRef.current = true;
 
     const finalResults = repResultsRef.current;
 
@@ -257,15 +313,33 @@ export default function DiaphragmaticBreathingScreen({
       );
     }
 
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      cancellingRef.current ||
+      leavingRef.current
+    ) {
+      processingRef.current = false;
+      return;
+    }
 
-    phaseRef.current = 'results';
-    setPhase('results');
-  }, [clearTimers]);
+    processingRef.current = false;
+    startingRef.current = false;
+
+    setCurrentPhase('results');
+  }, [clearTimers, setCurrentPhase]);
 
   const processRep = useCallback(
     (exhaleSamples: Float32Array, sampleRate: number) => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        restartCurrentRepRef.current ||
+        leavingRef.current ||
+        processingRef.current
+      ) {
+        return;
+      }
 
       const adaptiveParams = paramsRef.current;
 
@@ -274,70 +348,140 @@ export default function DiaphragmaticBreathingScreen({
           'Diaphragmatic Breathing parameters are not ready.',
         );
 
-        phaseRef.current = 'instructions';
-        setPhase('instructions');
+        setCurrentPhase('instructions');
         return;
       }
 
-      const measurement = measureDiaphragmaticBreathing(
-        exhaleSamples,
-        adaptiveParams.detectionThreshold,
-        sampleRate,
-      );
+      processingRef.current = true;
 
-      const score = scoreDiaphragmaticBreathing(
-        measurement,
-        adaptiveParams,
-      );
+      try {
+        const measurement = measureDiaphragmaticBreathing(
+          exhaleSamples,
+          adaptiveParams.detectionThreshold,
+          sampleRate,
+        );
 
-      const result: RepResult = {
-        rep: currentRepRef.current,
-        measurement,
-        score,
-      };
+        const score = scoreDiaphragmaticBreathing(
+          measurement,
+          adaptiveParams,
+        );
 
-      repResultsRef.current = [...repResultsRef.current, result];
-      setRepResults([...repResultsRef.current]);
+        const result: RepResult = {
+          rep: currentRepRef.current,
+          measurement,
+          score,
+        };
 
-      if (currentRepRef.current >= adaptiveParams.repetitions) {
-        finishExercise();
-        return;
+        const updatedResults = [
+          ...repResultsRef.current,
+          result,
+        ];
+
+        repResultsRef.current = updatedResults;
+        setRepResults(updatedResults);
+
+        if (
+          currentRepRef.current >= adaptiveParams.repetitions
+        ) {
+          processingRef.current = false;
+          void finishExercise();
+          return;
+        }
+
+        currentRepRef.current += 1;
+        setCurrentRep(currentRepRef.current);
+
+        stopTimerRef.current = setTimeout(() => {
+          stopTimerRef.current = null;
+
+          if (
+            !mountedRef.current ||
+            cancellingRef.current ||
+            pausedForExitRef.current ||
+            leavingRef.current
+          ) {
+            processingRef.current = false;
+            return;
+          }
+
+          processingRef.current = false;
+          startCountdownRef.current?.();
+        }, 700);
+      } catch (error) {
+        console.error(
+          'Failed to analyze Diaphragmatic Breathing:',
+          error,
+        );
+
+        if (
+          !mountedRef.current ||
+          cancellingRef.current ||
+          pausedForExitRef.current
+        ) {
+          processingRef.current = false;
+          return;
+        }
+
+        processingRef.current = false;
+        setCurrentPhase('instructions');
       }
-
-      currentRepRef.current += 1;
-      setCurrentRep(currentRepRef.current);
-
-      stopTimerRef.current = setTimeout(() => {
-        if (!mountedRef.current) return;
-
-        startCountdownRef.current?.();
-      }, 700);
     },
-    [finishExercise],
+    [finishExercise, setCurrentPhase],
   );
 
   const handleRecordingStop = useCallback(
     (samples: Float32Array, sampleRate: number) => {
-      if (!mountedRef.current) return;
-      if (phaseRef.current !== 'exhale') return;
+      if (
+        !mountedRef.current ||
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        restartCurrentRepRef.current ||
+        leavingRef.current ||
+        phaseRef.current !== 'exhale'
+      ) {
+        return;
+      }
 
-      phaseRef.current = 'processing';
-      setPhase('processing');
+      clearTimers();
+      processingRef.current = true;
+
+      setCurrentPhase('processing');
       setElapsed(0);
       setVolume(0);
 
       stopTimerRef.current = setTimeout(() => {
-        if (!mountedRef.current) return;
+        stopTimerRef.current = null;
 
+        if (
+          !mountedRef.current ||
+          cancellingRef.current ||
+          pausedForExitRef.current ||
+          restartCurrentRepRef.current ||
+          leavingRef.current
+        ) {
+          processingRef.current = false;
+          return;
+        }
+
+        processingRef.current = false;
         processRep(samples, sampleRate);
       }, 300);
     },
-    [processRep],
+    [clearTimers, processRep, setCurrentPhase],
   );
 
   const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: frame => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        restartCurrentRepRef.current ||
+        leavingRef.current ||
+        phaseRef.current !== 'exhale'
+      ) {
+        return;
+      }
 
       setVolume(frame.volume ?? 0);
     },
@@ -349,26 +493,30 @@ export default function DiaphragmaticBreathingScreen({
     stopRecordingRef.current = stopRecording;
   }, [startRecording, stopRecording]);
 
-  const returnToInstructions = useCallback(() => {
-    phaseRef.current = 'instructions';
-
-    clearTimers();
-    stopRecordingRef.current?.();
-
-    setElapsed(0);
-    setVolume(0);
-    setPhase('instructions');
-  }, [clearTimers]);
-
   const startPhaseTimer = useCallback(
     (durationSec: number, stopRecorder = true) => {
+      if (
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        leavingRef.current
+      ) {
+        return;
+      }
+
       clearTimers();
 
       const startedAt = Date.now();
       setElapsed(0);
 
       phaseTimerRef.current = setInterval(() => {
-        if (!mountedRef.current) return;
+        if (
+          !mountedRef.current ||
+          cancellingRef.current ||
+          pausedForExitRef.current ||
+          leavingRef.current
+        ) {
+          return;
+        }
 
         const elapsedSec = (Date.now() - startedAt) / 1000;
 
@@ -394,40 +542,103 @@ export default function DiaphragmaticBreathingScreen({
   }, [startPhaseTimer]);
 
   const startExhalePhase = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      cancellingRef.current ||
+      pausedForExitRef.current ||
+      leavingRef.current
+    ) {
+      return;
+    }
 
     const adaptiveParams = paramsRef.current;
     if (!adaptiveParams) return;
 
     clearTimers();
 
-    phaseRef.current = 'exhale';
-    setPhase('exhale');
+    setCurrentPhase('exhale');
     setElapsed(0);
     setVolume(0);
 
-    startRecordingRef.current?.();
+    const start = startRecordingRef.current;
 
-    startPhaseTimerRef.current?.(
-      adaptiveParams.exhaleSec,
-      true,
-    );
-  }, [clearTimers]);
+    if (!start) {
+      setCurrentPhase('instructions');
+      return;
+    }
+
+    startingRef.current = true;
+
+    void (async () => {
+      try {
+        await start();
+
+        if (
+          !mountedRef.current ||
+          cancellingRef.current ||
+          pausedForExitRef.current ||
+          restartCurrentRepRef.current ||
+          leavingRef.current ||
+          phaseRef.current !== 'exhale'
+        ) {
+          stopRecordingRef.current?.();
+          startingRef.current = false;
+          return;
+        }
+
+        startingRef.current = false;
+
+        startPhaseTimerRef.current?.(
+          adaptiveParams.exhaleSec,
+          true,
+        );
+      } catch (error) {
+        console.error(
+          'Failed to start Diaphragmatic Breathing recording:',
+          error,
+        );
+
+        startingRef.current = false;
+
+        if (
+          !mountedRef.current ||
+          cancellingRef.current ||
+          pausedForExitRef.current
+        ) {
+          return;
+        }
+
+        clearTimers();
+        resetLiveState();
+        setCurrentPhase('instructions');
+      }
+    })();
+  }, [
+    clearTimers,
+    resetLiveState,
+    setCurrentPhase,
+  ]);
 
   useEffect(() => {
     startExhalePhaseRef.current = startExhalePhase;
   }, [startExhalePhase]);
 
   const startInhalePhase = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      cancellingRef.current ||
+      pausedForExitRef.current ||
+      leavingRef.current
+    ) {
+      return;
+    }
 
     const adaptiveParams = paramsRef.current;
     if (!adaptiveParams) return;
 
     clearTimers();
 
-    phaseRef.current = 'inhale';
-    setPhase('inhale');
+    setCurrentPhase('inhale');
     setElapsed(0);
     setVolume(0);
 
@@ -437,23 +648,38 @@ export default function DiaphragmaticBreathingScreen({
     );
 
     stopTimerRef.current = setTimeout(() => {
-      if (!mountedRef.current) return;
+      stopTimerRef.current = null;
+
+      if (
+        !mountedRef.current ||
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        leavingRef.current
+      ) {
+        return;
+      }
 
       startExhalePhaseRef.current?.();
     }, adaptiveParams.inhaleSec * 1000);
-  }, [clearTimers]);
+  }, [clearTimers, setCurrentPhase]);
 
   useEffect(() => {
     startInhalePhaseRef.current = startInhalePhase;
   }, [startInhalePhase]);
 
   const startCountdown = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      cancellingRef.current ||
+      pausedForExitRef.current ||
+      leavingRef.current
+    ) {
+      return;
+    }
 
     clearTimers();
 
-    phaseRef.current = 'countdown';
-    setPhase('countdown');
+    setCurrentPhase('countdown');
     setCountdown(PREPARATION_COUNTDOWN);
     setElapsed(0);
     setVolume(0);
@@ -461,7 +687,14 @@ export default function DiaphragmaticBreathingScreen({
     let value = PREPARATION_COUNTDOWN;
 
     countdownTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        cancellingRef.current ||
+        pausedForExitRef.current ||
+        leavingRef.current
+      ) {
+        return;
+      }
 
       value -= 1;
 
@@ -477,63 +710,224 @@ export default function DiaphragmaticBreathingScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers]);
+  }, [clearTimers, setCurrentPhase]);
 
   useEffect(() => {
     startCountdownRef.current = startCountdown;
   }, [startCountdown]);
 
   const startExercise = useCallback(() => {
-    if (!paramsReady) return;
+    if (!paramsReady || !paramsRef.current) return;
 
-    if (!paramsRef.current) {
-      console.error(
-        'Cannot start exercise without adaptive parameters.',
-      );
-      return;
-    }
+    cancellingRef.current = false;
+    processingRef.current = false;
+    startingRef.current = false;
+    pausedForExitRef.current = false;
+    restartCurrentRepRef.current = false;
+    leavingRef.current = false;
 
-    currentRepRef.current = 1;
-    repResultsRef.current = [];
-
-    setCurrentRep(1);
-    setRepResults([]);
-    setElapsed(0);
-    setVolume(0);
+    clearTimers();
+    resetRepetitionResults();
     setCountdown(PREPARATION_COUNTDOWN);
+    setExitPromptVisible(false);
 
     startCountdownRef.current?.();
-  }, [paramsReady]);
+  }, [
+    clearTimers,
+    paramsReady,
+    resetRepetitionResults,
+    setExitPromptVisible,
+  ]);
 
   const retryExercise = useCallback(() => {
-    if (!paramsReady) return;
+    if (!paramsReady || leavingRef.current) return;
+
+    cancellingRef.current = true;
+    processingRef.current = false;
+    startingRef.current = false;
+    pausedForExitRef.current = false;
+    restartCurrentRepRef.current = false;
 
     clearTimers();
     stopRecordingRef.current?.();
 
-    currentRepRef.current = 1;
-    repResultsRef.current = [];
-
-    setCurrentRep(1);
-    setRepResults([]);
-    setElapsed(0);
-    setVolume(0);
+    resetRepetitionResults();
     setCountdown(PREPARATION_COUNTDOWN);
+    setExitPromptVisible(false);
 
+    cancellingRef.current = false;
     startCountdownRef.current?.();
-  }, [clearTimers, paramsReady]);
+  }, [
+    clearTimers,
+    paramsReady,
+    resetRepetitionResults,
+    setExitPromptVisible,
+  ]);
+
+  const handleBack = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      leavingRef.current ||
+      showExitPromptRef.current
+    ) {
+      return;
+    }
+
+    const currentPhase = phaseRef.current;
+
+    const attemptIsActive =
+      currentPhase === 'countdown' ||
+      currentPhase === 'inhale' ||
+      currentPhase === 'exhale' ||
+      currentPhase === 'processing';
+
+    if (attemptIsActive) {
+      /*
+       * Pause all exercise timers. The recorder API does not expose
+       * a confirmed pause/resume operation, so discard only the
+       * interrupted repetition and restart that same repetition
+       * when the user continues.
+       */
+      pausedForExitRef.current = true;
+
+      const recordingWasActive = currentPhase === 'exhale';
+      const analysisWasPending = currentPhase === 'processing';
+
+      if (recordingWasActive || analysisWasPending) {
+        restartCurrentRepRef.current = true;
+      }
+
+      clearTimers();
+
+      if (recordingWasActive) {
+        /*
+         * Guard the stop callback before stopping the recorder.
+         * Audio from this interrupted repetition must not be scored.
+         */
+        cancellingRef.current = true;
+
+        try {
+          stopRecordingRef.current?.();
+        } catch (error) {
+          console.error(
+            'Failed to stop interrupted Diaphragmatic Breathing recording:',
+            error,
+          );
+        }
+
+        cancellingRef.current = false;
+      }
+
+      startingRef.current = false;
+      processingRef.current = false;
+
+      resetLiveState();
+    }
+
+    setExitPromptVisible(true);
+  }, [
+    clearTimers,
+    resetLiveState,
+    setExitPromptVisible,
+  ]);
+
+  const continueExercise = useCallback(() => {
+    if (leavingRef.current || !showExitPromptRef.current) {
+      return;
+    }
+
+    setExitPromptVisible(false);
+
+    if (!pausedForExitRef.current) {
+      return;
+    }
+
+    pausedForExitRef.current = false;
+    cancellingRef.current = false;
+    startingRef.current = false;
+    processingRef.current = false;
+
+    /*
+     * Restart the current repetition only if its recording or
+     * analysis was interrupted. Completed repetitions stay saved
+     * in memory and currentRepRef is intentionally not reset.
+     */
+    if (restartCurrentRepRef.current) {
+      restartCurrentRepRef.current = false;
+      resetLiveState();
+      startCountdownRef.current?.();
+      return;
+    }
+
+    /*
+     * Countdown and inhale phases resume safely from a fresh
+     * countdown for the same repetition.
+     */
+    startCountdownRef.current?.();
+  }, [resetLiveState, setExitPromptVisible]);
+
+  const quitExercise = useCallback(() => {
+    if (leavingRef.current) return;
+
+    leavingRef.current = true;
+    cancellingRef.current = true;
+    pausedForExitRef.current = false;
+    restartCurrentRepRef.current = false;
+    processingRef.current = false;
+    startingRef.current = false;
+
+    clearTimers();
+
+    try {
+      stopRecordingRef.current?.();
+    } catch (error) {
+      console.error(
+        'Failed to stop Diaphragmatic Breathing recording:',
+        error,
+      );
+    }
+
+    setExitPromptVisible(false);
+    router.replace('/dashboard?tab=exercises');
+  }, [clearTimers, setExitPromptVisible]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        handleBack();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [handleBack]);
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
+      cancellingRef.current = true;
+      pausedForExitRef.current = false;
+      restartCurrentRepRef.current = false;
+      processingRef.current = false;
+      startingRef.current = false;
+
       clearTimers();
-      stopRecordingRef.current?.();
+
+      try {
+        stopRecordingRef.current?.();
+      } catch (error) {
+        console.error(
+          'Failed to stop Diaphragmatic Breathing during cleanup:',
+          error,
+        );
+      }
     };
   }, [clearTimers]);
 
-  if (!params || !tier) {
+  if (!params || !tier || !paramsReady) {
     return (
       <View style={styles.loadingScreen}>
         <View style={styles.loadingIconCircle}>
@@ -604,261 +998,307 @@ export default function DiaphragmaticBreathingScreen({
         ? Math.min(elapsed / params.exhaleSec, 1)
         : 0;
 
-  if (phase === 'instructions') {
-    return (
-      <ExerciseScreen
-        category="Breath Control"
-        title="Diaphragmatic Breathing"
-        icon="body-outline"
-        instructions="Breathe slowly and deeply using your diaphragm. Inhale comfortably, then exhale gently and smoothly while keeping your airflow controlled."
-        preparationSteps={[
-          {
-            icon: 'leaf-outline',
-            text: 'Sit or stand with a relaxed posture.',
-          },
-          {
-            icon: 'body-outline',
-            text: 'Take a comfortable breath without forcing it.',
-          },
-          {
-            icon: 'volume-low-outline',
-            text: 'Inhale with ease and exhale gently and steadily.',
-          },
-          {
-            icon: 'mic-outline',
-            text: 'Stay close enough to the microphone for consistent audio.',
-          },
-        ]}
-        targetValue={`${params.inhaleSec}s inhale / ${params.exhaleSec}s exhale`}
-        targetHint="breathing pattern"
-        repetitions={params.repetitions}
-        tip="Focus on maintaining a relaxed, controlled airflow instead of forcing each breath."
-        tier={tier}
-        onBack={() => router.back()}
-        onStart={startExercise}
-      />
-    );
-  }
-
-  if (phase === 'countdown') {
-    return (
-      <ExerciseCountdownScreen
-        icon="body-outline"
-        title="Get Ready"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Prepare to breathe"
-        prompt="Relax your shoulders and get ready to inhale slowly."
-        onBack={returnToInstructions}
-      />
-    );
-  }
-
-  if (phase === 'inhale') {
-    return (
-      <View style={styles.exerciseContainer}>
-        <View style={styles.exerciseContent}>
-          <Text style={styles.phaseLabel}>INHALE</Text>
-
-          <Text style={styles.repText}>
-            Repetition {currentRep} of {params.repetitions}
-          </Text>
-
-          <View style={styles.breathCircle}>
-            <Ionicons
-              name="arrow-down-outline"
-              size={42}
-              color={BROWN}
-            />
-
-            <Text style={styles.phaseTime}>
-              {elapsed.toFixed(1)}
-            </Text>
-
-            <Text style={styles.phaseTarget}>
-              / {params.inhaleSec.toFixed(1)}s
-            </Text>
-          </View>
-
-          <Text style={styles.instructionTitle}>
-            Breathe in slowly
-          </Text>
-
-          <Text style={styles.instructionText}>
-            Take a comfortable, deep breath using your diaphragm.
-          </Text>
-
-          <ProgressBar progress={progress} />
-
-          <Text style={styles.smallHint}>
-            Keep your shoulders relaxed.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (phase === 'exhale') {
-    return (
-      <View style={styles.exerciseContainer}>
-        <View style={styles.exerciseContent}>
-          <Text style={styles.phaseLabel}>EXHALE</Text>
-
-          <Text style={styles.repText}>
-            Repetition {currentRep} of {params.repetitions}
-          </Text>
-
-          <View style={styles.breathCircle}>
-            <Ionicons
-              name="arrow-up-outline"
-              size={42}
-              color={BROWN}
-            />
-
-            <Text style={styles.phaseTime}>
-              {elapsed.toFixed(1)}
-            </Text>
-
-            <Text style={styles.phaseTarget}>
-              / {params.exhaleSec.toFixed(1)}s
-            </Text>
-          </View>
-
-          <Text style={styles.instructionTitle}>
-            Exhale gently
-          </Text>
-
-          <Text style={styles.instructionText}>
-            Slowly release your breath toward the microphone.
-          </Text>
-
-          <View style={styles.volumeCard}>
-            <Text style={styles.volumeLabel}>
-              AIRFLOW LEVEL
-            </Text>
-
-            <Text style={styles.volumeValue}>
-              {volume.toFixed(2)}
-            </Text>
-          </View>
-
-          <ProgressBar progress={progress} />
-
-          <Text style={styles.smallHint}>
-            Keep your airflow smooth and consistent.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (phase === 'processing') {
-    return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title="Analyzing Your Breathing"
-        message="Measuring duration, consistency, and volume..."
-        onBack={returnToInstructions}
-      />
-    );
-  }
-
   return (
-    <ExerciseResultsScreen
-      title="Exercise Complete"
-      subtitle="Your diaphragmatic breathing results"
-      score={averageScore}
-      resultIcon={
-        averageScore >= 70
-          ? 'checkmark'
-          : 'analytics-outline'
-      }
-      scoreMessage={
-        averageScore >= 90
-          ? 'Excellent control!'
-          : averageScore >= 75
-            ? 'Great work!'
-            : averageScore >= 60
-              ? 'Good effort!'
-              : 'Keep practicing!'
-      }
-      onBack={returnToInstructions}
-      onRetry={retryExercise}
-      onExit={() =>
-        router.replace('/dashboard?tab=exercises')
-      }
-    >
-      <View>
-        <View style={styles.statsGrid}>
-          <ResultStat
-            label="Avg. Exhale"
-            value={`${averageExhale.toFixed(1)}s`}
-          />
+    <View style={styles.screen}>
+      {phase === 'instructions' && (
+        <ExerciseScreen
+          category="Breath Control"
+          title="Diaphragmatic Breathing"
+          icon="body-outline"
+          instructions="Breathe slowly and deeply using your diaphragm. Inhale comfortably, then exhale gently and smoothly while keeping your airflow controlled."
+          preparationSteps={[
+            {
+              icon: 'leaf-outline',
+              text: 'Sit or stand with a relaxed posture.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Take a comfortable breath without forcing it.',
+            },
+            {
+              icon: 'volume-low-outline',
+              text: 'Inhale with ease and exhale gently and steadily.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'Stay close enough to the microphone for consistent audio.',
+            },
+          ]}
+          targetValue={`${params.inhaleSec}s inhale / ${params.exhaleSec}s exhale`}
+          targetHint="breathing pattern"
+          repetitions={params.repetitions}
+          tip="Focus on maintaining a relaxed, controlled airflow instead of forcing each breath."
+          tier={tier}
+          onBack={handleBack}
+          onStart={startExercise}
+          startDisabled={!paramsReady}
+        />
+      )}
 
-          <ResultStat
-            label="Consistency"
-            value={`${Math.round(averageConsistency)}%`}
-          />
+      {phase === 'countdown' && (
+        <ExerciseCountdownScreen
+          icon="body-outline"
+          title="Get Ready"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Prepare to breathe"
+          prompt="Relax your shoulders and get ready to inhale slowly."
+          onBack={handleBack}
+        />
+      )}
 
-          <ResultStat
-            label="Avg. Volume"
-            value={
-              Number.isFinite(averageVolume)
-                ? `${averageVolume.toFixed(1)} dB`
-                : '--'
-            }
-          />
-        </View>
-
-        <Text style={styles.sectionTitle}>
-          Repetition Results
-        </Text>
-
-        {repResults.map(result => (
-          <View
-            key={`rep-${result.rep}`}
-            style={styles.repResultCard}
+      {(phase === 'inhale' || phase === 'exhale') && (
+        <View style={styles.exerciseContainer}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={handleBack}
+            style={styles.backButton}
           >
-            <View style={styles.repResultHeader}>
-              <Text style={styles.repResultTitle}>
-                Repetition {result.rep}
+            <Ionicons
+              name="chevron-back"
+              size={25}
+              color={BROWN}
+            />
+          </Pressable>
+
+          <View style={styles.exerciseContent}>
+            <Text style={styles.phaseLabel}>
+              {phase === 'inhale' ? 'INHALE' : 'EXHALE'}
+            </Text>
+
+            <Text style={styles.repText}>
+              Repetition {currentRep} of {params.repetitions}
+            </Text>
+
+            <View style={styles.breathCircle}>
+              <Ionicons
+                name={
+                  phase === 'inhale'
+                    ? 'arrow-down-outline'
+                    : 'arrow-up-outline'
+                }
+                size={42}
+                color={BROWN}
+              />
+
+              <Text style={styles.phaseTime}>
+                {elapsed.toFixed(1)}
               </Text>
 
-              <View
-                style={[
-                  styles.passBadge,
-                  !result.score.passed && styles.failBadge,
-                ]}
-              >
-                <Text style={styles.passBadgeText}>
-                  {result.score.passed
-                    ? 'PASS'
-                    : 'KEEP PRACTICING'}
+              <Text style={styles.phaseTarget}>
+                / {(phase === 'inhale'
+                  ? params.inhaleSec
+                  : params.exhaleSec
+                ).toFixed(1)}s
+              </Text>
+            </View>
+
+            <Text style={styles.instructionTitle}>
+              {phase === 'inhale'
+                ? 'Breathe in slowly'
+                : 'Exhale gently'}
+            </Text>
+
+            <Text style={styles.instructionText}>
+              {phase === 'inhale'
+                ? 'Take a comfortable, deep breath using your diaphragm.'
+                : 'Slowly release your breath toward the microphone.'}
+            </Text>
+
+            {phase === 'exhale' && (
+              <View style={styles.volumeCard}>
+                <Text style={styles.volumeLabel}>
+                  RELATIVE MIC LEVEL
+                </Text>
+
+                <Text style={styles.volumeValue}>
+                  {Number.isFinite(volume)
+                    ? volume.toFixed(2)
+                    : '--'}
                 </Text>
               </View>
-            </View>
+            )}
 
-            <View style={styles.repMetrics}>
-              <Metric
-                label="Exhale"
-                value={`${result.measurement.exhaleDurationSec.toFixed(1)}s`}
-              />
+            <ProgressBar progress={progress} />
 
-              <Metric
-                label="Consistency"
-                value={`${Math.round(result.measurement.consistencyPct)}%`}
-              />
-
-              <Metric
-                label="Score"
-                value={`${result.score.score}%`}
-              />
-            </View>
+            <Text style={styles.smallHint}>
+              {phase === 'inhale'
+                ? 'Keep your shoulders relaxed.'
+                : 'Keep your airflow smooth and consistent.'}
+            </Text>
           </View>
-        ))}
-      </View>
-    </ExerciseResultsScreen>
+        </View>
+      )}
+
+      {phase === 'processing' && (
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Breathing"
+          message="Measuring duration, consistency, and relative microphone level..."
+          onBack={handleBack}
+        />
+      )}
+
+      {phase === 'results' && (
+        <ExerciseResultsScreen
+          title="Exercise Complete"
+          subtitle="Your diaphragmatic breathing results"
+          score={averageScore}
+          resultIcon={
+            averageScore >= 70
+              ? 'checkmark'
+              : 'analytics-outline'
+          }
+          scoreMessage={
+            averageScore >= 90
+              ? 'Excellent control!'
+              : averageScore >= 75
+                ? 'Great work!'
+                : averageScore >= 60
+                  ? 'Good effort!'
+                  : 'Keep practicing!'
+          }
+          onBack={handleBack}
+          onRetry={retryExercise}
+          onExit={quitExercise}
+        >
+          <View>
+            <View style={styles.statsGrid}>
+              <ResultStat
+                label="Avg. Exhale"
+                value={`${averageExhale.toFixed(1)}s`}
+              />
+
+              <ResultStat
+                label="Consistency"
+                value={`${Math.round(averageConsistency)}%`}
+              />
+
+              <ResultStat
+                label="Avg. Relative Level"
+                value={
+                  Number.isFinite(averageVolume)
+                    ? `${averageVolume.toFixed(1)} dB`
+                    : '--'
+                }
+              />
+            </View>
+
+            <Text style={styles.sectionTitle}>
+              Repetition Results
+            </Text>
+
+            {repResults.map(result => (
+              <View
+                key={`rep-${result.rep}`}
+                style={styles.repResultCard}
+              >
+                <View style={styles.repResultHeader}>
+                  <Text style={styles.repResultTitle}>
+                    Repetition {result.rep}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.passBadge,
+                      !result.score.passed && styles.failBadge,
+                    ]}
+                  >
+                    <Text style={styles.passBadgeText}>
+                      {result.score.passed
+                        ? 'PASS'
+                        : 'KEEP PRACTICING'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.repMetrics}>
+                  <Metric
+                    label="Exhale"
+                    value={`${result.measurement.exhaleDurationSec.toFixed(1)}s`}
+                  />
+
+                  <Metric
+                    label="Consistency"
+                    value={`${Math.round(result.measurement.consistencyPct)}%`}
+                  />
+
+                  <Metric
+                    label="Score"
+                    value={`${result.score.score}%`}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </ExerciseResultsScreen>
+      )}
+
+      <Modal
+        visible={showExitPrompt}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={continueExercise}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            accessibilityRole="alert"
+            accessibilityLabel="Exercise exit confirmation"
+            style={styles.confirmationCard}
+          >
+            <View style={styles.confirmationIcon}>
+              <Ionicons
+                name="pause-circle-outline"
+                size={34}
+                color={BROWN}
+              />
+            </View>
+
+            <Text style={styles.confirmationTitle}>
+              Quit Exercise?
+            </Text>
+
+            <Text style={styles.confirmationMessage}>
+              Your exercise is paused while you decide. Continue
+              to resume your exercise, or quit to return to the
+              dashboard. If a repetition was interrupted, you
+              will repeat that same repetition.
+            </Text>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Continue exercise"
+              onPress={continueExercise}
+              style={({ pressed }) => [
+                styles.continueButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.continueButtonText}>
+                Continue Exercise
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Quit exercise"
+              onPress={quitExercise}
+              style={({ pressed }) => [
+                styles.quitButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.quitButtonText}>
+                Quit Exercise
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -908,6 +1348,10 @@ function Metric({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: WHITE,
+  },
   loadingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -943,12 +1387,20 @@ const styles = StyleSheet.create({
   exerciseContainer: {
     flex: 1,
     backgroundColor: WHITE,
+    paddingHorizontal: 25,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 48,
+    marginLeft: 0,
   },
   exerciseContent: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 25,
-    paddingTop: 45,
+    paddingTop: 5,
   },
   phaseLabel: {
     fontFamily: 'FredokaBold',
@@ -969,7 +1421,7 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 42,
+    marginTop: 35,
   },
   phaseTime: {
     marginTop: 8,
@@ -984,7 +1436,7 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
   instructionTitle: {
-    marginTop: 30,
+    marginTop: 25,
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
@@ -1063,6 +1515,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
+    textAlign: 'center',
   },
   sectionTitle: {
     marginTop: 24,
@@ -1122,5 +1575,82 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(35, 22, 17, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 26,
+  },
+  confirmationCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 26,
+    paddingBottom: 22,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  confirmationIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: LIGHT_PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  confirmationTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 9,
+    marginBottom: 22,
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 49,
+    backgroundColor: BROWN,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: WHITE,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 47,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    marginTop: 10,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  buttonPressed: {
+    opacity: 0.75,
   },
 });

@@ -1,7 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  BackHandler,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import type {
   SteadyAirflowParams,
@@ -32,8 +44,13 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
+const ACCENT = '#D86C89';
+const BORDER = '#F2DDE5';
 
 const PREPARATION_COUNTDOWN = 3;
+const AIRFLOW_DETECTION_THRESHOLD = 0.002;
+const STABILITY_WINDOW_SIZE = 20;
+const MIN_STABILITY_READINGS = 5;
 
 interface Props {
   tier?: Tier;
@@ -58,15 +75,20 @@ export default function SteadyAirflowMaintenanceScreen({
   const [tier, setTier] = useState<Tier | null>(
     initialTier ?? null,
   );
-  const [params, setParams] = useState<SteadyAirflowParams | null>(
-    null,
-  );
+  const [params, setParams] =
+    useState<SteadyAirflowParams | null>(null);
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(PREPARATION_COUNTDOWN);
+  const [countdown, setCountdown] = useState(
+    PREPARATION_COUNTDOWN,
+  );
   const [elapsed, setElapsed] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [volume, setVolume] = useState(0);
+  const [airflowDetected, setAirflowDetected] = useState(false);
+  const [airflowStability, setAirflowStability] = useState(0);
   const [repResults, setRepResults] = useState<RepResult[]>([]);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const paramsRef = useRef<SteadyAirflowParams | null>(null);
   const tierRef = useRef<Tier>(initialTier ?? 'beginner');
@@ -74,18 +96,88 @@ export default function SteadyAirflowMaintenanceScreen({
   const phaseRef = useRef<Phase>('instructions');
   const currentRepRef = useRef(1);
   const repResultsRef = useRef<RepResult[]>([]);
+  const recentVolumeRef = useRef<number[]>([]);
+
+  // Keep modal visibility in a ref so audio callbacks can block
+  // processing immediately, without waiting for a React render.
+  const showQuitModalRef = useRef(false);
+  const exitRequestedRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+
+  // If recording was interrupted, the current repetition must be
+  // repeated from the beginning. Never score its partial audio.
+  const restartCurrentRepRef = useRef(false);
+  const pausedPhaseRef = useRef<Phase>('instructions');
 
   const startRecordingRef = useRef<
     (() => Promise<void>) | null
   >(null);
-  const stopRecordingRef = useRef<(() => void) | null>(null);
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+  const stopRecordingRef = useRef<
+    (() => void | Promise<void>) | null
+  >(null);
+
+  const countdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const processingTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startRecordingPhaseRef = useRef<(() => void) | null>(
     null,
   );
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const startRecordingPhaseRef = useRef<(() => void) | null>(null);
+
+  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
+
+  const setQuitModalVisible = useCallback((visible: boolean) => {
+    showQuitModalRef.current = visible;
+    setShowQuitModal(visible);
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (processingTimerRef.current) {
+      clearTimeout(processingTimerRef.current);
+      processingTimerRef.current = null;
+    }
+  }, []);
+
+  const resetAirflowIndicator = useCallback(() => {
+    recentVolumeRef.current = [];
+    setVolume(0);
+    setAirflowDetected(false);
+    setAirflowStability(0);
+  }, []);
+
+  const stopRecorderSafely = useCallback(() => {
+    try {
+      void Promise.resolve(
+        stopRecordingRef.current?.(),
+      ).catch(error => {
+        console.error(
+          'Failed to stop Steady Airflow recording:',
+          error,
+        );
+      });
+    } catch (error) {
+      console.error(
+        'Failed to stop Steady Airflow recording:',
+        error,
+      );
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,33 +271,35 @@ export default function SteadyAirflowMaintenanceScreen({
     };
   }, [initialTier]);
 
-  const clearTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  }, []);
-
   const startCountdown = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      exitRequestedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
 
     clearTimers();
 
-    phaseRef.current = 'countdown';
-    setPhase('countdown');
+    setCurrentPhase('countdown');
     setCountdown(PREPARATION_COUNTDOWN);
     setElapsed(0);
-    setVolume(0);
+    resetAirflowIndicator();
 
     let value = PREPARATION_COUNTDOWN;
 
     countdownTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        exitRequestedRef.current ||
+        quitInProgressRef.current ||
+        showQuitModalRef.current
+      ) {
+        clearTimers();
+        return;
+      }
 
       value -= 1;
 
@@ -221,12 +315,23 @@ export default function SteadyAirflowMaintenanceScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers]);
+  }, [
+    clearTimers,
+    resetAirflowIndicator,
+    setCurrentPhase,
+  ]);
 
   const finishExercise = useCallback(async () => {
     clearTimers();
 
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      exitRequestedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
 
     const finalResults = repResultsRef.current;
     const finalScore =
@@ -249,40 +354,75 @@ export default function SteadyAirflowMaintenanceScreen({
         finalScore,
       );
     } catch (error) {
-      console.error('Failed to save Steady Airflow progress:', error);
+      console.error(
+        'Failed to save Steady Airflow progress:',
+        error,
+      );
     }
 
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      exitRequestedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
 
-    phaseRef.current = 'results';
-    setPhase('results');
+    setCurrentPhase('results');
     setElapsed(0);
-    setVolume(0);
-  }, [clearTimers]);
+    resetAirflowIndicator();
+  }, [
+    clearTimers,
+    resetAirflowIndicator,
+    setCurrentPhase,
+  ]);
 
   const startRecordingPhase = useCallback(() => {
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      exitRequestedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
 
     const adaptiveParams = paramsRef.current;
 
     if (!adaptiveParams) {
-      console.error('Steady Airflow parameters are not ready.');
+      console.error(
+        'Steady Airflow parameters are not ready.',
+      );
+      setCurrentPhase('instructions');
       return;
     }
 
     clearTimers();
+    resetAirflowIndicator();
 
-    phaseRef.current = 'recording';
-    setPhase('recording');
+    setCurrentPhase('recording');
     setElapsed(0);
-    setVolume(0);
-
-    startRecordingRef.current?.();
 
     const startedAt = Date.now();
 
+    // Clear the interrupted-attempt marker only when beginning
+    // the new recording for this repetition.
+    restartCurrentRepRef.current = false;
+
+    void startRecordingRef.current?.();
+
     recordingTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        exitRequestedRef.current ||
+        quitInProgressRef.current ||
+        showQuitModalRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        clearTimers();
+        return;
+      }
 
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
 
@@ -296,10 +436,21 @@ export default function SteadyAirflowMaintenanceScreen({
           recordingTimerRef.current = null;
         }
 
-        stopRecordingRef.current?.();
+        void Promise.resolve(
+          stopRecordingRef.current?.(),
+        ).catch(error => {
+          console.error(
+            'Failed to stop Steady Airflow recording:',
+            error,
+          );
+        });
       }
     }, 50);
-  }, [clearTimers]);
+  }, [
+    clearTimers,
+    resetAirflowIndicator,
+    setCurrentPhase,
+  ]);
 
   useEffect(() => {
     startRecordingPhaseRef.current = startRecordingPhase;
@@ -309,6 +460,10 @@ export default function SteadyAirflowMaintenanceScreen({
     (samples: Float32Array, sampleRate: number) => {
       if (
         !mountedRef.current ||
+        exitRequestedRef.current ||
+        quitInProgressRef.current ||
+        showQuitModalRef.current ||
+        restartCurrentRepRef.current ||
         phaseRef.current !== 'recording'
       ) {
         return;
@@ -317,19 +472,21 @@ export default function SteadyAirflowMaintenanceScreen({
       const adaptiveParams = paramsRef.current;
 
       if (!adaptiveParams) {
-        console.error('Steady Airflow parameters are not ready.');
-        phaseRef.current = 'instructions';
-        setPhase('instructions');
+        console.error(
+          'Steady Airflow parameters are not ready.',
+        );
+        setCurrentPhase('instructions');
         return;
       }
 
       clearTimers();
 
-      phaseRef.current = 'processing';
-      setPhase('processing');
+      setCurrentPhase('processing');
       setElapsed(0);
-      setVolume(0);
+      resetAirflowIndicator();
 
+      // This callback only runs for a completed recording. If the
+      // modal interrupted the repetition, its callback is discarded.
       const measurement = measureSteadyAirflow(
         samples,
         adaptiveParams.detectionThreshold,
@@ -347,16 +504,29 @@ export default function SteadyAirflowMaintenanceScreen({
         score,
       };
 
-      const updatedResults = [...repResultsRef.current, result];
+      const updatedResults = [
+        ...repResultsRef.current,
+        result,
+      ];
 
       repResultsRef.current = updatedResults;
       setRepResults(updatedResults);
 
-      setTimeout(() => {
-        if (!mountedRef.current) return;
+      processingTimerRef.current = setTimeout(() => {
+        processingTimerRef.current = null;
 
         if (
-          currentRepRef.current >= adaptiveParams.repetitions
+          !mountedRef.current ||
+          exitRequestedRef.current ||
+          quitInProgressRef.current ||
+          showQuitModalRef.current
+        ) {
+          return;
+        }
+
+        if (
+          currentRepRef.current >=
+          adaptiveParams.repetitions
         ) {
           void finishExercise();
           return;
@@ -367,7 +537,13 @@ export default function SteadyAirflowMaintenanceScreen({
         startCountdown();
       }, 700);
     },
-    [clearTimers, finishExercise, startCountdown],
+    [
+      clearTimers,
+      finishExercise,
+      resetAirflowIndicator,
+      setCurrentPhase,
+      startCountdown,
+    ],
   );
 
   const {
@@ -376,8 +552,66 @@ export default function SteadyAirflowMaintenanceScreen({
     stopRecording,
   } = useAudioRecorder({
     onFrame: frame => {
-      if (!mountedRef.current) return;
-      setVolume(frame.volume ?? 0);
+      if (
+        !mountedRef.current ||
+        exitRequestedRef.current ||
+        quitInProgressRef.current ||
+        showQuitModalRef.current ||
+        restartCurrentRepRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
+
+      const currentVolume = frame.volume ?? 0;
+      setVolume(currentVolume);
+
+      // The live indicator assumes frame.volume is a linear RMS-like value.
+      const readings = recentVolumeRef.current;
+      readings.push(currentVolume);
+
+      if (readings.length > STABILITY_WINDOW_SIZE) {
+        readings.shift();
+      }
+
+      if (readings.length < MIN_STABILITY_READINGS) {
+        setAirflowDetected(false);
+        setAirflowStability(0);
+        return;
+      }
+
+      const average =
+        readings.reduce((sum, value) => sum + value, 0) /
+        readings.length;
+
+      const detected =
+        average > AIRFLOW_DETECTION_THRESHOLD;
+
+      setAirflowDetected(detected);
+
+      if (!detected || average <= 0) {
+        setAirflowStability(0);
+        return;
+      }
+
+      const variance =
+        readings.reduce(
+          (sum, value) => sum + (value - average) ** 2,
+          0,
+        ) / readings.length;
+
+      const coefficientOfVariation =
+        Math.sqrt(variance) / average;
+
+      const stability = Math.max(
+        0,
+        Math.min(
+          100,
+          100 - coefficientOfVariation * 100,
+        ),
+      );
+
+      setAirflowStability(Math.round(stability));
     },
     onStop: handleRecordingStop,
   });
@@ -389,9 +623,16 @@ export default function SteadyAirflowMaintenanceScreen({
 
   const startExercise = useCallback(() => {
     if (!paramsRef.current) {
-      console.warn('Steady Airflow parameters are not ready.');
+      console.warn(
+        'Steady Airflow parameters are not ready.',
+      );
       return;
     }
+
+    exitRequestedRef.current = false;
+    quitInProgressRef.current = false;
+    restartCurrentRepRef.current = false;
+    pausedPhaseRef.current = 'instructions';
 
     repResultsRef.current = [];
     currentRepRef.current = 1;
@@ -399,32 +640,173 @@ export default function SteadyAirflowMaintenanceScreen({
     setRepResults([]);
     setCurrentRep(1);
     setElapsed(0);
-    setVolume(0);
+    resetAirflowIndicator();
 
     startCountdown();
-  }, [startCountdown]);
+  }, [resetAirflowIndicator, startCountdown]);
 
   const retryExercise = useCallback(() => {
     if (!paramsRef.current) return;
 
+    exitRequestedRef.current = false;
+    quitInProgressRef.current = false;
+    restartCurrentRepRef.current = false;
+    pausedPhaseRef.current = 'instructions';
+
     repResultsRef.current = [];
     currentRepRef.current = 1;
 
     setRepResults([]);
     setCurrentRep(1);
     setElapsed(0);
-    setVolume(0);
+    resetAirflowIndicator();
 
     startCountdown();
-  }, [startCountdown]);
+  }, [resetAirflowIndicator, startCountdown]);
+
+  const handleBack = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    const currentPhase = phaseRef.current;
+    pausedPhaseRef.current = currentPhase;
+
+    const hasActiveAttempt =
+      currentPhase === 'countdown' ||
+      currentPhase === 'recording' ||
+      currentPhase === 'processing';
+
+    if (hasActiveAttempt) {
+      // Block all timers, frames, and stop callbacks before stopping
+      // the recorder. Do not reset the repetition or completed results.
+      showQuitModalRef.current = true;
+      restartCurrentRepRef.current =
+        currentPhase === 'recording' ||
+        currentPhase === 'processing';
+
+      clearTimers();
+      recentVolumeRef.current = [];
+      setElapsed(0);
+      resetAirflowIndicator();
+
+      if (currentPhase === 'recording') {
+        setCurrentPhase('countdown');
+        stopRecorderSafely();
+      }
+    }
+
+    setQuitModalVisible(true);
+  }, [
+    clearTimers,
+    resetAirflowIndicator,
+    setCurrentPhase,
+    setQuitModalVisible,
+    stopRecorderSafely,
+  ]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        handleBack();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [handleBack]);
+
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) return;
+
+    const pausedPhase = pausedPhaseRef.current;
+
+    setQuitModalVisible(false);
+
+    const wasActive =
+      pausedPhase === 'countdown' ||
+      pausedPhase === 'recording' ||
+      pausedPhase === 'processing';
+
+    if (!wasActive) return;
+
+    // The recorder has no safe pause/resume interface, so continue
+    // from a fresh countdown for the same repetition. Previously
+    // completed repetitions remain untouched.
+    restartCurrentRepRef.current = false;
+    exitRequestedRef.current = false;
+    setElapsed(0);
+    resetAirflowIndicator();
+    startCountdown();
+  }, [
+    resetAirflowIndicator,
+    setQuitModalVisible,
+    startCountdown,
+  ]);
+
+  const quitExercise = useCallback(async () => {
+    if (quitInProgressRef.current) return;
+
+    quitInProgressRef.current = true;
+    exitRequestedRef.current = true;
+    restartCurrentRepRef.current = true;
+
+    setIsQuitting(true);
+    setQuitModalVisible(false);
+
+    clearTimers();
+    recentVolumeRef.current = [];
+
+    setCurrentPhase('instructions');
+
+    try {
+      await Promise.resolve(
+        stopRecordingRef.current?.(),
+      );
+    } catch (error) {
+      console.error(
+        'Failed to stop Steady Airflow recording:',
+        error,
+      );
+    } finally {
+      if (mountedRef.current) {
+        router.replace('/dashboard?tab=exercises');
+      }
+    }
+  }, [
+    clearTimers,
+    setCurrentPhase,
+    setQuitModalVisible,
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
+      exitRequestedRef.current = true;
+      restartCurrentRepRef.current = true;
+      showQuitModalRef.current = false;
+
       clearTimers();
-      stopRecordingRef.current?.();
+
+      void Promise.resolve(
+        stopRecordingRef.current?.(),
+      ).catch(error => {
+        console.error(
+          'Failed to stop Steady Airflow recording during cleanup:',
+          error,
+        );
+      });
     };
   }, [clearTimers]);
 
@@ -460,27 +842,84 @@ export default function SteadyAirflowMaintenanceScreen({
     result => result.score.passed,
   ).length;
 
-  const handleBack = () => {
-    if (phase === 'instructions') {
-      router.replace('/dashboard?tab=exercises');
-      return;
-    }
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
 
-    stopRecordingRef.current?.();
-    clearTimers();
+          <Text style={styles.modalTitle}>
+            Quit exercise?
+          </Text>
 
-    phaseRef.current = 'instructions';
-    setPhase('instructions');
-  };
+          <Text style={styles.modalMessage}>
+            {pausedPhaseRef.current === 'instructions' ||
+            pausedPhaseRef.current === 'results'
+              ? 'Are you sure you want to leave Steady Airflow Maintenance?'
+              : 'Your exercise is paused. Continue to resume with your current repetition. If it was interrupted, that repetition will restart. Your completed repetitions will be kept.'}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
+            onPress={() => {
+              void quitExercise();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (!params || !tier) {
     return (
-      <ExerciseProcessingScreen
-        icon="options-outline"
-        title="Preparing your exercise"
-        message="Setting your airflow parameters..."
-        onBack={handleBack}
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="options-outline"
+          title="Preparing your exercise"
+          message="Setting your airflow parameters..."
+          onBack={handleBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
@@ -491,61 +930,67 @@ export default function SteadyAirflowMaintenanceScreen({
 
   if (phase === 'instructions') {
     return (
-      <ExerciseScreen
-        title="Steady Airflow Maintenance"
-        category="Breath Control"
-        icon="water-outline"
-        instructions="Take a comfortable breath, then gently exhale toward the microphone. Maintain a smooth and steady airflow throughout the entire exercise."
-        preparationSteps={[
-          {
-            icon: 'leaf-outline',
-            text: 'Sit or stand with a relaxed posture.',
-          },
-          {
-            icon: 'body-outline',
-            text: 'Take a comfortable breath without forcing it.',
-          },
-          {
-            icon: 'volume-low-outline',
-            text: 'Exhale gently and steadily for the full duration.',
-          },
-          {
-            icon: 'mic-outline',
-            text: 'Stay close enough to the microphone for consistent audio.',
-          },
-        ]}
-        summary={[
-          {
-            label: 'TARGET',
-            value: `${params.durationSec}s`,
-            hint: 'steady airflow',
-          },
-          {
-            label: 'REPETITIONS',
-            value: String(params.repetitions),
-            hint: 'attempts',
-          },
-        ]}
-        tip="Focus on keeping your airflow even from the beginning to the end. Avoid sudden changes in breath strength."
-        tier={tier}
-        onBack={handleBack}
-        onStart={startExercise}
-      />
+      <>
+        <ExerciseScreen
+          title="Steady Airflow Maintenance"
+          category="Breath Control"
+          icon="water-outline"
+          instructions="Take a comfortable breath, then gently exhale toward the microphone. Maintain a smooth and steady airflow throughout the entire exercise."
+          preparationSteps={[
+            {
+              icon: 'leaf-outline',
+              text: 'Sit or stand with a relaxed posture.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Take a comfortable breath without forcing it.',
+            },
+            {
+              icon: 'volume-low-outline',
+              text: 'Exhale gently and steadily for the full duration.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'Stay close enough to the microphone for consistent audio.',
+            },
+          ]}
+          summary={[
+            {
+              label: 'TARGET',
+              value: `${params.durationSec}s`,
+              hint: 'steady airflow',
+            },
+            {
+              label: 'REPETITIONS',
+              value: String(params.repetitions),
+              hint: 'attempts',
+            },
+          ]}
+          tip="Focus on keeping your airflow even from the beginning to the end. Avoid sudden changes in breath strength."
+          tier={tier}
+          onBack={handleBack}
+          onStart={startExercise}
+        />
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="water-outline"
-        title="Prepare your breath"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Get Ready"
-        prompt="Take a comfortable breath and get ready to exhale steadily."
-        onBack={handleBack}
-      />
+      <>
+        <ExerciseCountdownScreen
+          icon="water-outline"
+          title="Prepare your breath"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Get Ready"
+          prompt="Take a comfortable breath and get ready to exhale steadily."
+          onBack={handleBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
@@ -553,7 +998,9 @@ export default function SteadyAirflowMaintenanceScreen({
     return (
       <View style={styles.exerciseScreen}>
         <View style={styles.exerciseContent}>
-          <Text style={styles.phaseLabel}>STEADY AIRFLOW</Text>
+          <Text style={styles.phaseLabel}>
+            STEADY AIRFLOW
+          </Text>
 
           <Text style={styles.repText}>
             Repetition {currentRep} of {params.repetitions}
@@ -585,12 +1032,29 @@ export default function SteadyAirflowMaintenanceScreen({
           </Text>
 
           <Text style={styles.exerciseDescription}>
-            Gently blow toward the microphone. Keep your airflow as
-            even as possible.
+            Gently blow toward the microphone. Keep your airflow
+            as even as possible.
           </Text>
 
           <View style={styles.airflowCard}>
-            <Text style={styles.airflowLabel}>AIRFLOW</Text>
+            <View style={styles.airflowHeader}>
+              <Text style={styles.airflowLabel}>
+                AIRFLOW DETECTION
+              </Text>
+
+              <View style={styles.airflowStatus}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    airflowDetected && styles.statusDotActive,
+                  ]}
+                />
+
+                <Text style={styles.airflowStatusText}>
+                  {airflowDetected ? 'Detected' : 'Listening'}
+                </Text>
+              </View>
+            </View>
 
             <View style={styles.airflowIndicator}>
               <View
@@ -606,8 +1070,37 @@ export default function SteadyAirflowMaintenanceScreen({
               />
             </View>
 
+            <View style={styles.stabilityHeader}>
+              <Text style={styles.stabilityLabel}>
+                LIVE STABILITY
+              </Text>
+
+              <Text style={styles.stabilityValue}>
+                {airflowDetected
+                  ? `${airflowStability}%`
+                  : '--'}
+              </Text>
+            </View>
+
+            <View style={styles.stabilityTrack}>
+              <View
+                style={[
+                  styles.stabilityFill,
+                  {
+                    width: `${
+                      airflowDetected ? airflowStability : 0
+                    }%`,
+                  },
+                ]}
+              />
+            </View>
+
             <Text style={styles.airflowHint}>
-              Maintain a consistent level
+              {!airflowDetected
+                ? 'Exhale gently toward the microphone.'
+                : airflowStability >= 80
+                  ? 'Your airflow is looking consistent.'
+                  : 'Try to maintain a more even airflow.'}
             </Text>
           </View>
 
@@ -625,132 +1118,149 @@ export default function SteadyAirflowMaintenanceScreen({
             {`${params.durationSec} seconds.`}
           </Text>
         </View>
+
+        {quitModal}
       </View>
     );
   }
 
   if (phase === 'processing') {
     return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title="Analyzing your airflow"
-        message="Measuring airflow stability and duration..."
-        onBack={handleBack}
-      />
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing your airflow"
+          message="Measuring airflow stability and duration..."
+          onBack={handleBack}
+        />
+        {quitModal}
+      </>
     );
   }
 
   return (
-    <ExerciseResultsScreen
-      title="Exercise Complete"
-      subtitle="Your steady airflow results"
-      score={averageScore}
-      resultIcon={
-        averageScore >= 70
-          ? 'checkmark'
-          : 'analytics-outline'
-      }
-      scoreMessage={
-        averageScore >= 90
-          ? 'Excellent airflow control!'
-          : averageScore >= 75
-            ? 'Great work!'
-            : averageScore >= 60
-              ? 'Good effort!'
-              : 'Keep practicing!'
-      }
-      onBack={handleBack}
-      onRetry={retryExercise}
-      onExit={() => router.replace('/dashboard?tab=exercises')}
-    >
-      <View style={styles.statsGrid}>
-        <View style={styles.resultStat}>
-          <Text style={styles.resultStatValue}>
-            {Math.round(averageStability)}%
-          </Text>
-          <Text style={styles.resultStatLabel}>
-            Avg. Stability
-          </Text>
-        </View>
-
-        <View style={styles.resultStat}>
-          <Text style={styles.resultStatValue}>
-            {averageDuration.toFixed(1)}s
-          </Text>
-          <Text style={styles.resultStatLabel}>
-            Avg. Duration
-          </Text>
-        </View>
-
-        <View style={styles.resultStat}>
-          <Text style={styles.resultStatValue}>
-            {passedReps}/{repResults.length}
-          </Text>
-          <Text style={styles.resultStatLabel}>Passed</Text>
-        </View>
-
-        <View style={styles.resultStat}>
-          <Text style={styles.resultStatValue}>
-            {params.stabilityThreshold}%
-          </Text>
-          <Text style={styles.resultStatLabel}>Target</Text>
-        </View>
-      </View>
-
-      <Text style={styles.resultsSectionTitle}>
-        Repetition Results
-      </Text>
-
-      {repResults.map(result => (
-        <View
-          key={`rep-${result.rep}`}
-          style={styles.repCard}
-        >
-          <View style={styles.repHeader}>
-            <Text style={styles.repTitle}>
-              Repetition {result.rep}
+    <>
+      <ExerciseResultsScreen
+        title="Exercise Complete"
+        subtitle="Your steady airflow results"
+        score={averageScore}
+        resultIcon={
+          averageScore >= 70
+            ? 'checkmark'
+            : 'analytics-outline'
+        }
+        scoreMessage={
+          averageScore >= 90
+            ? 'Excellent airflow control!'
+            : averageScore >= 75
+              ? 'Great work!'
+              : averageScore >= 60
+                ? 'Good effort!'
+                : 'Keep practicing!'
+        }
+        onBack={handleBack}
+        onRetry={retryExercise}
+        onExit={() => {
+          void quitExercise();
+        }}
+      >
+        <View style={styles.statsGrid}>
+          <View style={styles.resultStat}>
+            <Text style={styles.resultStatValue}>
+              {Math.round(averageStability)}%
             </Text>
+            <Text style={styles.resultStatLabel}>
+              Avg. Stability
+            </Text>
+          </View>
 
-            <View
-              style={[
-                styles.passBadge,
-                !result.score.passed && styles.failBadge,
-              ]}
-            >
-              <Text style={styles.passBadgeText}>
-                {result.score.passed
-                  ? 'PASS'
-                  : 'KEEP PRACTICING'}
+          <View style={styles.resultStat}>
+            <Text style={styles.resultStatValue}>
+              {averageDuration.toFixed(1)}s
+            </Text>
+            <Text style={styles.resultStatLabel}>
+              Avg. Duration
+            </Text>
+          </View>
+
+          <View style={styles.resultStat}>
+            <Text style={styles.resultStatValue}>
+              {passedReps}/{repResults.length}
+            </Text>
+            <Text style={styles.resultStatLabel}>
+              Passed
+            </Text>
+          </View>
+
+          <View style={styles.resultStat}>
+            <Text style={styles.resultStatValue}>
+              {params.stabilityThreshold}%
+            </Text>
+            <Text style={styles.resultStatLabel}>
+              Target
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.resultsSectionTitle}>
+          Repetition Results
+        </Text>
+
+        {repResults.map(result => (
+          <View
+            key={`rep-${result.rep}`}
+            style={styles.repCard}
+          >
+            <View style={styles.repHeader}>
+              <Text style={styles.repTitle}>
+                Repetition {result.rep}
               </Text>
+
+              <View
+                style={[
+                  styles.passBadge,
+                  !result.score.passed && styles.failBadge,
+                ]}
+              >
+                <Text style={styles.passBadgeText}>
+                  {result.score.passed
+                    ? 'PASS'
+                    : 'KEEP PRACTICING'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.repMetrics}>
+              <Metric
+                label="Stability"
+                value={`${Math.round(
+                  result.measurement.stabilityPct,
+                )}%`}
+              />
+
+              <Metric
+                label="Duration"
+                value={`${result.measurement.durationSec.toFixed(1)}s`}
+              />
+
+              <Metric
+                label="Score"
+                value={`${result.score.score}%`}
+              />
+
+              <Metric
+                label="Detected"
+                value={
+                  result.measurement.detected ? 'Yes' : 'No'
+                }
+              />
             </View>
           </View>
+        ))}
+      </ExerciseResultsScreen>
 
-          <View style={styles.repMetrics}>
-            <Metric
-              label="Stability"
-              value={`${Math.round(
-                result.measurement.stabilityPct,
-              )}%`}
-            />
-
-            <Metric
-              label="Duration"
-              value={`${result.measurement.durationSec.toFixed(1)}s`}
-            />
-
-            <Metric
-              label="Score"
-              value={`${result.score.score}%`}
-            />
-
-            <Metric
-              label="Detected"
-              value={result.measurement.detected ? 'Yes' : 'No'}
-            />
-          </View>
-        </View>
-      ))}
-    </ExerciseResultsScreen>
+      {quitModal}
+    </>
   );
 }
 
@@ -840,12 +1350,35 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: LIGHT_PINK,
   },
+  airflowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   airflowLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
     letterSpacing: 1,
     color: MUTED,
-    textAlign: 'center',
+  },
+  airflowStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: MUTED,
+  },
+  statusDotActive: {
+    backgroundColor: ACCENT,
+  },
+  airflowStatusText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: BROWN,
   },
   airflowIndicator: {
     width: '100%',
@@ -859,6 +1392,35 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 6,
     backgroundColor: BROWN,
+  },
+  stabilityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 18,
+  },
+  stabilityLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 11,
+    letterSpacing: 1,
+    color: MUTED,
+  },
+  stabilityValue: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 14,
+    color: BROWN,
+  },
+  stabilityTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: LIGHT_GRAY,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  stabilityFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: ACCENT,
   },
   airflowHint: {
     marginTop: 8,
@@ -922,7 +1484,7 @@ const styles = StyleSheet.create({
   repCard: {
     backgroundColor: WHITE,
     borderWidth: 1,
-    borderColor: '#F2DDE5',
+    borderColor: BORDER,
     borderRadius: 18,
     padding: 15,
     marginBottom: 10,
@@ -970,5 +1532,82 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

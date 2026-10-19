@@ -8,6 +8,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -50,6 +52,7 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 const PREPARATION_COUNTDOWN = 3;
+const PROCESSING_DELAY_MS = 1200;
 
 type Phase =
   | 'instructions'
@@ -86,6 +89,7 @@ export default function SustainedSSSSScreen({
   const [repResults, setRepResults] = useState<RepResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [showQuitModal, setShowQuitModal] = useState(false);
 
   const paramsRef = useRef<SustainedExhaleParams | null>(null);
   const tierRef = useRef<Tier | null>(initialTier ?? null);
@@ -100,13 +104,39 @@ export default function SustainedSSSSScreen({
   const mountedRef = useRef(true);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const quittingRef = useRef(false);
+  const showQuitModalRef = useRef(false);
+
+  // The recorder cannot safely resume the same PCM recording.
+  // An interrupted repetition is discarded and restarted.
+  const discardNextStopRef = useRef(false);
+
   const repResultsRef = useRef<RepResult[]>([]);
   const currentRepRef = useRef(1);
+  const phaseRef = useRef<Phase>('instructions');
+
+  // Tracks whether a repetition has already been analyzed.
+  // Processing can pause without analyzing it again.
+  const pendingProcessingRef = useRef(false);
+  const pendingFinalRepRef = useRef(false);
+  const saveInProgressRef = useRef(false);
 
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const beginCountdownRef = useRef<(() => void) | null>(null);
+  const finishProcessingRef = useRef<(() => void) | null>(null);
+
+  const updatePhase = useCallback((nextPhase: Phase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }, []);
+
+  const setQuitModalVisible = useCallback((visible: boolean) => {
+    showQuitModalRef.current = visible;
+    setShowQuitModal(visible);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,7 +262,12 @@ export default function SustainedSSSSScreen({
 
   const handleLiveFrame = useCallback(
     (frame: { volume: number }) => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        quittingRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
         return;
       }
 
@@ -240,6 +275,117 @@ export default function SustainedSSSSScreen({
     },
     [],
   );
+
+  const finishProcessing = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      quittingRef.current ||
+      !pendingProcessingRef.current
+    ) {
+      return;
+    }
+
+    if (pendingFinalRepRef.current) {
+      if (saveInProgressRef.current) {
+        return;
+      }
+
+      saveInProgressRef.current = true;
+
+      const finalResults = [...repResultsRef.current];
+      const currentTier = tierRef.current;
+
+      const finalScore =
+        finalResults.length > 0
+          ? Math.round(
+              finalResults.reduce(
+                (sum, item) => sum + item.score.score,
+                0,
+              ) / finalResults.length,
+            )
+          : 0;
+
+      const saveResults = async () => {
+        try {
+          if (currentTier) {
+            await saveCompletedExercise(
+              'breathControl',
+              'sustainedSSSS',
+              currentTier,
+              finalScore,
+            );
+          }
+        } catch (saveError) {
+          console.error(
+            'Failed to save Sustained SSSS progress:',
+            saveError,
+          );
+        } finally {
+          saveInProgressRef.current = false;
+        }
+
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          quittingRef.current
+        ) {
+          return;
+        }
+
+        pendingProcessingRef.current = false;
+        pendingFinalRepRef.current = false;
+
+        setRepResults(finalResults);
+        updatePhase('results');
+
+        startingRef.current = false;
+        finishingRef.current = false;
+      };
+
+      void saveResults();
+      return;
+    }
+
+    pendingProcessingRef.current = false;
+    pendingFinalRepRef.current = false;
+
+    const nextRep = currentRepRef.current + 1;
+
+    currentRepRef.current = nextRep;
+    setCurrentRep(nextRep);
+    setElapsed(0);
+    setVolume(null);
+
+    startingRef.current = false;
+    finishingRef.current = false;
+
+    beginCountdownRef.current?.();
+  }, [updatePhase]);
+
+  useEffect(() => {
+    finishProcessingRef.current = finishProcessing;
+  }, [finishProcessing]);
+
+  const scheduleProcessingCompletion = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      quittingRef.current ||
+      !pendingProcessingRef.current
+    ) {
+      return;
+    }
+
+    if (processingTimerRef.current) {
+      clearTimeout(processingTimerRef.current);
+    }
+
+    processingTimerRef.current = setTimeout(() => {
+      processingTimerRef.current = null;
+      finishProcessingRef.current?.();
+    }, PROCESSING_DELAY_MS);
+  }, []);
 
   const handleRecordingStop = useCallback(
     (
@@ -250,8 +396,21 @@ export default function SustainedSSSSScreen({
         return;
       }
 
+      // If the user opened the modal during recording, do not
+      // analyze the interrupted audio or add a repetition result.
+      if (discardNextStopRef.current) {
+        discardNextStopRef.current = false;
+        startingRef.current = false;
+        finishingRef.current = false;
+        return;
+      }
+
+      if (pausedRef.current || quittingRef.current) {
+        return;
+      }
+
       clearTimers();
-      setPhase('processing');
+      updatePhase('processing');
       setVolume(null);
 
       startingRef.current = false;
@@ -264,7 +423,7 @@ export default function SustainedSSSSScreen({
         setError(
           'Exercise parameters are unavailable. Please try again.',
         );
-        setPhase('instructions');
+        updatePhase('instructions');
         return;
       }
 
@@ -294,71 +453,11 @@ export default function SustainedSSSSScreen({
         repResultsRef.current = updatedResults;
         setRepResults(updatedResults);
 
-        if (
-          currentRepRef.current <
-          adaptiveParams.repetitions
-        ) {
-          processingTimerRef.current = setTimeout(() => {
-            if (!mountedRef.current) {
-              return;
-            }
+        pendingProcessingRef.current = true;
+        pendingFinalRepRef.current =
+          currentRepRef.current >= adaptiveParams.repetitions;
 
-            const nextRep = currentRepRef.current + 1;
-
-            currentRepRef.current = nextRep;
-            setCurrentRep(nextRep);
-            setElapsed(0);
-            setVolume(null);
-
-            startingRef.current = false;
-            finishingRef.current = false;
-
-            beginCountdownRef.current?.();
-          }, 1200);
-
-          return;
-        }
-
-        processingTimerRef.current = setTimeout(async () => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          const finalResults = repResultsRef.current;
-          const finalScore =
-            finalResults.length > 0
-              ? Math.round(
-                  finalResults.reduce(
-                    (sum, item) => sum + item.score.score,
-                    0,
-                  ) / finalResults.length,
-                )
-              : 0;
-
-          try {
-            await saveCompletedExercise(
-              'breathControl',
-              'sustainedSSSS',
-              currentTier,
-              finalScore,
-            );
-          } catch (saveError) {
-            console.error(
-              'Failed to save Sustained SSSS progress:',
-              saveError,
-            );
-          }
-
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setRepResults(finalResults);
-          setPhase('results');
-
-          startingRef.current = false;
-          finishingRef.current = false;
-        }, 1200);
+        scheduleProcessingCompletion();
       } catch (analysisError) {
         console.error(
           'Sustained SSSS analysis failed:',
@@ -374,13 +473,13 @@ export default function SustainedSSSSScreen({
         setError(
           'We could not analyze your recording. Please try again.',
         );
-        setPhase('instructions');
+        updatePhase('instructions');
 
         startingRef.current = false;
         finishingRef.current = false;
       }
     },
-    [clearTimers],
+    [clearTimers, scheduleProcessingCompletion, updatePhase],
   );
 
   const {
@@ -397,7 +496,12 @@ export default function SustainedSSSSScreen({
   }, [startRecording, stopRecording]);
 
   const startRecordingPhase = useCallback(async () => {
-    if (!mountedRef.current || startingRef.current) {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      quittingRef.current ||
+      startingRef.current
+    ) {
       return;
     }
 
@@ -407,7 +511,7 @@ export default function SustainedSSSSScreen({
       setError(
         'Exercise parameters are not ready. Please try again.',
       );
-      setPhase('instructions');
+      updatePhase('instructions');
       return;
     }
 
@@ -418,7 +522,7 @@ export default function SustainedSSSSScreen({
       setError(
         'Audio recorder is not ready. Please try again.',
       );
-      setPhase('instructions');
+      updatePhase('instructions');
       return;
     }
 
@@ -430,12 +534,20 @@ export default function SustainedSSSSScreen({
     setElapsed(0);
     setVolume(null);
     setError(null);
-    setPhase('recording');
+    updatePhase('recording');
 
     try {
+      // Only accept audio from the new, uninterrupted recording.
+      discardNextStopRef.current = false;
+
       await start();
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        quittingRef.current
+      ) {
+        stop();
         return;
       }
 
@@ -444,6 +556,8 @@ export default function SustainedSSSSScreen({
       recordingTimerRef.current = setInterval(() => {
         if (
           !mountedRef.current ||
+          pausedRef.current ||
+          quittingRef.current ||
           finishingRef.current
         ) {
           return;
@@ -469,7 +583,7 @@ export default function SustainedSSSSScreen({
         recordingError,
       );
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || quittingRef.current) {
         return;
       }
 
@@ -478,41 +592,54 @@ export default function SustainedSSSSScreen({
       setError(
         'Microphone access or recording failed. Please try again.',
       );
-      setPhase('instructions');
+      updatePhase('instructions');
 
       startingRef.current = false;
       finishingRef.current = false;
     }
-  }, [clearTimers]);
+  }, [clearTimers, updatePhase]);
 
   const beginCountdown = useCallback(() => {
-    if (!mountedRef.current || startingRef.current) {
+    if (
+      !mountedRef.current ||
+      pausedRef.current ||
+      quittingRef.current ||
+      startingRef.current
+    ) {
       return;
     }
 
     clearTimers();
 
     setCountdown(PREPARATION_COUNTDOWN);
-    setPhase('countdown');
+    updatePhase('countdown');
 
     let value = PREPARATION_COUNTDOWN;
 
     countdownTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        quittingRef.current
+      ) {
         return;
       }
 
       value -= 1;
 
       if (value <= 0) {
-        clearTimers();
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+
         startRecordingPhase();
         return;
       }
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers, startRecordingPhase]);
+  }, [clearTimers, startRecordingPhase, updatePhase]);
 
   useEffect(() => {
     beginCountdownRef.current = beginCountdown;
@@ -523,13 +650,17 @@ export default function SustainedSSSSScreen({
 
     return () => {
       mountedRef.current = false;
+      pausedRef.current = true;
       clearTimers();
       stopRecordingRef.current?.();
     };
   }, [clearTimers]);
 
   const startExercise = useCallback(() => {
-    if (startingRef.current) {
+    if (
+      startingRef.current ||
+      quittingRef.current
+    ) {
       return;
     }
 
@@ -539,6 +670,13 @@ export default function SustainedSSSSScreen({
       );
       return;
     }
+
+    pausedRef.current = false;
+    quittingRef.current = false;
+    discardNextStopRef.current = false;
+    pendingProcessingRef.current = false;
+    pendingFinalRepRef.current = false;
+    saveInProgressRef.current = false;
 
     clearTimers();
 
@@ -561,6 +699,8 @@ export default function SustainedSSSSScreen({
   const finishRecording = useCallback(() => {
     if (
       !mountedRef.current ||
+      pausedRef.current ||
+      quittingRef.current ||
       finishingRef.current
     ) {
       return;
@@ -578,12 +718,153 @@ export default function SustainedSSSSScreen({
     stop();
   }, [clearTimers]);
 
-  const retryExercise = useCallback(() => {
+  const openQuitModal = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quittingRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    const currentPhase = phaseRef.current;
+
+    if (
+      currentPhase === 'results' ||
+      currentPhase === 'instructions'
+    ) {
+      // These phases have no active recording to pause.
+      pausedRef.current = true;
+      clearTimers();
+      setQuitModalVisible(true);
+      return;
+    }
+
+    pausedRef.current = true;
     clearTimers();
+    setVolume(null);
+
+    if (currentPhase === 'recording') {
+      // Discard this repetition, but retain all earlier results.
+      discardNextStopRef.current = true;
+      startingRef.current = false;
+      finishingRef.current = true;
+
+      stopRecordingRef.current?.();
+
+      setElapsed(0);
+    } else if (currentPhase === 'countdown') {
+      // Resume this repetition with a fresh countdown.
+      setCountdown(PREPARATION_COUNTDOWN);
+    } else if (currentPhase === 'processing') {
+      // Keep the analyzed result and resume its pending transition.
+      // Do not call the analysis function again.
+    }
+
+    setQuitModalVisible(true);
+  }, [clearTimers, setQuitModalVisible]);
+
+  const continueExercise = useCallback(() => {
+    if (
+      !mountedRef.current ||
+      quittingRef.current ||
+      !showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    setQuitModalVisible(false);
+    pausedRef.current = false;
+
+    const previousPhase = phaseRef.current;
+
+    if (previousPhase === 'recording') {
+      // The recorder cannot safely resume the previous PCM buffer.
+      // Restart only the current repetition after a new countdown.
+      startingRef.current = false;
+      finishingRef.current = false;
+      setElapsed(0);
+      setVolume(null);
+      setCountdown(PREPARATION_COUNTDOWN);
+      beginCountdownRef.current?.();
+      return;
+    }
+
+    if (previousPhase === 'countdown') {
+      setCountdown(PREPARATION_COUNTDOWN);
+      beginCountdownRef.current?.();
+      return;
+    }
+
+    if (previousPhase === 'processing') {
+      if (pendingProcessingRef.current) {
+        scheduleProcessingCompletion();
+      } else {
+        // A recorder stop may still be completing asynchronously.
+        // Keep the same repetition and prepare a fresh attempt.
+        startingRef.current = false;
+        finishingRef.current = false;
+        setElapsed(0);
+        setCountdown(PREPARATION_COUNTDOWN);
+        beginCountdownRef.current?.();
+      }
+    }
+  }, [scheduleProcessingCompletion, setQuitModalVisible]);
+
+  const quitExercise = useCallback(() => {
+    if (quittingRef.current) {
+      return;
+    }
+
+    quittingRef.current = true;
+    pausedRef.current = true;
+    setQuitModalVisible(false);
+    clearTimers();
+
+    startingRef.current = false;
+    finishingRef.current = true;
+
+    // Any asynchronous stop callback must not be analyzed on exit.
+    discardNextStopRef.current = true;
+    stopRecordingRef.current?.();
+
+    router.replace('/dashboard?tab=exercises');
+  }, [clearTimers, setQuitModalVisible]);
+
+  const goBack = useCallback(() => {
+    openQuitModal();
+  }, [openQuitModal]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        openQuitModal();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [openQuitModal]);
+
+  const retryExercise = useCallback(() => {
+    pausedRef.current = false;
+    quittingRef.current = false;
+    setQuitModalVisible(false);
+
+    clearTimers();
+    discardNextStopRef.current = true;
     stopRecordingRef.current?.();
 
     startingRef.current = false;
     finishingRef.current = false;
+    pendingProcessingRef.current = false;
+    pendingFinalRepRef.current = false;
+    saveInProgressRef.current = false;
 
     repResultsRef.current = [];
     currentRepRef.current = 1;
@@ -594,19 +875,8 @@ export default function SustainedSSSSScreen({
     setVolume(null);
     setError(null);
     setCountdown(PREPARATION_COUNTDOWN);
-    setPhase('instructions');
-  }, [clearTimers]);
-
-  const goBack = useCallback(() => {
-    clearTimers();
-
-    startingRef.current = false;
-    finishingRef.current = true;
-
-    stopRecordingRef.current?.();
-
-    router.replace('/dashboard?tab=exercises');
-  }, [clearTimers]);
+    updatePhase('instructions');
+  }, [clearTimers, setQuitModalVisible, updatePhase]);
 
   const averageDuration =
     repResults.length > 0
@@ -640,9 +910,75 @@ export default function SustainedSSSSScreen({
     item => item.score.passed,
   ).length;
 
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.quitModalCard}>
+          <View style={styles.modalIconCircle}>
+            <Ionicons
+              name="exit-outline"
+              size={32}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>
+            Quit exercise?
+          </Text>
+
+          <Text style={styles.modalMessage}>
+            Your current repetition will be paused. You can
+            continue your exercise or quit and return to the
+            exercises page.
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={continueExercise}
+          >
+            <Ionicons
+              name="play"
+              size={19}
+              color={WHITE}
+            />
+
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={quitExercise}
+          >
+            <Text style={styles.quitButtonText}>
+              Quit Exercise
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loadingParams || !params || !tier) {
     return (
       <View style={styles.centerScreen}>
+        {quitModal}
+
         <View style={styles.largeIconCircle}>
           <Ionicons
             name="options-outline"
@@ -670,53 +1006,61 @@ export default function SustainedSSSSScreen({
 
   if (phase === 'instructions') {
     return (
-      <ExerciseScreen
-        category="Breath Control"
-        title={'Sustained "SSSS"'}
-        icon="cloud-outline"
-        instructions={'Take a comfortable breath, then release the air through your teeth using a steady "ssss" hissing sound.'}
-        preparationSteps={[
-          {
-            icon: 'leaf-outline',
-            text: 'Sit or stand with a relaxed posture.',
-          },
-          {
-            icon: 'body-outline',
-            text: 'Take a comfortable breath without overfilling your lungs.',
-          },
-          {
-            icon: 'volume-low-outline',
-            text: 'Release the air using a continuous "ssss" sound.',
-          },
-          {
-            icon: 'mic-outline',
-            text: 'Keep the sound steady and stay close to the microphone.',
-          },
-        ]}
-        targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
-        targetHint={'sustained "ssss"'}
-        repetitions={params.repetitions}
-        tip={'Focus on keeping the "ssss" sound smooth and consistent instead of forcing a burst of air.'}
-        tier={tier}
-        error={error}
-        onBack={goBack}
-        onStart={startExercise}
-      />
+      <>
+        {quitModal}
+
+        <ExerciseScreen
+          category="Breath Control"
+          title={'Sustained "SSSS"'}
+          icon="cloud-outline"
+          instructions={'Take a comfortable breath, then release the air through your teeth using a steady "ssss" hissing sound.'}
+          preparationSteps={[
+            {
+              icon: 'leaf-outline',
+              text: 'Sit or stand with a relaxed posture.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Take a comfortable breath without overfilling your lungs.',
+            },
+            {
+              icon: 'volume-low-outline',
+              text: 'Release the air using a continuous "ssss" sound.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'Keep the sound steady and stay close to the microphone.',
+            },
+          ]}
+          targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
+          targetHint={'sustained "ssss"'}
+          repetitions={params.repetitions}
+          tip={'Focus on keeping the "ssss" sound smooth and consistent instead of forcing a burst of air.'}
+          tier={tier}
+          error={error}
+          onBack={goBack}
+          onStart={startExercise}
+        />
+      </>
     );
   }
 
   if (phase === 'countdown') {
     return (
-      <ExerciseCountdownScreen
-        icon="cloud-outline"
-        title="Get Ready"
-        currentRep={currentRep}
-        repetitions={params.repetitions}
-        countdown={countdown}
-        promptTitle="Prepare to make a steady SSSS sound"
-        prompt="Keep the hiss smooth and continuous."
-        onBack={goBack}
-      />
+      <>
+        {quitModal}
+
+        <ExerciseCountdownScreen
+          icon="cloud-outline"
+          title="Get Ready"
+          currentRep={currentRep}
+          repetitions={params.repetitions}
+          countdown={countdown}
+          promptTitle="Prepare to make a steady SSSS sound"
+          prompt="Keep the hiss smooth and continuous."
+          onBack={goBack}
+        />
+      </>
     );
   }
 
@@ -726,6 +1070,8 @@ export default function SustainedSSSSScreen({
 
     return (
       <View style={styles.container}>
+        {quitModal}
+
         <ScrollView
           contentContainerStyle={styles.recordingContent}
           showsVerticalScrollIndicator={false}
@@ -748,6 +1094,20 @@ export default function SustainedSSSSScreen({
                 Repetition {currentRep} of {params.repetitions}
               </Text>
             </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Pause exercise"
+              hitSlop={10}
+              style={styles.pauseButton}
+              onPress={openQuitModal}
+            >
+              <Ionicons
+                name="pause"
+                size={21}
+                color={BROWN}
+              />
+            </Pressable>
           </View>
 
           <View style={styles.sssssCard}>
@@ -839,162 +1199,187 @@ export default function SustainedSSSSScreen({
     const isFinalRep = currentRep >= params.repetitions;
 
     return (
-      <ExerciseProcessingScreen
-        icon="analytics-outline"
-        title={
-          isFinalRep
-            ? 'Analyzing Your Results'
-            : 'Analyzing Your Hissing Sound'
-        }
-        message={
-          isFinalRep
-            ? 'Calculating your overall breath control score'
-            : `Processing repetition ${currentRep}`
-        }
-      />
+      <>
+        {quitModal}
+
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title={
+            isFinalRep
+              ? 'Analyzing Your Results'
+              : 'Analyzing Your Hissing Sound'
+          }
+          message={
+            isFinalRep
+              ? 'Calculating your overall breath control score'
+              : `Processing repetition ${currentRep}`
+          }
+        />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Pause exercise"
+          style={styles.processingPauseButton}
+          onPress={openQuitModal}
+        >
+          <Ionicons
+            name="pause-circle-outline"
+            size={25}
+            color={BROWN}
+          />
+
+          <Text style={styles.processingPauseText}>
+            Pause
+          </Text>
+        </Pressable>
+      </>
     );
   }
 
   return (
-    <ExerciseResultsScreen
-      title="Exercise Complete!"
-      subtitle="Here's how you performed"
-      score={averageScore}
-      resultIcon="checkmark"
-      onRetry={retryExercise}
-      onExit={goBack}
-    >
-      <View style={styles.metricsGrid}>
-        <View style={styles.resultMetricCard}>
-          <Ionicons
-            name="timer-outline"
-            size={24}
-            color={BROWN}
-          />
+    <>
+      {quitModal}
 
-          <Text style={styles.resultMetricValue}>
-            {averageDuration.toFixed(1)}s
-          </Text>
+      <ExerciseResultsScreen
+        title="Exercise Complete!"
+        subtitle="Here's how you performed"
+        score={averageScore}
+        resultIcon="checkmark"
+        onRetry={retryExercise}
+        onExit={goBack}
+      >
+        <View style={styles.metricsGrid}>
+          <View style={styles.resultMetricCard}>
+            <Ionicons
+              name="timer-outline"
+              size={24}
+              color={BROWN}
+            />
 
-          <Text style={styles.resultMetricLabel}>
-            Avg. Duration
-          </Text>
-        </View>
-
-        <View style={styles.resultMetricCard}>
-          <Ionicons
-            name="pulse-outline"
-            size={24}
-            color={BROWN}
-          />
-
-          <Text style={styles.resultMetricValue}>
-            {Math.round(averageConsistency)}%
-          </Text>
-
-          <Text style={styles.resultMetricLabel}>
-            Consistency
-          </Text>
-        </View>
-
-        <View style={styles.resultMetricCard}>
-          <Ionicons
-            name="repeat-outline"
-            size={24}
-            color={BROWN}
-          />
-
-          <Text style={styles.resultMetricValue}>
-            {repResults.length}/{params.repetitions}
-          </Text>
-
-          <Text style={styles.resultMetricLabel}>
-            Repetitions
-          </Text>
-        </View>
-
-        <View style={styles.resultMetricCard}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={24}
-            color={BROWN}
-          />
-
-          <Text style={styles.resultMetricValue}>
-            {passedReps}
-          </Text>
-
-          <Text style={styles.resultMetricLabel}>
-            Passed
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.feedbackCard}>
-        <Ionicons
-          name="chatbubble-ellipses-outline"
-          size={24}
-          color={BROWN}
-        />
-
-        <View style={styles.feedbackContent}>
-          <Text style={styles.feedbackTitle}>
-            Feedback
-          </Text>
-
-          <Text style={styles.feedbackText}>
-            {averageScore >= 85
-              ? 'Excellent control! Your SSSS sound was sustained with strong consistency.'
-              : averageScore >= 70
-                ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
-                : averageScore >= 50
-                  ? 'Keep practicing. Try to maintain a smoother and more consistent SSSS sound.'
-                  : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous SSSS sound.'}
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.repResultsTitle}>
-        Repetition Results
-      </Text>
-
-      {repResults.map(result => (
-        <View
-          key={`rep-${result.rep}`}
-          style={styles.repResultCard}
-        >
-          <View style={styles.repResultLeft}>
-            <View style={styles.repNumber}>
-              <Text style={styles.repNumberText}>
-                {result.rep}
-              </Text>
-            </View>
-
-            <View>
-              <Text style={styles.repResultTitle}>
-                Repetition {result.rep}
-              </Text>
-
-              <Text style={styles.repResultSubtitle}>
-                {result.measurement.actualDurationSec.toFixed(1)}
-                s • {Math.round(result.measurement.consistencyPct)}
-                % consistency
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.repScore}>
-            <Text style={styles.repScoreText}>
-              {result.score.score}
+            <Text style={styles.resultMetricValue}>
+              {averageDuration.toFixed(1)}s
             </Text>
 
-            <Text style={styles.repScorePercent}>
-              %
+            <Text style={styles.resultMetricLabel}>
+              Avg. Duration
+            </Text>
+          </View>
+
+          <View style={styles.resultMetricCard}>
+            <Ionicons
+              name="pulse-outline"
+              size={24}
+              color={BROWN}
+            />
+
+            <Text style={styles.resultMetricValue}>
+              {Math.round(averageConsistency)}%
+            </Text>
+
+            <Text style={styles.resultMetricLabel}>
+              Consistency
+            </Text>
+          </View>
+
+          <View style={styles.resultMetricCard}>
+            <Ionicons
+              name="repeat-outline"
+              size={24}
+              color={BROWN}
+            />
+
+            <Text style={styles.resultMetricValue}>
+              {repResults.length}/{params.repetitions}
+            </Text>
+
+            <Text style={styles.resultMetricLabel}>
+              Repetitions
+            </Text>
+          </View>
+
+          <View style={styles.resultMetricCard}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={24}
+              color={BROWN}
+            />
+
+            <Text style={styles.resultMetricValue}>
+              {passedReps}
+            </Text>
+
+            <Text style={styles.resultMetricLabel}>
+              Passed
             </Text>
           </View>
         </View>
-      ))}
-    </ExerciseResultsScreen>
+
+        <View style={styles.feedbackCard}>
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={24}
+            color={BROWN}
+          />
+
+          <View style={styles.feedbackContent}>
+            <Text style={styles.feedbackTitle}>
+              Feedback
+            </Text>
+
+            <Text style={styles.feedbackText}>
+              {averageScore >= 85
+                ? 'Excellent control! Your SSSS sound was sustained with strong consistency.'
+                : averageScore >= 70
+                  ? 'Good work! Focus on keeping your airflow even throughout the entire sound.'
+                  : averageScore >= 50
+                    ? 'Keep practicing. Try to maintain a smoother and more consistent SSSS sound.'
+                    : 'Keep practicing your breath control. Focus on a steady stream of air and a continuous SSSS sound.'}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.repResultsTitle}>
+          Repetition Results
+        </Text>
+
+        {repResults.map(result => (
+          <View
+            key={`rep-${result.rep}`}
+            style={styles.repResultCard}
+          >
+            <View style={styles.repResultLeft}>
+              <View style={styles.repNumber}>
+                <Text style={styles.repNumberText}>
+                  {result.rep}
+                </Text>
+              </View>
+
+              <View>
+                <Text style={styles.repResultTitle}>
+                  Repetition {result.rep}
+                </Text>
+
+                <Text style={styles.repResultSubtitle}>
+                  {result.measurement.actualDurationSec.toFixed(1)}
+                  s • {Math.round(result.measurement.consistencyPct)}
+                  % consistency
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.repScore}>
+              <Text style={styles.repScoreText}>
+                {result.score.score}
+              </Text>
+
+              <Text style={styles.repScorePercent}>
+                %
+              </Text>
+            </View>
+          </View>
+        ))}
+      </ExerciseResultsScreen>
+    </>
   );
 }
 
@@ -1066,6 +1451,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: MUTED,
     marginTop: 2,
+  },
+  pauseButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sssssCard: {
     backgroundColor: LIGHT_PINK,
@@ -1188,6 +1583,109 @@ const styles = StyleSheet.create({
   },
   spinner: {
     marginTop: 28,
+  },
+  processingPauseButton: {
+    position: 'absolute',
+    right: 22,
+    top: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  processingPauseText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 13,
+    color: BROWN,
+    marginLeft: 5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(45, 29, 23, 0.48)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 26,
+  },
+  quitModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: WHITE,
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  modalIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 22,
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 52,
+    borderRadius: 26,
+    backgroundColor: BROWN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 16,
+    color: WHITE,
+    marginLeft: 8,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 50,
+    borderRadius: 25,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingHorizontal: 16,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  buttonPressed: {
+    opacity: 0.82,
   },
   metricsGrid: {
     flexDirection: 'row',

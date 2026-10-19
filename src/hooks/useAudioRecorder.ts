@@ -1,20 +1,21 @@
+
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
-} from "react";
+} from 'react';
 
 import {
   AudioManager,
   AudioRecorder,
-} from "react-native-audio-api";
+} from 'react-native-audio-api';
 
-import { analyzePitchFrame } from "@/utils/dsp/pitch";
+import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import {
   calcRMS,
   rmsToDb,
-} from "@/utils/dsp/rms";
+} from '@/utils/dsp/rms';
 
 const DEFAULT_SAMPLE_RATE = 44100;
 const BUFFER_LENGTH = 2048;
@@ -36,111 +37,66 @@ export interface LiveAudioFrame {
 }
 
 interface UseAudioRecorderOptions {
-  onFrame?: (
-    frame: LiveAudioFrame
-  ) => void;
-
+  onFrame?: (frame: LiveAudioFrame) => void;
   onStop?: (
     samples: Float32Array,
-    sampleRate: number
+    sampleRate: number,
   ) => void;
 }
 
-function calculatePeak(
-  samples: Float32Array
-): number {
+function calculatePeak(samples: Float32Array): number {
   let peak = 0;
 
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
+  for (let i = 0; i < samples.length; i++) {
     const value = samples[i];
 
-    if (!Number.isFinite(value)) {
-      continue;
-    }
+    if (!Number.isFinite(value)) continue;
 
-    const absolute =
-      Math.abs(value);
-
-    if (absolute > peak) {
-      peak = absolute;
-    }
+    peak = Math.max(peak, Math.abs(value));
   }
 
   return peak;
 }
 
-function calculateDCOffset(
-  samples: Float32Array
-): number {
-  if (samples.length === 0) {
-    return 0;
-  }
+function calculateDCOffset(samples: Float32Array): number {
+  if (samples.length === 0) return 0;
 
   let sum = 0;
   let count = 0;
 
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
+  for (let i = 0; i < samples.length; i++) {
     const value = samples[i];
 
-    if (!Number.isFinite(value)) {
-      continue;
-    }
+    if (!Number.isFinite(value)) continue;
 
     sum += value;
     count++;
   }
 
-  if (count === 0) {
-    return 0;
-  }
-
-  return sum / count;
+  return count > 0 ? sum / count : 0;
 }
 
 function analyzeAudioSignal(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
 ) {
   let finiteSamples = 0;
   let zeroSamples = 0;
 
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
+  for (let i = 0; i < samples.length; i++) {
     const value = samples[i];
 
-    if (!Number.isFinite(value)) {
-      continue;
-    }
+    if (!Number.isFinite(value)) continue;
 
     finiteSamples++;
 
-    if (value === 0) {
-      zeroSamples++;
-    }
+    if (value === 0) zeroSamples++;
   }
 
-  const rms =
-    calcRMS(samples);
-
-  const db =
-    rmsToDb(rms);
-
-  const peak =
-    calculatePeak(samples);
-
-  const dcOffset =
-    calculateDCOffset(samples);
+  const rms = calcRMS(samples);
+  const db = rmsToDb(rms);
+  const peak = calculatePeak(samples);
+  const dcOffset = calculateDCOffset(samples);
 
   return {
     sampleRate,
@@ -155,343 +111,269 @@ function analyzeAudioSignal(
 }
 
 export function useAudioRecorder(
-  options: UseAudioRecorderOptions = {}
+  options: UseAudioRecorderOptions = {},
 ) {
-  const [
-    isRecording,
-    setIsRecording,
-  ] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
   const onFrameRef =
-    useRef<
-      UseAudioRecorderOptions["onFrame"]
-    >(options.onFrame);
+    useRef<UseAudioRecorderOptions['onFrame']>(
+      options.onFrame,
+    );
 
   const onStopRef =
-    useRef<
-      UseAudioRecorderOptions["onStop"]
-    >(options.onStop);
+    useRef<UseAudioRecorderOptions['onStop']>(
+      options.onStop,
+    );
 
   useEffect(() => {
-    onFrameRef.current =
-      options.onFrame;
+    onFrameRef.current = options.onFrame;
   }, [options.onFrame]);
 
   useEffect(() => {
-    onStopRef.current =
-      options.onStop;
+    onStopRef.current = options.onStop;
   }, [options.onStop]);
 
-  const recorderRef =
-    useRef<AudioRecorder | null>(null);
+  const recorderRef = useRef<AudioRecorder | null>(null);
+  const chunksRef = useRef<Float32Array[]>([]);
+  const sampleCountRef = useRef(0);
+  const lastLiveAnalysisRef = useRef(0);
+  const sessionActiveRef = useRef(false);
 
-  const chunksRef =
-    useRef<Float32Array[]>([]);
+  const startingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const discardOnStopRef = useRef(false);
 
-  const sampleCountRef =
-    useRef(0);
+  const startTaskRef = useRef<Promise<void> | null>(null);
+  const stopTaskRef = useRef<Promise<void> | null>(null);
 
-  const lastLiveAnalysisRef =
-    useRef(0);
+  const lastValidPitchRef = useRef(0);
+  const lastValidNoteRef = useRef('--');
+  const lastValidClarityRef = useRef(0);
+  const lastValidPitchTimeRef = useRef(0);
 
-  const sessionActiveRef =
-    useRef(false);
+  const resetLiveDetection = useCallback(() => {
+    lastValidPitchRef.current = 0;
+    lastValidNoteRef.current = '--';
+    lastValidClarityRef.current = 0;
+    lastValidPitchTimeRef.current = 0;
+  }, []);
 
-  const lastValidPitchRef =
-    useRef(0);
+  const emitLiveFrame = useCallback(
+    (frame: LiveAudioFrame) => {
+      if (stopRequestedRef.current) return;
 
-  const lastValidNoteRef =
-    useRef("--");
+      try {
+        onFrameRef.current?.(frame);
+      } catch (error) {
+        console.error(
+          'Live frame callback error:',
+          error,
+        );
+      }
+    },
+    [],
+  );
 
-  const lastValidClarityRef =
-    useRef(0);
+  const startRecording = useCallback((): Promise<void> => {
+    if (
+      startingRef.current ||
+      recorderRef.current ||
+      startTaskRef.current ||
+      stopTaskRef.current
+    ) {
+      console.warn(
+        'Recorder is already active, starting, or stopping.',
+      );
 
-  const lastValidPitchTimeRef =
-    useRef(0);
+      return Promise.resolve();
+    }
 
-  const resetLiveDetection =
-    useCallback(() => {
-      lastValidPitchRef.current = 0;
+    startingRef.current = true;
+    stopRequestedRef.current = false;
+    discardOnStopRef.current = false;
 
-      lastValidNoteRef.current =
-        "--";
+    const startTask = (async () => {
+      let recorder: AudioRecorder | null = null;
 
-      lastValidClarityRef.current =
-        0;
-
-      lastValidPitchTimeRef.current =
-        0;
-    }, []);
-
-  const emitLiveFrame =
-    useCallback(
-      (
-        frame: LiveAudioFrame
-      ) => {
-        try {
-          onFrameRef.current?.(
-            frame
-          );
-        } catch (error) {
-          console.error(
-            "❌ LIVE FRAME CALLBACK ERROR:",
-            error
-          );
-        }
-      },
-      []
-    );
-
-  const startRecording =
-    useCallback(
-      async () => {
-        if (
-          recorderRef.current ||
-          isRecording
-        ) {
-          console.warn(
-            "🎤 Recorder is already active."
-          );
-
-          return;
-        }
-
+      try {
         const permission =
           await AudioManager.requestRecordingPermissions();
 
-        if (
-          permission !==
-          "Granted"
-        ) {
+        if (stopRequestedRef.current) return;
+
+        if (permission !== 'Granted') {
           throw new Error(
-            "Microphone permission was not granted."
+            'Microphone permission was not granted.',
           );
         }
 
         try {
-          AudioManager.setAudioSessionOptions(
-            {
-              iosCategory:
-                "record",
-
-              iosMode:
-                "default",
-
-              iosOptions: [],
-            }
-          );
+          AudioManager.setAudioSessionOptions({
+            iosCategory: 'record',
+            iosMode: 'default',
+            iosOptions: [],
+          });
         } catch (error) {
           console.warn(
-            "⚠️ Failed to configure audio session:",
-            error
+            'Failed to configure audio session:',
+            error,
           );
         }
+
+        if (stopRequestedRef.current) return;
 
         chunksRef.current = [];
         sampleCountRef.current = 0;
         lastLiveAnalysisRef.current = 0;
         resetLiveDetection();
 
-        const recorder = new AudioRecorder({
-          androidInputPreset: 'voiceCommunication', // noise-cancelling
+        recorder = new AudioRecorder({
+          androidInputPreset: 'voiceCommunication',
         });
 
-        recorder.onError(
-          (error) => {
-            console.error(
-              "❌ AUDIO RECORDER ERROR:",
-              error
-            );
-          }
-        );
+        recorder.onError((error) => {
+          console.error('Audio recorder error:', error);
+        });
 
         recorder.onAudioReady(
           {
-            sampleRate:
-              DEFAULT_SAMPLE_RATE,
-
-            bufferLength:
-              BUFFER_LENGTH,
-
-            channelCount:
-              CHANNEL_COUNT,
+            sampleRate: DEFAULT_SAMPLE_RATE,
+            bufferLength: BUFFER_LENGTH,
+            channelCount: CHANNEL_COUNT,
           },
-
-          ({
-            buffer,
-            numFrames,
-            when,
-          }) => {
+          ({ buffer, numFrames }) => {
             try {
-              const channelData =
-                buffer.getChannelData(0);
-
-              if (!channelData) {
-                console.warn(
-                  "⚠️ No channel 0 data received."
-                );
+              if (
+                stopRequestedRef.current ||
+                recorderRef.current !== recorder
+              ) {
                 return;
               }
 
-                const frameLength = Math.min(
+              const channelData = buffer.getChannelData(0);
+
+              if (!channelData) {
+                console.warn('No channel 0 data received.');
+                return;
+              }
+
+              const frameLength = Math.min(
                 Math.max(0, numFrames),
                 channelData.length,
               );
 
-              if (frameLength === 0) {
-                return;
-              }
+              if (frameLength === 0) return;
 
               const samples = new Float32Array(frameLength);
-              samples.set(channelData.subarray(0, frameLength));
-              chunksRef.current.push(
-                samples
+
+              samples.set(
+                channelData.subarray(0, frameLength),
               );
-              sampleCountRef.current +=
-                samples.length;
 
-              const signal =
-                analyzeAudioSignal(
-                  samples,
-                  DEFAULT_SAMPLE_RATE
-                );
+              chunksRef.current.push(samples);
+              sampleCountRef.current += samples.length;
 
-              const now =
-                Date.now();
+              const signal = analyzeAudioSignal(
+                samples,
+                DEFAULT_SAMPLE_RATE,
+              );
+
+              const now = Date.now();
 
               if (
-                now -
-                  lastLiveAnalysisRef.current <
+                now - lastLiveAnalysisRef.current <
                 LIVE_ANALYSIS_INTERVAL_MS
               ) {
                 return;
               }
 
-              lastLiveAnalysisRef.current =
-                now;
+              lastLiveAnalysisRef.current = now;
 
-              const signalIsQuiet =
-                !Number.isFinite(
-                  signal.db
-                ) ||
-                signal.db <
-                  MIN_VOICED_DB ||
-                signal.peak <= 0;
-
-              if (
-                signalIsQuiet
-              ) {
+              const emitInvalidFrame = () => {
                 const timeSinceLastValidPitch =
-                  lastValidPitchTimeRef.current >
-                  0
-                    ? now -
-                      lastValidPitchTimeRef.current
+                  lastValidPitchTimeRef.current > 0
+                    ? now - lastValidPitchTimeRef.current
                     : Infinity;
 
                 if (
-                  lastValidPitchRef.current >
-                    0 &&
+                  lastValidPitchRef.current > 0 &&
                   timeSinceLastValidPitch <
                     LIVE_DROPOUT_TOLERANCE_MS
                 ) {
-                  emitLiveFrame(
-                    {
-                      pitch:
-                        lastValidPitchRef.current,
-
-                      note:
-                        lastValidNoteRef.current,
-
-                      clarity:
-                        lastValidClarityRef.current,
-
-                      volume:
-                        signal.db,
-
-                      samples,
-
-                      sampleRate:
-                        DEFAULT_SAMPLE_RATE,
-                    }
-                  );
+                  emitLiveFrame({
+                    pitch: lastValidPitchRef.current,
+                    note: lastValidNoteRef.current,
+                    clarity: lastValidClarityRef.current,
+                    volume: signal.db,
+                    samples,
+                    sampleRate: DEFAULT_SAMPLE_RATE,
+                  });
 
                   return;
                 }
 
-                emitLiveFrame(
-                  {
-                    pitch: 0,
-                    note: "--",
-                    clarity: 0,
-                    volume:
-                      signal.db,
-                    samples,
-                    sampleRate:
-                      DEFAULT_SAMPLE_RATE,
-                  }
-                );
+                emitLiveFrame({
+                  pitch: 0,
+                  note: '--',
+                  clarity: 0,
+                  volume: signal.db,
+                  samples,
+                  sampleRate: DEFAULT_SAMPLE_RATE,
+                });
+              };
 
+              const signalIsQuiet =
+                !Number.isFinite(signal.db) ||
+                signal.db < MIN_VOICED_DB ||
+                signal.peak <= 0;
+
+              if (signalIsQuiet) {
+                emitInvalidFrame();
                 return;
               }
 
               let pitchResult;
 
               try {
-                pitchResult =
-                  analyzePitchFrame(
-                    samples,
-                    DEFAULT_SAMPLE_RATE
-                  );
+                pitchResult = analyzePitchFrame(
+                  samples,
+                  DEFAULT_SAMPLE_RATE,
+                );
               } catch (error) {
                 console.warn(
-                  "⚠️ Live pitch analysis failed:",
-                  error
+                  'Live pitch analysis failed:',
+                  error,
                 );
 
                 pitchResult = {
                   frequency: 0,
-                  note: "--",
+                  note: '--',
                   clarity: 0,
                 };
               }
 
-              const detectedPitch =
-                pitchResult.frequency;
-              const detectedNote =
-                pitchResult.note;
-              const detectedClarity =
-                pitchResult.clarity;
+              const detectedPitch = pitchResult.frequency;
+              const detectedNote = pitchResult.note;
+              const detectedClarity = pitchResult.clarity;
+
               const validVolume =
-                Number.isFinite(
-                  signal.db
-                ) &&
-                signal.db >=
-                  MIN_VOICED_DB &&
+                Number.isFinite(signal.db) &&
+                signal.db >= MIN_VOICED_DB &&
                 signal.peak > 0;
 
               const validPitch =
-                Number.isFinite(
-                  detectedPitch
-                ) &&
-                detectedPitch >=
-                  MIN_PITCH_HZ &&
-                detectedPitch <=
-                  MAX_PITCH_HZ;
+                Number.isFinite(detectedPitch) &&
+                detectedPitch >= MIN_PITCH_HZ &&
+                detectedPitch <= MAX_PITCH_HZ;
 
               const validClarity =
-                Number.isFinite(
-                  detectedClarity
-                ) &&
-                detectedClarity >=
-                  MIN_PITCH_CLARITY;
+                Number.isFinite(detectedClarity) &&
+                detectedClarity >= MIN_PITCH_CLARITY;
 
               const validNote =
-                typeof detectedNote ===
-                  "string" &&
-                detectedNote !==
-                  "--" &&
-                detectedNote.length >
-                  0;
+                typeof detectedNote === 'string' &&
+                detectedNote !== '--' &&
+                detectedNote.length > 0;
 
               if (
                 !validVolume ||
@@ -499,248 +381,202 @@ export function useAudioRecorder(
                 !validClarity ||
                 !validNote
               ) {
-                const timeSinceLastValidPitch =
-                  lastValidPitchTimeRef.current >
-                  0
-                    ? now -
-                      lastValidPitchTimeRef.current
-                    : Infinity;
-
-                if (
-                  lastValidPitchRef.current >
-                    0 &&
-                  timeSinceLastValidPitch <
-                    LIVE_DROPOUT_TOLERANCE_MS
-                ) {
-                  emitLiveFrame(
-                    {
-                      pitch:
-                        lastValidPitchRef.current,
-                      note:
-                        lastValidNoteRef.current,
-                      clarity:
-                        lastValidClarityRef.current,
-                      volume:
-                        signal.db,
-                      samples,
-                      sampleRate:
-                        DEFAULT_SAMPLE_RATE,
-                    }
-                  );
-
-                  return;
-                }
-
-                emitLiveFrame(
-                  {
-                    pitch: 0,
-                    note: "--",
-                    clarity: 0,
-                    volume:
-                      signal.db,
-                    samples,
-                    sampleRate:
-                      DEFAULT_SAMPLE_RATE,
-                  }
-                );
-
+                emitInvalidFrame();
                 return;
               }
 
-              lastValidPitchRef.current =
-                detectedPitch;
-              lastValidNoteRef.current =
-                detectedNote;
-              lastValidClarityRef.current =
-                detectedClarity;
-              lastValidPitchTimeRef.current =
-                now;
+              lastValidPitchRef.current = detectedPitch;
+              lastValidNoteRef.current = detectedNote;
+              lastValidClarityRef.current = detectedClarity;
+              lastValidPitchTimeRef.current = now;
 
-              const liveFrame:
-                LiveAudioFrame =
-                {
-                  pitch:
-                    detectedPitch,
-                  note:
-                    detectedNote,
-                  clarity:
-                    detectedClarity,
-                  volume:
-                    signal.db,
-                  samples,
-                  sampleRate:
-                    DEFAULT_SAMPLE_RATE,
-                };
-
-              emitLiveFrame(
-                liveFrame
-              );
+              emitLiveFrame({
+                pitch: detectedPitch,
+                note: detectedNote,
+                clarity: detectedClarity,
+                volume: signal.db,
+                samples,
+                sampleRate: DEFAULT_SAMPLE_RATE,
+              });
             } catch (error) {
               console.error(
-                "❌ AUDIO CALLBACK ERROR:",
-                error
+                'Audio callback error:',
+                error,
               );
             }
-          }
+          },
         );
 
-        try {
-          await AudioManager.setAudioSessionActivity(
-            true
-          );
-
-          sessionActiveRef.current =
-            true;
-        } catch (error) {
-          console.error(
-            "❌ FAILED TO ACTIVATE AUDIO SESSION:",
-            error
-          );
-
-          try {
-            recorder.clearOnAudioReady();
-          } catch {
-            // Ignore cleanup failure.
-          }
-
-          throw error;
+        if (stopRequestedRef.current) {
+          recorder.clearOnAudioReady();
+          return;
         }
 
-        try {
-          recorderRef.current =
-            recorder;
+        await AudioManager.setAudioSessionActivity(true);
+        sessionActiveRef.current = true;
 
-          const result =
-            await recorder.start();
+        if (stopRequestedRef.current) {
+          recorder.clearOnAudioReady();
 
-          if (
-            result &&
-            result.status ===
-              "error"
-          ) {
-            console.error(
-              "❌ RECORDER START ERROR:",
-              result.message
-            );
+          await AudioManager.setAudioSessionActivity(false);
+          sessionActiveRef.current = false;
 
-            recorderRef.current =
-              null;
+          return;
+        }
 
-            try {
-              recorder.clearOnAudioReady();
-            } catch {
+        // Store the recorder before awaiting start so cancellation
+        // can clean it up after startup settles.
+        recorderRef.current = recorder;
 
-            }
+        const result = await recorder.start();
 
-            if (
-              sessionActiveRef.current
-            ) {
-              try {
-                await AudioManager.setAudioSessionActivity(
-                  false
-                );
-              } catch {
+        if (result && result.status === 'error') {
+          throw new Error(result.message);
+        }
 
-              }
-
-              sessionActiveRef.current =
-                false;
-            }
-
-            throw new Error(
-              result.message
-            );
-          }
-
+        if (!stopRequestedRef.current) {
           setIsRecording(true);
-
-        } catch (error) {
+        }
+      } catch (error) {
+        if (!stopRequestedRef.current) {
           console.error(
-            "❌ FAILED TO START MICROPHONE:",
-            error
+            'Failed to start microphone:',
+            error,
           );
+        }
 
-          recorderRef.current =
-            null;
-
+        if (recorder) {
           try {
             recorder.clearOnAudioReady();
           } catch {
-
+            // Continue resource cleanup.
           }
 
-          if (
-            sessionActiveRef.current
-          ) {
-            try {
-              await AudioManager.setAudioSessionActivity(
-                false
-              );
-            } catch {
-
-            }
-
-            sessionActiveRef.current =
-              false;
+          if (recorderRef.current === recorder) {
+            recorderRef.current = null;
           }
 
-          resetLiveDetection();
+          try {
+            await recorder.stop();
+          } catch {
+            // The recorder may not have started.
+          }
+        }
 
+        if (sessionActiveRef.current) {
+          try {
+            await AudioManager.setAudioSessionActivity(false);
+          } catch (cleanupError) {
+            console.warn(
+              'Failed to clean up audio session:',
+              cleanupError,
+            );
+          }
+
+          sessionActiveRef.current = false;
+        }
+
+        chunksRef.current = [];
+        sampleCountRef.current = 0;
+        lastLiveAnalysisRef.current = 0;
+
+        resetLiveDetection();
+        setIsRecording(false);
+
+        if (!stopRequestedRef.current) {
           throw error;
         }
-      },
-      [
-        isRecording,
-        resetLiveDetection,
-        emitLiveFrame,
-      ]
-    );
-  
-  const stoppingRef = useRef(false);
+      } finally {
+        startingRef.current = false;
+      }
+    })();
 
-  const stopRecording =
-    useCallback(async () => {
+    startTaskRef.current = startTask;
+
+    const clearStartTask = () => {
+      if (startTaskRef.current === startTask) {
+        startTaskRef.current = null;
+      }
+    };
+
+    void startTask.then(clearStartTask, clearStartTask);
+
+    return startTask;
+  }, [resetLiveDetection, emitLiveFrame]);
+
+  const stopRecording = useCallback((): Promise<void> => {
+    stopRequestedRef.current = true;
+
+    if (stopTaskRef.current) {
+      return stopTaskRef.current;
+    }
+
+    // Defer execution one microtask so stopTaskRef is assigned
+    // before cleanup can finish, even when nothing is active.
+    let stopTask: Promise<void>;
+
+    stopTask = Promise.resolve().then(async () => {
+      try {
+        const pendingStart = startTaskRef.current;
+
+        if (pendingStart) {
+          try {
+            await pendingStart;
+          } catch {
+            // Startup handles its own cleanup.
+          }
+        }
+
         const recorder = recorderRef.current;
 
-        if (!recorder || stoppingRef.current) return;
-        
-        stoppingRef.current = true;
-
-        try {
-          const result = await recorder.stop();
-        } catch (error) {
-          console.error("❌ FAILED TO STOP RECORDER:", error);
-        }
+        if (recorder) {
+          try {
+            await recorder.stop();
+          } catch (error) {
+            console.error(
+              'Failed to stop recorder:',
+              error,
+            );
+          }
 
           try {
-          recorder.clearOnAudioReady();
-        } catch (error) {
-          console.warn("⚠️ FAILED TO CLEAR AUDIO CALLBACK:", error);
+            recorder.clearOnAudioReady();
+          } catch (error) {
+            console.warn(
+              'Failed to clear audio callback:',
+              error,
+            );
+          }
         }
 
-        if (
-          sessionActiveRef.current
-        ) {
+        if (sessionActiveRef.current) {
           try {
             await AudioManager.setAudioSessionActivity(false);
           } catch (error) {
-            console.warn("⚠️ FAILED TO DEACTIVATE AUDIO SESSION:", error);
+            console.warn(
+              'Failed to deactivate audio session:',
+              error,
+            );
           }
 
-          sessionActiveRef.current =
-            false;
+          sessionActiveRef.current = false;
         }
 
         const chunks = chunksRef.current;
         const totalSamples = sampleCountRef.current;
+        const shouldDiscard = discardOnStopRef.current;
 
         recorderRef.current = null;
         chunksRef.current = [];
         sampleCountRef.current = 0;
         lastLiveAnalysisRef.current = 0;
+
         resetLiveDetection();
         setIsRecording(false);
-        stoppingRef.current = false;
+
+        if (!recorder || shouldDiscard) {
+          return;
+        }
 
         const fullBuffer = new Float32Array(totalSamples);
         let offset = 0;
@@ -750,36 +586,83 @@ export function useAudioRecorder(
           offset += chunk.length;
         }
 
-        const finalSignal = analyzeAudioSignal(fullBuffer, DEFAULT_SAMPLE_RATE);
-        const durationSeconds = fullBuffer.length / DEFAULT_SAMPLE_RATE;
+        const finalSignal = analyzeAudioSignal(
+          fullBuffer,
+          DEFAULT_SAMPLE_RATE,
+        );
 
-        console.log("[AudioRecorder] Recording summary", {
+        const durationSeconds =
+          fullBuffer.length / DEFAULT_SAMPLE_RATE;
+
+        console.log('[AudioRecorder] Recording summary', {
           sampleRate: DEFAULT_SAMPLE_RATE,
-          durationSeconds: Number(durationSeconds.toFixed(2)),
+          durationSeconds: Number(
+            durationSeconds.toFixed(2),
+          ),
           sampleCount: fullBuffer.length,
           rms: Number(finalSignal.rms.toFixed(4)),
           volumeDb: Number.isFinite(finalSignal.db)
             ? Number(finalSignal.db.toFixed(2))
             : finalSignal.db,
           peak: Number(finalSignal.peak.toFixed(4)),
-          dcOffset: Number(finalSignal.dcOffset.toFixed(4)),
+          dcOffset: Number(
+            finalSignal.dcOffset.toFixed(4),
+          ),
         });
 
         try {
           onStopRef.current?.(
             fullBuffer,
-            DEFAULT_SAMPLE_RATE
+            DEFAULT_SAMPLE_RATE,
           );
         } catch (error) {
-          console.error("❌ onStop CALLBACK ERROR:", error);
+          console.error(
+            'onStop callback error:',
+            error,
+          );
         }
-      },
-      [resetLiveDetection]
-    );
+      } finally {
+        // Only the active stop task may release the lock.
+        if (stopTaskRef.current === stopTask) {
+          stopTaskRef.current = null;
+          stopRequestedRef.current = false;
+          discardOnStopRef.current = false;
+        }
+      }
+    });
+
+    stopTaskRef.current = stopTask;
+
+    return stopTask;
+  }, [resetLiveDetection]);
+
+  const cancelRecording = useCallback((): Promise<void> => {
+    // Latch cancellation before requesting cleanup. If a normal
+    // stop is already running, it will also suppress onStop.
+    discardOnStopRef.current = true;
+    stopRequestedRef.current = true;
+
+    return stopRecording();
+  }, [stopRecording]);
+
+  useEffect(() => {
+    return () => {
+      discardOnStopRef.current = true;
+      stopRequestedRef.current = true;
+
+      void stopRecording().catch((error) => {
+        console.error(
+          'Failed to clean up recorder on unmount:',
+          error,
+        );
+      });
+    };
+  }, [stopRecording]);
 
   return {
     startRecording,
     stopRecording,
+    cancelRecording,
     isRecording,
   };
 }

@@ -1,3 +1,4 @@
+
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
@@ -23,6 +24,7 @@ const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const CARD_PINK = '#FFF2F5';
+const BORDER = '#F2DDE5';
 
 const VOCAL_COMPONENTS = [
   {
@@ -74,8 +76,18 @@ function frequencyToNoteName(frequency: number): string {
   }
 
   const noteNames = [
-    'C', 'C#', 'D', 'D#', 'E', 'F',
-    'F#', 'G', 'G#', 'A', 'A#', 'B',
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
   ];
 
   const midi = Math.round(69 + 12 * Math.log2(frequency / 440));
@@ -120,6 +132,7 @@ export default function DashboardScreen() {
       const loadAssessment = async () => {
         try {
           setAssessmentLoading(true);
+
           const assessment = await getLatestAssessment();
 
           if (mounted) {
@@ -155,6 +168,7 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {/* User profile */}
         <View style={styles.userSection}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{avatarInitial}</Text>
@@ -162,23 +176,17 @@ export default function DashboardScreen() {
 
           <View>
             <Text style={styles.userName}>{displayName}</Text>
+
             <Text style={styles.userLevel}>
-              {progressLoading ? 'Loading tier...' : `${formattedTier} tier`}
+              {progressLoading
+                ? 'Loading tier...'
+                : `${formattedTier} tier`}
             </Text>
           </View>
         </View>
 
-        <Pressable
-          style={styles.assessmentCard}
-          onPress={() =>
-            router.push({
-              pathname: '/dashboard',
-              params: { tab: 'assessment' },
-            })
-          }
-          accessibilityRole="button"
-          accessibilityLabel="Take vocal assessment"
-        >
+        {/* Assessment card with two independent actions */}
+        <View style={styles.assessmentCard}>
           <View style={styles.assessmentIcon}>
             <Ionicons name="mic" size={25} color={BROWN} />
           </View>
@@ -189,19 +197,49 @@ export default function DashboardScreen() {
             </Text>
 
             <Text style={styles.assessmentDescription}>
-              Take a quick assessment to personalize your exercises.
+              Assess your vocal range and personalize your exercises, or
+              sing a melody to evaluate your singing performance.
             </Text>
 
-            <View style={styles.assessmentButton}>
-              <Text style={styles.assessmentButtonText}>Assess Me!</Text>
-              <Ionicons name="arrow-forward" size={16} color={WHITE} />
+            <View style={styles.assessmentActions}>
+              <Pressable
+                style={styles.assessmentButton}
+                onPress={() =>
+                  router.push({
+                    pathname: '/dashboard',
+                    params: { tab: 'assessment' },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Assess me"
+              >
+                <Text style={styles.assessmentButtonText}>
+                  Assess me!
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.singingAssessmentButton}
+                onPress={() => router.push('/singing-assessment')}
+                accessibilityRole="button"
+                accessibilityLabel="Singing Assessment"
+              >
+                <Text style={styles.singingAssessmentButtonText}>
+                  Singing Assessment
+                </Text>
+              </Pressable>
             </View>
           </View>
-        </Pressable>
+        </View>
 
+        {/* Vocal range */}
         <View style={styles.rangeCard}>
           <View style={styles.rangeIcon}>
-            <Ionicons name="musical-notes" size={24} color={BROWN} />
+            <Ionicons
+              name="musical-notes"
+              size={24}
+              color={BROWN}
+            />
           </View>
 
           <View style={styles.rangeContent}>
@@ -211,9 +249,13 @@ export default function DashboardScreen() {
               <Text style={styles.rangeText}>Loading...</Text>
             ) : latestAssessment ? (
               <Text style={styles.rangeText}>
-                {frequencyToNoteName(latestAssessment.vocalRangeLowHz)}
+                {frequencyToNoteName(
+                  latestAssessment.vocalRangeLowHz,
+                )}
                 {' – '}
-                {frequencyToNoteName(latestAssessment.vocalRangeHighHz)}
+                {frequencyToNoteName(
+                  latestAssessment.vocalRangeHighHz,
+                )}
               </Text>
             ) : (
               <Text style={styles.rangeEmptyText}>
@@ -229,6 +271,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* Vocal components */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Vocal Components</Text>
 
@@ -267,22 +310,29 @@ export default function DashboardScreen() {
                   <Text style={styles.exerciseName}>
                     {component.name}
                   </Text>
+
                   <Text style={styles.exerciseDescription}>
                     {component.description}
                   </Text>
                 </View>
 
                 <View style={styles.playButton}>
-                  <Ionicons name="play" size={20} color={BROWN} />
+                  <Ionicons
+                    name="play"
+                    size={20}
+                    color={BROWN}
+                  />
                 </View>
               </View>
             </Pressable>
           ))}
         </ScrollView>
 
+        {/* Progress heading */}
         <View style={styles.progressHeader}>
           <View>
             <Text style={styles.sectionTitle}>My Progress</Text>
+
             <Text style={styles.progressSectionSubtitle}>
               Every practice session counts!
             </Text>
@@ -295,14 +345,24 @@ export default function DashboardScreen() {
             accessibilityLabel="View all progress"
           >
             <Text style={styles.viewProgressText}>View all</Text>
-            <Ionicons name="chevron-forward" size={15} color={BROWN} />
+
+            <Ionicons
+              name="chevron-forward"
+              size={15}
+              color={BROWN}
+            />
           </Pressable>
         </View>
 
+        {/* Progress summary */}
         <View style={styles.progressCard}>
           <View style={styles.progressIntro}>
             <View style={styles.progressIconCircle}>
-              <Ionicons name="trending-up" size={30} color={BROWN} />
+              <Ionicons
+                name="trending-up"
+                size={30}
+                color={BROWN}
+              />
             </View>
 
             <View style={styles.progressIntroText}>
@@ -329,6 +389,7 @@ export default function DashboardScreen() {
               <Text style={styles.progressSummaryValue}>
                 {progressLoading ? '—' : totalExercisesCompleted}
               </Text>
+
               <Text style={styles.progressSummaryLabel}>
                 Total exercises
               </Text>
@@ -340,6 +401,7 @@ export default function DashboardScreen() {
               <Text style={styles.progressSummaryValue}>
                 {progressLoading ? '—' : practiceDays}
               </Text>
+
               <Text style={styles.progressSummaryLabel}>
                 Practice days
               </Text>
@@ -357,10 +419,14 @@ export default function DashboardScreen() {
               );
 
               const completed = summary?.exercisesCompleted ?? 0;
+
               const percentage = Math.round(
                 Math.max(
                   0,
-                  Math.min(100, summary?.averageRecentScorePct ?? 0),
+                  Math.min(
+                    100,
+                    summary?.averageRecentScorePct ?? 0,
+                  ),
                 ),
               );
 
@@ -376,6 +442,7 @@ export default function DashboardScreen() {
                         size={17}
                         color={BROWN}
                       />
+
                       <Text style={styles.dashboardComponentName}>
                         {component.name}
                       </Text>
@@ -401,7 +468,12 @@ export default function DashboardScreen() {
             <Text style={styles.progressActionText}>
               Explore my progress
             </Text>
-            <Ionicons name="arrow-forward" size={17} color={WHITE} />
+
+            <Ionicons
+              name="arrow-forward"
+              size={17}
+              color={WHITE}
+            />
           </Pressable>
         </View>
       </ScrollView>
@@ -452,29 +524,13 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: -2,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: BROWN,
-  },
-  viewMore: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: BROWN,
-  },
   assessmentCard: {
     width: '100%',
-    minHeight: 140,
     backgroundColor: PINK,
     borderRadius: 20,
     padding: 20,
     flexDirection: 'row',
+    alignItems: 'flex-start',
     marginBottom: 18,
     elevation: 4,
   },
@@ -501,23 +557,41 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     color: BROWN,
-    marginBottom: 13,
+    marginBottom: 14,
+  },
+  assessmentActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   assessmentButton: {
-    alignSelf: 'flex-start',
-    height: 34,
+    minHeight: 34,
     paddingHorizontal: 14,
     borderRadius: 17,
     backgroundColor: BROWN,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
   },
   assessmentButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: WHITE,
+  },
+  singingAssessmentButton: {
+    minHeight: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  singingAssessmentButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
   },
   rangeCard: {
     width: '100%',
@@ -564,6 +638,22 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 17,
+    color: BROWN,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+  },
+  viewMore: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
     color: BROWN,
   },
   exerciseScroll: {
@@ -715,7 +805,7 @@ const styles = StyleSheet.create({
   progressSummaryDivider: {
     width: 1,
     height: 34,
-    backgroundColor: '#F2DDE5',
+    backgroundColor: BORDER,
   },
   progressComponents: {
     marginTop: 20,
