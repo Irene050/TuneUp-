@@ -24,29 +24,17 @@ import {
   type ToneConsistencyParams,
 } from '@/constants/exercises/tone';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-import {
-  generateToneConsistencyParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
+import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import {
-  measureToneConsistency,
-} from '@/services/measurement/tone/toneConsistencyExercise';
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
+import { measureToneConsistency } from '@/services/measurement/tone/toneConsistencyExercise';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-import {
-  scoreToneConsistencyExercise,
-} from '@/services/scoring/tone/toneConsistencyExercise';
-import {
-  samplesToFFTFrames,
-} from '@/utils/dsp/fft';
+import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
+import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import {
   disposeNotePlayer,
   playSingleNote,
@@ -68,13 +56,16 @@ const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
 const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
+const WAVEFORM_PINK = '#D45C78';
+const GUIDE_GREEN = '#4F9B67';
+const GUIDE_RED = '#D64F5A';
 
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
 const COUNTDOWN_SECONDS = 3;
 const TARGET_NOTE_DURATION_SECONDS = 1.5;
+const WAVEFORM_BAR_COUNT = 30;
 
 type Screen =
   | 'instructions'
@@ -102,11 +93,7 @@ type ResultState = {
   averageAmplitude: number;
 };
 
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
+function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
@@ -119,36 +106,139 @@ function formatFrequency(frequency: number): string {
 }
 
 function formatVolume(volume: number): string {
-  if (!Number.isFinite(volume)) {
+  if (!Number.isFinite(volume) || volume <= -100) {
     return '--';
   }
 
   return `${Math.round(volume)} dB`;
 }
 
+/**
+ * A lightweight visual monitor driven by live pitch, volume, and elapsed time.
+ * These bars represent live vocal activity, not raw audio samples.
+ */
+function LiveToneWaveform({
+  pitch,
+  volume,
+  elapsedSeconds,
+}: {
+  pitch: number;
+  volume: number;
+  elapsedSeconds: number;
+}) {
+  const hasPitch = Number.isFinite(pitch) && pitch > 0;
+
+  const volumeLevel =
+    Number.isFinite(volume) && volume > -100
+      ? clamp((volume + 60) / 60, 0, 1)
+      : 0;
+
+  const bars = useMemo(
+    () =>
+      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
+        const center = (WAVEFORM_BAR_COUNT - 1) / 2;
+        const distance = Math.abs(index - center) / center;
+        const envelope = 1 - distance * 0.58;
+
+        const movement = hasPitch
+          ? 0.35 +
+            Math.abs(
+              Math.sin(
+                index * 0.72 +
+                  elapsedSeconds * 3.4 +
+                  pitch * 0.001,
+              ),
+            ) *
+              0.65
+          : 0.12 +
+            Math.abs(
+              Math.sin(index * 0.72 + elapsedSeconds * 1.8),
+            ) *
+              0.12;
+
+        const volumeScale = hasPitch ? 0.55 + volumeLevel * 0.45 : 1;
+
+        return Math.max(
+          5,
+          Math.round(42 * envelope * movement * volumeScale),
+        );
+      }),
+    [elapsedSeconds, hasPitch, pitch, volumeLevel],
+  );
+
+  return (
+    <View style={styles.waveformContainer}>
+      <View
+        style={styles.waveformBars}
+        accessibilityLabel={
+          hasPitch
+            ? 'Live vocal activity detected'
+            : 'Waiting for vocal activity'
+        }
+      >
+        {bars.map((height, index) => (
+          <View
+            key={index}
+            style={[
+              styles.waveformBar,
+              {
+                height,
+                opacity: hasPitch ? 0.95 : 0.3,
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.waveformStatusRow}>
+        <View
+          style={[
+            styles.waveformStatusDot,
+            {
+              backgroundColor: hasPitch ? GUIDE_GREEN : GUIDE_RED,
+            },
+          ]}
+        />
+
+        <Text style={styles.waveformStatus}>
+          {hasPitch
+            ? 'Voice detected — keep your tone steady.'
+            : 'Listening for your voice...'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function ToneConsistencyExerciseScreen({
   tier,
 }: Props) {
   const [screen, setScreen] = useState<Screen>('instructions');
+
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
   );
+
   const [params, setParams] = useState<ToneConsistencyParams>(
     TONE_CONSISTENCY_PARAMS[tier ?? 'beginner'],
   );
+
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
+
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [listenElapsedSeconds, setListenElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
+
   const [liveTone, setLiveTone] = useState<LiveToneState>({
     pitch: 0,
     note: '--',
     clarity: 0,
     volume: -100,
   });
+
   const [result, setResult] = useState<ResultState | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -178,8 +268,10 @@ export default function ToneConsistencyExerciseScreen({
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
+
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
+
   const listeningTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -188,13 +280,17 @@ export default function ToneConsistencyExerciseScreen({
 
   const startRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
+
   const stopRecordingRef =
     useRef<(() => void | Promise<void>) | null>(null);
+
   const isRecordingRef = useRef(false);
 
   const startExerciseRef = useRef<(() => void) | null>(null);
+
   const listenToTargetNoteRef =
     useRef<(() => Promise<boolean>) | null>(null);
+
   const startRecordingAttemptRef =
     useRef<(() => Promise<void>) | null>(null);
 
@@ -283,8 +379,8 @@ export default function ToneConsistencyExerciseScreen({
             setVocalRange(assessment.vocalRange ?? null);
           }
 
-          // Use assessment as the initial reference only when
-          // this template has no records at the resolved tier.
+          // Use the assessment as a reference only when there are
+          // no records for this exercise at the resolved tier.
           if (recentScores.length === 0) {
             const assessmentScore = assessment?.scores.find(
               score => score.componentId === 'tone',
@@ -351,8 +447,12 @@ export default function ToneConsistencyExerciseScreen({
             ? frame.pitch
             : 0,
         note: frame.note || '--',
-        clarity: frame.clarity,
-        volume: frame.volume,
+        clarity: Number.isFinite(frame.clarity)
+          ? frame.clarity
+          : 0,
+        volume: Number.isFinite(frame.volume)
+          ? frame.volume
+          : -100,
       });
     },
     [],
@@ -463,6 +563,7 @@ export default function ToneConsistencyExerciseScreen({
       clarity: 0,
       volume: -100,
     });
+
     setElapsedSeconds(0);
     setCurrentScreen('recording');
 
@@ -603,6 +704,7 @@ export default function ToneConsistencyExerciseScreen({
           finishingRef.current = false;
           setElapsedSeconds(0);
           setListenElapsedSeconds(0);
+
           setLiveTone({
             pitch: 0,
             note: '--',
@@ -708,12 +810,7 @@ export default function ToneConsistencyExerciseScreen({
         startingRef.current = false;
       }
     },
-    [
-      clearTimers,
-      currentTier,
-      params,
-      setCurrentScreen,
-    ],
+    [clearTimers, currentTier, params, setCurrentScreen],
   );
 
   const {
@@ -762,12 +859,14 @@ export default function ToneConsistencyExerciseScreen({
     setCurrentRep(1);
     setErrorMessage('');
     setResult(null);
+
     setLiveTone({
       pitch: 0,
       note: '--',
       clarity: 0,
       volume: -100,
     });
+
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
     setCountdown(COUNTDOWN_SECONDS);
@@ -853,21 +952,6 @@ export default function ToneConsistencyExerciseScreen({
     };
   }, [startExercise]);
 
-  const finishRecording = useCallback(() => {
-    if (
-      !isRecordingRef.current ||
-      finishingRef.current ||
-      pausedRef.current ||
-      quitInProgressRef.current
-    ) {
-      return;
-    }
-
-    finishingRef.current = true;
-    clearTimers();
-    void stopRecordingRef.current?.();
-  }, [clearTimers]);
-
   const retryExercise = useCallback(() => {
     clearTimers();
 
@@ -902,6 +986,7 @@ export default function ToneConsistencyExerciseScreen({
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
     setCountdown(COUNTDOWN_SECONDS);
+
     setLiveTone({
       pitch: 0,
       note: '--',
@@ -941,12 +1026,14 @@ export default function ToneConsistencyExerciseScreen({
       finishingRef.current = true;
 
       if (isRecordingRef.current || isRecording) {
-        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
-          console.warn(
-            'Failed to stop interrupted tone-consistency recording:',
-            error,
-          );
-        });
+        void Promise.resolve(stopRecordingRef.current?.()).catch(
+          error => {
+            console.warn(
+              'Failed to stop interrupted tone-consistency recording:',
+              error,
+            );
+          },
+        );
       }
 
       isRecordingRef.current = false;
@@ -972,8 +1059,8 @@ export default function ToneConsistencyExerciseScreen({
       previousScreen === 'listening' ||
       previousScreen === 'countdown'
     ) {
-      // Restart the exercise as a fresh attempt so interrupted audio
-      // is never included in the score.
+      // Restart from the beginning so interrupted audio is never
+      // included in the score.
       startingRef.current = false;
       finishingRef.current = false;
       isRecordingRef.current = false;
@@ -990,6 +1077,7 @@ export default function ToneConsistencyExerciseScreen({
       setElapsedSeconds(0);
       setListenElapsedSeconds(0);
       setCountdown(COUNTDOWN_SECONDS);
+
       setLiveTone({
         pitch: 0,
         note: '--',
@@ -1002,8 +1090,7 @@ export default function ToneConsistencyExerciseScreen({
     }
 
     if (previousScreen === 'processing') {
-      // Processing continues while the modal is displayed. Do not
-      // trigger a second analysis or duplicate progress save.
+      // Processing continues while the modal is displayed.
       return;
     }
 
@@ -1037,12 +1124,14 @@ export default function ToneConsistencyExerciseScreen({
     if (isRecordingRef.current || isRecording) {
       discardNextStopRef.current = true;
 
-      void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
-        console.warn(
-          'Failed to stop recording while quitting:',
-          error,
-        );
-      });
+      void Promise.resolve(stopRecordingRef.current?.()).catch(
+        error => {
+          console.warn(
+            'Failed to stop recording while quitting:',
+            error,
+          );
+        },
+      );
     }
 
     isRecordingRef.current = false;
@@ -1054,7 +1143,7 @@ export default function ToneConsistencyExerciseScreen({
     openQuitModal();
   }, [openQuitModal]);
 
-  // Android hardware back should open the same quit modal.
+  // Android hardware back opens the same quit confirmation.
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1109,11 +1198,10 @@ export default function ToneConsistencyExerciseScreen({
       1,
     ) * 100;
 
-  const recordingProgress = clamp(
-    elapsedSeconds / params.intervalSec,
-    0,
-    1,
-  );
+  const recordingProgress =
+    params.intervalSec > 0
+      ? clamp(elapsedSeconds / params.intervalSec, 0, 1)
+      : 0;
 
   const quitMessage =
     screen === 'recording'
@@ -1146,13 +1234,9 @@ export default function ToneConsistencyExerciseScreen({
             />
           </View>
 
-          <Text style={styles.modalTitle}>
-            Quit Exercise?
-          </Text>
+          <Text style={styles.modalTitle}>Quit Exercise?</Text>
 
-          <Text style={styles.modalMessage}>
-            {quitMessage}
-          </Text>
+          <Text style={styles.modalMessage}>{quitMessage}</Text>
 
           <Pressable
             accessibilityRole="button"
@@ -1219,6 +1303,7 @@ export default function ToneConsistencyExerciseScreen({
             style={styles.preparingSpinner}
           />
         </View>
+
         {quitModal}
       </>
     );
@@ -1272,6 +1357,7 @@ export default function ToneConsistencyExerciseScreen({
           error={errorMessage}
           startDisabled={isLoadingAdaptiveParams}
         />
+
         {quitModal}
       </>
     );
@@ -1290,6 +1376,7 @@ export default function ToneConsistencyExerciseScreen({
           prompt={`${targetNote} • ${formatFrequency(targetFrequency)}`}
           onBack={goBack}
         />
+
         {quitModal}
       </>
     );
@@ -1319,129 +1406,226 @@ export default function ToneConsistencyExerciseScreen({
           progress={listenProgress}
           onBack={goBack}
         />
+
         {quitModal}
       </>
     );
   }
 
   if (screen === 'recording') {
+    const hasPitch =
+      Number.isFinite(liveTone.pitch) && liveTone.pitch > 0;
+
+    const hasClarity =
+      Number.isFinite(liveTone.clarity) && liveTone.clarity > 0;
+
+    const elapsed = Math.min(elapsedSeconds, params.intervalSec);
+    const remaining = Math.max(0, params.intervalSec - elapsed);
+
     return (
       <>
-        <View style={styles.screen}>
+        <View style={styles.recordingScreen}>
+
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.recordingContent}
           >
-            <View style={styles.recordingIcon}>
-              <Ionicons name="mic" size={34} color={BROWN} />
-            </View>
-
             <Text style={styles.recordingTitle}>
               Sing the Note
             </Text>
 
             <Text style={styles.recordingSubtitle}>
-              Repetition {currentRep} of {params.repetitions}
+              Match the reference note and keep your voice consistent
+              throughout each repetition.
             </Text>
 
-            <View style={styles.smallTargetCard}>
-              <View>
-                <Text style={styles.smallLabel}>TARGET</Text>
-                <Text style={styles.smallNote}>{targetNote}</Text>
-              </View>
+            <View style={styles.repPill}>
+              <Ionicons
+                name="repeat-outline"
+                size={15}
+                color={BROWN}
+              />
 
-              <Text style={styles.smallHz}>
-                {formatFrequency(targetFrequency)}
+              <Text style={styles.repPillText}>
+                REPETITION {currentRep} OF {params.repetitions}
               </Text>
             </View>
 
-            <View style={styles.microphoneArea}>
-              <View style={styles.outerMicCircle}>
-                <View style={styles.innerMicCircle}>
-                  <Ionicons name="mic" size={52} color={BROWN} />
+            <View style={styles.targetNoteCard}>
+              <View style={styles.targetNoteHeading}>
+                <View style={styles.targetNoteIcon}>
+                  <Ionicons
+                    name="musical-note"
+                    size={19}
+                    color={BROWN}
+                  />
+                </View>
+
+                <View style={styles.targetNoteText}>
+                  <Text style={styles.targetNoteLabel}>
+                    YOUR TARGET NOTE
+                  </Text>
+
+                  <Text style={styles.targetNoteHint}>
+                    Keep matching this note
+                  </Text>
                 </View>
               </View>
 
-              <View style={styles.recordingBadge}>
-                <View style={styles.recordingDot} />
-                <Text style={styles.recordingBadgeText}>
-                  RECORDING
+              <View style={styles.targetNoteValueContainer}>
+                <Text style={styles.targetNoteValue}>
+                  {targetNote}
+                </Text>
+
+                <Text style={styles.targetNoteFrequency}>
+                  {formatFrequency(targetFrequency)}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.detectedArea}>
-              <Text style={styles.detectedLabel}>
-                CURRENT NOTE
-              </Text>
-              <Text style={styles.detectedNote}>
-                {liveTone.note}
-              </Text>
-              <Text style={styles.detectedFrequency}>
-                {formatFrequency(liveTone.pitch)}
-              </Text>
-              <Text style={styles.pitchMessage}>
-                {liveTone.pitch > 0
-                  ? 'Keep the tone steady'
-                  : 'Listening...'}
-              </Text>
-            </View>
+            <View style={styles.recordingProgressSection}>
+              <View style={styles.recordingProgressLabels}>
+                <Text style={styles.progressLabel}>
+                  RECORDING PROGRESS
+                </Text>
 
-            <View style={styles.metricsGrid}>
-              <MetricCard
-                label="PITCH"
-                value={
-                  liveTone.pitch > 0
-                    ? formatFrequency(liveTone.pitch)
-                    : '--'
-                }
-              />
-              <MetricCard
-                label="CLARITY"
-                value={
-                  liveTone.clarity > 0
-                    ? `${Math.round(liveTone.clarity * 100)}%`
-                    : '--'
-                }
-              />
-              <MetricCard
-                label="VOLUME"
-                value={formatVolume(liveTone.volume)}
-              />
-              <MetricCard
-                label="REP"
-                value={`${currentRep}/${params.repetitions}`}
-              />
-            </View>
+                <Text style={styles.progressTime}>
+                  {elapsed.toFixed(1)}s / {params.intervalSec.toFixed(1)}s
+                </Text>
+              </View>
 
-            <Text style={styles.timerText}>
-              {elapsedSeconds.toFixed(1)} /{' '}
-              {params.intervalSec.toFixed(1)}s
-            </Text>
-
-            <View style={styles.timerTrack}>
               <View
-                style={[
-                  styles.timerFill,
-                  { width: `${recordingProgress * 100}%` },
-                ]}
-              />
+                style={styles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Repetition recording progress"
+                accessibilityValue={{
+                  min: 0,
+                  max: 100,
+                  now: Math.round(recordingProgress * 100),
+                }}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${recordingProgress * 100}%` },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.remainingText}>
+                {remaining.toFixed(1)} seconds remaining
+              </Text>
             </View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.finishButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={finishRecording}
-            >
-              <Ionicons name="stop" size={20} color={BROWN} />
-              <Text style={styles.finishButtonText}>
-                Finish
+            <View style={styles.liveCard}>
+              <View style={styles.liveCardHeader}>
+                <View style={styles.liveMicCircle}>
+                  <Ionicons
+                    name="mic"
+                    size={21}
+                    color={GUIDE_GREEN}
+                  />
+                </View>
+
+                <View style={styles.liveCardHeading}>
+                  <Text style={styles.liveCardTitle}>
+                    Live Tone Monitor
+                  </Text>
+
+                  <Text style={styles.liveCardSubtitle}>
+                    Real-time microphone feedback
+                  </Text>
+                </View>
+
+                <View style={styles.liveIndicatorPill}>
+                  <View
+                    style={[
+                      styles.recordingDot,
+                      {
+                        backgroundColor: isRecording
+                          ? GUIDE_RED
+                          : MUTED,
+                      },
+                    ]}
+                  />
+
+                  <Text style={styles.liveIndicatorText}>
+                    {isRecording ? 'LIVE' : 'STARTING'}
+                  </Text>
+                </View>
+              </View>
+
+              <LiveToneWaveform
+                pitch={liveTone.pitch}
+                volume={liveTone.volume}
+                elapsedSeconds={elapsedSeconds}
+              />
+
+              <View style={styles.liveMetricsRow}>
+                <View style={styles.liveMetric}>
+                  <Text style={styles.liveLabel}>DETECTED NOTE</Text>
+
+                  <Text style={styles.liveValue}>
+                    {hasPitch ? liveTone.note : '--'}
+                  </Text>
+
+                  <Text style={styles.metricHint}>
+                    {hasPitch
+                      ? formatFrequency(liveTone.pitch)
+                      : 'Waiting for pitch'}
+                  </Text>
+                </View>
+
+                <View style={styles.liveDivider} />
+
+                <View style={styles.liveMetric}>
+                  <Text style={styles.liveLabel}>CLARITY</Text>
+
+                  <Text style={styles.liveValue}>
+                    {hasClarity
+                      ? `${Math.round(
+                          clamp(liveTone.clarity, 0, 1) * 100,
+                        )}%`
+                      : '--'}
+                  </Text>
+
+                  <Text style={styles.metricHint}>
+                    {hasClarity
+                      ? 'Vocal signal'
+                      : 'Listening for tone'}
+                  </Text>
+                </View>
+
+                <View style={styles.liveDivider} />
+
+                <View style={styles.liveMetric}>
+                  <Text style={styles.liveLabel}>VOLUME</Text>
+
+                  <Text style={styles.liveValueSmall}>
+                    {formatVolume(liveTone.volume)}
+                  </Text>
+
+                  <Text style={styles.metricHint}>
+                    Live level
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.recordingTip}>
+              <Ionicons
+                name="bulb-outline"
+                size={19}
+                color={MUTED}
+              />
+
+              <Text style={styles.recordingTipText}>
+                Sing comfortably without forcing your voice. Aim for the same tone on every repetition.
               </Text>
-            </Pressable>
+            </View>
           </ScrollView>
         </View>
+
         {quitModal}
       </>
     );
@@ -1456,6 +1640,7 @@ export default function ToneConsistencyExerciseScreen({
           message="Comparing your repetitions for tone and vocal consistency."
           onBack={goBack}
         />
+
         {quitModal}
       </>
     );
@@ -1487,9 +1672,11 @@ export default function ToneConsistencyExerciseScreen({
               <Text style={styles.resultTargetLabel}>
                 TARGET NOTE
               </Text>
+
               <Text style={styles.resultTargetNote}>
                 {targetNote}
               </Text>
+
               <Text style={styles.resultTargetFrequency}>
                 {formatFrequency(targetFrequency)}
               </Text>
@@ -1501,6 +1688,7 @@ export default function ToneConsistencyExerciseScreen({
               label="OVERALL SCORE"
               value={`${result.score}%`}
             />
+
             <MetricCard
               label="AVG. CENTROID"
               value={
@@ -1509,6 +1697,7 @@ export default function ToneConsistencyExerciseScreen({
                   : '--'
               }
             />
+
             <MetricCard
               label="AVG. AMPLITUDE"
               value={
@@ -1517,6 +1706,7 @@ export default function ToneConsistencyExerciseScreen({
                   : '--'
               }
             />
+
             <MetricCard
               label="REPETITIONS"
               value={String(params.repetitions)}
@@ -1532,6 +1722,7 @@ export default function ToneConsistencyExerciseScreen({
 
             <View style={styles.feedbackContent}>
               <Text style={styles.feedbackTitle}>Feedback</Text>
+
               <Text style={styles.feedbackText}>
                 {result.passed
                   ? `Excellent consistency! Your voice maintained a stable tone while repeating ${targetNote}. Keep practicing with the same controlled vocal output.`
@@ -1540,6 +1731,7 @@ export default function ToneConsistencyExerciseScreen({
             </View>
           </View>
         </ExerciseResultsScreen>
+
         {quitModal}
       </>
     );
@@ -1564,10 +1756,6 @@ function MetricCard({
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: WHITE,
-  },
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1594,7 +1782,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 17,
-    color: '#9A817D',
+    color: MUTED,
     textAlign: 'center',
     marginTop: 6,
     maxWidth: 285,
@@ -1629,21 +1817,19 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginTop: 1,
   },
+  recordingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    paddingHorizontal: 22,
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
   recordingContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 82,
-    paddingBottom: 50,
     alignItems: 'center',
-  },
-  recordingIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
+    paddingHorizontal: 22,
+    paddingTop: 64,
+    paddingBottom: 28,
   },
   recordingTitle: {
     fontFamily: 'FredokaBold',
@@ -1654,116 +1840,292 @@ const styles = StyleSheet.create({
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
+    lineHeight: 18,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 3,
+    marginTop: 6,
+    maxWidth: 330,
   },
-  smallTargetCard: {
+  repPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: PINK,
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    marginTop: 17,
+  },
+  repPillText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: BROWN,
+  },
+  targetNoteCard: {
     width: '100%',
-    marginTop: 20,
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+    marginTop: 17,
   },
-  smallLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-    letterSpacing: 0.7,
-  },
-  smallNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: BROWN,
-    marginTop: 1,
-  },
-  smallHz: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-  },
-  microphoneArea: {
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 18,
-  },
-  outerMicCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    borderWidth: 8,
-    borderColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  innerMicCircle: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingBadge: {
-    marginTop: 12,
+  targetNoteHeading: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
+    flex: 1,
   },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: BROWN,
-    marginRight: 7,
+  targetNoteIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  recordingBadgeText: {
+  targetNoteText: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  targetNoteLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: MUTED,
+  },
+  targetNoteHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 3,
+  },
+  targetNoteValueContainer: {
+    alignItems: 'flex-end',
+    marginLeft: 10,
+  },
+  targetNoteValue: {
     fontFamily: 'FredokaBold',
+    fontSize: 27,
+    color: BROWN,
+  },
+  targetNoteFrequency: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 1,
+  },
+  recordingProgressSection: {
+    width: '100%',
+    marginTop: 19,
+  },
+  recordingProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontFamily: 'FredokaSemiBold',
     fontSize: 10,
     letterSpacing: 0.6,
+    color: MUTED,
+  },
+  progressTime: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
     color: BROWN,
   },
-  detectedArea: {
-    alignItems: 'center',
+  progressTrack: {
+    height: 7,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: '#F0DCE4',
   },
-  detectedLabel: {
+  progressFill: {
+    height: '100%',
+    borderRadius: 5,
+    backgroundColor: WAVEFORM_PINK,
+  },
+  remainingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    letterSpacing: 0.7,
     color: MUTED,
+    textAlign: 'right',
+    marginTop: 7,
   },
-  detectedNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 48,
-    color: BROWN,
-    marginTop: 2,
+  liveCard: {
+    width: '100%',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 15,
+    marginTop: 16,
   },
-  detectedFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: MUTED,
+  liveCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  pitchMessage: {
+  liveMicCircle: {
+    width: 41,
+    height: 41,
+    borderRadius: 21,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveCardHeading: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  liveCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
-    marginTop: 5,
   },
-  metricsGrid: {
+  liveCardSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 3,
+  },
+  liveIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 15,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  recordingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  liveIndicatorText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 9,
+    letterSpacing: 0.5,
+    color: BROWN,
+  },
+  waveformContainer: {
+    marginTop: 15,
+    backgroundColor: WHITE,
+    borderRadius: 17,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  waveformBars: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  waveformBar: {
+    flex: 1,
+    maxWidth: 6,
+    minHeight: 5,
+    borderRadius: 5,
+    backgroundColor: WAVEFORM_PINK,
+  },
+  waveformStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 9,
+  },
+  waveformStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 7,
+  },
+  waveformStatus: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    textAlign: 'center',
+  },
+
+  liveMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: 14,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  liveMetric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  liveDivider: {
+    width: 1,
+    backgroundColor: BORDER,
+    marginHorizontal: 6,
+  },
+  liveLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 8,
+    letterSpacing: 0.3,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  liveValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 21,
+    color: BROWN,
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  liveValueSmall: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  metricHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  recordingTip: {
     width: '100%',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 18,
+    alignItems: 'flex-start',
+    gap: 9,
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 15,
+    padding: 13,
+    marginTop: 13,
+  },
+  recordingTipText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: MUTED,
   },
   metricCard: {
     flex: 1,
@@ -1785,41 +2147,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: BROWN,
     marginTop: 3,
-  },
-  timerText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 18,
-    marginBottom: 7,
-  },
-  timerTrack: {
-    width: '100%',
-    height: 7,
-    backgroundColor: LIGHT_GRAY,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  timerFill: {
-    height: '100%',
-    backgroundColor: PINK,
-  },
-  finishButton: {
-    width: '100%',
-    height: 53,
-    borderRadius: 27,
-    backgroundColor: LIGHT_GRAY,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  finishButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
   },
   resultCard: {
     width: '100%',

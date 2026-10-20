@@ -10,8 +10,16 @@ import {
   View,
 } from 'react-native';
 
-import type { SavedAssessmentResult } from '@/services/assessment/assessmentRepository';
-import { getRecentAssessments } from '@/services/assessment/assessmentRepository';
+import type {
+  SavedAssessmentResult,
+  SavedSingingAssessmentResult,
+} from '@/services/assessment/assessmentRepository';
+
+import {
+  getRecentAssessments,
+  getRecentSingingAssessments,
+} from '@/services/assessment/assessmentRepository';
+
 import { auth } from '@/services/firebase/config';
 import type {
   ComponentId,
@@ -187,6 +195,15 @@ export default function ProgressScreen() {
   const [assessmentLoading, setAssessmentLoading] = useState(true);
   const [assessmentError, setAssessmentError] = useState(false);
 
+  const [latestSingingAssessment, setLatestSingingAssessment] =
+  useState<SavedSingingAssessmentResult | null>(null);
+
+  const [singingAssessmentLoading, setSingingAssessmentLoading] =
+    useState(true);
+
+  const [singingAssessmentError, setSingingAssessmentError] =
+    useState(false);
+
   const [exerciseProgress, setExerciseProgress] =
     useState<ComponentProgressSummary[]>([]);
   const [attempts, setAttempts] = useState<ExerciseAttempt[]>([]);
@@ -225,6 +242,8 @@ export default function ProgressScreen() {
         setProgressLoading(true);
         setAssessmentError(false);
         setProgressError(false);
+        setSingingAssessmentLoading(true);
+        setSingingAssessmentError(false);
 
         const user = auth.currentUser;
 
@@ -236,16 +255,21 @@ export default function ProgressScreen() {
             setAttempts([]);
             setAssessmentLoading(false);
             setProgressLoading(false);
+            setLatestSingingAssessment(null);
+            setSingingAssessmentLoading(false);
+            setSingingAssessmentError(false);
           }
           return;
         }
 
         const [
           assessmentResult,
+          singingAssessmentResult,
           progressResult,
           ...historyResults
         ] = await Promise.allSettled([
           getRecentAssessments(2),
+          getRecentSingingAssessments(1),
           fetchAllProgress(user.uid),
           ...components.map(component =>
             fetchExerciseRecords(user.uid, component.id),
@@ -270,6 +294,22 @@ export default function ProgressScreen() {
         }
 
         setAssessmentLoading(false);
+        
+        if (singingAssessmentResult.status === 'fulfilled') {
+          setLatestSingingAssessment(
+            singingAssessmentResult.value[0] ?? null
+          );
+        } else {
+          console.error(
+            'Unable to load singing assessments:',
+            singingAssessmentResult.reason,
+          );
+
+          setLatestSingingAssessment(null);
+          setSingingAssessmentError(true);
+        }
+
+        setSingingAssessmentLoading(false);
 
         if (progressResult.status === 'fulfilled') {
           setExerciseProgress(progressResult.value);
@@ -328,6 +368,8 @@ export default function ProgressScreen() {
           setProgressLoading(false);
           setAssessmentError(true);
           setProgressError(true);
+          setSingingAssessmentLoading(false);
+          setSingingAssessmentError(true);
         }
       });
 
@@ -645,6 +687,143 @@ export default function ProgressScreen() {
           </View>
         )}
 
+        
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Singing Assessment</Text>
+          <Text style={styles.sectionSubtitle}>
+            Your latest singing performance and pitch measurements.
+          </Text>
+        </View>
+
+        {singingAssessmentLoading ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>
+              Loading your singing assessment...
+            </Text>
+          </View>
+        ) : singingAssessmentError ? (
+          <View style={styles.emptyCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={28}
+              color={BROWN}
+            />
+            <Text style={styles.emptyTitle}>
+              Singing Assessment Unavailable
+            </Text>
+            <Text style={styles.emptyText}>
+              We couldn't load your singing results. Please check
+              your connection and try again.
+            </Text>
+          </View>
+        ) : latestSingingAssessment ? (
+          <>
+            <View style={styles.assessmentSummaryCard}>
+              <View style={styles.assessmentSummaryLeft}>
+                <Text style={styles.assessmentSummaryLabel}>
+                  Overall Singing Score
+                </Text>
+
+                <Text style={styles.assessmentAverage}>
+                  {clampPercentage(
+                    latestSingingAssessment.overallScore
+                  )}%
+                </Text>
+
+                <Text style={styles.assessmentDate}>
+                  Assessed on{' '}
+                  {formatAssessmentDate(
+                    latestSingingAssessment.timestamp
+                  )}
+                </Text>
+
+                <Text style={styles.comparisonHint}>
+                  {latestSingingAssessment.detectedNoteCount} notes detected
+                  {' · '}
+                  {latestSingingAssessment.durationSeconds.toFixed(1)} seconds
+                </Text>
+              </View>
+
+              <View style={styles.assessmentIconCircle}>
+                <Ionicons
+                  name="musical-notes"
+                  size={25}
+                  color={BROWN}
+                />
+              </View>
+            </View>
+
+            <View style={styles.assessmentScoresCard}>
+              {[
+                {
+                  label: 'Pitch Accuracy',
+                  score: latestSingingAssessment.pitchAccuracy,
+                },
+                {
+                  label: 'Pitch Stability',
+                  score: latestSingingAssessment.pitchStability,
+                },
+                {
+                  label: 'Vocal Consistency',
+                  score: latestSingingAssessment.vocalConsistency,
+                },
+              ].map((metric, index, metrics) => {
+                const score = clampPercentage(metric.score);
+
+                return (
+                  <View
+                    key={metric.label}
+                    style={[
+                      styles.assessmentScoreItem,
+                      index === metrics.length - 1 &&
+                        styles.assessmentScoreItemLast,
+                    ]}
+                  >
+                    <View style={styles.componentHeader}>
+                      <Text style={styles.componentName}>
+                        {metric.label}
+                      </Text>
+
+                      <Text style={styles.componentScore}>
+                        {score}%
+                      </Text>
+                    </View>
+
+                    <View style={styles.progressBackground}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${score}%` },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons
+                name="musical-notes-outline"
+                size={25}
+                color={BROWN}
+              />
+            </View>
+
+            <Text style={styles.emptyTitle}>
+              No Singing Assessment Yet
+            </Text>
+
+            <Text style={styles.emptyText}>
+              Complete the Mary Had a Little Lamb singing assessment
+              to see your score, pitch accuracy, pitch stability,
+              and vocal consistency here.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Exercise Progress</Text>
           <Text style={styles.sectionSubtitle}>
@@ -860,7 +1039,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   sectionHeader: {
-    marginBottom: 14,
+    marginTop: 10,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontFamily: 'FredokaBold',

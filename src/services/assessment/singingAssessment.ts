@@ -1,3 +1,4 @@
+
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
 
@@ -49,21 +50,65 @@ type PitchFrame = {
   midi: number;
   clarity: number;
   db: number;
+  timestamp: number;
 };
 
 type NoteEvent = {
   midi: number;
   frames: PitchFrame[];
+  startTime: number;
+  endTime: number;
+};
+
+type ReferenceNote = {
+  midi: number;
+  startTime: number;
+  endTime: number;
+};
+
+type NoteEvaluation = {
+  expectedMidi: number;
+  detectedMidi: number | null;
+  accuracy: number;
+  frameCount: number;
 };
 
 const MIN_RMS = 0.002;
 const MIN_CLARITY = 0.7;
 const MIN_HZ = 60;
 const MAX_HZ = 1500;
-const MIN_EVENT_FRAMES = 2;
-const MAX_FRAME_GAP_SEMITONES = 0.8;
 
-function clamp(value: number, min = 0, max = 100): number {
+const MIN_EVENT_FRAMES = 2;
+const MAX_FRAME_GAP_SECONDS = 0.12;
+const NOTE_CHANGE_SEMITONES = 1.5;
+
+const MIN_DURATION_SECONDS = 5;
+const MIN_VOICED_FRAMES = 12;
+const MIN_DETECTED_EVENTS = 4;
+const MIN_VOICED_COVERAGE = 0.12;
+
+// Ignore note boundaries when measuring pitch, because transitions
+// between syllables often contain brief slides and consonant sounds.
+const NOTE_EDGE_IGNORE_RATIO = 0.15;
+
+// Permit a short leading delay before the first sung note.
+// This shifts the evaluation windows but does not award rhythm points.
+const MAX_START_OFFSET_SECONDS = 2;
+const START_OFFSET_STEP_SECONDS = 0.05;
+
+// Pitch error scoring in cents:
+// 0 cents = 100, 50 cents = 50, 100 cents or more = 0.
+const CENTS_FOR_ZERO_ACCURACY = 100;
+
+// A reference note needs enough pitch frames to be evaluated.
+const MIN_FRAMES_PER_REFERENCE_NOTE = 2;
+
+function clamp(
+  value: number,
+  min = 0,
+  max = 100,
+): number {
+  if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
 }
 
@@ -81,32 +126,45 @@ function centsDistance(a: number, b: number): number {
 
 function median(values: number[]): number {
   if (!values.length) return 0;
+
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2
+
+  return sorted.length % 2 === 1
     ? sorted[middle]
     : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function getPitchFrames(samples: Float32Array, sampleRate: number): PitchFrame[] {
+function getPitchFrames(
+  samples: Float32Array,
+  sampleRate: number,
+): PitchFrame[] {
   const frames: PitchFrame[] = [];
   const frameSize = SINGING_ASSESSMENT_BUFFER_SIZE;
-  const hopSize = 1024;
+  const hopSize = Math.floor(frameSize / 2);
 
-  for (let offset = 0; offset + frameSize <= samples.length; offset += hopSize) {
+  for (
+    let offset = 0;
+    offset + frameSize <= samples.length;
+    offset += hopSize
+  ) {
     const chunk = samples.subarray(offset, offset + frameSize);
     const rms = calcRMS(chunk);
-    if (!Number.isFinite(rms) || rms < MIN_RMS) continue;
+
+    if (!Number.isFinite(rms) || rms < MIN_RMS) {
+      continue;
+    }
 
     let pitchResult: ReturnType<typeof analyzePitchFrame>;
+
     try {
       pitchResult = analyzePitchFrame(chunk, sampleRate);
     } catch {
       continue;
     }
 
-    const frequency = pitchResult.frequency;
-    const clarity = pitchResult.clarity;
+    const { frequency, clarity } = pitchResult;
+
     if (
       !Number.isFinite(frequency) ||
       frequency < MIN_HZ ||
@@ -117,16 +175,61 @@ function getPitchFrames(samples: Float32Array, sampleRate: number): PitchFrame[]
       continue;
     }
 
+    const midi = frequencyToMidi(frequency);
+
+    if (!Number.isFinite(midi)) {
+      continue;
+    }
+
     frames.push({
-      midi: frequencyToMidi(frequency),
+      midi,
       clarity,
       db: rmsToDb(rms),
+      timestamp: offset / sampleRate,
     });
   }
 
   return frames;
 }
 
+/**
+ * Creates reference-note windows using the melody's expected beat lengths.
+ *
+ * The timestamps are relative to the start of the melody, not to the
+ * current UI highlight or the recording's final duration.
+ */
+function buildReferenceTimeline(): ReferenceNote[] {
+  const secondsPerBeat = 60 / SINGING_ASSESSMENT_BPM;
+  let cursor = 0;
+
+  return MARY_MELODY.map((note) => {
+    const startTime = cursor;
+    const endTime = startTime + note.beats * secondsPerBeat;
+
+    cursor = endTime;
+
+    return {
+      midi: note.midi,
+      startTime,
+      endTime,
+    };
+  });
+}
+
+const REFERENCE_TIMELINE = buildReferenceTimeline();
+
+function getExpectedMelodyDuration(): number {
+  if (!REFERENCE_TIMELINE.length) return 0;
+
+  return REFERENCE_TIMELINE[
+    REFERENCE_TIMELINE.length - 1
+  ].endTime;
+}
+
+/**
+ * Group detected pitches for diagnostic note counts and stability analysis.
+ * The final melody-accuracy score does not depend on these event boundaries.
+ */
 function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
   const events: NoteEvent[] = [];
   let current: PitchFrame[] = [];
@@ -135,9 +238,12 @@ function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
     if (current.length >= MIN_EVENT_FRAMES) {
       events.push({
         midi: median(current.map((frame) => frame.midi)),
-        frames: current,
+        frames: [...current],
+        startTime: current[0].timestamp,
+        endTime: current[current.length - 1].timestamp,
       });
     }
+
     current = [];
   };
 
@@ -147,122 +253,399 @@ function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
       continue;
     }
 
-    const currentMedian = median(current.map((item) => item.midi));
-    if (Math.abs(frame.midi - currentMedian) <= MAX_FRAME_GAP_SEMITONES) {
-      current.push(frame);
-    } else {
+    const previous = current[current.length - 1];
+    const center = median(current.map((item) => item.midi));
+
+    const timeGap = frame.timestamp - previous.timestamp;
+    const pitchChange = Math.abs(frame.midi - center);
+
+    if (
+      timeGap > MAX_FRAME_GAP_SECONDS ||
+      pitchChange > NOTE_CHANGE_SEMITONES
+    ) {
       flush();
-      current.push(frame);
     }
+
+    current.push(frame);
   }
 
   flush();
+
   return events;
 }
 
-function calculateMelodyAccuracy(events: NoteEvent[]): number {
-  if (!events.length) return 0;
+/**
+ * Maps an absolute pitch error in cents to an accuracy score.
+ * Large errors, including octave errors, receive zero accuracy.
+ */
+function centsToAccuracy(errorCents: number): number {
+  return round1(
+    clamp(
+      100 * (1 - errorCents / CENTS_FOR_ZERO_ACCURACY),
+    ),
+  );
+}
 
-  const reference = MARY_MELODY.map((note) => note.midi);
-  let bestScore = 0;
+/**
+ * Collects usable pitch frames from the interior of one expected note.
+ *
+ * A frame must fall within the reference note's interior, not just near
+ * its start or end. This reduces the effect of pitch transitions.
+ */
+function getFramesForReferenceNote(
+  frames: PitchFrame[],
+  note: ReferenceNote,
+  startOffset: number,
+): PitchFrame[] {
+  const duration = note.endTime - note.startTime;
 
-  for (let transpose = -18; transpose <= 18; transpose += 1) {
-    const rows = reference.length + 1;
-    const cols = events.length + 1;
-    const dp = Array.from({ length: rows }, () => Array<number>(cols).fill(0));
+  const usableStart =
+    note.startTime + duration * NOTE_EDGE_IGNORE_RATIO + startOffset;
 
-    for (let i = 1; i < rows; i += 1) dp[i][0] = i * 0.8;
-    for (let j = 1; j < cols; j += 1) dp[0][j] = j * 0.8;
+  const usableEnd =
+    note.endTime - duration * NOTE_EDGE_IGNORE_RATIO + startOffset;
 
-    for (let i = 1; i < rows; i += 1) {
-      for (let j = 1; j < cols; j += 1) {
-        const semitoneError = Math.abs(events[j - 1].midi - (reference[i - 1] + transpose));
-        const pitchCost = Math.min(2, semitoneError / 2);
-        dp[i][j] = Math.min(
-          dp[i - 1][j - 1] + pitchCost,
-          dp[i - 1][j] + 0.8,
-          dp[i][j - 1] + 0.8,
-        );
-      }
+  return frames.filter(
+    (frame) =>
+      frame.timestamp >= usableStart &&
+      frame.timestamp < usableEnd,
+  );
+}
+
+/**
+ * Evaluate the median pitch within each expected note window.
+ *
+ * Every reference note contributes to the final score. A note without
+ * sufficient usable pitch data receives zero accuracy instead of being
+ * silently omitted. The time windows identify notes; timing deviations
+ * are not separately deducted as a rhythm score.
+ */
+function evaluateReferenceNotes(
+  frames: PitchFrame[],
+  startOffset: number,
+): NoteEvaluation[] {
+  return REFERENCE_TIMELINE.map((referenceNote) => {
+    const noteFrames = getFramesForReferenceNote(
+      frames,
+      referenceNote,
+      startOffset,
+    );
+
+    if (noteFrames.length < MIN_FRAMES_PER_REFERENCE_NOTE) {
+      return {
+        expectedMidi: referenceNote.midi,
+        detectedMidi: null,
+        accuracy: 0,
+        frameCount: noteFrames.length,
+      };
     }
 
-    const normalizedCost = dp[rows - 1][cols - 1] / Math.max(reference.length, events.length);
-    bestScore = Math.max(bestScore, clamp(100 - normalizedCost * 45));
+    const detectedMidi = median(
+      noteFrames.map((frame) => frame.midi),
+    );
+
+    const errorCents = centsDistance(
+      detectedMidi,
+      referenceNote.midi,
+    );
+
+    return {
+      expectedMidi: referenceNote.midi,
+      detectedMidi,
+      accuracy: centsToAccuracy(errorCents),
+      frameCount: noteFrames.length,
+    };
+  });
+}
+
+/**
+ * Select the leading offset that best fits the reference melody.
+ *
+ * A small offset helps when the singer starts just after the recording
+ * begins. It does not transpose the melody or change the reference key.
+ */
+function findBestMelodyAlignment(
+  frames: PitchFrame[],
+  durationSeconds: number,
+): {
+  startOffset: number;
+  evaluations: NoteEvaluation[];
+} {
+  const expectedDuration = getExpectedMelodyDuration();
+
+  const latestUsefulOffset = Math.max(
+    0,
+    Math.min(
+      MAX_START_OFFSET_SECONDS,
+      durationSeconds - expectedDuration * 0.5,
+    ),
+  );
+
+  let bestOffset = 0;
+  let bestEvaluations = evaluateReferenceNotes(frames, 0);
+  let bestScore = scoreEvaluations(bestEvaluations);
+
+  for (
+    let offset = START_OFFSET_STEP_SECONDS;
+    offset <= latestUsefulOffset + 0.0001;
+    offset += START_OFFSET_STEP_SECONDS
+  ) {
+    const evaluations = evaluateReferenceNotes(frames, offset);
+    const score = scoreEvaluations(evaluations);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestOffset = offset;
+      bestEvaluations = evaluations;
+    }
   }
 
-  return round1(bestScore);
+  return {
+    startOffset: bestOffset,
+    evaluations: bestEvaluations,
+  };
 }
+
+function scoreEvaluations(
+  evaluations: NoteEvaluation[],
+): number {
+  if (!evaluations.length) return 0;
+
+  const total = evaluations.reduce(
+    (sum, evaluation) => sum + evaluation.accuracy,
+    0,
+  );
+
+  return total / evaluations.length;
+}
+
+function calculateMelodyAccuracy(
+  evaluations: NoteEvaluation[],
+): number {
+  return round1(clamp(scoreEvaluations(evaluations)));
+}
+
+/**
+ * Calculate pitch stability within reference-note windows.
+ *
+ * This measures variation around each window's median pitch. It avoids
+ * penalizing a legitimate transition from one reference note to another.
+ * Notes without enough frames are excluded from stability, but they still
+ * count as missing in pitch accuracy.
+ */
 
 function calculateStability(events: NoteEvent[]): number {
-  const usable = events.filter((event) => event.frames.length >= MIN_EVENT_FRAMES);
-  if (!usable.length) return 0;
+  const usableEvents = events.filter(
+    (event) => event.frames.length >= MIN_EVENT_FRAMES,
+  );
 
-  const eventScores = usable.map((event) => {
-    const center = median(event.frames.map((frame) => frame.midi));
-    const meanAbsoluteCents = event.frames.reduce(
-      (sum, frame) => sum + centsDistance(frame.midi, center),
-      0,
-    ) / event.frames.length;
+  if (!usableEvents.length) return 0;
 
-    // 0 cents variation maps to 100; 100 cents mean variation maps to 0.
-    return clamp(100 - meanAbsoluteCents);
-  });
+  let totalVariation = 0;
+  let totalFrames = 0;
 
-  return round1(eventScores.reduce((sum, score) => sum + score, 0) / eventScores.length);
+  for (const event of usableEvents) {
+    const center = median(
+      event.frames.map((frame) => frame.midi),
+    );
+
+    for (const frame of event.frames) {
+      totalVariation += centsDistance(frame.midi, center);
+      totalFrames += 1;
+    }
+  }
+
+  if (!totalFrames) return 0;
+
+  const averageVariation = totalVariation / totalFrames;
+
+  // Smoothly reduce the score as within-note pitch variation increases.
+  // 0 cents = 100; 25 cents = 75; 50 cents = 50; 100 cents = 0.
+  return round1(
+    clamp(100 - averageVariation),
+  );
 }
 
-function calculateVocalConsistency(frames: PitchFrame[]): number {
+/**
+ * Measures recorded microphone-level consistency, not vocal quality.
+ */
+function calculateVocalConsistency(
+  frames: PitchFrame[],
+): number {
   if (frames.length < 5) return 0;
+
   const levels = frames.map((frame) => frame.db);
-  const mean = levels.reduce((sum, value) => sum + value, 0) / levels.length;
-  const variance = levels.reduce((sum, value) => sum + (value - mean) ** 2, 0) / levels.length;
+
+  const mean =
+    levels.reduce((sum, value) => sum + value, 0) /
+    levels.length;
+
+  const variance =
+    levels.reduce(
+      (sum, value) => sum + (value - mean) ** 2,
+      0,
+    ) / levels.length;
+
   const standardDeviation = Math.sqrt(variance);
 
-  // This is relative microphone-level consistency, not calibrated SPL or
-  // a direct measure of vocal tone/technique.
   return round1(clamp(100 - standardDeviation * 5));
+}
+
+function createFeedback(
+  pitchAccuracy: number,
+  pitchStability: number,
+  vocalConsistency: number,
+  voicedCoverage: number,
+  evaluations: NoteEvaluation[],
+): string[] {
+  const feedback: string[] = [];
+
+  const missingNotes = evaluations.filter(
+    (evaluation) => evaluation.detectedMidi === null,
+  ).length;
+
+  if (voicedCoverage < 0.35) {
+    feedback.push(
+      'Much of the recording did not contain clearly detected singing. Try singing the complete melody closer to the microphone in a quiet room.',
+    );
+  }
+
+  if (missingNotes > 0) {
+    feedback.push(
+      `${missingNotes} reference note${missingNotes === 1 ? ' was' : 's were'} not detected clearly enough to score. Make sure you sing the full melody and hold each note long enough for detection.`,
+    );
+  }
+
+  if (pitchAccuracy < 50) {
+    feedback.push(
+      'Many notes were far from the reference pitches or could not be detected. Practice one reference note at a time before singing the complete melody.',
+    );
+  } else if (pitchAccuracy < 75) {
+    feedback.push(
+      'Some notes matched the reference, but others need work. Focus on matching each note instead of sliding between pitches.',
+    );
+  } else if (pitchAccuracy < 90) {
+    feedback.push(
+      'Your detected pitches generally followed the reference melody. Keep working on the notes that are slightly sharp or flat.',
+    );
+  } else {
+    feedback.push(
+      'Your detected pitches closely matched the reference melody. Continue practicing to maintain that accuracy consistently.',
+    );
+  }
+
+  if (pitchStability < 50) {
+    feedback.push(
+      'Your detected pitch varied considerably within notes. Try holding each note steadily without unintended slides.',
+    );
+  } else if (pitchStability < 75) {
+    feedback.push(
+      'Work on maintaining a steady pitch while holding notes. Slow practice may help reduce unintended fluctuations.',
+    );
+  } else {
+    feedback.push(
+      'The detected pitches were relatively steady within the evaluated notes.',
+    );
+  }
+
+  if (vocalConsistency < 50) {
+    feedback.push(
+      'The recorded microphone level varied considerably. Keep a comfortable, consistent distance from the microphone. Automatic microphone gain can also affect this measurement.',
+    );
+  } else {
+    feedback.push(
+      'The recorded microphone level was relatively consistent. This measures recording level, not vocal quality directly.',
+    );
+  }
+
+  return feedback;
 }
 
 export function calculateSingingAssessmentScore(
   samples: Float32Array,
   sampleRate = SINGING_ASSESSMENT_SAMPLE_RATE,
 ): SingingAssessmentResult {
-  const safeSampleRate = Number.isFinite(sampleRate) && sampleRate > 0
-    ? sampleRate
-    : SINGING_ASSESSMENT_SAMPLE_RATE;
-  const durationSeconds = samples.length / safeSampleRate;
-  const frames = getPitchFrames(samples, safeSampleRate);
-  const events = segmentNotes(frames);
-
-  if (durationSeconds < 5 || frames.length < 12 || events.length < 4) {
+  if (
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0 ||
+    !(samples instanceof Float32Array) ||
+    samples.length === 0
+  ) {
     throw new Error(
-      'We could not detect enough clear singing. Please move closer to the microphone and try again.',
+      'The recording is invalid. Please record the song again.',
     );
   }
 
-  const pitchAccuracy = calculateMelodyAccuracy(events);
-  const pitchStability = calculateStability(events);
-  const vocalConsistency = calculateVocalConsistency(frames);
-  const overallScore = round1(
-    pitchAccuracy * 0.5 + pitchStability * 0.3 + vocalConsistency * 0.2,
+  const durationSeconds = samples.length / sampleRate;
+
+  if (
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < MIN_DURATION_SECONDS
+  ) {
+    throw new Error(
+      'The recording is too short to score reliably. Please record the complete melody and try again.',
+    );
+  }
+
+  const frames = getPitchFrames(samples, sampleRate);
+  const events = segmentNotes(frames);
+
+  const hopSize = Math.floor(
+    SINGING_ASSESSMENT_BUFFER_SIZE / 2,
   );
 
-  const feedback: string[] = [];
-  if (pitchAccuracy < 70) {
-    feedback.push('Practice matching each note in the reference melody before singing the full song.');
-  } else {
-    feedback.push('Your notes generally followed the reference melody. Keep listening closely to each pitch.');
+  // This is an estimate because pitch-analysis windows overlap.
+  // It is used only as a rough data-quality check, not as a score.
+  const voicedDurationEstimate = Math.min(
+    durationSeconds,
+    frames.length * (hopSize / sampleRate),
+  );
+
+  const voicedCoverage = clamp(
+    (voicedDurationEstimate / Math.max(durationSeconds, 0.001)) * 100,
+    0,
+    100,
+  ) / 100;
+
+  if (
+    frames.length < MIN_VOICED_FRAMES ||
+    events.length < MIN_DETECTED_EVENTS ||
+    voicedCoverage < MIN_VOICED_COVERAGE
+  ) {
+    throw new Error(
+      'We could not detect enough clear singing to score this recording reliably. Please sing the complete melody closer to the microphone in a quiet room and try again.',
+    );
   }
-  if (pitchStability < 70) {
-    feedback.push('Try holding each note steadily and avoid sliding between notes unless the melody calls for it.');
-  } else {
-    feedback.push('Your sustained notes were relatively steady. Continue practicing relaxed, controlled singing.');
-  }
-  if (vocalConsistency < 70) {
-    feedback.push('Try keeping a comfortable, consistent distance from the microphone and maintaining a steady vocal level.');
-  } else {
-    feedback.push('Your recorded vocal level was relatively consistent. Remember that microphone distance can affect this measurement.');
-  }
+
+  const alignment = findBestMelodyAlignment(
+    frames,
+    durationSeconds,
+  );
+
+  const pitchAccuracy = calculateMelodyAccuracy(
+    alignment.evaluations,
+  );
+
+  const pitchStability = calculateStability(events);
+
+  const vocalConsistency = calculateVocalConsistency(frames);
+
+  // Keep the original scoring contract: pitch correctness is primary.
+  // Vocal consistency remains informational and is not part of the total.
+  const overallScore = round1(
+    clamp(
+      pitchAccuracy * 0.8 +
+      pitchStability * 0.2,
+    ),
+  );
+
+  const feedback = createFeedback(
+    pitchAccuracy,
+    pitchStability,
+    vocalConsistency,
+    voicedCoverage,
+    alignment.evaluations,
+  );
 
   return {
     overallScore,
@@ -277,8 +660,17 @@ export function calculateSingingAssessmentScore(
 }
 
 export function getSingingScoreMessage(score: number): string {
-  if (score >= 90) return 'Excellent work! Keep building consistency with regular practice.';
-  if (score >= 75) return 'Good foundation. Focus on the areas highlighted below.';
-  if (score >= 60) return 'You are developing your singing skills. Practice the melody slowly and repeat the assessment.';
+  if (score >= 90) {
+    return 'Excellent work! Keep building consistency with regular practice.';
+  }
+
+  if (score >= 75) {
+    return 'Good foundation. Focus on the areas highlighted below.';
+  }
+
+  if (score >= 60) {
+    return 'You are developing your singing skills. Practice the melody slowly and repeat the assessment.';
+  }
+
   return 'Keep practicing. Listen to the reference, then focus on matching one note at a time.';
 }

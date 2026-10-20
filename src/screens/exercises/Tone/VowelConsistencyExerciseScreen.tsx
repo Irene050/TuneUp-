@@ -1,4 +1,3 @@
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -56,7 +55,6 @@ import {
   type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { frequencyToNote } from '@/utils/dsp/pitch';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -65,6 +63,10 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
+
+const GUIDE_GREEN = '#4F9B67';
+const GUIDE_YELLOW = '#D9A72E';
+const GUIDE_RED = '#D64F5A';
 
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
@@ -88,6 +90,14 @@ interface RepetitionResult {
   passed: boolean;
 }
 
+interface ToneFeedback {
+  title: string;
+  message: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  backgroundColor: string;
+  iconColor: string;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -102,6 +112,141 @@ function formatNumber(value: number, decimals = 1) {
 
 function vowelDisplay(vowel: string) {
   return vowel.toUpperCase();
+}
+
+/**
+ * This feedback uses only the existing live pitch and clarity values.
+ * It does not claim to measure vowel consistency in real time.
+ */
+function getToneFeedback(
+  frame: LiveAudioFrame | null,
+): ToneFeedback {
+  if (
+    !frame ||
+    !Number.isFinite(frame.pitch) ||
+    frame.pitch <= 0
+  ) {
+    return {
+      title: 'I’m listening…',
+      message: 'Start making your vowel sound when you’re ready.',
+      icon: 'ear-outline',
+      backgroundColor: LIGHT_PINK,
+      iconColor: GUIDE_RED,
+    };
+  }
+
+  if (!Number.isFinite(frame.clarity) || frame.clarity < 0.45) {
+    return {
+      title: 'Let’s hear that again',
+      message: 'Try making a clear, gentle vowel sound. No need to shout.',
+      icon: 'volume-medium-outline',
+      backgroundColor: `${GUIDE_YELLOW}20`,
+      iconColor: GUIDE_YELLOW,
+    };
+  }
+
+  if (frame.clarity >= 0.75) {
+    return {
+      title: 'Nice and clear!',
+      message: 'Your voice is coming through clearly. Keep going!',
+      icon: 'checkmark-circle-outline',
+      backgroundColor: `${GUIDE_GREEN}20`,
+      iconColor: GUIDE_GREEN,
+    };
+  }
+
+  return {
+    title: 'Good start!',
+    message: 'Keep your voice relaxed and continue holding the vowel.',
+    icon: 'heart-outline',
+    backgroundColor: `${GUIDE_YELLOW}20`,
+    iconColor: GUIDE_YELLOW,
+  };
+}
+
+function VowelLiveWaveform({
+  frame,
+}: {
+  frame: LiveAudioFrame | null;
+}) {
+  const pitch = frame?.pitch ?? 0;
+  const hasPitch = Number.isFinite(pitch) && pitch > 0;
+  const clarity =
+    frame && Number.isFinite(frame.clarity) ? frame.clarity : 0;
+
+  const waveformColor = !hasPitch
+    ? GUIDE_RED
+    : clarity >= 0.75
+      ? GUIDE_GREEN
+      : clarity >= 0.45
+        ? GUIDE_YELLOW
+        : GUIDE_RED;
+
+  const statusText = !hasPitch
+    ? 'Listening for your voice...'
+    : clarity >= 0.75
+      ? 'Your voice is coming through clearly'
+      : clarity >= 0.45
+        ? 'Keep your voice relaxed and steady'
+        : 'Try making a clearer vowel sound';
+
+  const bars = Array.from({ length: 30 }, (_, index) => {
+    const center = 14.5;
+    const distance = Math.abs(index - center) / center;
+    const envelope = 1 - distance * 0.65;
+    const variation = hasPitch
+      ? 0.35 +
+        Math.abs(Math.sin(index * 0.72 + pitch * 0.001)) * 0.65
+      : 0.12 + Math.abs(Math.sin(index * 0.72)) * 0.12;
+
+    return Math.max(5, Math.round(38 * envelope * variation));
+  });
+
+  return (
+    <View style={styles.waveformContainer}>
+      <View
+        style={styles.waveformBars}
+        accessibilityLabel={
+          !hasPitch
+            ? 'No pitch detected'
+            : clarity >= 0.75
+              ? 'Clear voice detected'
+              : 'Voice detected'
+        }
+      >
+        {bars.map((height, index) => (
+          <View
+            key={`vowel-wave-${index}`}
+            style={[
+              styles.waveformBar,
+              {
+                height,
+                backgroundColor: waveformColor,
+                opacity: hasPitch ? 0.9 : 0.45,
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.waveformStatusRow}>
+        <View
+          style={[
+            styles.statusDot,
+            { backgroundColor: waveformColor },
+          ]}
+        />
+        <Text
+          style={[
+            styles.waveformStatus,
+            { color: waveformColor },
+          ]}
+        >
+          {statusText}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 export default function VowelConsistencyExerciseScreen({
@@ -125,12 +270,10 @@ export default function VowelConsistencyExerciseScreen({
   const [results, setResults] = useState<RepetitionResult[]>([]);
   const [finalResult, setFinalResult] =
     useState<VowelConsistencyScoreResult | null>(null);
-  const [finalAverageCentroid, setFinalAverageCentroid] = useState(0);
-  const [frameCount, setFrameCount] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const repetitions = Math.max(1, params.repetitions);
 
@@ -383,8 +526,6 @@ export default function VowelConsistencyExerciseScreen({
     setLiveFrame(null);
     setResults([]);
     setFinalResult(null);
-    setFinalAverageCentroid(0);
-    setFrameCount(0);
     setErrorMessage(null);
     setShowQuitModal(false);
     setIsQuitting(false);
@@ -403,7 +544,6 @@ export default function VowelConsistencyExerciseScreen({
     onFrame: handleLiveFrame,
 
     onStop: async (samples, sampleRate) => {
-      // Discard audio from a repetition interrupted by the quit modal.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         recordingRef.current = false;
@@ -473,25 +613,6 @@ export default function VowelConsistencyExerciseScreen({
         }
 
         setResults(nextResults);
-        setFrameCount(previous => previous + fftFrames.length);
-
-        const measurements = repetitionMeasurementsRef.current;
-
-        const centroidAverages = measurements.map(item => {
-          const valid = item.centroidOverTime.filter(
-            value => Number.isFinite(value) && value > 0,
-          );
-
-          return valid.length
-            ? valid.reduce((sum, value) => sum + value, 0) /
-                valid.length
-            : 0;
-        });
-
-        setFinalAverageCentroid(
-          centroidAverages.reduce((sum, value) => sum + value, 0) /
-            measurements.length,
-        );
 
         if (nextResults.length < repetitions) {
           const nextRep = nextResults.length + 1;
@@ -780,7 +901,6 @@ export default function VowelConsistencyExerciseScreen({
     clearTimers();
 
     if (currentPhase === 'recording') {
-      // An interrupted recording is discarded, not scored.
       discardNextStopRef.current = true;
       stopRequestedRef.current = true;
       recordingRef.current = false;
@@ -816,9 +936,10 @@ export default function VowelConsistencyExerciseScreen({
     setShowQuitModal(false);
     pausedRef.current = false;
 
-    if (previousPhase === 'countdown' ||
-        previousPhase === 'recording') {
-      // Start a fresh countdown for the interrupted repetition.
+    if (
+      previousPhase === 'countdown' ||
+      previousPhase === 'recording'
+    ) {
       recordingRef.current = false;
       stopRequestedRef.current = false;
       discardNextStopRef.current = false;
@@ -832,7 +953,6 @@ export default function VowelConsistencyExerciseScreen({
     }
 
     if (previousPhase === 'rest') {
-      // Continue the existing rest period without skipping a rep.
       restTimerRef.current = setTimeout(() => {
         restTimerRef.current = null;
 
@@ -844,12 +964,7 @@ export default function VowelConsistencyExerciseScreen({
           startRepCountdownRef.current?.();
         }
       }, REST_MS);
-
-      return;
     }
-
-    // Processing may finish while the modal is visible.
-    // Do not run scoring or saving a second time.
   }, []);
 
   const quitExercise = useCallback(async () => {
@@ -912,10 +1027,7 @@ export default function VowelConsistencyExerciseScreen({
     ? clamp(elapsedMs / 1000 / targetDuration, 0, 1)
     : 0;
 
-  const livePitchNote =
-    liveFrame && liveFrame.pitch > 0
-      ? frequencyToNote(liveFrame.pitch)
-      : '--';
+  const toneFeedback = getToneFeedback(liveFrame);
 
   const quitModal = (
     <Modal
@@ -1111,14 +1223,19 @@ export default function VowelConsistencyExerciseScreen({
             />
           </View>
 
-          <Text style={styles.phaseTitle}>Relax</Text>
+          <Text style={styles.phaseTitle}>Take a Little Rest</Text>
 
           <Text style={styles.phaseSubtitle}>
-            Repetition {currentRepetition - 1} complete.
+            Repetition {currentRepetition - 1} complete. Relax your
+            voice before the next one.
           </Text>
 
           <Text style={styles.largeVowel}>
-            Next {currentRepetition}
+            {vowelDisplay(params.vowel)}
+          </Text>
+
+          <Text style={styles.restHint}>
+            Get ready for repetition {currentRepetition}
           </Text>
 
           <ActivityIndicator
@@ -1133,140 +1250,161 @@ export default function VowelConsistencyExerciseScreen({
   }
 
   if (phase === 'recording') {
-    return (
-      <>
-        <View style={styles.screen}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.recordingContent}
-          >
-            <Text style={styles.recordingEyebrow}>
-              REPETITION {currentRepetition} / {repetitions}
+  const elapsedSeconds = elapsedMs / 1000;
+
+  const recordingProgress = targetDuration > 0
+    ? clamp(elapsedSeconds / targetDuration, 0, 1)
+    : 0;
+
+  const remainingSeconds = Math.max(
+    0,
+    targetDuration - elapsedSeconds,
+  );
+
+  const detectedPitch =
+    liveFrame &&
+    Number.isFinite(liveFrame.pitch) &&
+    liveFrame.pitch > 0
+      ? `${formatNumber(liveFrame.pitch, 1)} Hz`
+      : '--';
+
+  const voiceClarity =
+    liveFrame && Number.isFinite(liveFrame.clarity)
+      ? `${formatNumber(
+          clamp(liveFrame.clarity * 100, 0, 100),
+          0,
+        )}%`
+      : '--';
+
+  return (
+    <>
+      <View style={styles.recordingScreen}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.recordingBody}
+        >
+
+          <Text style={styles.recordingTitle}>
+            Keep the Vowel Consistent
+          </Text>
+
+          <Text style={styles.recordingSubtitle}>
+            Hold the same vowel sound. Stay relaxed and let your
+            voice flow naturally.
+          </Text>
+
+          <View style={styles.repPill}>
+            <Ionicons
+              name="repeat-outline"
+              size={16}
+              color={BROWN}
+            />
+            <Text style={styles.repPillText}>
+              REPETITION {currentRepetition} OF {repetitions}
             </Text>
+          </View>
 
-            <Text style={styles.recordingTitle}>
-              Keep the Vowel Consistent
-            </Text>
-
-            <Text style={styles.recordingSubtitle}>
-              Do not change the vowel shape while you sustain it.
-            </Text>
-
-            <View style={styles.vowelCard}>
-              <Text style={styles.vowelLabel}>TARGET VOWEL</Text>
-
-              <Text style={styles.vowelValue}>
-                {vowelDisplay(params.vowel)}
-              </Text>
-
-              <Text style={styles.vowelInstruction}>
-                Same vowel • same sound
+          <View style={styles.recordingProgressSection}>
+            <View style={styles.recordingProgressLabels}>
+              <Text style={styles.progressLabel}>RECORDING</Text>
+              <Text style={styles.progressTime}>
+                {formatNumber(elapsedSeconds)}s /{' '}
+                {formatNumber(targetDuration)}s
               </Text>
             </View>
 
-            <View style={styles.microphoneArea}>
-              <View style={styles.outerMicCircle}>
-                <View style={styles.innerMicCircle}>
-                  <Ionicons
-                    name="mic"
-                    size={52}
-                    color={BROWN}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.recordingBadge}>
-                <View style={styles.recordingDot} />
-                <Text style={styles.recordingBadgeText}>
-                  RECORDING
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.liveCard}>
-              <Text style={styles.liveLabel}>LIVE SIGNAL</Text>
-
-              <Text style={styles.liveNote}>
-                {livePitchNote}
-              </Text>
-
-              <Text style={styles.liveFrequency}>
-                {liveFrame && liveFrame.pitch > 0
-                  ? `${Math.round(liveFrame.pitch)} Hz`
-                  : '--'}
-              </Text>
-
-              <View style={styles.liveStats}>
-                <View style={styles.liveStat}>
-                  <Text style={styles.liveStatLabel}>
-                    Clarity
-                  </Text>
-
-                  <Text style={styles.liveStatValue}>
-                    {liveFrame && liveFrame.clarity > 0
-                      ? `${Math.round(liveFrame.clarity * 100)}%`
-                      : '--'}
-                  </Text>
-                </View>
-
-                <View style={styles.liveStat}>
-                  <Text style={styles.liveStatLabel}>
-                    Volume
-                  </Text>
-
-                  <Text style={styles.liveStatValue}>
-                    {liveFrame &&
-                    Number.isFinite(liveFrame.volume)
-                      ? `${Math.round(liveFrame.volume)} dB`
-                      : '--'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.timerText}>
-              {(elapsedMs / 1000).toFixed(1)} /{' '}
-              {formatNumber(targetDuration)}s
-            </Text>
-
-            <View style={styles.timerTrack}>
+            <View
+              style={styles.progressTrack}
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: Math.round(recordingProgress * 100),
+              }}
+            >
               <View
                 style={[
-                  styles.timerFill,
-                  {
-                    width: `${recordingProgress * 100}%`,
-                  },
+                  styles.progressFill,
+                  { width: `${recordingProgress * 100}%` },
                 ]}
               />
             </View>
 
-            <Text style={styles.helperText}>
-              The important part is keeping the vowel sounding the
-              same from start to finish.
+            <Text style={styles.remainingText}>
+              {formatNumber(remainingSeconds)} seconds remaining
             </Text>
+          </View>
 
-            <Pressable
-              style={styles.stopButton}
-              onPress={stopEarly}
-              disabled={!isRecording || isQuitting}
-              accessibilityRole="button"
-            >
-              <Ionicons
-                name="stop-circle-outline"
-                size={20}
-                color={BROWN}
-              />
+          <View style={styles.liveCard}>
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveMicCircle}>
+                <Ionicons
+                  name="mic"
+                  size={21}
+                  color={GUIDE_GREEN}
+                />
+              </View>
 
-              <Text style={styles.stopButtonText}>
-                Finish This Repetition
-              </Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-        {quitModal}
-      </>
-    );
-  }
+              <View style={styles.liveCardHeading}>
+                <Text style={styles.liveCardTitle}>
+                  Live Voice Monitor
+                </Text>
+                <Text style={styles.liveCardSubtitle}>
+                  Your microphone feedback
+                </Text>
+              </View>
+
+              <View style={styles.liveIndicatorPill}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.liveIndicatorText}>LIVE</Text>
+              </View>
+            </View>
+
+            <VowelLiveWaveform frame={liveFrame} />
+
+            <View style={styles.liveMetricsRow}>
+              <View style={styles.liveMetric}>
+                <Text style={styles.liveLabel}>TARGET VOWEL</Text>
+                <Text style={styles.liveValue}>
+                  {vowelDisplay(params.vowel)}
+                </Text>
+                <Text style={styles.metricHint}>
+                  Keep the sound consistent
+                </Text>
+              </View>
+
+              <View style={styles.liveDivider} />
+
+              <View style={styles.liveMetric}>
+                <Text style={styles.liveLabel}>VOICE CLARITY</Text>
+                <Text style={styles.liveValue}>
+                  {voiceClarity}
+                </Text>
+                <Text style={styles.metricHint}>
+                  {detectedPitch}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.recordingTip}>
+            <Ionicons
+              name="information-circle-outline"
+              size={19}
+              color={MUTED}
+            />
+            <Text style={styles.recordingTipText}>
+              Keep your mouth shape steady and hold the vowel gently
+              until the timer finishes.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+
+      {quitModal}
+    </>
+  );
+}
 
   if (phase === 'processing') {
     const isFinalRep = currentRepetition >= repetitions;
@@ -1277,13 +1415,13 @@ export default function VowelConsistencyExerciseScreen({
           icon="analytics-outline"
           title={
             isFinalRep
-              ? 'Analyzing Your Results'
-              : 'Analyzing Your Vowel'
+              ? 'Preparing Your Results'
+              : 'Checking Your Vowel'
           }
           message={
             isFinalRep
-              ? 'Calculating your overall tone consistency score'
-              : `Processing repetition ${currentRepetition}`
+              ? 'Looking at all your repetitions to calculate your overall score.'
+              : `Checking repetition ${currentRepetition}. Just a moment!`
           }
           onBack={goBack}
         />
@@ -1309,8 +1447,12 @@ export default function VowelConsistencyExerciseScreen({
               ]}
             >
               <Ionicons
-                name={finalResult.passed ? 'checkmark' : 'refresh'}
-                size={40}
+                name={
+                  finalResult.passed
+                    ? 'checkmark-circle-outline'
+                    : 'refresh-outline'
+                }
+                size={42}
                 color={BROWN}
               />
             </View>
@@ -1322,11 +1464,13 @@ export default function VowelConsistencyExerciseScreen({
             </Text>
 
             <Text style={styles.resultSubtitle}>
-              Vowel Consistency Result
+              You finished your Vowel Consistency exercise
             </Text>
 
             <View style={styles.scoreCard}>
-              <Text style={styles.scoreLabel}>Overall Score</Text>
+              <Text style={styles.scoreLabel}>
+                YOUR OVERALL SCORE
+              </Text>
 
               <Text style={styles.scoreValue}>
                 {finalResult.score}%
@@ -1334,18 +1478,20 @@ export default function VowelConsistencyExerciseScreen({
 
               <Text style={styles.scoreDescription}>
                 {finalResult.passed
-                  ? 'Your vowel stayed consistent across the exercise.'
-                  : 'Try to keep the vowel shape and tone more consistent in every repetition.'}
+                  ? 'Well done! Your results met the exercise target. Keep practicing to build an even steadier sound.'
+                  : 'You’re making progress. Try holding the same vowel shape and sound from beginning to end.'}
               </Text>
             </View>
 
             <View style={styles.resultCard}>
-              <Text style={styles.resultCardTitle}>Target</Text>
+              <Text style={styles.resultCardTitle}>
+                Your Practice
+              </Text>
 
               <View style={styles.targetResultRow}>
                 <View>
                   <Text style={styles.resultTargetSmall}>
-                    VOWEL
+                    TARGET VOWEL
                   </Text>
 
                   <Text style={styles.resultTargetLarge}>
@@ -1355,7 +1501,26 @@ export default function VowelConsistencyExerciseScreen({
 
                 <View style={styles.targetBadge}>
                   <Text style={styles.targetBadgeText}>
-                    {repetitions} reps
+                    {results.length} of {repetitions} reps
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.practiceTip}>
+                <Ionicons
+                  name="bulb-outline"
+                  size={22}
+                  color={BROWN}
+                />
+
+                <View style={styles.practiceTipText}>
+                  <Text style={styles.practiceTipTitle}>
+                    What to focus on next
+                  </Text>
+
+                  <Text style={styles.practiceTipMessage}>
+                    Keep your mouth shape steady and aim for one
+                    consistent vowel sound throughout each repetition.
                   </Text>
                 </View>
               </View>
@@ -1363,7 +1528,7 @@ export default function VowelConsistencyExerciseScreen({
 
             <View style={styles.resultCard}>
               <Text style={styles.resultCardTitle}>
-                Repetition Scores
+                How You Did Each Time
               </Text>
 
               {results.map((item, index) => (
@@ -1371,6 +1536,25 @@ export default function VowelConsistencyExerciseScreen({
                   style={styles.resultRow}
                   key={`rep-${index}`}
                 >
+                  <View
+                    style={[
+                      styles.repStatusIcon,
+                      item.passed
+                        ? styles.repStatusPassed
+                        : styles.repStatusNeedsPractice,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        item.passed
+                          ? 'checkmark'
+                          : 'refresh-outline'
+                      }
+                      size={17}
+                      color={BROWN}
+                    />
+                  </View>
+
                   <View style={styles.resultRowContent}>
                     <Text style={styles.resultRowLabel}>
                       Repetition {index + 1}
@@ -1378,8 +1562,8 @@ export default function VowelConsistencyExerciseScreen({
 
                     <Text style={styles.resultRowHint}>
                       {item.passed
-                        ? 'Vowel target and smoothness met'
-                        : 'Needs more consistent vowel quality'}
+                        ? 'Exercise target reached'
+                        : 'Keep practicing this vowel'}
                     </Text>
                   </View>
 
@@ -1390,45 +1574,13 @@ export default function VowelConsistencyExerciseScreen({
               ))}
             </View>
 
-            <View style={styles.resultCard}>
-              <Text style={styles.resultCardTitle}>Analysis</Text>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultRowLabel}>
-                  Average spectral centroid
-                </Text>
-
-                <Text style={styles.resultRowValue}>
-                  {finalAverageCentroid > 0
-                    ? `${Math.round(finalAverageCentroid)} Hz`
-                    : '--'}
-                </Text>
-              </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultRowLabel}>
-                  Frames analyzed
-                </Text>
-
-                <Text style={styles.resultRowValue}>
-                  {frameCount}
-                </Text>
-              </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultRowLabel}>
-                  Required smoothness
-                </Text>
-
-                <Text style={styles.resultRowValue}>
-                  {params.smoothnessThreshold}%
-                </Text>
-              </View>
-            </View>
-
             <Pressable
-              style={styles.startButton}
+              style={({ pressed }) => [
+                styles.startButton,
+                pressed && styles.buttonPressed,
+              ]}
               onPress={retry}
+              accessibilityRole="button"
             >
               <Text style={styles.startButtonText}>
                 Try Again
@@ -1442,8 +1594,12 @@ export default function VowelConsistencyExerciseScreen({
             </Pressable>
 
             <Pressable
-              style={styles.secondaryButton}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.buttonPressed,
+              ]}
               onPress={goBack}
+              accessibilityRole="button"
             >
               <Text style={styles.secondaryButtonText}>
                 Back to Exercises
@@ -1508,15 +1664,15 @@ const styles = StyleSheet.create({
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
+    paddingTop: 70,
+    paddingBottom: 40,
     alignItems: 'center',
   },
   resultsContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
+    paddingTop: 50,
+    paddingBottom: 45,
     alignItems: 'center',
   },
   iconCircle: {
@@ -1530,13 +1686,14 @@ const styles = StyleSheet.create({
   },
   startButton: {
     width: '100%',
-    height: 54,
+    minHeight: 54,
     borderRadius: 27,
     backgroundColor: BROWN,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    marginTop: 20,
   },
   startButtonText: {
     fontFamily: 'FredokaBold',
@@ -1545,7 +1702,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     width: '100%',
-    height: 50,
+    minHeight: 50,
     borderRadius: 25,
     backgroundColor: LIGHT_GRAY,
     alignItems: 'center',
@@ -1577,6 +1734,13 @@ const styles = StyleSheet.create({
     fontSize: 58,
     color: BROWN,
     marginTop: 14,
+  },
+  restHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 5,
+    textAlign: 'center',
   },
   restIndicator: {
     marginTop: 18,
@@ -1610,7 +1774,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 12,
   },
   vowelLabel: {
     fontFamily: 'FredokaRegular',
@@ -1631,20 +1795,20 @@ const styles = StyleSheet.create({
   },
   microphoneArea: {
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 18,
   },
   outerMicCircle: {
-    width: 146,
-    height: 146,
-    borderRadius: 73,
+    width: 126,
+    height: 126,
+    borderRadius: 63,
     backgroundColor: LIGHT_PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
   innerMicCircle: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
+    width: 94,
+    height: 94,
+    borderRadius: 47,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1655,71 +1819,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: BROWN,
-  },
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     color: BROWN,
     letterSpacing: 0.8,
   },
-  liveCard: {
+  feedbackPanel: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-    marginTop: 25,
+    borderRadius: 17,
+    paddingHorizontal: 13,
+    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  liveLabel: {
+  feedbackTextContainer: {
+    flex: 1,
+  },
+  feedbackIcon: {
+  marginRight: 12,
+},
+  feedbackTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+  },
+  feedbackMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
-  },
-  liveNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
+    lineHeight: 16,
     color: BROWN,
     marginTop: 3,
   },
-  liveFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    marginTop: 2,
-  },
-  liveStats: {
+  soundWaveArea: {
     width: '100%',
+    height: 45,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 18,
-  },
-  liveStat: {
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: 17,
+    paddingHorizontal: 3,
   },
-  liveStatLabel: {
+  soundWaveBar: {
+    width: 4,
+    borderRadius: 4,
+    backgroundColor: '#EBC4CE',
+  },
+  waveCaption: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: BROWN,
-    marginTop: 2,
+    textAlign: 'center',
+    marginTop: 3,
   },
   timerText: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
     textAlign: 'center',
-    marginTop: 18,
+    marginTop: 20,
   },
   timerTrack: {
     width: '100%',
@@ -1740,24 +1899,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
     marginTop: 12,
-  },
-  stopButton: {
-    width: '100%',
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  stopButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: BROWN,
   },
   resultIcon: {
     width: 82,
@@ -1782,9 +1923,10 @@ const styles = StyleSheet.create({
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
+    lineHeight: 18,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 3,
+    marginTop: 4,
     marginBottom: 22,
   },
   scoreCard: {
@@ -1825,7 +1967,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 17,
     color: BROWN,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   targetResultRow: {
     flexDirection: 'row',
@@ -1853,34 +1995,72 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: BROWN,
   },
+  practiceTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: WHITE,
+    borderRadius: 14,
+    padding: 13,
+    marginTop: 16,
+    gap: 10,
+  },
+  practiceTipText: {
+    flex: 1,
+  },
+  practiceTipTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+  practiceTipMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 4,
+  },
   resultRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
+  },
+  repStatusIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  repStatusPassed: {
+    backgroundColor: GUIDE_GREEN,
+  },
+  repStatusNeedsPractice: {
+    backgroundColor: GUIDE_YELLOW,
   },
   resultRowContent: {
     flex: 1,
   },
   resultRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    color: BROWN,
   },
   resultRowHint: {
     fontFamily: 'FredokaRegular',
-    fontSize: 9,
+    fontSize: 10,
+    lineHeight: 14,
     color: MUTED,
     marginTop: 2,
     maxWidth: 220,
   },
   resultRowValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 14,
     color: BROWN,
-    marginLeft: 12,
+    marginLeft: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -1959,4 +2139,257 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.5,
   },
+  recordingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    paddingHorizontal: 22,
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+
+recordingBody: {
+  flexGrow: 1,
+  alignItems: 'center',
+  paddingHorizontal: 22,
+  paddingTop: 28,
+  paddingBottom: 36,
+},
+
+repPill: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 7,
+  paddingHorizontal: 13,
+  paddingVertical: 8,
+  borderRadius: 20,
+  backgroundColor: PINK,
+},
+
+repPillText: {
+  fontFamily: 'FredokaBold',
+  fontSize: 11,
+  letterSpacing: 0.6,
+  color: BROWN,
+},
+
+recordingProgressSection: {
+  width: '100%',
+  marginTop: 26,
+  marginBottom: 20,
+},
+
+recordingProgressLabels: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 9,
+},
+
+progressLabel: {
+  fontFamily: 'FredokaBold',
+  fontSize: 11,
+  letterSpacing: 0.8,
+  color: MUTED,
+},
+
+progressTime: {
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 12,
+  color: BROWN,
+},
+
+progressTrack: {
+  width: '100%',
+  height: 8,
+  overflow: 'hidden',
+  borderRadius: 8,
+  backgroundColor: LIGHT_PINK,
+},
+
+progressFill: {
+  height: '100%',
+  borderRadius: 8,
+  backgroundColor: PINK,
+},
+
+remainingText: {
+  marginTop: 7,
+  fontFamily: 'FredokaRegular',
+  fontSize: 11,
+  color: MUTED,
+  textAlign: 'right',
+},
+
+// Replace the existing liveCard style with this definition.
+liveCard: {
+  width: '100%',
+  paddingHorizontal: 16,
+  paddingVertical: 18,
+  borderRadius: 22,
+  backgroundColor: LIGHT_PINK,
+  borderWidth: 1,
+  borderColor: BORDER,
+},
+
+liveCardHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 15,
+},
+
+liveMicCircle: {
+  width: 42,
+  height: 42,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 21,
+  backgroundColor: '#E5F2E8',
+},
+
+liveCardHeading: {
+  flex: 1,
+  marginLeft: 10,
+},
+
+liveCardTitle: {
+  fontFamily: 'FredokaBold',
+  fontSize: 15,
+  color: BROWN,
+},
+
+liveCardSubtitle: {
+  marginTop: 2,
+  fontFamily: 'FredokaRegular',
+  fontSize: 11,
+  color: MUTED,
+},
+
+liveIndicatorPill: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 5,
+  paddingHorizontal: 9,
+  paddingVertical: 6,
+  borderRadius: 14,
+  backgroundColor: '#FCE9EC',
+},
+
+// Update the existing recordingDot backgroundColor to GUIDE_RED.
+recordingDot: {
+  width: 7,
+  height: 7,
+  borderRadius: 4,
+  backgroundColor: GUIDE_RED,
+},
+
+liveIndicatorText: {
+  fontFamily: 'FredokaBold',
+  fontSize: 10,
+  letterSpacing: 0.7,
+  color: GUIDE_RED,
+},
+
+waveformContainer: {
+  width: '100%',
+  alignItems: 'center',
+  paddingTop: 5,
+  paddingBottom: 15,
+  marginBottom: 15,
+  borderBottomWidth: 1,
+  borderBottomColor: BORDER,
+},
+
+waveformBars: {
+  width: '100%',
+  height: 48,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 3,
+},
+
+waveformBar: {
+  flex: 1,
+  maxWidth: 6,
+  minWidth: 2,
+  borderRadius: 4,
+},
+
+waveformStatusRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 10,
+  gap: 6,
+},
+
+statusDot: {
+  width: 7,
+  height: 7,
+  borderRadius: 4,
+},
+
+waveformStatus: {
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 12,
+  textAlign: 'center',
+},
+
+liveMetricsRow: {
+  width: '100%',
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+liveMetric: {
+  flex: 1,
+  alignItems: 'center',
+  paddingHorizontal: 4,
+},
+
+liveDivider: {
+  width: 1,
+  height: 52,
+  backgroundColor: BORDER,
+},
+
+liveLabel: {
+  fontFamily: 'FredokaBold',
+  fontSize: 10,
+  letterSpacing: 0.6,
+  color: MUTED,
+  marginBottom: 5,
+  textAlign: 'center',
+},
+
+liveValue: {
+  fontFamily: 'FredokaBold',
+  fontSize: 24,
+  color: BROWN,
+},
+
+metricHint: {
+  marginTop: 3,
+  fontFamily: 'FredokaRegular',
+  fontSize: 10,
+  color: MUTED,
+  textAlign: 'center',
+},
+
+recordingTip: {
+  width: '100%',
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: 8,
+  marginTop: 18,
+  paddingHorizontal: 5,
+},
+
+recordingTipText: {
+  flex: 1,
+  fontFamily: 'FredokaRegular',
+  fontSize: 12,
+  lineHeight: 18,
+  color: MUTED,
+},
 });

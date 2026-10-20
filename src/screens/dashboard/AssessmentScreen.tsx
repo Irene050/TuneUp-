@@ -1101,68 +1101,74 @@ export default function AssessmentScreen() {
     setStep('intro');
   }, [clearRecordingTimer]);
 
+    const continueAssessment = useCallback(() => {
+    if (isQuitting || quittingRef.current) {
+      return;
+    }
+
+    setShowQuitModal(false);
+  }, [isQuitting]);
+  
   const quitModal = (
     <Modal
       visible={showQuitModal}
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={() => {
-        if (!isQuitting && !quittingRef.current) {
-          setShowQuitModal(false);
-        }
-      }}
+      onRequestClose={continueAssessment}
     >
-      <View style={styles.quitModalOverlay}>
-        <View style={styles.quitModalCard}>
-          <View style={styles.quitModalIcon}>
-            <Ionicons name="mic-off-outline" size={34} color={BROWN} />
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color="#4E2F1F"
+            />
           </View>
 
-          <Text style={styles.quitModalTitle}>Quit Assessment?</Text>
-
-          <Text style={styles.quitModalMessage}>
-            Are you sure you want to quit assessment?
+          <Text style={styles.modalTitle}>
+            Quit assessment?
           </Text>
 
-          <Text style={styles.quitModalHint}>
-            Your current progress will not be saved.
+          <Text style={styles.modalMessage}>
+            Your assessment progress may be lost if you leave
+            now. Are you sure you want to quit?
           </Text>
 
-          <View style={styles.quitModalActions}>
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.quitContinueButton,
-                pressed && styles.buttonPressed,
-              ]}
-              disabled={isQuitting}
-              onPress={() => setShowQuitModal(false)}
-            >
-              <Text style={styles.quitContinueButtonText}>
-                No, Continue
-              </Text>
-            </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue assessment"
+            disabled={isQuitting}
+            onPress={continueAssessment}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Assessment
+            </Text>
+          </Pressable>
 
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.quitConfirmButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.quitButtonDisabled,
-              ]}
-              disabled={isQuitting}
-              onPress={() => {
-                void confirmQuitAssessment();
-              }}
-            >
-              {isQuitting ? (
-                <ActivityIndicator size="small" color={WHITE} />
-              ) : (
-                <Text style={styles.quitConfirmButtonText}>Yes, Quit</Text>
-              )}
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit assessment"
+            disabled={isQuitting}
+            onPress={() => {
+              void confirmQuitAssessment();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Assessment'}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -2446,8 +2452,93 @@ const styles = StyleSheet.create({
   quitButtonDisabled: {
     opacity: 0.65,
   },
-  buttonPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.98 }],
-  },
+  
+modalOverlay: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 28,
+  backgroundColor: 'rgba(0, 0, 0, 0.45)',
+},
+
+modalCard: {
+  width: '100%',
+  maxWidth: 380,
+  alignItems: 'center',
+  paddingHorizontal: 24,
+  paddingVertical: 26,
+  borderRadius: 24,
+  backgroundColor: '#FFFFFF',
+},
+
+modalIcon: {
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#FFF8FA',
+  marginBottom: 15,
+},
+
+modalTitle: {
+  fontFamily: 'FredokaBold',
+  fontSize: 23,
+  color: '#4E2F1F',
+  textAlign: 'center',
+},
+
+modalMessage: {
+  marginTop: 10,
+  marginBottom: 23,
+  fontFamily: 'FredokaRegular',
+  fontSize: 15,
+  lineHeight: 22,
+  color: '#8E7770',
+  textAlign: 'center',
+},
+
+continueButton: {
+  width: '100%',
+  minHeight: 48,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 16,
+  borderRadius: 14,
+  backgroundColor: '#FCD6DD',
+},
+
+continueButtonText: {
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 15,
+  color: '#4E2F1F',
+},
+
+quitButton: {
+  width: '100%',
+  minHeight: 48,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 16,
+  marginTop: 10,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: '#F2DDE5',
+  backgroundColor: '#FFFFFF',
+},
+
+quitButtonText: {
+  fontFamily: 'FredokaSemiBold',
+  fontSize: 15,
+  color: '#8E7770',
+},
+
+buttonPressed: {
+  opacity: 0.75,
+},
+
+buttonDisabled: {
+  opacity: 0.5,
+},
+
 });
