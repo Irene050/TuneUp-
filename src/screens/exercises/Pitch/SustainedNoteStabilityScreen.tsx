@@ -68,6 +68,12 @@ const MUTED = '#8E7770';
 const LIGHT_GRAY = '#F2F2F2';
 const BORDER = '#F2DDE5';
 
+const GREEN = '#54A879';
+const LIGHT_GREEN = '#DFF2E6';
+const YELLOW = '#E5B84B';
+const RED = '#D96A6A';
+const METER_GRAY = '#EAE3E5';
+
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
 const RECORDING_INTERVAL_MS = 100;
@@ -1385,32 +1391,100 @@ export default function SustainedNoteStabilityScreen({
           </Text>
 
           <View style={styles.liveCard}>
-            <Text style={styles.liveLabel}>Target</Text>
-            <Text style={styles.liveTarget}>{targetNote.name}</Text>
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveHeaderText}>
+                <Text style={styles.liveCardTitle}>Live Pitch Monitor</Text>
+                <Text style={styles.liveCardSubtitle}>
+                  Match the target and keep your voice steady
+                </Text>
+              </View>
 
-            <View style={styles.liveDivider} />
+              <View style={styles.liveRecordingBadge}>
+                <View style={styles.liveRecordingDot} />
+                <Text style={styles.liveRecordingBadgeText}>LIVE</Text>
+              </View>
+            </View>
 
-            <Text style={styles.liveLabel}>Your Note</Text>
-            <Text style={styles.liveNote}>
-              {liveFrame?.note ?? '--'}
-            </Text>
+            <View style={styles.pitchComparison}>
+              <View style={styles.pitchColumn}>
+                <Text style={styles.liveLabel}>TARGET NOTE</Text>
+                <Text style={styles.liveTarget}>{targetNote.name}</Text>
+                <Text style={styles.liveFrequency}>
+                  {Math.round(targetNote.frequency)} Hz
+                </Text>
+              </View>
 
-            <Text style={styles.liveFrequency}>
-              {liveFrame && liveFrame.pitch > 0
-                ? `${Math.round(liveFrame.pitch)} Hz`
-                : '--'}
-            </Text>
+              <View style={styles.pitchComparisonDivider}>
+                <Ionicons
+                  name="arrow-forward"
+                  size={20}
+                  color={MUTED}
+                />
+              </View>
+
+              <View style={styles.pitchColumn}>
+                <Text style={styles.liveLabel}>YOUR NOTE</Text>
+                <Text
+                  style={[
+                    styles.liveNote,
+                    liveFrame?.pitch && liveFrame.pitch > 0
+                      ? styles.liveNoteDetected
+                      : styles.liveNoteWaiting,
+                  ]}
+                >
+                  {liveFrame?.note ?? '--'}
+                </Text>
+                <Text style={styles.liveFrequency}>
+                  {liveFrame && liveFrame.pitch > 0
+                    ? `${Math.round(liveFrame.pitch)} Hz`
+                    : 'Waiting for voice'}
+                </Text>
+              </View>
+            </View>
+
+            <LivePitchIndicator
+              targetFrequency={targetNote.frequency}
+              detectedFrequency={
+                liveFrame && Number.isFinite(liveFrame.pitch) &&
+                liveFrame.pitch > 0
+                  ? liveFrame.pitch
+                  : null
+              }
+            />
+
+            <View style={styles.liveSectionDivider} />
+
+            <LiveStabilityIndicator
+              stability={liveStability}
+              hasPitch={liveFrequencies.length >= 2}
+            />
 
             <View style={styles.liveStats}>
               <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Accuracy</Text>
+                <View style={styles.liveStatHeading}>
+                  <Ionicons
+                    name="locate-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                  <Text style={styles.liveStatLabel}>Accuracy</Text>
+                </View>
                 <Text style={styles.liveStatValue}>
                   {Math.round(liveAccuracy)}%
                 </Text>
               </View>
 
+              <View style={styles.liveStatsDivider} />
+
               <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Stability</Text>
+                <View style={styles.liveStatHeading}>
+                  <Ionicons
+                    name="pulse-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                  <Text style={styles.liveStatLabel}>Stability</Text>
+                </View>
                 <Text style={styles.liveStatValue}>
                   {Math.round(liveStability)}%
                 </Text>
@@ -1578,6 +1652,244 @@ export default function SustainedNoteStabilityScreen({
   }
 
   return null;
+}
+
+
+function LivePitchIndicator({
+  targetFrequency,
+  detectedFrequency,
+}: {
+  targetFrequency: number;
+  detectedFrequency: number | null;
+}) {
+  const hasPitch =
+    detectedFrequency !== null &&
+    Number.isFinite(detectedFrequency) &&
+    detectedFrequency > 0 &&
+    Number.isFinite(targetFrequency) &&
+    targetFrequency > 0;
+
+  const cents = hasPitch
+    ? 1200 * Math.log2(detectedFrequency / targetFrequency)
+    : null;
+
+  const absoluteCents = cents === null ? null : Math.abs(cents);
+
+  const status =
+    cents === null
+      ? 'LISTENING'
+      : absoluteCents! <= 25
+        ? 'IN TUNE'
+        : cents < 0
+          ? 'TOO LOW'
+          : 'TOO HIGH';
+
+  const statusColor =
+    cents === null
+      ? MUTED
+      : absoluteCents! <= 25
+        ? GREEN
+        : absoluteCents! <= 60
+          ? YELLOW
+          : RED;
+
+  const markerPosition =
+    cents === null
+      ? 50
+      : Math.max(3, Math.min(97, 50 + (cents / 100) * 47));
+
+  const guidance =
+    cents === null
+      ? 'Sing the target note to see your live pitch.'
+      : absoluteCents! <= 25
+        ? 'Great! Your pitch is close to the target.'
+        : cents < 0
+          ? 'Your pitch is low. Gently raise it.'
+          : 'Your pitch is high. Gently lower it.';
+
+  return (
+    <View style={styles.pitchIndicator}>
+      <View style={styles.pitchIndicatorHeader}>
+        <View>
+          <Text style={styles.indicatorTitle}>Pitch Accuracy</Text>
+          <Text style={styles.indicatorSubtitle}>
+            Distance from target
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.pitchStatusBadge,
+            { backgroundColor: `${statusColor}20` },
+          ]}
+        >
+          <View
+            style={[
+              styles.pitchStatusDot,
+              { backgroundColor: statusColor },
+            ]}
+          />
+          <Text
+            style={[
+              styles.pitchStatusText,
+              { color: statusColor },
+            ]}
+          >
+            {status}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.pitchMeterLabels}>
+        <Text style={styles.pitchMeterEndLabel}>FLAT</Text>
+        <Text style={styles.pitchMeterCenterLabel}>IN TUNE</Text>
+        <Text style={styles.pitchMeterEndLabel}>SHARP</Text>
+      </View>
+
+      <View style={styles.pitchMeter}>
+        <View
+          style={[styles.pitchMeterZone, styles.pitchMeterRed]}
+        />
+        <View
+          style={[styles.pitchMeterZone, styles.pitchMeterYellow]}
+        />
+        <View
+          style={[styles.pitchMeterZone, styles.pitchMeterGreen]}
+        />
+        <View
+          style={[styles.pitchMeterZone, styles.pitchMeterYellow]}
+        />
+        <View
+          style={[styles.pitchMeterZone, styles.pitchMeterRed]}
+        />
+
+        <View
+          style={[
+            styles.pitchMeterMarker,
+            { left: `${markerPosition}%` },
+            !hasPitch && styles.pitchMeterMarkerInactive,
+          ]}
+        />
+      </View>
+
+      <View style={styles.centsRow}>
+        <Text style={styles.centsLabel}>Pitch deviation</Text>
+        <Text
+          style={[
+            styles.centsValue,
+            { color: hasPitch ? statusColor : MUTED },
+          ]}
+        >
+          {cents === null
+            ? '-- cents'
+            : cents === 0
+              ? '0 cents'
+              : `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents`}
+        </Text>
+      </View>
+
+      <Text style={styles.pitchGuidance}>{guidance}</Text>
+    </View>
+  );
+}
+
+function LiveStabilityIndicator({
+  stability,
+  hasPitch,
+}: {
+  stability: number;
+  hasPitch: boolean;
+}) {
+  const safeStability = Number.isFinite(stability)
+    ? Math.max(0, Math.min(100, stability))
+    : 0;
+
+  const status = !hasPitch
+    ? 'WAITING'
+    : safeStability >= 80
+      ? 'STEADY'
+      : safeStability >= 60
+        ? 'MODERATE'
+        : 'UNSTEADY';
+
+  const statusColor = !hasPitch
+    ? MUTED
+    : safeStability >= 80
+      ? GREEN
+      : safeStability >= 60
+        ? YELLOW
+        : RED;
+
+  const guidance = !hasPitch
+    ? 'Hold a note to measure pitch consistency.'
+    : safeStability >= 80
+      ? 'Your pitch is staying consistent. Keep it going!'
+      : safeStability >= 60
+        ? 'Try to reduce small pitch fluctuations.'
+        : 'Focus on a relaxed voice and steady airflow.';
+
+  return (
+    <View style={styles.stabilityIndicator}>
+      <View style={styles.stabilityHeader}>
+        <View style={styles.stabilityIcon}>
+          <Ionicons
+            name="pulse-outline"
+            size={20}
+            color={BROWN}
+          />
+        </View>
+
+        <View style={styles.stabilityHeadingText}>
+          <Text style={styles.indicatorTitle}>
+            Pitch Stability
+          </Text>
+          <Text style={styles.indicatorSubtitle}>
+            Consistency of your recent pitch
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.stabilityPercentage,
+            { color: statusColor },
+          ]}
+        >
+          {hasPitch ? `${Math.round(safeStability)}%` : '--'}
+        </Text>
+      </View>
+
+      <View style={styles.stabilityTrack}>
+        <View
+          style={[
+            styles.stabilityFill,
+            {
+              width: hasPitch ? `${safeStability}%` : '0%',
+              backgroundColor: statusColor,
+            },
+          ]}
+        />
+      </View>
+
+      <View style={styles.stabilityFooter}>
+        <Text style={styles.stabilityScaleLabel}>
+          Less steady
+        </Text>
+        <Text
+          style={[
+            styles.stabilityStatus,
+            { color: statusColor },
+          ]}
+        >
+          {status}
+        </Text>
+        <Text style={styles.stabilityScaleLabel}>
+          More steady
+        </Text>
+      </View>
+
+      <Text style={styles.pitchGuidance}>{guidance}</Text>
+    </View>
+  );
 }
 
 function QuitExerciseModal({
@@ -2226,5 +2538,260 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  
+  liveCardHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  liveHeaderText: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  liveCardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+  },
+  liveCardSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 3,
+  },
+  liveRecordingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PINK,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  liveRecordingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: RED,
+    marginRight: 5,
+  },
+  liveRecordingBadgeText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    color: BROWN,
+  },
+  pitchComparison: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: WHITE,
+    borderRadius: 17,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  pitchColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  pitchComparisonDivider: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: LIGHT_PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  liveNoteDetected: {
+    color: BROWN,
+  },
+  liveNoteWaiting: {
+    color: MUTED,
+  },
+  pitchIndicator: {
+    width: '100%',
+    marginTop: 22,
+  },
+  pitchIndicatorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  indicatorTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  indicatorSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 2,
+  },
+  pitchStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  pitchStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  pitchStatusText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+  },
+  pitchMeterLabels: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 7,
+  },
+  pitchMeterEndLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
+  pitchMeterCenterLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    color: GREEN,
+  },
+  pitchMeter: {
+    width: '100%',
+    height: 14,
+    flexDirection: 'row',
+    borderRadius: 7,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: METER_GRAY,
+  },
+  pitchMeterZone: {
+    flex: 1,
+    height: '100%',
+  },
+  pitchMeterRed: {
+    backgroundColor: '#E8A1A1',
+  },
+  pitchMeterYellow: {
+    backgroundColor: '#F0D58B',
+  },
+  pitchMeterGreen: {
+    backgroundColor: '#86CBA2',
+  },
+  pitchMeterMarker: {
+    position: 'absolute',
+    top: -3,
+    width: 5,
+    height: 20,
+    marginLeft: -2.5,
+    borderRadius: 3,
+    backgroundColor: BROWN,
+    borderWidth: 1,
+    borderColor: WHITE,
+  },
+  pitchMeterMarkerInactive: {
+    opacity: 0.45,
+  },
+  centsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  centsLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+  centsValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+  },
+  pitchGuidance: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 8,
+  },
+  liveSectionDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: 20,
+  },
+  stabilityIndicator: {
+    width: '100%',
+  },
+  stabilityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stabilityIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  stabilityHeadingText: {
+    flex: 1,
+  },
+  stabilityPercentage: {
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    marginLeft: 8,
+  },
+  stabilityTrack: {
+    height: 10,
+    width: '100%',
+    backgroundColor: METER_GRAY,
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginTop: 15,
+  },
+  stabilityFill: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  stabilityFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 7,
+  },
+  stabilityScaleLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
+  stabilityStatus: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+  },
+  liveStatHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  liveStatsDivider: {
+    width: 1,
+    backgroundColor: BORDER,
+    alignSelf: 'stretch',
   },
 });

@@ -92,6 +92,8 @@ interface GeneratedInterval {
 
 interface QuitExerciseModalProps {
   visible: boolean;
+  interruptedPhase: Phase;
+  isQuitting: boolean;
   onContinue: () => void;
   onQuit: () => void;
 }
@@ -256,64 +258,77 @@ function formatCents(cents: number | null): string {
 
 function QuitExerciseModal({
   visible,
+  interruptedPhase,
+  isQuitting,
   onContinue,
   onQuit,
 }: QuitExerciseModalProps) {
+  const message =
+    interruptedPhase === 'instructions' ||
+    interruptedPhase === 'results'
+      ? 'Are you sure you want to leave Interval Recognition Task?'
+      : interruptedPhase === 'recording'
+        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current exercise when you continue.'
+        : interruptedPhase === 'processing'
+          ? 'Your exercise is paused. Continue to resume processing your current results.'
+          : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
+
   return (
     <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onContinue}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.quitModalCard}>
-          <View style={styles.quitIconCircle}>
-            <Ionicons
-              name="pause-circle-outline"
-              size={34}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.quitModalTitle}>
-            Pause Exercise?
-          </Text>
-
-          <Text style={styles.quitModalMessage}>
-            Your exercise is paused. Continue to resume, or quit
-            and return to your exercises.
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            style={styles.continueButton}
-            onPress={onContinue}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={WHITE}
-            />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            style={styles.quitButton}
-            onPress={onQuit}
-          >
-            <Text style={styles.quitButtonText}>
-              Quit Exercise
-            </Text>
-          </Pressable>
-        </View>
+  visible={visible}
+  transparent
+  animationType="fade"
+  onRequestClose={onContinue}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.quitModalCard}>
+      <View style={styles.quitIconCircle}>
+        <Ionicons
+          name="exit-outline"
+          size={30}
+          color={BROWN}
+        />
       </View>
-    </Modal>
+
+      <Text style={styles.quitModalTitle}>
+        Leave Exercise?
+      </Text>
+
+      <Text style={styles.quitModalMessage}>
+        Your current exercise progress may be lost.
+        Are you sure you want to leave?
+      </Text>
+
+      <Pressable
+        onPress={onContinue}
+        disabled={isQuitting}
+        style={({ pressed }) => [
+          styles.continueButton,
+          pressed && styles.modalButtonPressed,
+          isQuitting && styles.buttonDisabled,
+        ]}
+      >
+        <Text style={styles.continueButtonText}>
+          {isQuitting ? 'Please wait...' : 'Continue Exercise'}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={onQuit}
+        disabled={isQuitting}
+        style={({ pressed }) => [
+          styles.quitButton,
+          pressed && styles.modalButtonPressed,
+          isQuitting && styles.buttonDisabled,
+        ]}
+      >
+        <Text style={styles.quitButtonText}>
+          {isQuitting ? 'Leaving...' : 'Quit Exercise'}
+        </Text>
+      </Pressable>
+    </View>
+  </View>
+</Modal>
   );
 }
 
@@ -372,6 +387,11 @@ export default function IntervalRecognitionTaskScreen({
   const pausedRef = useRef(false);
   const leavingRef = useRef(false);
   const playbackRunRef = useRef(0);
+
+  const [isQuitting, setIsQuitting] = useState(false);
+
+  const interruptedPhaseRef = useRef<Phase>('instructions');
+  const isQuittingRef = useRef(false);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1063,13 +1083,17 @@ export default function IntervalRecognitionTaskScreen({
       !mountedRef.current ||
       leavingRef.current ||
       phaseRef.current === 'processing' ||
-      showQuitModalRef.current
+      showQuitModalRef.current ||
+      isQuittingRef.current
     ) {
       return;
     }
 
+    interruptedPhaseRef.current = phaseRef.current;
+
     pausedRef.current = true;
     playbackRunRef.current += 1;
+
     clearTimers();
 
     setQuitModalVisible(true);
@@ -1115,6 +1139,7 @@ export default function IntervalRecognitionTaskScreen({
     if (
       !mountedRef.current ||
       leavingRef.current ||
+      isQuittingRef.current ||
       !showQuitModalRef.current
     ) {
       return;
@@ -1145,12 +1170,22 @@ export default function IntervalRecognitionTaskScreen({
     stopRequestedRef.current = false;
 
     startCountdown(true);
-  }, [setQuitModalVisible, startCountdown]);
+  }, [
+    setQuitModalVisible,
+    startCountdown,
+  ]);
 
-  const quitExercise = useCallback(() => {
-    if (leavingRef.current) {
+  const quitExercise = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      leavingRef.current ||
+      isQuittingRef.current
+    ) {
       return;
     }
+
+    isQuittingRef.current = true;
+    setIsQuitting(true);
 
     leavingRef.current = true;
     pausedRef.current = true;
@@ -1158,31 +1193,38 @@ export default function IntervalRecognitionTaskScreen({
     playbackRunRef.current += 1;
 
     clearTimers();
+
     setQuitModalVisible(false);
 
-    if (
-      recordingRef.current ||
-      recordingStartPendingRef.current ||
-      isRecording
-    ) {
-      discardRecordingRef.current = true;
-      stopRequestedRef.current = true;
+    try {
+      if (
+        recordingRef.current ||
+        recordingStartPendingRef.current ||
+        isRecording
+      ) {
+        discardRecordingRef.current = true;
+        stopRequestedRef.current = true;
 
-      if (!stopInFlightRef.current) {
-        stopInFlightRef.current = true;
+        if (!stopInFlightRef.current) {
+          stopInFlightRef.current = true;
 
-        void stopRecordingRef.current?.().catch(error => {
-          console.error(
-            'Failed to stop recording while quitting:',
-            error,
-          );
-
-          stopInFlightRef.current = false;
-        });
+          try {
+            await stopRecordingRef.current?.();
+          } catch (error) {
+            console.error(
+              'Failed to stop recording while quitting:',
+              error,
+            );
+          } finally {
+            stopInFlightRef.current = false;
+            recordingRef.current = false;
+            recordingStartPendingRef.current = false;
+          }
+        }
       }
+    } finally {
+      router.replace('/dashboard?tab=exercises');
     }
-
-    router.replace('/dashboard?tab=exercises');
   }, [
     clearTimers,
     isRecording,
@@ -1343,8 +1385,12 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
@@ -1530,8 +1576,12 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
@@ -1557,11 +1607,14 @@ export default function IntervalRecognitionTaskScreen({
             Listen carefully to the repeated interval.
           </Text>
         </View>
-
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
@@ -1624,8 +1677,12 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
@@ -2136,8 +2193,12 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
@@ -2172,9 +2233,13 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
-        />
+          onQuit={() => {
+            void quitExercise();
+          }}
+/>
       </>
     );
   }
@@ -2351,16 +2416,6 @@ export default function IntervalRecognitionTaskScreen({
                     : '--'}
                 </Text>
               </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultRowLabel}>
-                  Average interval deviation
-                </Text>
-
-                <Text style={styles.resultRowValue}>
-                  {result.deviationPct.toFixed(1)}%
-                </Text>
-              </View>
             </View>
 
             <View style={styles.resultCard}>
@@ -2426,61 +2481,42 @@ export default function IntervalRecognitionTaskScreen({
             </Pressable>
           </ScrollView>
         </View>
-
         <QuitExerciseModal
           visible={showQuitModal}
+          interruptedPhase={interruptedPhaseRef.current}
+          isQuitting={isQuitting}
           onContinue={continueExercise}
-          onQuit={quitExercise}
+          onQuit={() => {
+            void quitExercise();
+          }}
         />
       </>
     );
   }
-
   return (
     <QuitExerciseModal
       visible={showQuitModal}
+      interruptedPhase={interruptedPhaseRef.current}
+      isQuitting={isQuitting}
       onContinue={continueExercise}
-      onQuit={quitExercise}
+      onQuit={() => {
+        void quitExercise();
+      }}
     />
   );
 }
-
 const styles = StyleSheet.create({
+  // Screen layouts
+  screen: {
+    flex: 1,
+    backgroundColor: WHITE,
+  },
   centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-  },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: WHITE,
   },
   content: {
     flexGrow: 1,
@@ -2511,6 +2547,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
+
+  // General icons and typography
+  largeIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
   iconCircle: {
     width: 76,
     height: 76,
@@ -2533,6 +2580,48 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: 24,
   },
+  phaseTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  phaseSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  processingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  processingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  spinner: {
+    marginTop: 28,
+  },
+  processingIndicator: {
+    marginTop: 28,
+  },
+  errorText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+
+  // Instructions
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2540,39 +2629,6 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: BORDER,
-  },
-  prepareCard: {
-    width: '100%',
-    backgroundColor: PINK,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: BROWN,
-    marginLeft: 9,
-  },
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
   },
   cardTitle: {
     fontFamily: 'FredokaBold',
@@ -2627,6 +2683,39 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 10,
   },
+  prepareCard: {
+    width: '100%',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  prepareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  prepareTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 16,
+    color: BROWN,
+    marginLeft: 9,
+  },
+  prepareItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+  prepareText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 17,
+    color: BROWN,
+    marginLeft: 9,
+  },
   difficultyRow: {
     width: '100%',
     flexDirection: 'row',
@@ -2661,27 +2750,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: WHITE,
   },
-  errorText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-  },
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+
+  // Countdown and interval playback
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
@@ -2732,15 +2802,6 @@ const styles = StyleSheet.create({
   playingIndicator: {
     marginTop: 24,
   },
-  recordingIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
   repetitionBadge: {
     backgroundColor: PINK,
     borderRadius: 15,
@@ -2754,7 +2815,7 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
 
-  /* Live pitch guide */
+  // Live pitch guide
   pitchGuideCard: {
     width: '100%',
     marginTop: 20,
@@ -3044,7 +3105,7 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  /* Live statistics */
+  // Live statistics
   liveStatsCard: {
     width: '100%',
     flexDirection: 'row',
@@ -3086,6 +3147,8 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: BORDER,
   },
+
+  // Interval progress
   intervalProgress: {
     width: '100%',
     flexDirection: 'row',
@@ -3093,9 +3156,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   intervalProgressNote: {
-    minWidth: 58,
-    height: 42,
-    borderRadius: 14,
+    minWidth: 70,
+    height: 70,
+    borderRadius: 100,
     backgroundColor: LIGHT_GRAY,
     alignItems: 'center',
     justifyContent: 'center',
@@ -3106,7 +3169,7 @@ const styles = StyleSheet.create({
   },
   intervalProgressText: {
     fontFamily: 'FredokaBold',
-    fontSize: 12,
+    fontSize: 20,
     color: MUTED,
   },
   intervalProgressTextActive: {
@@ -3117,6 +3180,17 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: LIGHT_GRAY,
     marginHorizontal: 8,
+  },
+
+  // Recording
+  recordingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   recordingIndicator: {
     flexDirection: 'row',
@@ -3154,9 +3228,8 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginTop: 6,
   },
-  processingIndicator: {
-    marginTop: 28,
-  },
+
+  // Results
   resultIcon: {
     width: 82,
     height: 82,
@@ -3296,6 +3369,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
   },
+
+  // Quit exercise modal — matches Note Matching
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(30, 18, 14, 0.48)',
@@ -3314,12 +3389,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: BORDER,
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
   },
   quitIconCircle: {
     width: 66,
     height: 66,
     borderRadius: 33,
-    backgroundColor: PINK,
+    backgroundColor: LIGHT_PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -3341,34 +3424,40 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     width: '100%',
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: BROWN,
-    flexDirection: 'row',
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
     paddingHorizontal: 16,
   },
   continueButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color: BROWN,
   },
   quitButton: {
     width: '100%',
-    minHeight: 48,
-    borderRadius: 24,
-    backgroundColor: LIGHT_PINK,
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: WHITE,
     borderWidth: 1,
     borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
+    paddingHorizontal: 16,
   },
   quitButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: MUTED,
+  },
+  modalButtonPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.98 }],
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

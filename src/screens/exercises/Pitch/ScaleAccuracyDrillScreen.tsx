@@ -1711,6 +1711,43 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
+           <View style={styles.scalePreview}>
+            {targetNotes.map((note, index) => {
+              const active = index === currentNoteIndex;
+              const completed = index < currentNoteIndex;
+
+              return (
+                <View
+                  key={`${note.name}-${index}`}
+                  style={[
+                    styles.previewNote,
+                    completed && styles.previewNoteCompleted,
+                    active && styles.previewNoteActive,
+                  ]}
+                >
+                  {completed && (
+                    <Ionicons
+                      name="checkmark"
+                      size={11}
+                      color={GUIDE_GREEN}
+                      style={styles.previewCheck}
+                    />
+                  )}
+
+                  <Text
+                    style={[
+                      styles.previewNoteText,
+                      completed && styles.previewNoteTextCompleted,
+                      active && styles.previewNoteTextActive,
+                    ]}
+                  >
+                    {note.name}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
           <View style={styles.liveCard}>
             <LivePitchIndicator
               targetNote={currentTarget?.name ?? '--'}
@@ -1780,43 +1817,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
                 <Text style={styles.liveStatUnit}>Hz</Text>
               </View>
             </View>
-          </View>
-
-          <View style={styles.scalePreview}>
-            {targetNotes.map((note, index) => {
-              const active = index === currentNoteIndex;
-              const completed = index < currentNoteIndex;
-
-              return (
-                <View
-                  key={`${note.name}-${index}`}
-                  style={[
-                    styles.previewNote,
-                    completed && styles.previewNoteCompleted,
-                    active && styles.previewNoteActive,
-                  ]}
-                >
-                  {completed && (
-                    <Ionicons
-                      name="checkmark"
-                      size={11}
-                      color={GUIDE_GREEN}
-                      style={styles.previewCheck}
-                    />
-                  )}
-
-                  <Text
-                    style={[
-                      styles.previewNoteText,
-                      completed && styles.previewNoteTextCompleted,
-                      active && styles.previewNoteTextActive,
-                    ]}
-                  >
-                    {note.name}
-                  </Text>
-                </View>
-              );
-            })}
           </View>
 
           <View style={styles.recordingIndicator}>
@@ -2326,10 +2326,10 @@ const styles = StyleSheet.create({
     maxWidth: 350,
   },
   previewNote: {
-    minWidth: 43,
-    height: 39,
+    minWidth: 60,
+    height: 60,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: 100,
     backgroundColor: LIGHT_GRAY,
     alignItems: 'center',
     justifyContent: 'center',

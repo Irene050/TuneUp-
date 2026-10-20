@@ -12,6 +12,7 @@ import {
   BackHandler,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -78,6 +79,12 @@ interface ResultRowProps {
 interface NoteChipProps {
   note: string;
   active?: boolean;
+  size?: number;
+}
+
+interface LivePitchIndicatorProps {
+  targetFrequency: number | null;
+  detectedFrequency: number | null;
 }
 
 const BROWN = '#4E2F1F';
@@ -87,11 +94,25 @@ const WHITE = '#FFFFFF';
 const MUTED = '#8E7770';
 const BORDER = '#F2DDE5';
 
+const GREEN = '#54A879';
+const LIGHT_GREEN = '#DFF2E6';
+const YELLOW = '#D9A62E';
+const RED = '#D96A6A';
+const METER_GRAY = '#EAE3E5';
+
 const NOTE_DURATION_SEC = 0.7;
 const NOTE_GAP_SEC = 0.12;
 const RECORDING_BUFFER_SEC = 0.8;
 const COUNTDOWN_SECONDS = 3;
 const RECORDING_TIMER_INTERVAL_MS = 100;
+
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function getRepetitionCount(
   params: MelodicPatternMatchingParams,
@@ -130,15 +151,170 @@ function ResultRow({
 function NoteChip({
   note,
   active = false,
+  size = 60,
 }: NoteChipProps) {
+  const fontSize =
+    size >= 60 ? 18 :
+    size >= 54 ? 16 :
+    14;
+
   return (
     <View
       style={[
         styles.noteChip,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        },
         active && styles.noteChipActive,
       ]}
     >
-      <Text style={styles.noteChipText}>{note}</Text>
+      <Text
+        style={[
+          styles.noteChipText,
+          { fontSize },
+          active && styles.noteChipTextActive,
+        ]}
+      >
+        {note}
+      </Text>
+    </View>
+  );
+}
+
+function LivePitchIndicator({
+  targetFrequency,
+  detectedFrequency,
+}: LivePitchIndicatorProps) {
+  const hasTarget =
+    typeof targetFrequency === 'number' &&
+    Number.isFinite(targetFrequency) &&
+    targetFrequency > 0;
+
+  const hasDetected =
+    typeof detectedFrequency === 'number' &&
+    Number.isFinite(detectedFrequency) &&
+    detectedFrequency > 0;
+
+  const cents =
+    hasTarget && hasDetected
+      ? 1200 *
+        Math.log2(
+          detectedFrequency / targetFrequency,
+        )
+      : null;
+
+  const absoluteCents =
+    cents === null ? null : Math.abs(cents);
+
+  let status = 'LISTENING';
+  let statusColor = MUTED;
+  let statusBackground = LIGHT_PINK;
+  let guidance =
+    'Sing the highlighted target note to see your pitch accuracy.';
+  let centsLabel = '-- cents';
+  let markerPosition = 50;
+
+  if (cents !== null && absoluteCents !== null) {
+    if (absoluteCents <= 25) {
+      status = 'IN TUNE';
+      statusColor = GREEN;
+      statusBackground = LIGHT_GREEN;
+      guidance =
+        'Great pitch match. Keep your voice steady on this note.';
+    } else if (absoluteCents <= 60) {
+      status = cents < 0 ? 'SLIGHTLY FLAT' : 'SLIGHTLY SHARP';
+      statusColor = YELLOW;
+      statusBackground = '#FFF3D2';
+      guidance =
+        cents < 0
+          ? 'Your pitch is a little low. Gently raise it.'
+          : 'Your pitch is a little high. Gently lower it.';
+    } else {
+      status = cents < 0 ? 'TOO LOW' : 'TOO HIGH';
+      statusColor = RED;
+      statusBackground = '#FCE5E5';
+      guidance =
+        cents < 0
+          ? 'Your pitch is below the target. Try singing slightly higher.'
+          : 'Your pitch is above the target. Try singing slightly lower.';
+    }
+
+    centsLabel = `${cents > 0 ? '+' : ''}${Math.round(cents)} cents`;
+    markerPosition = clamp(50 + (cents / 100) * 47, 3, 97);
+  }
+
+  return (
+    <View style={styles.pitchIndicator}>
+      <View style={styles.pitchIndicatorHeader}>
+        <View style={styles.indicatorHeading}>
+          <Text style={styles.indicatorTitle}>Pitch Accuracy</Text>
+          <Text style={styles.indicatorSubtitle}>
+            Match the center marker
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.pitchStatusBadge,
+            { backgroundColor: statusBackground },
+          ]}
+        >
+          <View
+            style={[
+              styles.pitchStatusDot,
+              { backgroundColor: statusColor },
+            ]}
+          />
+          <Text
+            style={[
+              styles.pitchStatusText,
+              { color: statusColor },
+            ]}
+          >
+            {status}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.pitchMeterLabels}>
+        <Text style={styles.pitchMeterEndLabel}>FLAT</Text>
+        <Text style={styles.pitchMeterCenterLabel}>IN TUNE</Text>
+        <Text style={styles.pitchMeterEndLabel}>SHARP</Text>
+      </View>
+
+      <View style={styles.pitchMeter}>
+        <View style={[styles.pitchMeterZone, styles.pitchMeterRed]} />
+        <View style={[styles.pitchMeterZone, styles.pitchMeterYellow]} />
+        <View style={[styles.pitchMeterZone, styles.pitchMeterGreen]} />
+        <View style={[styles.pitchMeterZone, styles.pitchMeterYellow]} />
+        <View style={[styles.pitchMeterZone, styles.pitchMeterRed]} />
+
+        <View style={styles.pitchMeterCenterLine} />
+
+        <View
+          style={[
+            styles.pitchMeterMarker,
+            !hasDetected && styles.pitchMeterMarkerInactive,
+            { left: `${markerPosition}%` },
+          ]}
+        />
+      </View>
+
+      <View style={styles.centsRow}>
+        <Text style={styles.centsLabel}>Pitch deviation</Text>
+        <Text
+          style={[
+            styles.centsValue,
+            { color: cents === null ? MUTED : statusColor },
+          ]}
+        >
+          {centsLabel}
+        </Text>
+      </View>
+
+      <Text style={styles.pitchGuidance}>{guidance}</Text>
     </View>
   );
 }
@@ -151,9 +327,7 @@ export default function MelodicPatternMatchingScreen({
 
   const [params, setParams] =
     useState<MelodicPatternMatchingParams>(
-      MELODIC_PATTERN_MATCHING_PARAMS[
-        tier ?? 'beginner'
-      ],
+      MELODIC_PATTERN_MATCHING_PARAMS[tier ?? 'beginner'],
     );
 
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
@@ -162,11 +336,8 @@ export default function MelodicPatternMatchingScreen({
   const [vocalRange, setVocalRange] =
     useState<VocalRange | null>(null);
 
-  const [phase, setPhase] =
-    useState<Phase>('instructions');
-
-  const [countdown, setCountdown] =
-    useState(COUNTDOWN_SECONDS);
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
 
   const [currentPattern, setCurrentPattern] =
     useState<GeneratedPattern | null>(null);
@@ -245,10 +416,7 @@ export default function MelodicPatternMatchingScreen({
       setIsLoadingAdaptiveParams(true);
 
       try {
-        const { auth } = await import(
-          '@/services/firebase/config'
-        );
-
+        const { auth } = await import('@/services/firebase/config');
         const user = auth.currentUser;
 
         if (!user) {
@@ -257,9 +425,7 @@ export default function MelodicPatternMatchingScreen({
           if (!cancelled) {
             setCurrentTier(fallbackTier);
             setParams(
-              MELODIC_PATTERN_MATCHING_PARAMS[
-                fallbackTier
-              ],
+              MELODIC_PATTERN_MATCHING_PARAMS[fallbackTier],
             );
           }
 
@@ -272,13 +438,9 @@ export default function MelodicPatternMatchingScreen({
         );
 
         const resolvedTier: Tier =
-          tier ??
-          progress?.currentTier ??
-          'beginner';
+          tier ?? progress?.currentTier ?? 'beginner';
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setCurrentTier(resolvedTier);
 
@@ -287,28 +449,21 @@ export default function MelodicPatternMatchingScreen({
           'pitch',
         );
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         const recentExerciseScores = records
           .filter(
             record =>
               record.tier === resolvedTier &&
-              record.templateId ===
-                'melodicPatternMatching',
+              record.templateId === 'melodicPatternMatching',
           )
-          .sort(
-            (a, b) => a.timestamp - b.timestamp,
-          )
+          .sort((a, b) => a.timestamp - b.timestamp)
           .slice(-5)
           .map(record => record.scorePct);
 
         const assessment = await getLatestAssessment();
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setVocalRange(assessment?.vocalRange ?? null);
 
@@ -347,12 +502,9 @@ export default function MelodicPatternMatchingScreen({
 
         if (!cancelled) {
           const fallbackTier = tier ?? 'beginner';
-
           setCurrentTier(fallbackTier);
           setParams(
-            MELODIC_PATTERN_MATCHING_PARAMS[
-              fallbackTier
-            ],
+            MELODIC_PATTERN_MATCHING_PARAMS[fallbackTier],
           );
         }
       } finally {
@@ -425,7 +577,6 @@ export default function MelodicPatternMatchingScreen({
       recordingRef.current = false;
       clearRecordingTimer();
 
-      // Discard interrupted audio instead of scoring an incomplete repetition.
       if (discardRecordingRef.current) {
         discardRecordingRef.current = false;
         stopRequestedRef.current = false;
@@ -448,10 +599,7 @@ export default function MelodicPatternMatchingScreen({
       if (!pattern) {
         processingRef.current = false;
 
-        if (
-          mountedRef.current &&
-          !pausedRef.current
-        ) {
+        if (mountedRef.current && !pausedRef.current) {
           setErrorMessage(
             'The reference melody was not available. Please try again.',
           );
@@ -522,10 +670,7 @@ export default function MelodicPatternMatchingScreen({
             params,
           );
 
-        const { auth } = await import(
-          '@/services/firebase/config'
-        );
-
+        const { auth } = await import('@/services/firebase/config');
         const user = auth.currentUser;
 
         if (user) {
@@ -537,12 +682,7 @@ export default function MelodicPatternMatchingScreen({
           );
         }
 
-        if (
-          !mountedRef.current ||
-          quittingRef.current
-        ) {
-          return;
-        }
+        if (!mountedRef.current || quittingRef.current) return;
 
         setResult(score);
         setPhase('results');
@@ -552,9 +692,7 @@ export default function MelodicPatternMatchingScreen({
           error,
         );
 
-        if (!mountedRef.current) {
-          return;
-        }
+        if (!mountedRef.current) return;
 
         setErrorMessage(
           'Something went wrong while analyzing your recording. Please try again.',
@@ -566,11 +704,7 @@ export default function MelodicPatternMatchingScreen({
         stopRequestedRef.current = false;
       }
     },
-    [
-      clearRecordingTimer,
-      currentTier,
-      params,
-    ],
+    [clearRecordingTimer, currentTier, params],
   );
 
   const {
@@ -614,7 +748,6 @@ export default function MelodicPatternMatchingScreen({
 
       await startRecording();
 
-      // If the quit modal opened during startup, stop and discard this recording.
       if (
         !mountedRef.current ||
         pausedRef.current ||
@@ -636,10 +769,7 @@ export default function MelodicPatternMatchingScreen({
           recordingRef.current = false;
           stopRequestedRef.current = false;
 
-          if (
-            mountedRef.current &&
-            quitModalVisibleRef.current
-          ) {
+          if (mountedRef.current && quitModalVisibleRef.current) {
             setIsStoppingForQuitModal(false);
           }
         }
@@ -649,7 +779,6 @@ export default function MelodicPatternMatchingScreen({
 
       recordingStartInProgressRef.current = false;
       recordingRef.current = true;
-
       setPhase('recording');
 
       const recordingDurationMs =
@@ -673,7 +802,6 @@ export default function MelodicPatternMatchingScreen({
           RECORDING_TIMER_INTERVAL_MS;
 
         const elapsed = recordingElapsedRef.current;
-
         setRecordingElapsedMs(elapsed);
 
         if (elapsed >= recordingDurationMs) {
@@ -780,47 +908,31 @@ export default function MelodicPatternMatchingScreen({
           index < pattern.notes.length;
           index++
         ) {
-          if (playbackWasInterrupted()) {
-            return;
-          }
+          if (playbackWasInterrupted()) return;
 
           await playSingleNote(
             pattern.notes[index].frequency,
             NOTE_DURATION_SEC,
           );
 
-          if (playbackWasInterrupted()) {
-            return;
-          }
+          if (playbackWasInterrupted()) return;
 
           if (index < pattern.notes.length - 1) {
             await new Promise<void>(resolve => {
-              setTimeout(
-                resolve,
-                NOTE_GAP_SEC * 1000,
-              );
+              setTimeout(resolve, NOTE_GAP_SEC * 1000);
             });
 
-            if (playbackWasInterrupted()) {
-              return;
-            }
+            if (playbackWasInterrupted()) return;
           }
         }
 
-        if (playbackWasInterrupted()) {
-          return;
-        }
+        if (playbackWasInterrupted()) return;
 
         await beginRecording();
       } catch (error) {
-        console.error(
-          'Failed to play melodic pattern:',
-          error,
-        );
+        console.error('Failed to play melodic pattern:', error);
 
-        if (playbackWasInterrupted()) {
-          return;
-        }
+        if (playbackWasInterrupted()) return;
 
         recordingRef.current = false;
         stopRequestedRef.current = false;
@@ -828,7 +940,6 @@ export default function MelodicPatternMatchingScreen({
         setErrorMessage(
           'Unable to play the reference melody. Please try again.',
         );
-
         setPhase('instructions');
       }
     },
@@ -836,12 +947,9 @@ export default function MelodicPatternMatchingScreen({
   );
 
   useEffect(() => {
-    if (!continueRepetitionRef.current) {
-      return;
-    }
+    if (!continueRepetitionRef.current) return;
 
     continueRepetitionRef.current = false;
-
     const pattern = currentExerciseRef.current;
 
     if (
@@ -860,33 +968,20 @@ export default function MelodicPatternMatchingScreen({
   const generatePattern = useCallback((): GeneratedPattern => {
     const notes: ReturnType<typeof createMusicalNote>[] = [];
 
-    for (
-      let index = 0;
-      index < params.noteCount;
-      index++
-    ) {
-      let note = getRandomPitchNote(
-        currentTier,
-        vocalRange,
-      );
+    for (let index = 0; index < params.noteCount; index++) {
+      let note = getRandomPitchNote(currentTier, vocalRange);
 
       if (
         notes.length > 0 &&
-        note.frequency ===
-          notes[notes.length - 1].frequency
+        note.frequency === notes[notes.length - 1].frequency
       ) {
         let attempts = 0;
 
         while (
-          note.frequency ===
-            notes[notes.length - 1].frequency &&
+          note.frequency === notes[notes.length - 1].frequency &&
           attempts < 5
         ) {
-          note = getRandomPitchNote(
-            currentTier,
-            vocalRange,
-          );
-
+          note = getRandomPitchNote(currentTier, vocalRange);
           attempts++;
         }
       }
@@ -895,11 +990,7 @@ export default function MelodicPatternMatchingScreen({
     }
 
     return { notes };
-  }, [
-    currentTier,
-    params.noteCount,
-    vocalRange,
-  ]);
+  }, [currentTier, params.noteCount, vocalRange]);
 
   const startCountdown = useCallback(() => {
     if (
@@ -993,7 +1084,6 @@ export default function MelodicPatternMatchingScreen({
     processingRef.current = false;
     continueRepetitionRef.current = false;
 
-    // Restart the interrupted repetition while retaining completed measurements.
     recordingElapsedRef.current = 0;
     setRecordingElapsedMs(0);
     setLiveFrame(null);
@@ -1040,13 +1130,9 @@ export default function MelodicPatternMatchingScreen({
     if (
       !mountedRef.current ||
       quittingRef.current ||
-      quitModalVisibleRef.current
+      quitModalVisibleRef.current ||
+      processingRef.current
     ) {
-      return;
-    }
-
-    // Avoid interrupting the final scoring/save operation.
-    if (processingRef.current) {
       return;
     }
 
@@ -1068,14 +1154,8 @@ export default function MelodicPatternMatchingScreen({
 
     setIsStoppingForQuitModal(recordingNeedsStopping);
 
-    // beginRecording will stop the recorder once startup completes.
-    if (recorderIsStarting && !recordingRef.current) {
-      return;
-    }
-
-    if (!recordingRef.current) {
-      return;
-    }
+    if (recorderIsStarting && !recordingRef.current) return;
+    if (!recordingRef.current) return;
 
     discardRecordingRef.current = true;
     stopRequestedRef.current = true;
@@ -1119,28 +1199,18 @@ export default function MelodicPatternMatchingScreen({
     setIsQuitModalVisible(false);
     pausedRef.current = false;
 
-    // Preparing or instructions: stay on the current screen.
-    if (interruptedPhase === 'instructions') {
+    if (
+      interruptedPhase === 'instructions' ||
+      interruptedPhase === 'results'
+    ) {
       return;
     }
 
-    // Results are already complete; simply dismiss the modal.
-    if (interruptedPhase === 'results') {
-      return;
-    }
-
-    // Restart the interrupted repetition from its countdown.
-    // Previously completed repetitions remain in measurementsRef.
     resumeCurrentRepetition();
-  }, [
-    isStoppingForQuitModal,
-    resumeCurrentRepetition,
-  ]);
+  }, [isStoppingForQuitModal, resumeCurrentRepetition]);
 
   const quitExercise = useCallback(async () => {
-    if (quittingRef.current) {
-      return;
-    }
+    if (quittingRef.current) return;
 
     quittingRef.current = true;
     pausedRef.current = true;
@@ -1178,10 +1248,7 @@ export default function MelodicPatternMatchingScreen({
     processingRef.current = false;
 
     router.replace('/dashboard?tab=exercises');
-  }, [
-    clearCountdownTimer,
-    clearRecordingTimer,
-  ]);
+  }, [clearCountdownTimer, clearRecordingTimer]);
 
   const retry = useCallback(async () => {
     pausedRef.current = true;
@@ -1212,9 +1279,7 @@ export default function MelodicPatternMatchingScreen({
       }
     }
 
-    if (!mountedRef.current) {
-      return;
-    }
+    if (!mountedRef.current) return;
 
     measurementsRef.current = [];
     currentExerciseRef.current = null;
@@ -1239,10 +1304,7 @@ export default function MelodicPatternMatchingScreen({
     setErrorMessage(null);
     setCountdown(COUNTDOWN_SECONDS);
     setPhase('instructions');
-  }, [
-    clearCountdownTimer,
-    clearRecordingTimer,
-  ]);
+  }, [clearCountdownTimer, clearRecordingTimer]);
 
   const handleBack = useCallback(() => {
     void openQuitModal();
@@ -1252,9 +1314,7 @@ export default function MelodicPatternMatchingScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (quitModalVisibleRef.current) {
-          return true;
-        }
+        if (quitModalVisibleRef.current) return true;
 
         void openQuitModal();
         return true;
@@ -1264,25 +1324,42 @@ export default function MelodicPatternMatchingScreen({
     return () => subscription.remove();
   }, [openQuitModal]);
 
-  const goToExercises = useCallback(() => {
-    router.replace('/dashboard?tab=exercises');
-  }, []);
-
   const repetitionCount = getRepetitionCount(params);
+
+  // Responsive note chips for 4-, 6-, and 8-note patterns.
+  const noteChipSize =
+    params.noteCount >= 8 ? 48 :
+    params.noteCount >= 6 ? 54 :
+    60;
+
+  const noteChipGap =
+    params.noteCount >= 8 ? 10 :
+    params.noteCount >= 6 ? 12 :
+    16;
 
   const currentNoteIndex = Math.min(
     Math.floor(
       recordingElapsedMs /
         ((NOTE_DURATION_SEC + NOTE_GAP_SEC) * 1000),
     ),
-    Math.max(
-      0,
-      (currentPattern?.notes.length ?? 1) - 1,
-    ),
+    Math.max(0, (currentPattern?.notes.length ?? 1) - 1),
   );
 
   const currentTargetNote =
     currentPattern?.notes[currentNoteIndex] ?? null;
+
+  const targetDuration = getRecordingDurationSec(params);
+  const elapsed = recordingElapsedMs / 1000;
+
+  const recordingProgress = Math.min(
+    100,
+    Math.max(0, (elapsed / targetDuration) * 100),
+  );
+
+  const hasValidPitch =
+    typeof liveFrame?.pitch === 'number' &&
+    Number.isFinite(liveFrame.pitch) &&
+    liveFrame.pitch > 0;
 
   const quitModalMessage =
     pausedPhaseRef.current === 'instructions'
@@ -1293,8 +1370,6 @@ export default function MelodicPatternMatchingScreen({
           ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
           : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
 
-  // Keep the quit modal mounted throughout every screen phase,
-  // including the adaptive-parameter preparation screen.
   const quitExerciseModal = (
     <Modal
       visible={isQuitModalVisible}
@@ -1313,9 +1388,7 @@ export default function MelodicPatternMatchingScreen({
             />
           </View>
 
-          <Text style={styles.modalTitle}>
-            Quit exercise?
-          </Text>
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
 
           <Text style={styles.modalMessage}>
             {quitModalMessage}
@@ -1331,15 +1404,11 @@ export default function MelodicPatternMatchingScreen({
               pressed &&
                 !isStoppingForQuitModal &&
                 styles.buttonPressed,
-              isStoppingForQuitModal &&
-                styles.buttonDisabled,
+              isStoppingForQuitModal && styles.buttonDisabled,
             ]}
           >
             {isStoppingForQuitModal ? (
-              <ActivityIndicator
-                size="small"
-                color={BROWN}
-              />
+              <ActivityIndicator size="small" color={BROWN} />
             ) : (
               <Text style={styles.continueButtonText}>
                 Continue Exercise
@@ -1351,21 +1420,16 @@ export default function MelodicPatternMatchingScreen({
             accessibilityRole="button"
             accessibilityLabel="Quit exercise"
             disabled={isStoppingForQuitModal}
-            onPress={() => {
-              void quitExercise();
-            }}
+            onPress={() => void quitExercise()}
             style={({ pressed }) => [
               styles.quitButton,
               pressed &&
                 !isStoppingForQuitModal &&
                 styles.buttonPressed,
-              isStoppingForQuitModal &&
-                styles.buttonDisabled,
+              isStoppingForQuitModal && styles.buttonDisabled,
             ]}
           >
-            <Text style={styles.quitButtonText}>
-              Quit Exercise
-            </Text>
+            <Text style={styles.quitButtonText}>Quit Exercise</Text>
           </Pressable>
         </View>
       </View>
@@ -1374,10 +1438,7 @@ export default function MelodicPatternMatchingScreen({
 
   let screenContent: ReactNode;
 
-  if (
-    phase === 'instructions' &&
-    isLoadingAdaptiveParams
-  ) {
+  if (phase === 'instructions' && isLoadingAdaptiveParams) {
     screenContent = (
       <View style={styles.centerScreen}>
         <Pressable
@@ -1386,19 +1447,11 @@ export default function MelodicPatternMatchingScreen({
           onPress={handleBack}
           style={styles.quitButtonTop}
         >
-          <Ionicons
-            name="exit-outline"
-            size={22}
-            color={BROWN}
-          />
+          <Ionicons name="exit-outline" size={22} color={BROWN} />
         </Pressable>
 
         <View style={styles.largeIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
-            color={BROWN}
-          />
+          <Ionicons name="options-outline" size={44} color={BROWN} />
         </View>
 
         <Text style={styles.processingTitle}>
@@ -1406,8 +1459,7 @@ export default function MelodicPatternMatchingScreen({
         </Text>
 
         <Text style={styles.processingSubtitle}>
-          Adjusting the exercise to your current
-          difficulty level
+          Adjusting the exercise to your current difficulty level
         </Text>
 
         <ActivityIndicator
@@ -1426,11 +1478,7 @@ export default function MelodicPatternMatchingScreen({
           onPress={handleBack}
           style={styles.quitButtonTop}
         >
-          <Ionicons
-            name="exit-outline"
-            size={22}
-            color={BROWN}
-          />
+          <Ionicons name="exit-outline" size={22} color={BROWN} />
         </Pressable>
 
         <ExerciseScreen
@@ -1476,9 +1524,7 @@ export default function MelodicPatternMatchingScreen({
           error={errorMessage}
           startDisabled={isLoadingAdaptiveParams}
           startLabel={
-            isLoadingAdaptiveParams
-              ? 'Preparing...'
-              : 'Start Exercise'
+            isLoadingAdaptiveParams ? 'Preparing...' : 'Start Exercise'
           }
         />
       </View>
@@ -1498,166 +1544,252 @@ export default function MelodicPatternMatchingScreen({
     );
   } else if (phase === 'playing') {
     screenContent = (
-      <View style={styles.playbackScreen}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Quit exercise"
-          onPress={handleBack}
-          style={styles.quitButtonTop}
-        >
-          <Ionicons
-            name="exit-outline"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
+      <View style={styles.screenWrapper}>
+        <ExerciseListeningScreen
+          icon="musical-notes-outline"
+          title="Listen to the Pattern"
+          currentRep={currentRep}
+          repetitions={repetitionCount}
+          elapsed={0}
+          targetDuration={
+            params.noteCount *
+            (NOTE_DURATION_SEC + NOTE_GAP_SEC)
+          }
+          promptTitle="Remember the notes"
+          prompt="Listen to the complete melody and remember the order. Recording will begin automatically afterward."
+          liveContent={
+            <View style={styles.playbackNoteContainer}>
+              <View style={styles.playbackIconCircle}>
+                <Ionicons
+                  name="musical-notes-outline"
+                  size={38}
+                  color={BROWN}
+                />
+              </View>
 
-        <View style={styles.playbackIconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={44}
-            color={BROWN}
-          />
-        </View>
+              <Text style={styles.playbackTitle}>
+                Reference Melody
+              </Text>
 
-        <Text style={styles.playbackTitle}>
-          Listen to the Pattern
-        </Text>
+              <Text style={styles.playbackDescription}>
+                Repetition {currentRep} of {repetitionCount}
+              </Text>
 
-        <Text style={styles.playbackSubtitle}>
-          Repetition {currentRep} of {repetitionCount}
-        </Text>
+              <View
+                style={[
+                  styles.noteList,
+                  { gap: noteChipGap },
+                ]}
+              >
+                {currentPattern?.notes.map((note, index) => (
+                  <NoteChip
+                    key={`${note.name}-${index}`}
+                    note={note.name}
+                    size={noteChipSize}
+                  />
+                ))}
+              </View>
 
-        <Text style={styles.playbackDescription}>
-          Remember the notes and their order.
-        </Text>
-
-        <View style={styles.noteList}>
-          {currentPattern?.notes.map((note, index) => (
-            <NoteChip
-              key={`${note.name}-${index}`}
-              note={note.name}
-            />
-          ))}
-        </View>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.playbackSpinner}
+              <ActivityIndicator
+                size="large"
+                color={BROWN}
+                style={styles.playbackSpinner}
+              />
+            </View>
+          }
+          progress={0}
+          onBack={handleBack}
         />
       </View>
     );
   } else if (phase === 'recording') {
-    const targetDuration =
-      getRecordingDurationSec(params);
-
-    const elapsed = recordingElapsedMs / 1000;
-
-    const progress = Math.min(
-      100,
-      Math.max(0, (elapsed / targetDuration) * 100),
-    );
-
-    const hasValidPitch =
-      typeof liveFrame?.pitch === 'number' &&
-      Number.isFinite(liveFrame.pitch) &&
-      liveFrame.pitch > 0;
-
     screenContent = (
-      <View style={styles.listeningScreenContainer}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Quit exercise"
-          onPress={handleBack}
-          style={styles.quitButtonTop}
+      <View style={styles.recordingScreen}>
+        <View style={styles.recordingHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            onPress={handleBack}
+            style={styles.recordingQuitButton}
+          >
+            <Ionicons name="exit-outline" size={22} color={BROWN} />
+          </Pressable>
+
+          <Text style={styles.recordingEyebrow}>
+            PITCH EXERCISE
+          </Text>
+
+          <Text style={styles.recordingTitle}>
+            Your Turn to Sing
+          </Text>
+
+          <Text style={styles.recordingSubtitle}>
+            Match the melody in the same order
+          </Text>
+
+          <View style={styles.repBadge}>
+            <Ionicons
+              name="repeat-outline"
+              size={15}
+              color={BROWN}
+            />
+            <Text style={styles.repBadgeText}>
+              Repetition {currentRep} of {repetitionCount}
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.recordingScroll}
+          contentContainerStyle={styles.recordingScrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Ionicons
-            name="exit-outline"
-            size={22}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <ExerciseListeningScreen
-          icon="mic-outline"
-          title="Melodic Pattern Matching"
-          currentRep={currentRep}
-          repetitions={repetitionCount}
-          elapsed={elapsed}
-          targetDuration={targetDuration}
-          promptTitle="Your Turn"
-          prompt="Match each note in the same order as the reference melody."
-          liveContent={
-            <View style={styles.liveContent}>
-              <View style={styles.liveNoteContainer}>
-                <Text style={styles.liveNote}>
-                  {hasValidPitch
-                    ? liveFrame?.note ?? '--'
-                    : '--'}
+          <View style={styles.recordingTimerCard}>
+            <View style={styles.recordingTimerTopRow}>
+              <View style={styles.recordingStatus}>
+                <View style={styles.liveRecordingDot} />
+                <Text style={styles.recordingStatusText}>
+                  RECORDING
                 </Text>
+              </View>
 
+              <Text style={styles.recordingTime}>
+                {Math.min(elapsed, targetDuration).toFixed(1)}s
+                {' / '}
+                {targetDuration.toFixed(1)}s
+              </Text>
+            </View>
+
+            <View style={styles.recordingProgressTrack}>
+              <View
+                style={[
+                  styles.recordingProgressFill,
+                  { width: `${recordingProgress}%` },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.liveCard}>
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveHeaderText}>
+                <Text style={styles.liveCardTitle}>
+                  Live Pitch Monitor
+                </Text>
+                <Text style={styles.liveCardSubtitle}>
+                  Match the target and keep your voice steady
+                </Text>
+              </View>
+
+              <View style={styles.liveRecordingBadge}>
+                <View style={styles.liveRecordingDot} />
+                <Text style={styles.liveRecordingBadgeText}>
+                  LIVE
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.recordingNoteList,
+                { gap: noteChipGap },
+              ]}
+            >
+              {currentPattern?.notes.map((note, index) => (
+                <NoteChip
+                  key={`${note.name}-${index}`}
+                  note={note.name}
+                  active={index === currentNoteIndex}
+                  size={noteChipSize}
+                />
+              ))}
+            </View>
+
+            <View style={styles.pitchComparison}>
+              <View style={styles.pitchColumn}>
+                <Text style={styles.liveLabel}>TARGET NOTE</Text>
+                <Text style={styles.liveTarget}>
+                  {currentTargetNote?.name ?? '--'}
+                </Text>
                 <Text style={styles.liveFrequency}>
-                  {hasValidPitch
-                    ? `${Math.round(liveFrame!.pitch)} Hz`
+                  {currentTargetNote
+                    ? `${Math.round(currentTargetNote.frequency)} Hz`
                     : '-- Hz'}
                 </Text>
               </View>
 
-              <View style={styles.liveStatsRow}>
-                <View style={styles.liveStat}>
-                  <Text style={styles.statLabel}>
-                    TARGET
-                  </Text>
-
-                  <Text style={styles.statValue}>
-                    {currentTargetNote?.name ?? '--'}
-                  </Text>
-                </View>
-
-                <View style={styles.liveStat}>
-                  <Text style={styles.statLabel}>
-                    YOUR NOTE
-                  </Text>
-
-                  <Text style={styles.statValue}>
-                    {hasValidPitch
-                      ? liveFrame?.note ?? '--'
-                      : '--'}
-                  </Text>
-                </View>
-
-                <View style={styles.liveStat}>
-                  <Text style={styles.statLabel}>
-                    NOTE
-                  </Text>
-
-                  <Text style={styles.statValue}>
-                    {Math.min(
-                      currentNoteIndex + 1,
-                      params.noteCount,
-                    )}
-                    /{params.noteCount}
-                  </Text>
-                </View>
+              <View style={styles.pitchComparisonDivider}>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={MUTED}
+                />
               </View>
 
-              <View style={styles.recordingNoteList}>
-                {currentPattern?.notes.map(
-                  (note, index) => (
-                    <NoteChip
-                      key={`${note.name}-${index}`}
-                      note={note.name}
-                      active={index === currentNoteIndex}
-                    />
-                  ),
-                )}
+              <View style={styles.pitchColumn}>
+                <Text style={styles.liveLabel}>YOUR NOTE</Text>
+                <Text
+                  style={[
+                    styles.liveNote,
+                    styles.liveNoteCompact,
+                    hasValidPitch
+                      ? styles.liveNoteDetected
+                      : styles.liveNoteWaiting,
+                  ]}
+                >
+                  {hasValidPitch ? liveFrame?.note ?? '--' : '--'}
+                </Text>
+                <Text style={styles.liveFrequency}>
+                  {hasValidPitch
+                    ? `${Math.round(liveFrame.pitch)} Hz`
+                    : 'Waiting for voice'}
+                </Text>
               </View>
             </View>
-          }
-          progress={progress}
-          onBack={handleBack}
-        />
+
+            <LivePitchIndicator
+              targetFrequency={currentTargetNote?.frequency ?? null}
+              detectedFrequency={
+                hasValidPitch ? liveFrame.pitch : null
+              }
+            />
+
+            <View style={styles.liveSectionDivider} />
+
+            <View style={styles.liveStats}>
+              <View style={styles.liveStatSummary}>
+                <View style={styles.liveStatHeading}>
+                  <Ionicons
+                    name="musical-note-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                  <Text style={styles.liveStatLabel}>Note</Text>
+                </View>
+                <Text style={styles.liveStatValue}>
+                  {Math.min(currentNoteIndex + 1, params.noteCount)}
+                  /{params.noteCount}
+                </Text>
+              </View>
+
+              <View style={styles.liveStatsDivider} />
+
+              <View style={styles.liveStatSummary}>
+                <View style={styles.liveStatHeading}>
+                  <Ionicons
+                    name="list-outline"
+                    size={15}
+                    color={BROWN}
+                  />
+                  <Text style={styles.liveStatLabel}>Pattern</Text>
+                </View>
+                <Text style={styles.liveStatValue}>
+                  {params.noteCount} notes
+                </Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
       </View>
     );
   } else if (phase === 'processing') {
@@ -1678,30 +1810,18 @@ export default function MelodicPatternMatchingScreen({
           onPress={handleBack}
           style={styles.quitButtonTop}
         >
-          <Ionicons
-            name="exit-outline"
-            size={22}
-            color={BROWN}
-          />
+          <Ionicons name="exit-outline" size={22} color={BROWN} />
         </Pressable>
 
         <ExerciseResultsScreen
-          title={
-            result.passed
-              ? 'Great Job!'
-              : 'Keep Practicing!'
-          }
+          title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={
             result.passed
               ? 'You completed all repetitions successfully.'
               : 'Review your results and try again to improve your accuracy.'
           }
           score={result.score}
-          resultIcon={
-            result.passed
-              ? 'checkmark'
-              : 'refresh-outline'
-          }
+          resultIcon={result.passed ? 'checkmark' : 'refresh-outline'}
           scoreDetails={
             <View style={styles.scoreDetails}>
               <ResultRow
@@ -1720,20 +1840,15 @@ export default function MelodicPatternMatchingScreen({
           onExit={handleBack}
         >
           <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Pattern Results
-            </Text>
-
+            <Text style={styles.resultCardTitle}>Pattern Results</Text>
             <ResultRow
               label="Pattern length"
               value={`${params.noteCount} notes`}
             />
-
             <ResultRow
               label="Pattern accuracy"
               value={`${Math.round(result.patternAccuracy)}%`}
             />
-
             <ResultRow
               label="Rhythm accuracy"
               value={`${Math.round(result.rhythmAccuracy)}%`}
@@ -1742,65 +1857,52 @@ export default function MelodicPatternMatchingScreen({
           </View>
 
           <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Repetition Scores
-            </Text>
-
+            <Text style={styles.resultCardTitle}>Repetition Scores</Text>
             {result.repetitionScores.map((score, index) => (
               <ResultRow
                 key={`repetition-${index}`}
                 label={`Repetition ${index + 1}`}
                 value={`${score}%`}
-                last={
-                  index === result.repetitionScores.length - 1
-                }
+                last={index === result.repetitionScores.length - 1}
               />
             ))}
           </View>
 
           <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
-              Note Results
-            </Text>
-
+            <Text style={styles.resultCardTitle}>Note Results</Text>
             {result.noteAccuracies.map((accuracy, index) => (
               <ResultRow
                 key={`note-${index}`}
                 label={`Note ${index + 1}`}
                 value={`${Math.round(accuracy)}%`}
-                last={
-                  index === result.noteAccuracies.length - 1
-                }
+                last={index === result.noteAccuracies.length - 1}
               />
             ))}
           </View>
 
           <View style={styles.targetPatternCard}>
-            <Text style={styles.resultCardTitle}>
-              Target Pattern
-            </Text>
-
-            <View style={styles.targetNoteList}>
+            <Text style={styles.resultCardTitle}>Target Pattern</Text>
+            <View
+              style={[
+                styles.targetNoteList,
+                { gap: noteChipGap },
+              ]}
+            >
               {currentPattern?.notes.map((note, index) => (
                 <NoteChip
                   key={`${note.name}-${index}`}
                   note={note.name}
+                  size={noteChipSize}
                 />
               ))}
             </View>
           </View>
 
           <View style={styles.tipContainer}>
-            <Ionicons
-              name="bulb-outline"
-              size={21}
-              color={BROWN}
-            />
-
+            <Ionicons name="bulb-outline" size={21} color={BROWN} />
             <Text style={styles.tipText}>
-              Focus on keeping each note accurate and
-              maintaining the same melodic order
-              throughout every repetition.
+              Focus on keeping each note accurate and maintaining the
+              same melodic order throughout every repetition.
             </Text>
           </View>
         </ExerciseResultsScreen>
@@ -1856,35 +1958,27 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
-  playbackScreen: {
-    flex: 1,
-    backgroundColor: WHITE,
+
+  /* Reference melody listening screen */
+  playbackNoteContainer: {
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 24,
+    paddingTop: 8,
   },
   playbackIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 22,
+    marginBottom: 16,
   },
   playbackTitle: {
     color: BROWN,
-    fontSize: 26,
+    fontSize: 23,
     fontFamily: 'FredokaBold',
     textAlign: 'center',
-  },
-  playbackSubtitle: {
-    color: MUTED,
-    fontSize: 15,
-    fontFamily: 'FredokaRegular',
-    textAlign: 'center',
-    marginTop: 6,
   },
   playbackDescription: {
     color: MUTED,
@@ -1892,20 +1986,58 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     textAlign: 'center',
     marginTop: 6,
-    maxWidth: 320,
   },
   noteList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 26,
+    marginTop: 22,
   },
   playbackSpinner: {
-    marginTop: 28,
+    marginTop: 24,
   },
   noteChip: {
-    minWidth: 48,
+    minWidth: 0,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+  },
+  noteChipActive: {
+    backgroundColor: PINK,
+    borderColor: '#EBAFBE',
+  },
+  noteChipText: {
+    color: BROWN,
+    fontSize: 18,
+    fontFamily: 'FredokaSemiBold',
+  },
+  noteChipTextActive: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+  },
+
+  /* Independent active recording screen */
+  recordingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+  },
+  recordingHeader: {
+    paddingTop: 58,
+    paddingHorizontal: 22,
+    paddingBottom: 18,
+    alignItems: 'center',
+    backgroundColor: WHITE,
+  },
+  recordingQuitButton: {
+    position: 'absolute',
+    top: 48,
+    right: 22,
+    zIndex: 5,
+    width: 42,
     height: 42,
     borderRadius: 21,
     backgroundColor: LIGHT_PINK,
@@ -1913,68 +2045,386 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
   },
-  noteChipActive: {
-    backgroundColor: PINK,
-    borderColor: PINK,
-  },
-  noteChipText: {
-    color: BROWN,
-    fontSize: 14,
+  recordingEyebrow: {
+    color: MUTED,
     fontFamily: 'FredokaSemiBold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginTop: 20,
   },
-  liveContent: {
-    width: '100%',
-    alignItems: 'stretch',
+  recordingTitle: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 27,
+    textAlign: 'center',
+    marginTop: 4,
   },
-  liveNoteContainer: {
+  recordingSubtitle: {
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 5,
+  },
+  repBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 13,
+  },
+  repBadgeText: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+  },
+  recordingScroll: {
+    flex: 1,
+  },
+  recordingScrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 28,
+    gap: 14,
+  },
+  recordingTimerCard: {
+    width: '100%',
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 15,
+  },
+  recordingTimerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 11,
+    gap: 8,
+  },
+  recordingStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  recordingStatusText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.7,
+    color: BROWN,
+  },
+  recordingTime: {
+    color: MUTED,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+  },
+  recordingProgressTrack: {
+    height: 8,
+    backgroundColor: METER_GRAY,
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  recordingProgressFill: {
+    height: '100%',
+    borderRadius: 5,
+    backgroundColor: BROWN,
+  },
+
+  /* Live pitch monitor */
+  liveCard: {
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 16,
+  },
+  liveCardHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 18,
+  },
+  liveHeaderText: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  liveCardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 19,
+    color: BROWN,
+  },
+  liveCardSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 3,
+  },
+  liveRecordingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PINK,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  liveRecordingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: RED,
+    marginRight: 5,
+  },
+  liveRecordingBadgeText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    color: BROWN,
+  },
+  pitchComparison: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: WHITE,
+    borderRadius: 17,
+    paddingVertical: 15,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  pitchColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  liveLabel: {
+    color: MUTED,
+    fontSize: 10,
+    fontFamily: 'FredokaSemiBold',
+    letterSpacing: 0.6,
+    textAlign: 'center',
+  },
+  liveTarget: {
+    color: BROWN,
+    fontSize: 32,
+    fontFamily: 'FredokaBold',
+    marginTop: 5,
+  },
+  pitchComparisonDivider: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: LIGHT_PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 3,
   },
   liveNote: {
     color: BROWN,
     fontSize: 40,
     fontFamily: 'FredokaBold',
   },
+  liveNoteCompact: {
+    fontSize: 32,
+    marginTop: 5,
+  },
+  liveNoteDetected: {
+    color: BROWN,
+  },
+  liveNoteWaiting: {
+    color: MUTED,
+  },
   liveFrequency: {
     color: MUTED,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'FredokaRegular',
     marginTop: 3,
+    textAlign: 'center',
   },
-  liveStatsRow: {
+  pitchIndicator: {
+    width: '100%',
+    marginTop: 21,
+  },
+  pitchIndicatorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  indicatorHeading: {
+    flex: 1,
+  },
+  indicatorTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  indicatorSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    lineHeight: 14,
+    color: MUTED,
+    marginTop: 2,
+  },
+  pitchStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  pitchStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  pitchStatusText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+  },
+  pitchMeterLabels: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 7,
+  },
+  pitchMeterEndLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 9,
+    color: MUTED,
+  },
+  pitchMeterCenterLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    color: GREEN,
+  },
+  pitchMeter: {
+    width: '100%',
+    height: 14,
+    flexDirection: 'row',
+    borderRadius: 7,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: METER_GRAY,
+  },
+  pitchMeterZone: {
+    flex: 1,
+    height: '100%',
+  },
+  pitchMeterRed: {
+    backgroundColor: '#E8A1A1',
+  },
+  pitchMeterYellow: {
+    backgroundColor: '#F0D58B',
+  },
+  pitchMeterGreen: {
+    backgroundColor: '#86CBA2',
+  },
+  pitchMeterCenterLine: {
+    position: 'absolute',
+    left: '50%',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    marginLeft: -1,
+    backgroundColor: WHITE,
+    opacity: 0.95,
+  },
+  pitchMeterMarker: {
+    position: 'absolute',
+    top: -3,
+    width: 5,
+    height: 20,
+    marginLeft: -2.5,
+    borderRadius: 3,
+    backgroundColor: BROWN,
+    borderWidth: 1,
+    borderColor: WHITE,
+  },
+  pitchMeterMarkerInactive: {
+    opacity: 0.45,
+  },
+  centsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  centsLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+  centsValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+  },
+  pitchGuidance: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
+    marginTop: 8,
+  },
+  liveSectionDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: 20,
+  },
+  liveStats: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: BORDER,
+    marginTop: 18,
     paddingTop: 14,
   },
-  liveStat: {
+  liveStatSummary: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
   },
-  statLabel: {
+  liveStatHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  liveStatLabel: {
     color: MUTED,
     fontSize: 11,
     fontFamily: 'FredokaRegular',
-    textAlign: 'center',
   },
-  statValue: {
+  liveStatValue: {
     color: BROWN,
     fontSize: 14,
     fontFamily: 'FredokaSemiBold',
-    marginTop: 3,
+    marginTop: 4,
     textAlign: 'center',
+  },
+  liveStatsDivider: {
+    width: 1,
+    backgroundColor: BORDER,
+    alignSelf: 'stretch',
   },
   recordingNoteList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 20,
+    gap: 16,
+    marginTop: 18,
+    marginBottom: 10,
   },
+
+  /* Results */
   resultCard: {
     width: '100%',
     backgroundColor: WHITE,
@@ -2053,6 +2503,8 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     marginLeft: 10,
   },
+
+  /* Quit modal */
   quitButtonTop: {
     position: 'absolute',
     top: 52,
@@ -2066,10 +2518,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  listeningScreenContainer: {
-    flex: 1,
-    backgroundColor: WHITE,
   },
   modalOverlay: {
     flex: 1,
