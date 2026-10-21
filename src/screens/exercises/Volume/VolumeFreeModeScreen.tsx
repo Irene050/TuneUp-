@@ -1,7 +1,7 @@
-
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,6 +9,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -21,43 +23,25 @@ import {
 } from 'react-native-safe-area-context';
 
 import {
-  useAudioRecorder,
   type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { measureVolumeFreeModeFrame } from '@/services/measurement/freemode/volume';
 
-/* =========================================================
-   COLORS
-   ========================================================= */
+const BROWN = '#4E2F1F';
+const DARK = '#5A343D';
+const PINK = '#FCD6DD';
+const LIGHT = '#FFF8FA';
+const BORDER = '#F1DCE2';
+const ACCENT = '#D86C89';
+const MUTED = '#9A817D';
+const WHITE = '#FFFFFF';
 
-const COLORS = {
-  brown: '#4E2F1F',
-  dark: '#5A343D',
-  pink: '#FCD6DD',
-  light: '#FFF8FA',
-  pale: '#FFF0F3',
-  border: '#F1DCE2',
-  accent: '#D86C89',
-  muted: '#9A817D',
-  white: '#FFFFFF',
-  visualizerBackground: '#FFF8FA',
-  visualizerLine: '#F0DDE2',
-  progressBackground: '#F0E4E7',
-} as const;
-
-/* =========================================================
-   VOLUME RANGE AND VISUALIZER
-   ========================================================= */
+type Phase = 'ready' | 'exercise';
 
 const DBFS_MIN = -60;
 const DBFS_MAX = -10;
 const BAR_COUNT = 32;
-
-type Phase = 'ready' | 'exercise';
-
-/* =========================================================
-   HELPERS
-   ========================================================= */
 
 function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) {
@@ -73,10 +57,6 @@ function normalizeVolume(value: number): number {
   );
 }
 
-/* =========================================================
-   VOLUME VISUALIZER
-   ========================================================= */
-
 function VolumeVisualizer({
   liveHistory,
 }: {
@@ -88,76 +68,59 @@ function VolumeVisualizer({
   );
 
   return (
-    <View style={styles.visualizer}>
-      <View style={styles.centerLine} />
-
-      <View style={styles.actualBars}>
-        {actualBars.map((value, index) => (
-          <View
-            key={`bar-${index}`}
-            style={[
-              styles.actualBar,
-              {
-                height:
-                  value > 0
-                    ? `${Math.max(5, value * 82)}%`
-                    : '0%',
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      {liveHistory.length === 0 && (
-        <Text style={styles.visualizerPlaceholder}>
-          Start singing to see your volume
-        </Text>
-      )}
+    <View style={styles.waveRow}>
+      {actualBars.map((value, index) => (
+        <View
+          key={`volume-wave-${index}`}
+          style={[
+            styles.wave,
+            {
+              height:
+                value > 0
+                  ? `${Math.max(5, value * 100)}%`
+                  : '5%',
+              opacity: value === 0 ? 0.15 : 0.3 + value * 0.7,
+            },
+          ]}
+        />
+      ))}
     </View>
   );
 }
 
-/* =========================================================
-   MAIN SCREEN
-   ========================================================= */
-
 export default function VolumeFreeModeScreen() {
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-
+  const { width } = useWindowDimensions();
   const horizontalPadding = Math.min(22, width * 0.055);
-  const isSmallScreen = height < 700;
-
-  /* =======================================================
-     STATE
-     ======================================================= */
 
   const [phase, setPhase] = useState<Phase>('ready');
   const [liveVolume, setLiveVolume] = useState<number | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
-
-  /* =======================================================
-     REFS
-     ======================================================= */
+  const [error, setError] = useState<string | null>(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const phaseRef = useRef<Phase>('ready');
   const startedAtRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const startingRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const leaveRequestedRef = useRef(false);
+  const quitModalOpenRef = useRef(false);
+  const startTaskRef = useRef<Promise<void> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-
-  // Keep the audio callback aware of the current screen phase.
   phaseRef.current = phase;
 
-  /* =======================================================
-     TIMER CLEANUP
-     ======================================================= */
-
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
+      mountedRef.current = false;
+      phaseRef.current = 'ready';
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -165,12 +128,8 @@ export default function VolumeFreeModeScreen() {
     };
   }, []);
 
-  /* =======================================================
-     LIVE AUDIO
-     ======================================================= */
-
-  const handleAudioFrame = (frame: LiveAudioFrame) => {
-    if (phaseRef.current !== 'exercise') {
+  const handleAudioFrame = useCallback((frame: LiveAudioFrame) => {
+    if (!mountedRef.current || phaseRef.current !== 'exercise') {
       return;
     }
 
@@ -185,14 +144,13 @@ export default function VolumeFreeModeScreen() {
 
     setLiveVolume(reading.volumeDb);
 
-    // The visualizer shows relative input-volume changes.
-    // It does not calculate an exercise score.
+    // Relative input-volume changes only; this is not an exercise score.
     const normalized = normalizeVolume(reading.volumeDb);
 
-    setLiveHistory((previous) =>
+    setLiveHistory(previous =>
       [...previous, normalized].slice(-BAR_COUNT),
     );
-  };
+  }, []);
 
   const {
     startRecording,
@@ -201,10 +159,6 @@ export default function VolumeFreeModeScreen() {
   } = useAudioRecorder({
     onFrame: handleAudioFrame,
   });
-
-  /* =======================================================
-     TIMER
-     ======================================================= */
 
   useEffect(() => {
     if (phase !== 'exercise') {
@@ -216,15 +170,13 @@ export default function VolumeFreeModeScreen() {
     timerRef.current = setInterval(() => {
       const startedAt = startedAtRef.current;
 
-      if (startedAt === null) {
+      if (startedAt === null || !mountedRef.current) {
         return;
       }
 
-      const elapsed = Math.floor(
-        (Date.now() - startedAt) / 1000,
+      setElapsedSeconds(
+        Math.floor((Date.now() - startedAt) / 1000),
       );
-
-      setElapsedSeconds(elapsed);
     }, 250);
 
     return () => {
@@ -235,55 +187,57 @@ export default function VolumeFreeModeScreen() {
     };
   }, [phase]);
 
-  /* =======================================================
-     START FREE MODE
-     ======================================================= */
-
-  const startFreeMode = async () => {
-    if (isStarting || phaseRef.current === 'exercise' || isRecording) {
+  const handleBack = useCallback(() => {
+    if (
+      leaveRequestedRef.current ||
+      quitModalOpenRef.current ||
+      isQuitting
+    ) {
       return;
     }
 
-    try {
-      setIsStarting(true);
+    quitModalOpenRef.current = true;
+    setShowQuitModal(true);
+  }, [isQuitting]);
 
-      setLiveVolume(null);
-      setLiveHistory([]);
-      setElapsedSeconds(0);
-
-      startedAtRef.current = null;
-
-      await startRecording();
-
-      phaseRef.current = 'exercise';
-      setPhase('exercise');
-    } catch (error) {
-      console.error(
-        'Unable to start Volume Free Mode:',
-        error,
-      );
-    } finally {
-      setIsStarting(false);
+  const dismissQuitModal = useCallback(() => {
+    if (leaveRequestedRef.current || isQuitting) {
+      return;
     }
-  };
 
-  /* =======================================================
-     STOP FREE MODE
-     ======================================================= */
+    quitModalOpenRef.current = false;
+    setShowQuitModal(false);
+  }, [isQuitting]);
 
-  const stopFreeMode = async () => {
-    // Change the phase immediately so subsequent frames are ignored.
+  const confirmQuitExercise = useCallback(async () => {
+    if (leaveRequestedRef.current) {
+      return;
+    }
+
+    leaveRequestedRef.current = true;
+    quitModalOpenRef.current = false;
     phaseRef.current = 'ready';
-    setPhase('ready');
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
 
     try {
-      if (isRecording) {
-        await stopRecording();
+      // Wait for pending microphone startup before stopping the recorder.
+      const startTask = startTaskRef.current;
+
+      if (startTask) {
+        try {
+          await startTask;
+        } catch {
+          // Still attempt recorder cleanup if startup failed.
+        }
       }
-    } catch (error) {
+
+      await stopRecording();
+    } catch (stopError) {
       console.error(
-        'Unable to stop Volume Free Mode:',
-        error,
+        'Failed to stop recording before leaving Volume Free Mode:',
+        stopError,
       );
     } finally {
       if (timerRef.current) {
@@ -292,16 +246,210 @@ export default function VolumeFreeModeScreen() {
       }
 
       startedAtRef.current = null;
+      router.back();
+    }
+  }, [stopRecording]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        () => {
+          if (quitModalOpenRef.current) {
+            dismissQuitModal();
+            return true;
+          }
+
+          handleBack();
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, [dismissQuitModal, handleBack]),
+  );
+
+  const quitConfirmationModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={dismissQuitModal}
+    >
+      <View style={styles.modalOverlay}>
+        <View
+          accessibilityRole="alert"
+          accessibilityLabel="Quit exercise confirmation"
+          style={styles.confirmationCard}
+        >
+          <View style={styles.modalIconCircle}>
+            <Ionicons
+              name="volume-high-outline"
+              size={34}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>Quit Exercise?</Text>
+
+          <Text style={styles.modalMessage}>
+            Are you sure you want to leave Volume Free Mode?
+          </Text>
+
+          <Text style={styles.modalHint}>
+            Your current session will stop. Free Mode feedback is not saved
+            as a scored exercise.
+          </Text>
+
+          <View style={styles.modalButtons}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="No, continue exercise"
+              disabled={isQuitting}
+              onPress={dismissQuitModal}
+              style={({ pressed }) => [
+                styles.continueButton,
+                pressed && styles.buttonPressed,
+                isQuitting && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.continueButtonText}>
+                No, Continue
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Yes, quit exercise"
+              disabled={isQuitting}
+              onPress={() => {
+                void confirmQuitExercise();
+              }}
+              style={({ pressed }) => [
+                styles.quitButton,
+                pressed && styles.buttonPressed,
+                isQuitting && styles.buttonDisabled,
+              ]}
+            >
+              {isQuitting ? (
+                <ActivityIndicator size="small" color={WHITE} />
+              ) : (
+                <Text style={styles.quitButtonText}>Yes, Quit</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const startFreeMode = useCallback(async () => {
+    if (
+      startingRef.current ||
+      stoppingRef.current ||
+      leaveRequestedRef.current ||
+      phaseRef.current === 'exercise' ||
+      isRecording
+    ) {
+      return;
+    }
+
+    startingRef.current = true;
+    setIsStarting(true);
+    setError(null);
+
+    try {
       setLiveVolume(null);
       setLiveHistory([]);
       setElapsedSeconds(0);
-    }
-  };
+      startedAtRef.current = null;
 
-  /* =======================================================
-     FORMATTED TIME
-     ======================================================= */
+      phaseRef.current = 'ready';
+
+      const startTask = Promise.resolve().then(() => startRecording());
+      startTaskRef.current = startTask;
+
+      try {
+        await startTask;
+      } finally {
+        if (startTaskRef.current === startTask) {
+          startTaskRef.current = null;
+        }
+      }
+
+      if (!mountedRef.current || leaveRequestedRef.current) {
+        phaseRef.current = 'ready';
+        return;
+      }
+
+      phaseRef.current = 'exercise';
+      setPhase('exercise');
+    } catch (startError) {
+      phaseRef.current = 'ready';
+
+      console.error('Unable to start Volume Free Mode:', startError);
+
+      if (mountedRef.current) {
+        setError(
+          'Could not start the microphone. Check microphone permission and try again.',
+        );
+      }
+    } finally {
+      startingRef.current = false;
+
+      if (mountedRef.current) {
+        setIsStarting(false);
+      }
+    }
+  }, [isRecording, startRecording]);
+
+  const stopFreeMode = useCallback(async () => {
+    if (stoppingRef.current || leaveRequestedRef.current) {
+      return;
+    }
+
+    stoppingRef.current = true;
+    phaseRef.current = 'ready';
+
+    if (mountedRef.current) {
+      setPhase('ready');
+    }
+
+    try {
+      const startTask = startTaskRef.current;
+
+      if (isRecording || startTask) {
+        if (startTask) {
+          try {
+            await startTask;
+          } catch {
+            // Still try to stop the recorder.
+          }
+        }
+
+        await stopRecording();
+      }
+    } catch (stopError) {
+      console.error('Unable to stop Volume Free Mode:', stopError);
+    } finally {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
+      startedAtRef.current = null;
+
+      if (mountedRef.current) {
+        setLiveVolume(null);
+        setLiveHistory([]);
+        setElapsedSeconds(0);
+        setIsStarting(false);
+      }
+
+      stoppingRef.current = false;
+    }
+  }, [isRecording, stopRecording]);
 
   const formattedTime = useMemo(() => {
     const minutes = Math.floor(elapsedSeconds / 60);
@@ -312,10 +460,6 @@ export default function VolumeFreeModeScreen() {
     ).padStart(2, '0')}`;
   }, [elapsedSeconds]);
 
-  /* =======================================================
-     SHARED LAYOUT VALUES
-     ======================================================= */
-
   const safeAreaStyle = {
     paddingBottom: insets.bottom,
   };
@@ -325,16 +469,167 @@ export default function VolumeFreeModeScreen() {
     paddingBottom: Math.max(8, insets.bottom),
   };
 
-  /* =======================================================
-     READY SCREEN
-     ======================================================= */
-
   if (phase === 'ready') {
     return (
-      <SafeAreaView
-        style={[styles.screen, safeAreaStyle]}
-      >
-        {/* HEADER */}
+      <>
+        <SafeAreaView style={[styles.screen, safeAreaStyle]}>
+          <View
+            style={[
+              styles.header,
+              { paddingHorizontal: horizontalPadding },
+            ]}
+          >
+            <Pressable
+              style={styles.backButton}
+              onPress={handleBack}
+              disabled={isQuitting}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons
+                name="arrow-back"
+                size={20}
+                color={BROWN}
+              />
+            </Pressable>
+
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <View
+            style={[
+              styles.readyContent,
+              { paddingHorizontal: horizontalPadding },
+            ]}
+          >
+            <View style={styles.modeIcon}>
+              <Ionicons
+                name="volume-high"
+                size={36}
+                color={ACCENT}
+              />
+            </View>
+
+            <Text style={styles.pageTitle}>
+              Volume Free Mode
+            </Text>
+
+            <Text style={styles.pageDescription}>
+              Practice your volume freely and listen to changes in
+              your voice without a target volume or structured exercise.
+            </Text>
+
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>
+                LIVE FEEDBACK
+              </Text>
+
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons
+                    name="volume-medium-outline"
+                    size={20}
+                    color={ACCENT}
+                  />
+                </View>
+
+                <View style={styles.infoText}>
+                  <Text style={styles.infoName}>
+                    Volume Level
+                  </Text>
+
+                  <Text style={styles.infoDescription}>
+                    See your current vocal volume in real time.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons
+                    name="pulse-outline"
+                    size={20}
+                    color={ACCENT}
+                  />
+                </View>
+
+                <View style={styles.infoText}>
+                  <Text style={styles.infoName}>
+                    Volume Flow
+                  </Text>
+
+                  <Text style={styles.infoDescription}>
+                    Observe how your voice gets quieter or louder as you sing.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.noTargetCard}>
+              <Ionicons
+                name="information-circle-outline"
+                size={20}
+                color={ACCENT}
+              />
+
+              <Text style={styles.noTargetText}>
+                There is no target volume band in this mode.
+                Explore your voice at any comfortable volume.
+              </Text>
+            </View>
+
+            {error ? (
+              <Text style={styles.errorText}>{error}</Text>
+            ) : null}
+          </View>
+
+          <View
+            style={[
+              styles.bottomAction,
+              {
+                paddingHorizontal: horizontalPadding,
+                paddingBottom: Math.max(8, insets.bottom),
+              },
+            ]}
+          >
+            <Pressable
+              style={[
+                styles.startButton,
+                (isStarting || isQuitting) && styles.buttonDisabled,
+              ]}
+              onPress={() => {
+                void startFreeMode();
+              }}
+              disabled={isStarting || isRecording || isQuitting}
+              accessibilityRole="button"
+            >
+              {isStarting ? (
+                <ActivityIndicator color={WHITE} />
+              ) : (
+                <>
+                  <Ionicons
+                    name="mic"
+                    size={19}
+                    color={WHITE}
+                  />
+
+                  <Text style={styles.startButtonText}>
+                    Start Free Mode
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </SafeAreaView>
+
+        {quitConfirmationModal}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SafeAreaView style={[styles.screen, safeAreaStyle]}>
         <View
           style={[
             styles.header,
@@ -343,660 +638,614 @@ export default function VolumeFreeModeScreen() {
         >
           <Pressable
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
+            disabled={isQuitting}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel="Quit exercise"
           >
             <Ionicons
               name="arrow-back"
               size={20}
-              color={COLORS.brown}
+              color={BROWN}
             />
           </Pressable>
-
-          <Text style={styles.headerTitle}>
-            Volume Free Mode
-          </Text>
 
           <View style={styles.headerSpacer} />
         </View>
 
-        {/* CONTENT */}
         <View
           style={[
-            styles.readyContent,
+            styles.exerciseContent,
             { paddingHorizontal: horizontalPadding },
           ]}
         >
-          <View style={styles.modeIcon}>
-            <Ionicons
-              name="musical-notes"
-              size={34}
-              color={COLORS.accent}
-            />
-          </View>
-
-          <Text style={styles.pageTitle}>
-            Volume Free Mode
-          </Text>
-
-          <Text style={styles.pageDescription}>
-            Practice your volume freely without a target
-            volume band or structured exercise.
-          </Text>
-
-          {/* LIVE FEEDBACK */}
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>
-              LIVE FEEDBACK
-            </Text>
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons
-                  name="volume-medium-outline"
-                  size={20}
-                  color={COLORS.accent}
-                />
-              </View>
-
-              <View style={styles.infoText}>
-                <Text style={styles.infoName}>
-                  Volume Level
-                </Text>
-
-                <Text style={styles.infoDescription}>
-                  See your current vocal volume in real time.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* NO TARGET NOTICE */}
-          <View style={styles.noTargetCard}>
-            <Ionicons
-              name="information-circle-outline"
-              size={20}
-              color={COLORS.accent}
-            />
-
-            <Text style={styles.noTargetText}>
-              There is no target volume band in Free Mode.
-              Sing at any comfortable volume.
-            </Text>
-          </View>
-        </View>
-
-        {/* START BUTTON */}
-        <View
-          style={[
-            styles.bottomAction,
-            bottomActionStyle,
-          ]}
-        >
-          <Pressable
-            style={[
-              styles.startButton,
-              isStarting && styles.disabledButton,
-            ]}
-            onPress={startFreeMode}
-            disabled={isStarting || isRecording}
-            accessibilityRole="button"
-          >
-            {isStarting ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons
-                  name="mic"
-                  size={19}
-                  color={COLORS.white}
-                />
-
-                <Text style={styles.startButtonText}>
-                  Start Free Mode
-                </Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  /* =======================================================
-     EXERCISE SCREEN
-     ======================================================= */
-
-  return (
-    <SafeAreaView
-      style={[styles.screen, safeAreaStyle]}
-    >
-      {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { paddingHorizontal: horizontalPadding },
-        ]}
-      >
-        <Pressable
-          style={styles.backButton}
-          onPress={stopFreeMode}
-          accessibilityRole="button"
-          accessibilityLabel="Stop and go back"
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={COLORS.brown}
-          />
-        </Pressable>
-
-        <Text style={styles.headerTitle}>
-          Volume Free Mode
-        </Text>
-
-        <View style={styles.headerSpacer} />
-      </View>
-
-      {/* MAIN CONTENT */}
-      <View
-        style={[
-          styles.exerciseContent,
-          { paddingHorizontal: horizontalPadding },
-        ]}
-      >
-        {/* TOP INFO */}
-        <View style={styles.exerciseTopRow}>
-          <View>
-            <Text style={styles.modeLabel}>
-              FREE PRACTICE
-            </Text>
-
-            <Text style={styles.exerciseSubtitle}>
-              Explore your natural volume
-            </Text>
-          </View>
-
-          <View style={styles.timeBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={COLORS.accent}
-            />
-
-            <Text style={styles.timeText}>
-              {formattedTime}
-            </Text>
-          </View>
-        </View>
-
-        {/* MAIN VOLUME CARD */}
-        <View
-          style={[
-            styles.volumeCard,
-            isSmallScreen && styles.volumeCardSmall,
-          ]}
-        >
-          <Text style={styles.volumeLabel}>
-            CURRENT VOLUME
-          </Text>
-
-          <Text
-            style={[
-              styles.volumeValue,
-              isSmallScreen && styles.volumeValueSmall,
-            ]}
-          >
-            {liveVolume !== null
-              ? liveVolume.toFixed(1)
-              : '--'}
-          </Text>
-
-          <Text style={styles.volumeUnit}>
-            dBFS
-          </Text>
-
-          <View style={styles.micCircle}>
-            <Ionicons
-              name="mic"
-              size={isSmallScreen ? 30 : 36}
-              color={COLORS.white}
-            />
-          </View>
-
-          <Text style={styles.volumeHint}>
-            {liveVolume !== null
-              ? 'Audio level detected'
-              : 'Listening...'}
-          </Text>
-        </View>
-
-        {/* VISUALIZER */}
-        <View style={styles.visualizerCard}>
-          <View style={styles.visualizerHeader}>
+          <View style={styles.exerciseTopRow}>
             <View>
-              <Text style={styles.visualizerTitle}>
-                Your Volume
+              <Text style={styles.modeLabel}>
+                FREE PRACTICE
               </Text>
 
-              <Text style={styles.visualizerSub}>
-                Live volume pattern
+              <Text style={styles.exerciseSubtitle}>
+                Explore your natural volume
               </Text>
             </View>
 
-            <View style={styles.visualizerMic}>
+            <View style={styles.timeBadge}>
               <Ionicons
-                name="pulse-outline"
-                size={18}
-                color={COLORS.accent}
+                name="time-outline"
+                size={16}
+                color={ACCENT}
+              />
+
+              <Text style={styles.timeText}>
+                {formattedTime}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.liveCard}>
+            <Text style={styles.cardLabel}>
+              CURRENT VOLUME
+            </Text>
+
+            <View style={styles.volumeDisplay}>
+              <View>
+                <Text style={styles.volumeValue}>
+                  {liveVolume !== null
+                    ? liveVolume.toFixed(1)
+                    : '--'}
+                </Text>
+
+                <Text style={styles.frequencyText}>dBFS</Text>
+              </View>
+
+              <View style={styles.volumeIcon}>
+                <Ionicons
+                  name="volume-high"
+                  size={27}
+                  color={ACCENT}
+                />
+              </View>
+            </View>
+
+            <View style={styles.visualizerHeader}>
+              <View>
+                <Text style={styles.visualizerTitle}>
+                  Your Volume
+                </Text>
+
+                <Text style={styles.visualizerSub}>
+                  {liveVolume !== null
+                    ? 'Audio level detected'
+                    : 'Start singing to see your volume'}
+                </Text>
+              </View>
+
+              <View style={styles.visualizerMic}>
+                <Ionicons
+                  name="pulse-outline"
+                  size={20}
+                  color={ACCENT}
+                />
+              </View>
+            </View>
+
+            <VolumeVisualizer liveHistory={liveHistory} />
+
+            <View style={styles.visualizerLabels}>
+              <Text style={styles.visualizerLabel}>QUIET</Text>
+              <Text style={styles.visualizerLabel}>LOUD</Text>
+            </View>
+          </View>
+
+          <View style={styles.stabilityCard}>
+            <View>
+              <Text style={styles.cardLabel}>
+                LIVE INPUT LEVEL
+              </Text>
+
+              <Text style={styles.stabilityValue}>
+                {liveVolume !== null
+                  ? `${liveVolume.toFixed(1)} dBFS`
+                  : '--'}
+              </Text>
+            </View>
+
+            <View style={styles.stabilityIcon}>
+              <Ionicons
+                name="mic-outline"
+                size={25}
+                color={ACCENT}
               />
             </View>
           </View>
 
-          <VolumeVisualizer liveHistory={liveHistory} />
+          <View style={styles.noteCard}>
+            <Ionicons
+              name="sparkles-outline"
+              size={18}
+              color={ACCENT}
+            />
 
-          <View style={styles.visualizerLabels}>
-            <Text style={styles.visualizerLabel}>
-              QUIET
-            </Text>
-
-            <Text style={styles.visualizerLabel}>
-              LOUD
+            <Text style={styles.noteText}>
+              There is no target volume. Sing naturally and observe
+              how your volume changes without pressure.
             </Text>
           </View>
         </View>
 
-        {/* FREE MODE MESSAGE */}
-        <View style={styles.freeModeMessage}>
-          <Ionicons
-            name="musical-note-outline"
-            size={19}
-            color={COLORS.accent}
-          />
-
-          <Text style={styles.freeModeMessageText}>
-            No target volume. Sing naturally and observe
-            how your volume changes.
-          </Text>
-        </View>
-      </View>
-
-      {/* STOP BUTTON */}
-      <View
-        style={[
-          styles.bottomAction,
-          bottomActionStyle,
-        ]}
-      >
-        <Pressable
-          style={styles.stopButton}
-          onPress={stopFreeMode}
-          accessibilityRole="button"
+        <View
+          style={[
+            styles.bottomAction,
+            {
+              paddingHorizontal: horizontalPadding,
+              paddingBottom: Math.max(8, insets.bottom),
+            },
+          ]}
         >
-          <Ionicons
-            name="stop"
-            size={18}
-            color={COLORS.white}
-          />
+          <Pressable
+            style={[
+              styles.stopButton,
+              isQuitting && styles.buttonDisabled,
+            ]}
+            onPress={() => {
+              void stopFreeMode();
+            }}
+            disabled={isQuitting}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="stop"
+              size={18}
+              color={WHITE}
+            />
 
-          <Text style={styles.startButtonText}>
-            Stop Free Mode
-          </Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+            <Text style={styles.startButtonText}>
+              Stop Free Mode
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+
+      {quitConfirmationModal}
+    </>
   );
 }
-
-/* =========================================================
-   STYLES
-   ========================================================= */
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: WHITE,
   },
 
-  /* HEADER */
+  /* HEADER — MATCHES PITCH FREE MODE */
   header: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.pink,
+    marginTop: 100,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '800',
-    color: COLORS.brown,
   },
   headerSpacer: {
-    width: 36,
+    width: 34,
   },
 
-  /* READY SCREEN */
+  /* READY SCREEN — MATCHES PITCH FREE MODE */
   readyContent: {
     flex: 1,
-    alignItems: 'center',
-    paddingTop: 20,
-  },
-  modeIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
     justifyContent: 'center',
   },
+  modeIcon: {
+    width: 92,
+    height: 92,
+    borderRadius: 28,
+    backgroundColor: LIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
   pageTitle: {
-    marginTop: 12,
-    fontSize: 27,
-    fontWeight: '900',
-    color: COLORS.brown,
+    fontFamily: 'FredokaBold',
+    fontSize: 30,
+    color: BROWN,
     textAlign: 'center',
   },
   pageDescription: {
-    marginTop: 6,
-    maxWidth: 330,
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.muted,
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: MUTED,
     textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
   infoCard: {
-    width: '100%',
-    marginTop: 20,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
+    backgroundColor: LIGHT,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
+    borderColor: BORDER,
+    padding: 18,
+    marginTop: 24,
   },
   infoTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: COLORS.muted,
+    fontFamily: 'FredokaBold',
+    color: BROWN,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    marginBottom: 12,
   },
   infoRow: {
-    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 14,
   },
   infoIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.pale,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   infoText: {
     flex: 1,
-    marginLeft: 11,
   },
   infoName: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.dark,
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
   },
   infoDescription: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
     marginTop: 2,
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
+    lineHeight: 18,
   },
   noTargetCard: {
-    width: '100%',
-    marginTop: 12,
-    padding: 13,
-    borderRadius: 15,
-    backgroundColor: COLORS.pale,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: LIGHT,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 14,
+    marginTop: 18,
   },
   noTargetText: {
     flex: 1,
-    marginLeft: 9,
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.dark,
+    marginLeft: 10,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: MUTED,
+  },
+  errorText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#B42336',
+    textAlign: 'center',
+    marginTop: 12,
   },
 
-  /* BOTTOM ACTION */
+  /* BOTTOM ACTION — MATCHES PITCH FREE MODE */
   bottomAction: {
-    backgroundColor: COLORS.light,
-    paddingTop: 8,
+    paddingTop: 12,
   },
   startButton: {
-    minHeight: 51,
+    height: 52,
     borderRadius: 16,
-    backgroundColor: COLORS.accent,
+    backgroundColor: BROWN,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-  },
-  stopButton: {
-    minHeight: 51,
-    borderRadius: 16,
-    backgroundColor: COLORS.dark,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
+    gap: 8,
   },
   startButtonText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.white,
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: WHITE,
   },
-  disabledButton: {
-    opacity: 0.6,
+  stopButton: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: DARK,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -30,
+    marginBottom: 52,
+    gap: 8,
   },
 
-  /* EXERCISE SCREEN */
+  /* EXERCISE SCREEN — MATCHES PITCH FREE MODE */
   exerciseContent: {
     flex: 1,
     justifyContent: 'space-between',
-    paddingTop: 5,
+    paddingTop: 12,
   },
   exerciseTopRow: {
+    marginTop: 75,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 18,
   },
   modeLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: COLORS.muted,
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    color: ACCENT,
+    letterSpacing: 1.4,
   },
   exerciseSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.dark,
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: MUTED,
+    marginTop: 5,
   },
   timeBadge: {
-    minHeight: 36,
-    paddingHorizontal: 11,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: LIGHT,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
   timeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.brown,
+    fontFamily: 'FredokaBold',
+    fontSize: 13,
+    color: BROWN,
   },
-
-  /* VOLUME CARD */
-  volumeCard: {
-    minHeight: 190,
-    borderRadius: 22,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+  liveCard: {
+    backgroundColor: LIGHT,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: BORDER,
+    padding: 18,
+    marginBottom: -70,
   },
-  volumeCardSmall: {
-    minHeight: 155,
+  cardLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    color: BROWN,
+    letterSpacing: 1.3,
   },
-  volumeLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: COLORS.muted,
+  volumeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 16,
   },
   volumeValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 36,
+    color: BROWN,
+  },
+  frequencyText: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: MUTED,
     marginTop: 2,
-    fontSize: 42,
-    lineHeight: 46,
-    fontWeight: '900',
-    color: COLORS.brown,
   },
-  volumeValueSmall: {
-    fontSize: 34,
-    lineHeight: 38,
-  },
-  volumeUnit: {
-    marginTop: -1,
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  micCircle: {
-    marginTop: 7,
-    width: 55,
-    height: 55,
-    borderRadius: 27.5,
-    backgroundColor: COLORS.accent,
+  volumeIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  volumeHint: {
-    marginTop: 6,
-    fontSize: 10,
-    color: COLORS.muted,
-  },
 
-  /* VISUALIZER CARD */
-  visualizerCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 12,
-  },
+  /* LIVE VOLUME VISUALIZER */
   visualizerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   visualizerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.dark,
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
   },
   visualizerSub: {
-    marginTop: 1,
-    fontSize: 9,
-    color: COLORS.muted,
+    fontFamily: 'FredokaRegular',
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 16,
+    color: MUTED,
   },
   visualizerMic: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.pale,
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  visualizer: {
-    marginTop: 8,
-    height: 75,
-    borderRadius: 11,
-    backgroundColor: COLORS.visualizerBackground,
-    overflow: 'hidden',
-    position: 'relative',
+  waveRow: {
+    height: 86,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    paddingBottom: 4,
+    marginTop: 14,
+    paddingHorizontal: 2,
   },
-  actualBars: {
-    position: 'absolute',
-    left: 4,
-    right: 4,
-    top: 4,
-    bottom: 4,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  actualBar: {
-    width: 4,
-    minHeight: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.accent,
-  },
-  centerLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    height: 1,
-    backgroundColor: COLORS.visualizerLine,
-  },
-  visualizerPlaceholder: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '34%',
-    fontSize: 9,
-    color: COLORS.muted,
-    textAlign: 'center',
+  wave: {
+    width: 5,
+    borderRadius: 999,
+    backgroundColor: ACCENT,
+    minHeight: 5,
   },
   visualizerLabels: {
-    marginTop: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 8,
   },
   visualizerLabel: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: COLORS.muted,
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    color: MUTED,
+    letterSpacing: 1,
   },
 
-  /* FREE MODE MESSAGE */
-  freeModeMessage: {
-    minHeight: 43,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: COLORS.pale,
+  /* LIVE LEVEL CARD */
+  stabilityCard: {
+    marginTop: 18,
+    padding: 18,
+    borderRadius: 20,
+    backgroundColor: LIGHT,
+    borderWidth: 1,
+    borderColor: BORDER,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  freeModeMessageText: {
+  stabilityValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+    marginTop: 5,
+  },
+  stabilityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* FREE MODE NOTE — MATCHES PITCH FREE MODE */
+  noteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PINK,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 25,
+  },
+  noteText: {
     flex: 1,
-    marginLeft: 8,
-    fontSize: 10,
-    lineHeight: 15,
-    color: COLORS.dark,
+    marginLeft: 10,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: DARK,
+  },
+
+  /* QUIT CONFIRMATION MODAL — MATCHES PITCH FREE MODE */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(35, 22, 17, 0.48)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  confirmationCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: WHITE,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    alignItems: 'center',
+    shadowColor: BROWN,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: DARK,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  modalHint: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+    marginTop: 24,
+  },
+  continueButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  quitButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 999,
+    backgroundColor: BROWN,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: WHITE,
+    textAlign: 'center',
+  },
+  buttonPressed: {
+    opacity: 0.78,
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
 });

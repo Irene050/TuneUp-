@@ -902,6 +902,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   exerciseTopRow: {
+    marginTop: 90,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -936,6 +937,7 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
   liveCard: {
+    marginTop: -80,
     backgroundColor: LIGHT,
     borderRadius: 24,
     borderWidth: 1,
@@ -970,7 +972,7 @@ const styles = StyleSheet.create({
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
+    marginBottom: 50,
     backgroundColor: PINK,
     borderRadius: 18,
     padding: 14,
@@ -987,6 +989,8 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     height: 52,
+    marginTop: -55,
+    marginBottom: 50,
     borderRadius: 16,
     backgroundColor: DARK,
     flexDirection: 'row',
