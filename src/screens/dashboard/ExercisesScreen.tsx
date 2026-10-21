@@ -26,6 +26,7 @@ const MUTED = '#A58F84';
 
 const categories = [
   'All',
+  'Free Mode',
   'Breath Control',
   'Pitch',
   'Tone',
@@ -45,6 +46,7 @@ type Exercise = {
   name: string;
   category: string;
   templateId?: string;
+  mode?: string;
 };
 
 const exercises: Exercise[] = [
@@ -173,6 +175,24 @@ const exercises: Exercise[] = [
     category: 'Agility',
     templateId: 'rapidScaleTrill',
   },
+  {
+    name: 'Breath Control Free Mode',
+    category: 'Free Mode',
+    mode: 'free',
+    templateId: 'breathControlFree',
+  },
+  {
+    name: 'Pitch Free Mode',
+    category: 'Free Mode',
+    mode: 'free',
+    templateId: 'pitchFree',
+  },
+  {
+    name: 'Volume Free Mode',
+    category: 'Free Mode',
+    mode: 'free',
+    templateId: 'volumeFree',
+  },
 ];
 
 const fallbackRecommendations: Exercise[] = [
@@ -254,7 +274,9 @@ export default function ExercisesScreen() {
     return exercises.filter((exercise) => {
       const matchesCategory =
         selectedCategory === 'All' ||
-        exercise.category === selectedCategory;
+        (selectedCategory === 'Free Mode'
+          ? exercise.mode === 'free'
+          : exercise.category === selectedCategory);
 
       const matchesSearch = exercise.name
         .toLowerCase()
@@ -343,9 +365,46 @@ export default function ExercisesScreen() {
 
     return recommendations.slice(0, 5);
   }, [progressSummaries, recommendationsLoading]);
-
+  
   const handleExercisePress = (exercise: Exercise) => {
+    if (exercise.mode === 'free') {
+      const freeModeRoutes: Record<string, string> = {
+        'Breath Control': '/exercises/breath-control',
+        Pitch: '/exercises/pitch',
+        Volume: '/exercises/volume',
+      };
+
+      // Determine the actual exercise type from its name.
+      const routeKey = exercise.name.startsWith('Breath Control')
+        ? 'Breath Control'
+        : exercise.name.startsWith('Pitch')
+          ? 'Pitch'
+          : exercise.name.startsWith('Volume')
+            ? 'Volume'
+            : '';
+
+      const pathname = freeModeRoutes[routeKey];
+
+      if (!pathname) {
+        console.warn('Free Mode route not found:', exercise.name);
+        return;
+      }
+
+      router.push({
+        pathname: pathname as
+          | '/exercises/breath-control'
+          | '/exercises/pitch'
+          | '/exercises/volume',
+        params: {
+          mode: 'free',
+        },
+      });
+
+      return;
+    }
+
     if (!exercise.templateId) {
+      console.warn('Missing templateId for:', exercise.name);
       return;
     }
 
@@ -360,6 +419,7 @@ export default function ExercisesScreen() {
     const pathname = routes[exercise.category];
 
     if (!pathname) {
+      console.warn('No route found for:', exercise.category);
       return;
     }
 
@@ -757,7 +817,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   dropdown: {
-    width: 108,
+    width: 125,
     height: 32,
     backgroundColor: PINK,
     borderRadius: 8,
@@ -770,7 +830,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: BROWN,
-    maxWidth: 75,
+    maxWidth: 90,
   },
   dropdownMenu: {
     position: 'absolute',
