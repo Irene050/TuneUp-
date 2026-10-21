@@ -1,7 +1,12 @@
-
 import AppHeader from '@/components/appheader';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgress } from '@/hooks/useProgress';
+import {
+  changeCurrentPassword,
+  deleteCurrentAccount,
+  logoutUser,
+  updateCurrentUserProfile,
+} from '@/services/firebase/authService';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -19,13 +24,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import {
-  changeCurrentPassword,
-  deleteCurrentAccount,
-  logoutUser,
-  updateCurrentUserProfile,
-} from '@/services/firebase/authService';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -61,29 +59,13 @@ function ModalHeader({
 
 export default function ProfileScreen() {
   const { userName, userPhotoURL } = useAuth();
+
   const {
     summaries: progressSummaries,
     loading: progressLoading,
   } = useProgress();
 
   const displayName = userName.trim() || 'Singer';
-
-  const tierRank = {
-    beginner: 0,
-    intermediate: 1,
-    advanced: 2,
-  } as const;
-
-  const overallTier = progressSummaries.reduce(
-    (highestTier, summary) =>
-      tierRank[summary.currentTier] > tierRank[highestTier]
-        ? summary.currentTier
-        : highestTier,
-    'beginner' as keyof typeof tierRank,
-  );
-
-  const formattedTier =
-    overallTier.charAt(0).toUpperCase() + overallTier.slice(1);
 
   const [editVisible, setEditVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -101,6 +83,31 @@ export default function ProfileScreen() {
   const [deletePassword, setDeletePassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const avatarInitial = (profileName.trim() || 'Singer')
+    .charAt(0)
+    .toUpperCase();
+
+  const draftInitial = (nameDraft.trim() || 'Singer')
+    .charAt(0)
+    .toUpperCase();
+
+  const tierRank = {
+    beginner: 0,
+    intermediate: 1,
+    advanced: 2,
+  } as const;
+
+  const overallTier = progressSummaries.reduce(
+    (highestTier, summary) =>
+      tierRank[summary.currentTier] > tierRank[highestTier]
+        ? summary.currentTier
+        : highestTier,
+    'beginner' as keyof typeof tierRank,
+  );
+
+  const formattedTier =
+    overallTier.charAt(0).toUpperCase() + overallTier.slice(1);
 
   useEffect(() => {
     setNameDraft(displayName);
@@ -127,6 +134,7 @@ export default function ProfileScreen() {
 
       if (!result.canceled) {
         setPhotoDraft(result.assets[0].uri);
+        setError(null);
       }
     } catch (photoError) {
       console.error('Photo picker error:', photoError);
@@ -232,6 +240,7 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       await logoutUser();
+
       router.replace({
         pathname: '/[auth]',
         params: { auth: 'login' },
@@ -271,15 +280,16 @@ export default function ProfileScreen() {
 
       <View style={styles.content}>
         <View style={styles.profileSection}>
-          <Image
-            source={
-              photoDraft
-                ? { uri: photoDraft }
-                : require('@/assets/images/tabIcons/profile.png')
-            }
-            style={styles.avatar}
-            resizeMode="cover"
-          />
+          {userPhotoURL ? (
+            <Image
+              source={{ uri: userPhotoURL }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{avatarInitial}</Text>
+            </View>
+          )}
 
           <Text style={styles.name}>{profileName}</Text>
 
@@ -298,7 +308,6 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.optionsContainer}>
-          {/* ACCOUNT SETTINGS */}
           <Pressable
             style={styles.optionCard}
             onPress={() => {
@@ -323,7 +332,6 @@ export default function ProfileScreen() {
             />
           </Pressable>
 
-          {/* VIEW PROGRESS */}
           <Pressable
             style={styles.optionCard}
             onPress={() =>
@@ -351,7 +359,6 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* LOG OUT */}
         <Pressable
           style={styles.logoutButton}
           onPress={handleLogout}
@@ -360,7 +367,6 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
-      {/* EDIT PROFILE MODAL */}
       <Modal
         visible={editVisible}
         transparent
@@ -381,15 +387,21 @@ export default function ProfileScreen() {
               style={styles.photoPicker}
               onPress={pickPhoto}
               disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile photo"
             >
-              <Image
-                source={
-                  photoDraft
-                    ? { uri: photoDraft }
-                    : require('@/assets/images/tabIcons/profile.png')
-                }
-                style={styles.modalAvatar}
-              />
+              {photoDraft ? (
+                <Image
+                  source={{ uri: photoDraft }}
+                  style={styles.changePhotoAvatar}
+                />
+              ) : (
+                <View style={styles.changePhotoAvatar}>
+                  <Text style={styles.changePhotoAvatarText}>
+                    {draftInitial}
+                  </Text>
+                </View>
+              )}
 
               <Text style={styles.photoPickerText}>
                 Change photo
@@ -411,31 +423,32 @@ export default function ProfileScreen() {
             )}
 
             <View style={styles.modalActions}>
-            <Pressable
-              style={styles.cancelButton}
-              onPress={closeEditProfile}
-              disabled={saving}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
+              <Pressable
+                style={styles.cancelButton}
+                onPress={closeEditProfile}
+                disabled={saving}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
 
-            <Pressable
-              style={styles.saveProfileButton}
-              onPress={saveProfile}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color={WHITE} />
-              ) : (
-                <Text style={styles.saveProfileButtonText}>Save</Text>
-              )}
-            </Pressable>
-          </View>
+              <Pressable
+                style={styles.saveProfileButton}
+                onPress={saveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color={WHITE} />
+                ) : (
+                  <Text style={styles.saveProfileButtonText}>
+                    Save
+                  </Text>
+                )}
+              </Pressable>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ACCOUNT SETTINGS MODAL */}
       <Modal
         visible={settingsVisible}
         transparent
@@ -515,7 +528,6 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* DELETE ACCOUNT CONFIRMATION */}
       <Modal
         visible={deleteConfirmVisible}
         transparent
@@ -546,7 +558,7 @@ export default function ProfileScreen() {
               This will permanently delete your account and progress.
               This action cannot be undone.
             </Text>
-            
+
             <TextInput
               style={styles.deleteInput}
               value={deletePassword}
@@ -605,7 +617,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   content: {
     flex: 1,
     alignItems: 'center',
@@ -613,34 +624,36 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingBottom: 120,
   },
-
   profileSection: {
     alignItems: 'center',
     marginBottom: 36,
   },
-
   avatar: {
     width: 94,
     height: 94,
     borderRadius: 47,
     backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 10,
   },
-
+  avatarText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 36,
+    color: BROWN,
+  },
   name: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
     color: BROWN,
     marginBottom: 8,
   },
-
   tier: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
     marginBottom: 8,
   },
-
   editButton: {
     minWidth: 84,
     height: 22,
@@ -652,18 +665,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   editText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
     color: BROWN,
   },
-
   optionsContainer: {
     width: '100%',
     gap: 18,
   },
-
   optionCard: {
     width: '100%',
     height: 75,
@@ -675,7 +685,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: BORDER,
-
     shadowColor: '#3f3e3e',
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -685,28 +694,24 @@ const styles = StyleSheet.create({
     },
     elevation: 3,
   },
-
   optionIcon: {
     width: 38,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 20,
   },
-
   progressIcon: {
     width: 38,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 20,
   },
-
   optionText: {
     flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 19,
     color: BROWN,
   },
-
   logoutButton: {
     width: 107,
     height: 38,
@@ -718,25 +723,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F2D5D5',
   },
-
-  saveProfileButtonText: {
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 14,
-  color: '#FFFFFF',
-},
-
   logoutText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: WHITE,
   },
-
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(220, 220, 220, 0.55)',
   },
-
   modalCard: {
     backgroundColor: WHITE,
     borderTopLeftRadius: 24,
@@ -746,13 +742,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 18,
   },
-
   backButton: {
     width: 36,
     height: 36,
@@ -764,40 +758,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   modalTitle: {
     flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 22,
     color: BROWN,
   },
-
   photoPicker: {
     alignItems: 'center',
     marginBottom: 16,
   },
-
-  modalAvatar: {
+  changePhotoAvatar: {
     width: 76,
     height: 76,
     borderRadius: 38,
     backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 7,
   },
-
+  changePhotoAvatarText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 28,
+    color: BROWN,
+  },
   photoPickerText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
     color: BROWN,
   },
-
   fieldLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
     color: BROWN,
     marginBottom: 8,
   },
-
   input: {
     height: 46,
     borderRadius: 12,
@@ -810,7 +805,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: WHITE,
   },
-
   deleteInput: {
     height: 46,
     width: 300,
@@ -824,22 +818,47 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: WHITE,
   },
-
   errorText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: '#B84A4A',
     marginBottom: 10,
   },
-
-
-
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: LIGHT_GRAY,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cancelButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
   },
-
+  saveProfileButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: BROWN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveProfileButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 14,
+    color: WHITE,
+  },
   primaryModalButton: {
     minHeight: 46,
     borderRadius: 23,
@@ -849,14 +868,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
   },
-
   primaryModalText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: WHITE,
     textAlign: 'center',
   },
-
   closeButton: {
     minHeight: 46,
     borderRadius: 23,
@@ -866,35 +883,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-modalActions: {
-  flexDirection: 'row',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: 12,
-  marginTop: 12,
-},
-
-cancelButton: {
-  flex: 1,
-  height: 44,
-  borderRadius: 22,
-  backgroundColor: '#F7F7F7',
-  borderWidth: 1,
-  borderColor: '#F0E8E5',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-saveProfileButton: {
-  flex: 1,
-  height: 44,
-  borderRadius: 22,
-  backgroundColor: '#4E2F1F',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
   deleteButton: {
     height: 44,
     borderRadius: 22,
@@ -905,13 +893,11 @@ saveProfileButton: {
     justifyContent: 'center',
     marginBottom: 10,
   },
-
   deleteButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: RED,
   },
-
   deleteBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(220, 220, 220, 0.65)',
@@ -919,7 +905,6 @@ saveProfileButton: {
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-
   deleteConfirmCard: {
     width: '100%',
     maxWidth: 360,
@@ -930,7 +915,6 @@ saveProfileButton: {
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   deleteIconCircle: {
     width: 58,
     height: 58,
@@ -940,7 +924,6 @@ saveProfileButton: {
     justifyContent: 'center',
     marginBottom: 14,
   },
-
   deleteConfirmTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
@@ -948,7 +931,6 @@ saveProfileButton: {
     textAlign: 'center',
     marginBottom: 10,
   },
-
   deleteConfirmMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
@@ -957,14 +939,12 @@ saveProfileButton: {
     textAlign: 'center',
     marginBottom: 24,
   },
-
   deleteConfirmActions: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 12,
   },
-
   deleteCancelButton: {
     flex: 1,
     minHeight: 46,
@@ -975,13 +955,11 @@ saveProfileButton: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   deleteCancelText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
     color: BROWN,
   },
-
   deleteConfirmButton: {
     flex: 1,
     minHeight: 46,
@@ -990,7 +968,6 @@ saveProfileButton: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   deleteConfirmButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,

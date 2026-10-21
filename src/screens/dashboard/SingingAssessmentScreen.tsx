@@ -35,6 +35,10 @@ import {
   type SingingAssessmentResult,
 } from '@/services/assessment/singingAssessment';
 import { auth, db } from '@/services/firebase/config';
+import {
+  midiToFrequency,
+  midiToNoteName,
+} from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -75,32 +79,6 @@ type Phase =
   | 'recording'
   | 'processing'
   | 'results';
-
-function midiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
-function midiToNoteName(midi: number): string {
-  const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  const noteIndex = ((midi % 12) + 12) % 12;
-  const octave = Math.floor(midi / 12) - 1;
-
-  return `${noteNames[noteIndex]}${octave}`;
-}
 
 /**
  * Determines the active melody item using the shared elapsed clock.

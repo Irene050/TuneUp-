@@ -1,3 +1,4 @@
+import { frequencyToNoteName } from '@/utils/music/notes';
 import { PitchDetector } from 'pitchy';
 
 export interface PitchFrame {
@@ -19,49 +20,6 @@ const detector =
   PitchDetector.forFloat32Array(
     PITCH_FRAME_SIZE
   );
-
-export function frequencyToNote(
-  frequency: number
-): string {
-  if (
-    !Number.isFinite(frequency) ||
-    frequency <= 0
-  ) {
-    return '--';
-  }
-
-  const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  const midi =
-    Math.round(
-      69 +
-        12 *
-          Math.log2(
-            frequency / 440
-          )
-    );
-
-  const noteIndex =
-    ((midi % 12) + 12) % 12;
-
-  const octave =
-    Math.floor(midi / 12) - 1;
-
-  return `${noteNames[noteIndex]}${octave}`;
-}
 
 export function analyzePitchFrame(
   samples: Float32Array,
@@ -105,7 +63,7 @@ export function analyzePitchFrame(
     return {
       frequency,
       note:
-        frequencyToNote(
+        frequencyToNoteName(
           frequency
         ),
       clarity,

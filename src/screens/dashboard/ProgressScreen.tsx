@@ -21,6 +21,7 @@ import {
 } from '@/services/assessment/assessmentRepository';
 
 import { auth } from '@/services/firebase/config';
+
 import type {
   ComponentId,
   ComponentProgressSummary,
@@ -28,7 +29,9 @@ import type {
   PeriodComparison,
   ProgressPeriod,
 } from '@/services/progress/progressModule';
+
 import { comparePeriods } from '@/services/progress/progressModule';
+
 import {
   fetchAllProgress,
   fetchExerciseRecords,
@@ -166,6 +169,7 @@ function DeltaBadge({
 
   const rounded = Math.round(delta);
   const color = rounded > 0 ? GREEN : rounded < 0 ? RED : MUTED;
+
   const icon =
     rounded > 0
       ? 'arrow-up'
@@ -176,6 +180,7 @@ function DeltaBadge({
   return (
     <View style={styles.deltaBadge}>
       <Ionicons name={icon} size={11} color={color} />
+
       <Text style={[styles.deltaText, { color }]}>
         {rounded > 0 ? '+' : ''}
         {rounded}
@@ -190,13 +195,15 @@ export default function ProgressScreen() {
 
   const [latestAssessment, setLatestAssessment] =
     useState<SavedAssessmentResult | null>(null);
+
   const [previousAssessment, setPreviousAssessment] =
     useState<SavedAssessmentResult | null>(null);
+
   const [assessmentLoading, setAssessmentLoading] = useState(true);
   const [assessmentError, setAssessmentError] = useState(false);
 
   const [latestSingingAssessment, setLatestSingingAssessment] =
-  useState<SavedSingingAssessmentResult | null>(null);
+    useState<SavedSingingAssessmentResult | null>(null);
 
   const [singingAssessmentLoading, setSingingAssessmentLoading] =
     useState(true);
@@ -206,6 +213,7 @@ export default function ProgressScreen() {
 
   const [exerciseProgress, setExerciseProgress] =
     useState<ComponentProgressSummary[]>([]);
+
   const [attempts, setAttempts] = useState<ExerciseAttempt[]>([]);
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressError, setProgressError] = useState(false);
@@ -253,12 +261,13 @@ export default function ProgressScreen() {
             setPreviousAssessment(null);
             setExerciseProgress([]);
             setAttempts([]);
+            setLatestSingingAssessment(null);
             setAssessmentLoading(false);
             setProgressLoading(false);
-            setLatestSingingAssessment(null);
             setSingingAssessmentLoading(false);
             setSingingAssessmentError(false);
           }
+
           return;
         }
 
@@ -288,16 +297,17 @@ export default function ProgressScreen() {
             'Unable to load assessments:',
             assessmentResult.reason,
           );
+
           setLatestAssessment(null);
           setPreviousAssessment(null);
           setAssessmentError(true);
         }
 
         setAssessmentLoading(false);
-        
+
         if (singingAssessmentResult.status === 'fulfilled') {
           setLatestSingingAssessment(
-            singingAssessmentResult.value[0] ?? null
+            singingAssessmentResult.value[0] ?? null,
           );
         } else {
           console.error(
@@ -318,6 +328,7 @@ export default function ProgressScreen() {
             'Unable to load component progress:',
             progressResult.reason,
           );
+
           setExerciseProgress([]);
           setProgressError(true);
         }
@@ -343,6 +354,7 @@ export default function ProgressScreen() {
             }
           } else {
             historyFailed = true;
+
             console.error(
               `Unable to load ${component.name} history:`,
               result.reason,
@@ -442,6 +454,7 @@ export default function ProgressScreen() {
         contentContainerStyle={styles.content}
       >
         <Text style={styles.title}>My Progress</Text>
+
         <Text style={styles.subtitle}>
           Track your vocal improvement.
         </Text>
@@ -483,6 +496,7 @@ export default function ProgressScreen() {
                 <Text style={styles.summaryValue}>
                   {totalExercises}
                 </Text>
+
                 <Text style={styles.summaryLabel}>
                   Exercises completed
                 </Text>
@@ -494,6 +508,7 @@ export default function ProgressScreen() {
                 <Text style={styles.summaryValue}>
                   {overallExerciseAverage}%
                 </Text>
+
                 <Text style={styles.summaryLabel}>
                   Average score
                 </Text>
@@ -510,6 +525,7 @@ export default function ProgressScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Latest Assessment</Text>
+
           <Text style={styles.sectionSubtitle}>
             Your most recent vocal assessment scores.
           </Text>
@@ -528,9 +544,11 @@ export default function ProgressScreen() {
               size={28}
               color={BROWN}
             />
+
             <Text style={styles.emptyTitle}>
               Assessment Unavailable
             </Text>
+
             <Text style={styles.emptyText}>
               We couldn't load your assessment records. Please check
               your connection and try again.
@@ -548,6 +566,7 @@ export default function ProgressScreen() {
                   <Text style={styles.assessmentAverage}>
                     {assessmentAverage}%
                   </Text>
+
                   <DeltaBadge delta={overallAssessmentDelta} />
                 </View>
 
@@ -601,6 +620,7 @@ export default function ProgressScreen() {
                           size={18}
                           color={BROWN}
                         />
+
                         <Text style={styles.componentName}>
                           {component.name}
                         </Text>
@@ -610,6 +630,7 @@ export default function ProgressScreen() {
                         <Text style={styles.componentScore}>
                           {score === null ? '—' : `${score}%`}
                         </Text>
+
                         <DeltaBadge delta={delta} />
                       </View>
                     </View>
@@ -641,6 +662,7 @@ export default function ProgressScreen() {
               <Text style={styles.outlineButtonText}>
                 Retake Assessment
               </Text>
+
               <Ionicons
                 name="arrow-forward"
                 size={17}
@@ -659,6 +681,7 @@ export default function ProgressScreen() {
             </View>
 
             <Text style={styles.emptyTitle}>No Assessment Yet</Text>
+
             <Text style={styles.emptyText}>
               Complete a vocal assessment to see your Breath Control,
               Pitch, Tone, Volume, and Agility scores.
@@ -678,6 +701,7 @@ export default function ProgressScreen() {
               <Text style={styles.primaryButtonText}>
                 Take Assessment
               </Text>
+
               <Ionicons
                 name="arrow-forward"
                 size={17}
@@ -687,9 +711,9 @@ export default function ProgressScreen() {
           </View>
         )}
 
-        
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Singing Assessment</Text>
+
           <Text style={styles.sectionSubtitle}>
             Your latest singing performance and pitch measurements.
           </Text>
@@ -708,9 +732,11 @@ export default function ProgressScreen() {
               size={28}
               color={BROWN}
             />
+
             <Text style={styles.emptyTitle}>
               Singing Assessment Unavailable
             </Text>
+
             <Text style={styles.emptyText}>
               We couldn't load your singing results. Please check
               your connection and try again.
@@ -726,21 +752,24 @@ export default function ProgressScreen() {
 
                 <Text style={styles.assessmentAverage}>
                   {clampPercentage(
-                    latestSingingAssessment.overallScore
-                  )}%
+                    latestSingingAssessment.overallScore,
+                  )}
+                  %
                 </Text>
 
                 <Text style={styles.assessmentDate}>
                   Assessed on{' '}
                   {formatAssessmentDate(
-                    latestSingingAssessment.timestamp
+                    latestSingingAssessment.timestamp,
                   )}
                 </Text>
 
                 <Text style={styles.comparisonHint}>
-                  {latestSingingAssessment.detectedNoteCount} notes detected
+                  {latestSingingAssessment.detectedNoteCount} notes
+                  detected
                   {' · '}
-                  {latestSingingAssessment.durationSeconds.toFixed(1)} seconds
+                  {latestSingingAssessment.durationSeconds.toFixed(1)}
+                  {' '}seconds
                 </Text>
               </View>
 
@@ -826,6 +855,7 @@ export default function ProgressScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Exercise Progress</Text>
+
           <Text style={styles.sectionSubtitle}>
             Completed exercises during the selected period and your
             overall progress by component.
@@ -835,9 +865,11 @@ export default function ProgressScreen() {
         {!progressLoading &&
           components.map(component => {
             const progress = getComponentProgress(component.id);
+
             const recentScore = clampPercentage(
               progress.averageRecentScorePct,
             );
+
             const allTimeChange =
               allTimeComponentChanges[component.id];
 
@@ -853,6 +885,7 @@ export default function ProgressScreen() {
                       size={18}
                       color={BROWN}
                     />
+
                     <Text style={styles.componentName}>
                       {component.name}
                     </Text>
@@ -862,6 +895,7 @@ export default function ProgressScreen() {
                     <Text style={styles.componentScore}>
                       {recentScore}%
                     </Text>
+
                     <DeltaBadge delta={allTimeChange} />
                   </View>
                 </View>
@@ -883,6 +917,7 @@ export default function ProgressScreen() {
                       : 'exercises'}{' '}
                     total
                   </Text>
+
                   <Text style={styles.componentMetaText}>
                     {formatTier(progress.currentTier)}
                   </Text>
@@ -897,22 +932,26 @@ export default function ProgressScreen() {
             );
           })}
 
-        {!progressLoading && !progressError && attempts.length === 0 && (
-          <View style={styles.emptyCard}>
-            <Ionicons
-              name="bar-chart-outline"
-              size={28}
-              color={BROWN}
-            />
-            <Text style={styles.emptyTitle}>
-              No Exercise History Yet
-            </Text>
-            <Text style={styles.emptyText}>
-              Complete an exercise to start tracking your scores and
-              progress here.
-            </Text>
-          </View>
-        )}
+        {!progressLoading &&
+          !progressError &&
+          attempts.length === 0 && (
+            <View style={styles.emptyCard}>
+              <Ionicons
+                name="bar-chart-outline"
+                size={28}
+                color={BROWN}
+              />
+
+              <Text style={styles.emptyTitle}>
+                No Exercise History Yet
+              </Text>
+
+              <Text style={styles.emptyText}>
+                Complete an exercise to start tracking your scores and
+                progress here.
+              </Text>
+            </View>
+          )}
 
         {progressLoading && (
           <View style={styles.emptyCard}>

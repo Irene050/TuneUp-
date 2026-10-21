@@ -17,6 +17,7 @@ import {
   getLatestAssessment,
   type SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
+import { frequencyToNoteName } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -69,33 +70,6 @@ const TIER_RANK = {
   intermediate: 1,
   advanced: 2,
 } as const;
-
-function frequencyToNoteName(frequency: number): string {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
-    return '--';
-  }
-
-  const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  const midi = Math.round(69 + 12 * Math.log2(frequency / 440));
-  const noteIndex = ((midi % 12) + 12) % 12;
-  const octave = Math.floor(midi / 12) - 1;
-
-  return `${noteNames[noteIndex]}${octave}`;
-}
 
 export default function DashboardScreen() {
   const { userName } = useAuth();

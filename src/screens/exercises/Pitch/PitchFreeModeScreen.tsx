@@ -25,6 +25,7 @@ import {
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { measurePitchFreeModeFrame } from '@/services/measurement/freemode/pitch';
+import { frequencyToNoteName } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const DARK = '#5A343D';
@@ -39,36 +40,6 @@ type Phase = 'ready' | 'exercise';
 
 const WAVE_COUNT = 18;
 const PITCH_HISTORY_LIMIT = 19;
-
-function frequencyToNote(frequency: number): string {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
-    return '--';
-  }
-
-  const noteNames = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-
-  const midi = Math.round(
-    69 + 12 * Math.log2(frequency / 440),
-  );
-
-  const noteIndex = ((midi % 12) + 12) % 12;
-  const octave = Math.floor(midi / 12) - 1;
-
-  return `${noteNames[noteIndex]}${octave}`;
-}
 
 export default function PitchFreeModeScreen() {
   const insets = useSafeAreaInsets();
@@ -200,7 +171,7 @@ export default function PitchFreeModeScreen() {
   }, [elapsedSeconds]);
 
   const currentNote = useMemo(
-    () => frequencyToNote(detectedFrequency),
+    () => frequencyToNoteName(detectedFrequency),
     [detectedFrequency],
   );
 
