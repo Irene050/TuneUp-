@@ -666,7 +666,8 @@ const styles = StyleSheet.create({
 
   optionCard: {
     width: '100%',
-    height: 68,
+    height: 75,
+    marginBottom: -6,
     backgroundColor: LIGHT_GRAY,
     borderRadius: 17,
     paddingHorizontal: 24,
