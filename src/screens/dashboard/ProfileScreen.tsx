@@ -98,6 +98,7 @@ export default function ProfileScreen() {
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,18 +192,27 @@ export default function ProfileScreen() {
 
   const confirmDeleteAccount = () => {
     setError(null);
+    setDeletePassword('');
     setDeleteConfirmVisible(true);
   };
 
   const deleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      setError('Please enter your password to delete your account.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
     try {
-      await deleteCurrentAccount(currentPassword);
+      await deleteCurrentAccount(deletePassword);
 
       setDeleteConfirmVisible(false);
       setSettingsVisible(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setDeletePassword('');
 
       router.replace({
         pathname: '/[auth]',
@@ -210,7 +220,7 @@ export default function ProfileScreen() {
       });
     } catch (deleteError: any) {
       console.error('Delete account error:', deleteError);
-      setDeleteConfirmVisible(false);
+
       setError(
         deleteError?.message ?? 'Unable to delete your account.',
       );
@@ -513,6 +523,8 @@ export default function ProfileScreen() {
         onRequestClose={() => {
           if (!saving) {
             setDeleteConfirmVisible(false);
+            setDeletePassword('');
+            setError(null);
           }
         }}
       >
@@ -534,11 +546,34 @@ export default function ProfileScreen() {
               This will permanently delete your account and progress.
               This action cannot be undone.
             </Text>
+            
+            <TextInput
+              style={styles.deleteInput}
+              value={deletePassword}
+              onChangeText={(value) => {
+                setDeletePassword(value);
+                setError(null);
+              }}
+              placeholder="Enter your current password"
+              placeholderTextColor="#A5A5A5"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!saving}
+            />
+
+            {error && (
+              <Text style={styles.errorText}>{error}</Text>
+            )}
 
             <View style={styles.deleteConfirmActions}>
               <Pressable
                 style={styles.deleteCancelButton}
-                onPress={() => setDeleteConfirmVisible(false)}
+                onPress={() => {
+                  setDeleteConfirmVisible(false);
+                  setDeletePassword('');
+                  setError(null);
+                }}
                 disabled={saving}
               >
                 <Text style={styles.deleteCancelText}>Cancel</Text>
@@ -771,7 +806,21 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     color: BROWN,
-    marginBottom: 10,
+    marginBottom: 8,
+    backgroundColor: WHITE,
+  },
+
+  deleteInput: {
+    height: 46,
+    width: 300,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5D8D3',
+    paddingHorizontal: 14,
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: BROWN,
+    marginBottom: 20,
     backgroundColor: WHITE,
   },
 
