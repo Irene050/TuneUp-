@@ -1002,10 +1002,9 @@ export default function DiaphragmaticBreathingScreen({
 
   if (!params || !tier || !paramsReady) {
     return (
-      <View style={styles.loadingScreen}>
-        {quitModal}
-
-        <View style={styles.loadingIconCircle}>
+      <>
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
           <Ionicons
             name="options-outline"
             size={44}
@@ -1013,20 +1012,22 @@ export default function DiaphragmaticBreathingScreen({
           />
         </View>
 
-        <Text style={styles.loadingTitle}>
+        <Text style={styles.preparingTitle}>
           Preparing Your Exercise
         </Text>
 
-        <Text style={styles.loadingText}>
+        <Text style={styles.preparingSubtitle}>
           Adjusting the exercise to your current difficulty level
         </Text>
 
         <ActivityIndicator
           size="large"
           color={BROWN}
-          style={styles.loadingSpinner}
+          style={styles.spinner}
         />
       </View>
+      {quitModal}
+      </>
     );
   }
 
@@ -1385,36 +1386,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-  loadingScreen: {
+  preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  loadingIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-  loadingTitle: {
+  preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-  loadingText: {
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     color: MUTED,
     textAlign: 'center',
     marginTop: 6,
   },
-  loadingSpinner: {
+  spinner: {
     marginTop: 28,
   },
   exerciseContainer: {

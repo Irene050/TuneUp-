@@ -983,11 +983,11 @@ export default function SustainedSSSSScreen({
             />
           </View>
 
-          <Text style={styles.processingTitle}>
+          <Text style={styles.preparingTitle}>
             Preparing Your Exercise
           </Text>
 
-          <Text style={styles.processingSubtitle}>
+          <Text style={styles.preparingSubtitle}>
             Adjusting the exercise to your current difficulty level
           </Text>
 
@@ -1566,13 +1566,13 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 4,
   },
-  processingTitle: {
+  preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-  processingSubtitle: {
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     color: MUTED,

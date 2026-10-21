@@ -37,29 +37,17 @@ import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTa
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
-const COLORS = {
-  BROWN: '#4E2F1F',
-  PINK: '#FCD6DD',
-  LIGHT_PINK: '#FFF8FA',
-  BORDER: '#F2DDE5',
-  ACCENT: '#D86C89',
-  MUTED: '#8E7770',
-  SOFT_TEXT: '#765D63',
-  WHITE: '#FFFFFF',
-  SUCCESS: '#278451',
-  ERROR: '#A05D6C',
-};
-
-const {
-  BROWN,
-  PINK,
-  LIGHT_PINK,
-  BORDER,
-  ACCENT,
-  MUTED,
-  SOFT_TEXT,
-  WHITE,
-} = COLORS;
+ 
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const LIGHT_PINK = '#FFF8FA';
+const WHITE = '#FFFFFF';
+const MUTED = '#8E7770';
+const BORDER = '#F2DDE5';
+const DARK_PINK = '#D86C89';
+const SOFT_TEXT = '#765D63';
+const GUIDE_GREEN = '#278451';
+const GUIDE_RED = '#A05D6C';
 
 const DEFAULT_TIER: Tier = 'beginner';
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
@@ -126,11 +114,11 @@ function getStatusMessage(status: VoiceStatus): string {
 function getStatusColor(status: VoiceStatus): string {
   switch (status) {
     case 'inside':
-      return ACCENT;
+      return DARK_PINK;
     case 'low':
       return '#8D7A7D';
     case 'high':
-      return COLORS.ERROR;
+      return GUIDE_RED;
     default:
       return MUTED;
   }
@@ -273,7 +261,7 @@ function TargetBandMeter({
           <View
             style={[
               styles.guideDot,
-              { backgroundColor: ACCENT },
+              { backgroundColor: DARK_PINK },
             ]}
           />
           <Text style={styles.guideText}>Target band</Text>
@@ -283,7 +271,7 @@ function TargetBandMeter({
           <View
             style={[
               styles.guideDot,
-              { backgroundColor: COLORS.ERROR },
+              { backgroundColor: GUIDE_RED },
             ]}
           />
           <Text style={styles.guideText}>Too loud</Text>
@@ -328,7 +316,7 @@ function StabilityHistory({
           </Text>
         </View>
 
-        <Ionicons name="pulse-outline" size={22} color={ACCENT} />
+        <Ionicons name="pulse-outline" size={22} color={DARK_PINK} />
       </View>
 
       <View style={styles.history}>
@@ -1024,7 +1012,7 @@ export default function VolumeBandTargeting({
     return (
       <SafeAreaView style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={32} color={BROWN} />
+          <Ionicons name="options-outline" size={44} color={BROWN} />
         </View>
 
         <Text style={styles.preparingTitle}>
@@ -1039,7 +1027,7 @@ export default function VolumeBandTargeting({
         <ActivityIndicator
           size="large"
           color={BROWN}
-          style={styles.preparingSpinner}
+          style={styles.spinner}
         />
       </SafeAreaView>
     );
@@ -1145,7 +1133,7 @@ export default function VolumeBandTargeting({
                 <Ionicons
                   name="checkmark-circle"
                   size={16}
-                  color={COLORS.SUCCESS}
+                  color={GUIDE_GREEN}
                 />
                 <Text style={styles.referenceReadyText}>
                   Reference note played. You’re ready to begin.
@@ -1165,7 +1153,7 @@ export default function VolumeBandTargeting({
                 <Ionicons
                   name="information-circle-outline"
                   size={19}
-                  color={ACCENT}
+                  color={DARK_PINK}
                 />
               </View>
 
@@ -1261,7 +1249,7 @@ export default function VolumeBandTargeting({
                   <Ionicons
                     name="volume-medium-outline"
                     size={19}
-                    color={ACCENT}
+                    color={DARK_PINK}
                   />
                 </View>
 
@@ -1490,21 +1478,19 @@ const styles = StyleSheet.create({
   },
   preparingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 20,
+    fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 15,
     color: MUTED,
     textAlign: 'center',
     marginTop: 6,
-    maxWidth: 285,
   },
-  preparingSpinner: {
-    marginTop: 24,
+  spinner: {
+    marginTop: 28,
   },
   referenceCard: {
     marginTop: 12,
@@ -1572,14 +1558,14 @@ const styles = StyleSheet.create({
   },
   referenceReadyText: {
     flex: 1,
-    color: COLORS.SUCCESS,
+    color: GUIDE_GREEN,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
   },
   playbackError: {
     marginTop: 6,
-    color: COLORS.ERROR,
+    color: GUIDE_RED,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
@@ -1617,7 +1603,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeCategory: {
-    color: ACCENT,
+    color: DARK_PINK,
     fontFamily: 'FredokaSemiBold',
     fontSize: 10,
     letterSpacing: 0.8,
@@ -1695,10 +1681,10 @@ const styles = StyleSheet.create({
   repProgress: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: ACCENT,
+    backgroundColor: DARK_PINK,
   },
   repTimer: {
-    color: ACCENT,
+    color: DARK_PINK,
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
   },
@@ -1756,7 +1742,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   targetRange: {
-    color: ACCENT,
+    color: DARK_PINK,
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
   },
@@ -1791,12 +1777,12 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: ACCENT,
+    backgroundColor: DARK_PINK,
   },
   markerStem: {
     flex: 1,
     width: 3,
-    backgroundColor: ACCENT,
+    backgroundColor: DARK_PINK,
   },
   scaleText: {
     color: MUTED,
@@ -1861,7 +1847,7 @@ const styles = StyleSheet.create({
   historyBar: {
     flex: 1,
     minWidth: 2,
-    backgroundColor: ACCENT,
+    backgroundColor: DARK_PINK,
     borderRadius: 5,
   },
   historyEmpty: {

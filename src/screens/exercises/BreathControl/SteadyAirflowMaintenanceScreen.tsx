@@ -7,12 +7,13 @@ import {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   Modal,
   Pressable,
   StyleSheet,
   Text,
-  View,
+  View
 } from 'react-native';
 
 import type {
@@ -912,12 +913,31 @@ export default function SteadyAirflowMaintenanceScreen({
   if (!params || !tier) {
     return (
       <>
-        <ExerciseProcessingScreen
-          icon="options-outline"
-          title="Preparing your exercise"
-          message="Setting your airflow parameters..."
-          onBack={handleBack}
-        />
+        <View style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={44}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.preparingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level and
+            preparing your vocal range.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.spinner}
+          />
+        </View>
+
         {quitModal}
       </>
     );
@@ -1280,6 +1300,38 @@ function Metric({
 }
 
 const styles = StyleSheet.create({
+  preparingScreen: {
+    flex: 1,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  preparingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  preparingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  spinner: {
+    marginTop: 28,
+  },
   exerciseScreen: {
     flex: 1,
     backgroundColor: WHITE,

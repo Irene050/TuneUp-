@@ -56,18 +56,16 @@ type MeasurementResult =
 
 type ScoreResult = ReturnType<typeof scoreVolumeControlStability>;
 
-const COLORS = {
-  BROWN: '#4E2F1F',
-  PINK: '#FCD6DD',
-  LIGHT_PINK: '#FFF8FA',
-  BORDER: '#F2DDE5',
-  ACCENT: '#D86C89',
-  MUTED: '#8E7770',
-  SOFT_TEXT: '#765D63',
-  WHITE: '#FFFFFF',
-  SUCCESS: '#278451',
-  SUCCESS_BG: '#EFF8F2',
-};
+const BROWN = '#4E2F1F';
+const PINK = '#FCD6DD';
+const LIGHT_PINK = '#FFF8FA';
+const BORDER = '#F2DDE5';
+const ACCENT = '#D86C89';
+const MUTED = '#8E7770';
+const SOFT_TEXT = '#765D63';
+const WHITE = '#FFFFFF';
+const GUIDE_GREEN = '#278451';
+const SUCCESS_BG = '#EFF8F2';
 
 export default function VolumeControlStabilityScreen({
   tier,
@@ -502,8 +500,8 @@ export default function VolumeControlStabilityScreen({
         <View style={styles.preparingIconCircle}>
           <Ionicons
             name="options-outline"
-            size={32}
-            color={COLORS.BROWN}
+            size={44}
+            color={BROWN}
           />
         </View>
 
@@ -518,8 +516,8 @@ export default function VolumeControlStabilityScreen({
 
         <ActivityIndicator
           size="large"
-          color={COLORS.BROWN}
-          style={styles.preparingSpinner}
+          color={BROWN}
+          style={styles.spinner}
         />
       </View>
     );
@@ -602,7 +600,7 @@ export default function VolumeControlStabilityScreen({
                 <Ionicons
                   name="musical-note"
                   size={22}
-                  color={COLORS.BROWN}
+                  color={BROWN}
                 />
               </View>
             </View>
@@ -623,7 +621,7 @@ export default function VolumeControlStabilityScreen({
               <Ionicons
                 name={referencePlaying ? 'volume-high' : 'play'}
                 size={17}
-                color={COLORS.BROWN}
+                color={BROWN}
               />
 
               <Text style={styles.referenceButtonText}>
@@ -636,7 +634,7 @@ export default function VolumeControlStabilityScreen({
                 <Ionicons
                   name="checkmark-circle"
                   size={15}
-                  color={COLORS.SUCCESS}
+                  color={GUIDE_GREEN}
                 />
 
                 <Text style={styles.referenceReadyText}>
@@ -652,7 +650,7 @@ export default function VolumeControlStabilityScreen({
                 <Ionicons
                   name="information-circle-outline"
                   size={18}
-                  color={COLORS.ACCENT}
+                  color={ACCENT}
                 />
               </View>
 
@@ -744,7 +742,7 @@ export default function VolumeControlStabilityScreen({
                 <Ionicons
                   name={referencePlaying ? 'volume-high' : 'play'}
                   size={16}
-                  color={COLORS.ACCENT}
+                  color={ACCENT}
                 />
 
                 <Text style={styles.replayButtonText}>
@@ -762,7 +760,7 @@ export default function VolumeControlStabilityScreen({
                     <Ionicons
                       name="volume-medium-outline"
                       size={18}
-                      color={COLORS.ACCENT}
+                      color={ACCENT}
                     />
                   </View>
 
@@ -791,8 +789,8 @@ export default function VolumeControlStabilityScreen({
                       styles.statusDot,
                       {
                         backgroundColor: meetsLiveTarget
-                          ? COLORS.SUCCESS
-                          : COLORS.MUTED,
+                          ? GUIDE_GREEN
+                          : MUTED,
                       },
                     ]}
                   />
@@ -871,7 +869,7 @@ export default function VolumeControlStabilityScreen({
                   <Ionicons
                     name="bulb-outline"
                     size={15}
-                    color={COLORS.ACCENT}
+                    color={ACCENT}
                   />
 
                   <Text style={styles.tipInlineText}>
@@ -889,7 +887,7 @@ export default function VolumeControlStabilityScreen({
                     <Ionicons
                       name="musical-note-outline"
                       size={18}
-                      color={COLORS.ACCENT}
+                      color={ACCENT}
                     />
                   </View>
 
@@ -914,8 +912,8 @@ export default function VolumeControlStabilityScreen({
                         styles.statusDot,
                         {
                           backgroundColor: voiceDetected
-                            ? COLORS.SUCCESS
-                            : COLORS.MUTED,
+                            ? GUIDE_GREEN
+                            : MUTED,
                         },
                       ]}
                     />
@@ -1059,7 +1057,7 @@ export default function VolumeControlStabilityScreen({
             <Ionicons
               name="arrow-forward"
               size={18}
-              color={COLORS.ACCENT}
+              color={ACCENT}
             />
           </Pressable>
         )}
@@ -1071,48 +1069,42 @@ export default function VolumeControlStabilityScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.WHITE,
+    backgroundColor: WHITE,
   },
 
   /* PREPARING */
 
   preparingScreen: {
     flex: 1,
-    backgroundColor: COLORS.WHITE,
+    backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   preparingIconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: COLORS.PINK,
+    backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   preparingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.BROWN,
+    fontSize: 25,
+    color: BROWN,
     textAlign: 'center',
   },
-
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#9A817D',
+    fontSize: 15,
+    color: MUTED,
     textAlign: 'center',
     marginTop: 6,
-    maxWidth: 285,
   },
-
-  preparingSpinner: {
-    marginTop: 24,
+  spinner: {
+    marginTop: 28,
   },
 
   /* SHARED */
@@ -1139,8 +1131,8 @@ const styles = StyleSheet.create({
     padding: 13,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.WHITE,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
   },
 
   referenceTopRow: {
@@ -1155,7 +1147,7 @@ const styles = StyleSheet.create({
   },
 
   referenceLabel: {
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 1,
@@ -1163,7 +1155,7 @@ const styles = StyleSheet.create({
 
   referenceNote: {
     marginTop: 2,
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
@@ -1174,12 +1166,12 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.LIGHT_PINK,
+    backgroundColor: LIGHT_PINK,
   },
 
   referenceInstruction: {
     marginTop: 7,
-    color: COLORS.SOFT_TEXT,
+    color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 17,
@@ -1198,7 +1190,7 @@ const styles = StyleSheet.create({
   },
 
   referenceButtonText: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
@@ -1212,7 +1204,7 @@ const styles = StyleSheet.create({
 
   referenceReadyText: {
     flex: 1,
-    color: COLORS.SUCCESS,
+    color: GUIDE_GREEN,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 15,
@@ -1225,8 +1217,8 @@ const styles = StyleSheet.create({
     padding: 13,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.LIGHT_PINK,
+    borderColor: BORDER,
+    backgroundColor: LIGHT_PINK,
   },
 
   infoHeader: {
@@ -1241,11 +1233,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.WHITE,
+    backgroundColor: WHITE,
   },
 
   infoTitle: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
   },
@@ -1257,8 +1249,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.WHITE,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1266,7 +1258,7 @@ const styles = StyleSheet.create({
   },
 
   replayButtonText: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
   },
@@ -1275,8 +1267,8 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.WHITE,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
   },
 
   liveCardHeader: {
@@ -1291,7 +1283,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.LIGHT_PINK,
+    backgroundColor: LIGHT_PINK,
   },
 
   liveCardHeading: {
@@ -1300,14 +1292,14 @@ const styles = StyleSheet.create({
   },
 
   cardTitle: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
 
   mutedSmall: {
     marginTop: 3,
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 14,
@@ -1321,13 +1313,13 @@ const styles = StyleSheet.create({
   },
 
   liveVolume: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 30,
   },
 
   liveUnit: {
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
   },
@@ -1338,7 +1330,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
     paddingHorizontal: 9,
     borderRadius: 13,
-    backgroundColor: COLORS.LIGHT_PINK,
+    backgroundColor: LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1348,23 +1340,23 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: COLORS.MUTED,
+    backgroundColor: MUTED,
   },
 
   statusText: {
-    color: COLORS.SOFT_TEXT,
+    color: SOFT_TEXT,
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.25,
   },
 
   statusTextSuccess: {
-    color: COLORS.SUCCESS,
+    color: GUIDE_GREEN,
   },
 
   helperText: {
     marginTop: 7,
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 14,
@@ -1378,7 +1370,7 @@ const styles = StyleSheet.create({
   },
 
   stabilityValue: {
-    color: COLORS.ACCENT,
+    color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 23,
   },
@@ -1387,7 +1379,7 @@ const styles = StyleSheet.create({
     height: 9,
     marginTop: 11,
     borderRadius: 6,
-    backgroundColor: COLORS.LIGHT_PINK,
+    backgroundColor: LIGHT_PINK,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -1395,7 +1387,7 @@ const styles = StyleSheet.create({
   stabilityFill: {
     height: '100%',
     borderRadius: 6,
-    backgroundColor: COLORS.ACCENT,
+    backgroundColor: ACCENT,
   },
 
   stabilityTargetMarker: {
@@ -1403,7 +1395,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: COLORS.BROWN,
+    backgroundColor: BROWN,
   },
 
   scaleRow: {
@@ -1415,7 +1407,7 @@ const styles = StyleSheet.create({
   },
 
   scaleText: {
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 9,
   },
@@ -1424,7 +1416,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     padding: 9,
     borderRadius: 11,
-    backgroundColor: COLORS.LIGHT_PINK,
+    backgroundColor: LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 7,
@@ -1432,7 +1424,7 @@ const styles = StyleSheet.create({
 
   tipInlineText: {
     flex: 1,
-    color: COLORS.SOFT_TEXT,
+    color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 15,
@@ -1452,11 +1444,11 @@ const styles = StyleSheet.create({
   },
 
   noteStatusBadgeActive: {
-    backgroundColor: COLORS.SUCCESS_BG,
+    backgroundColor: SUCCESS_BG,
   },
 
   noteStatusText: {
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 8,
     letterSpacing: 0.2,
@@ -1467,13 +1459,13 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.LIGHT_PINK,
+    borderColor: BORDER,
+    backgroundColor: LIGHT_PINK,
     alignItems: 'center',
   },
 
   detectedNote: {
-    color: COLORS.ACCENT,
+    color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 34,
     lineHeight: 40,
@@ -1485,7 +1477,7 @@ const styles = StyleSheet.create({
 
   detectedFrequency: {
     marginTop: 2,
-    color: COLORS.MUTED,
+    color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     textAlign: 'center',
@@ -1500,8 +1492,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.WHITE,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
   },
 
   resultRow: {
@@ -1521,14 +1513,14 @@ const styles = StyleSheet.create({
 
   resultLabel: {
     flex: 1,
-    color: COLORS.SOFT_TEXT,
+    color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
   },
 
   resultValue: {
     flexShrink: 1,
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
     textAlign: 'right',
@@ -1539,8 +1531,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    backgroundColor: COLORS.LIGHT_PINK,
+    borderColor: BORDER,
+    backgroundColor: LIGHT_PINK,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1548,7 +1540,7 @@ const styles = StyleSheet.create({
   },
 
   nextButtonText: {
-    color: COLORS.BROWN,
+    color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },

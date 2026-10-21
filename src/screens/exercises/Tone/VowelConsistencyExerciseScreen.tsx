@@ -1105,7 +1105,7 @@ export default function VowelConsistencyExerciseScreen({
           <View style={styles.preparingIconCircle}>
             <Ionicons
               name="options-outline"
-              size={32}
+              size={44}
               color={BROWN}
             />
           </View>
@@ -1122,7 +1122,7 @@ export default function VowelConsistencyExerciseScreen({
           <ActivityIndicator
             size="large"
             color={BROWN}
-            style={styles.preparingSpinner}
+            style={styles.spinner}
           />
         </View>
         {quitModal}
@@ -1638,21 +1638,19 @@ const styles = StyleSheet.create({
   },
   preparingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 20,
+    fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#9A817D',
+    fontSize: 15,
+    color: MUTED,
     textAlign: 'center',
     marginTop: 6,
-    maxWidth: 285,
   },
-  preparingSpinner: {
-    marginTop: 24,
+  spinner: {
+    marginTop: 28,
   },
   centerScreen: {
     flex: 1,

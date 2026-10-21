@@ -943,12 +943,12 @@ export default function SustainedExhaleScreen({
             />
           </View>
 
-          <Text style={styles.processingTitle}>
+          <Text style={styles.preparingTitle}>
             Preparing Your Exercise
           </Text>
 
-          <Text style={styles.processingSubtitle}>
-            Adjusting the exercise to your current difficulty level
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level.
           </Text>
 
           <ActivityIndicator
@@ -1374,13 +1374,13 @@ const styles = StyleSheet.create({
     paddingTop: 76,
     paddingBottom: 40,
   },
-  processingTitle: {
+  preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-  processingSubtitle: {
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     color: MUTED,

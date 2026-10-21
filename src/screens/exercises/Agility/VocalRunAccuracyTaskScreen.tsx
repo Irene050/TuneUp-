@@ -1802,7 +1802,7 @@ export default function VocalRunAccuracyTaskScreen() {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={32} color={BROWN} />
+          <Ionicons name="options-outline" size={44} color={BROWN} />
         </View>
 
         <Text style={styles.preparingTitle}>
@@ -1815,7 +1815,7 @@ export default function VocalRunAccuracyTaskScreen() {
         <ActivityIndicator
           size="large"
           color={BROWN}
-          style={styles.preparingSpinner}
+          style={styles.spinner}
         />
       </View>
     );
@@ -1858,21 +1858,19 @@ const styles = StyleSheet.create({
   },
   preparingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 20,
+    fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 15,
     color: MUTED,
     textAlign: 'center',
     marginTop: 6,
-    maxWidth: 285,
   },
-  preparingSpinner: {
-    marginTop: 24,
+  spinner: {
+    marginTop: 28,
   },
   screen: {
     flex: 1,

@@ -1157,8 +1157,8 @@ export default function ControlledBreathReleaseScreen({
   if (!paramsReady || !tier) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.largeIconCircle}>
+        <View style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
             <Ionicons
               name="options-outline"
               size={44}
@@ -1166,11 +1166,11 @@ export default function ControlledBreathReleaseScreen({
             />
           </View>
 
-          <Text style={styles.processingTitle}>
+          <Text style={styles.preparingTitle}>
             Preparing Your Exercise
           </Text>
 
-          <Text style={styles.processingSubtitle}>
+          <Text style={styles.preparingSubtitle}>
             Adjusting the exercise to your current difficulty level
           </Text>
 
@@ -1647,29 +1647,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-  centerScreen: {
+  preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  preparingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-  processingTitle: {
+  preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-  processingSubtitle: {
+  preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     color: MUTED,
