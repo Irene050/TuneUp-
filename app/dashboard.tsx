@@ -9,6 +9,7 @@ import DashboardScreen from '@/screens/dashboard/DashboardScreen';
 import ExercisesScreen from '@/screens/dashboard/ExercisesScreen';
 import ProfileScreen from '@/screens/dashboard/ProfileScreen';
 import ProgressScreen from '@/screens/dashboard/ProgressScreen';
+import SingingAssessmentScreen from '@/screens/dashboard/SingingAssessmentScreen';
 
 const screens: Record<DashboardTab, ComponentType> = {
   index: DashboardScreen,
@@ -16,6 +17,7 @@ const screens: Record<DashboardTab, ComponentType> = {
   profile: ProfileScreen,
   assessment: AssessmentScreen,
   progress: ProgressScreen,
+  singing: SingingAssessmentScreen,
 };
 
 export default function DashboardRoute() {
@@ -24,6 +26,7 @@ export default function DashboardRoute() {
     tab === 'exercises' ||
     tab === 'profile' ||
     tab === 'assessment' ||
+    tab === 'singing' ||
     tab === 'progress'
       ? tab
       : 'index';

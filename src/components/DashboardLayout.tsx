@@ -13,6 +13,7 @@ export type DashboardTab =
   | 'exercises'
   | 'profile'
   | 'assessment'
+  | 'singing'
   | 'progress';
 
 type DashboardLayoutProps = {

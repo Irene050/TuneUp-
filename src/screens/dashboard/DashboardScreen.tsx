@@ -194,7 +194,10 @@ export default function DashboardScreen() {
 
               <Pressable
                 style={styles.singingAssessmentButton}
-                onPress={() => router.push('/singing-assessment')}
+                onPress={() => router.push({
+                  pathname: '/dashboard',
+                  params: { tab: 'singing' },
+                })}
                 accessibilityRole="button"
                 accessibilityLabel="Singing Assessment"
               >
