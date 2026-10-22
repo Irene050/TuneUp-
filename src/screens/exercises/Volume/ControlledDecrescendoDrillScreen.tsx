@@ -3,7 +3,9 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
+  BackHandler,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -76,6 +78,13 @@ interface VolumeVisualizerProps {
 interface TargetDecrescendoGuideProps {
   seconds: number;
   durationSeconds: number;
+}
+
+interface QuitExerciseModalProps {
+  visible: boolean;
+  isQuitting: boolean;
+  onContinue: () => void;
+  onQuit: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -269,6 +278,67 @@ function ResultItem({ label, value }: ResultItemProps) {
   );
 }
 
+function QuitExerciseModal({
+  visible,
+  isQuitting,
+  onContinue,
+  onQuit,
+}: QuitExerciseModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onContinue}
+    >
+      <View style={styles.quitModalOverlay}>
+        <View style={styles.quitModalCard}>
+          <View style={styles.quitModalIconCircle}>
+            <Ionicons name="exit-outline" size={30} color={BROWN} />
+          </View>
+
+          <Text style={styles.quitModalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.quitModalSubtitle}>
+            Your exercise is paused. Your completed repetitions will be
+            kept. Continue to resume your exercise.
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.continueButton,
+              isQuitting && styles.modalButtonDisabled,
+            ]}
+            onPress={onContinue}
+            activeOpacity={0.75}
+            disabled={isQuitting}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.quitButton,
+              isQuitting && styles.modalButtonDisabled,
+            ]}
+            onPress={onQuit}
+            activeOpacity={0.75}
+            disabled={isQuitting}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+
 export default function ControlledDecrescendoDrill({
   tier,
 }: ControlledDecrescendoExerciseProps) {
@@ -314,15 +384,26 @@ export default function ControlledDecrescendoDrill({
 
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
+
   const finishingRef = useRef(false);
   const completedNaturallyRef = useRef(false);
   const interRepStopRef = useRef(false);
+  const discardInterruptedStopRef = useRef(false);
   const phaseRef = useRef<ExercisePhase>(phase);
+  const showQuitModalRef = useRef(false);
+  const pausedPhaseRef = useRef<ExercisePhase>('directions');
+  const quitInProgressRef = useRef(false);
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    showQuitModalRef.current = showQuitModal;
+  }, [showQuitModal]);
 
   const targetMin = params.targetDbRange[0];
   const targetMax = params.targetDbRange[1];
@@ -547,24 +628,6 @@ export default function ControlledDecrescendoDrill({
     };
   }, [tier]);
 
-  useEffect(() => {
-    if (phase !== 'exercise') {
-      setGuideElapsed(0);
-      return;
-    }
-
-    const startedAt = Date.now();
-    setGuideElapsed(0);
-
-    const interval = setInterval(() => {
-      setGuideElapsed(
-        Math.min((Date.now() - startedAt) / 1000, rampSeconds),
-      );
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [phase, rep, rampSeconds]);
-
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setGuideElapsed(0);
@@ -578,7 +641,10 @@ export default function ControlledDecrescendoDrill({
     isRecording,
   } = useAudioRecorder({
     onFrame: (frame) => {
-      if (phaseRef.current !== 'exercise') {
+      if (
+        phaseRef.current !== 'exercise' ||
+        showQuitModalRef.current
+      ) {
         return;
       }
 
@@ -596,7 +662,14 @@ export default function ControlledDecrescendoDrill({
     },
 
     onStop: (samples, sampleRate) => {
-      // Save the completed repetition without including the countdown.
+      // Discard the interrupted repetition, but preserve completed reps.
+      if (discardInterruptedStopRef.current) {
+        discardInterruptedStopRef.current = false;
+        clearLiveState();
+        return;
+      }
+
+      // Save a completed repetition without including its countdown.
       if (interRepStopRef.current) {
         interRepStopRef.current = false;
 
@@ -708,8 +781,150 @@ export default function ControlledDecrescendoDrill({
     },
   });
 
+  const openQuitModal = useCallback(() => {
+    if (
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
+      phaseRef.current === 'results'
+    ) {
+      return;
+    }
+
+    pausedPhaseRef.current = phaseRef.current;
+    showQuitModalRef.current = true;
+    setShowQuitModal(true);
+
+    // An interrupted repetition is discarded; completed repetitions
+    // remain in repetitionSamplesRef for when the user resumes.
+    if (
+      phaseRef.current === 'exercise' &&
+      isRecording
+    ) {
+      discardInterruptedStopRef.current = true;
+      interRepStopRef.current = false;
+      completedNaturallyRef.current = false;
+      finishingRef.current = false;
+
+      void stopRecording().catch((stopError) => {
+        discardInterruptedStopRef.current = false;
+
+        console.error(
+          'Unable to pause Controlled Decrescendo recording:',
+          stopError,
+        );
+      });
+    }
+  }, [isRecording, stopRecording]);
+
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    const pausedPhase = pausedPhaseRef.current;
+
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
+
+    if (pausedPhase === 'exercise') {
+      // Resume the same repetition after a fresh countdown.
+      setSeconds(0);
+      setGuideElapsed(0);
+      setLiveFrame(null);
+      setLiveHistory([]);
+      setCountdownSeconds(COUNTDOWN_SECONDS);
+
+      phaseRef.current = 'countdown';
+      setPhase('countdown');
+      return;
+    }
+
+    if (
+      pausedPhase === 'countdown' ||
+      pausedPhase === 'repCountdown'
+    ) {
+      // The countdown effect will restart when the modal closes.
+      setCountdownSeconds(COUNTDOWN_SECONDS);
+      phaseRef.current = pausedPhase;
+      setPhase(pausedPhase);
+    }
+  }, []);
+
+  const quitExercise = useCallback(async () => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    quitInProgressRef.current = true;
+    setIsQuitting(true);
+
+    completedNaturallyRef.current = false;
+    interRepStopRef.current = false;
+    discardInterruptedStopRef.current = false;
+    repetitionSamplesRef.current = [];
+    finishingRef.current = true;
+
+    try {
+      if (isRecording) {
+        await stopRecording();
+      }
+    } catch (stopError) {
+      console.error(
+        'Unable to stop Controlled Decrescendo recording before quitting:',
+        stopError,
+      );
+    } finally {
+      clearLiveState();
+      finishingRef.current = false;
+
+      showQuitModalRef.current = false;
+      setShowQuitModal(false);
+
+      phaseRef.current = 'directions';
+
+      router.replace('/exercises/volume');
+    }
+  }, [clearLiveState, isRecording, stopRecording]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        if (phaseRef.current === 'results') {
+          return false;
+        }
+
+        openQuitModal();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [openQuitModal]);
+
+  useEffect(() => {
+    if (showQuitModal || phase !== 'exercise') {
+      return;
+    }
+
+    const startedAt = Date.now() - guideElapsed * 1000;
+
+    const interval = setInterval(() => {
+      setGuideElapsed(
+        Math.min((Date.now() - startedAt) / 1000, rampSeconds),
+      );
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [phase, rep, rampSeconds, showQuitModal]);
+
   useEffect(() => {
     if (
+      showQuitModal ||
       phase !== 'repCountdown' ||
       !isRecording ||
       finishingRef.current
@@ -736,10 +951,13 @@ export default function ControlledDecrescendoDrill({
       phaseRef.current = 'directions';
       setPhase('directions');
     });
-  }, [phase, isRecording, stopRecording]);
+  }, [phase, isRecording, showQuitModal, stopRecording]);
 
   useEffect(() => {
-    if (phase !== 'countdown' && phase !== 'repCountdown') {
+    if (
+      showQuitModal ||
+      (phase !== 'countdown' && phase !== 'repCountdown')
+    ) {
       return;
     }
 
@@ -762,6 +980,13 @@ export default function ControlledDecrescendoDrill({
             await startRecording();
 
             if (cancelled) {
+              // If the countdown was interrupted while recording
+              // was starting, stop the newly opened recording.
+              try {
+                await stopRecording();
+              } catch {
+                // The effect has already been cancelled.
+              }
               return;
             }
 
@@ -810,10 +1035,16 @@ export default function ControlledDecrescendoDrill({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [phase, startRecording, repetitions]);
+  }, [
+    phase,
+    showQuitModal,
+    startRecording,
+    stopRecording,
+    repetitions,
+  ]);
 
   useEffect(() => {
-    if (phase !== 'exercise') {
+    if (showQuitModal || phase !== 'exercise') {
       return;
     }
 
@@ -862,7 +1093,14 @@ export default function ControlledDecrescendoDrill({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [phase, rep, rampSeconds, repetitions, stopRecording]);
+  }, [
+    phase,
+    rep,
+    rampSeconds,
+    repetitions,
+    showQuitModal,
+    stopRecording,
+  ]);
 
   const startExercise = useCallback(() => {
     setErrorMessage(undefined);
@@ -889,7 +1127,14 @@ export default function ControlledDecrescendoDrill({
     finishingRef.current = false;
     completedNaturallyRef.current = false;
     interRepStopRef.current = false;
+    discardInterruptedStopRef.current = false;
     repetitionSamplesRef.current = [];
+
+    pausedPhaseRef.current = 'countdown';
+    quitInProgressRef.current = false;
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
+    setIsQuitting(false);
 
     setCountdownSeconds(COUNTDOWN_SECONDS);
 
@@ -897,79 +1142,9 @@ export default function ControlledDecrescendoDrill({
     setPhase('countdown');
   }, [repetitions]);
 
-  const cancelExercise = useCallback(async () => {
-    completedNaturallyRef.current = false;
-    interRepStopRef.current = false;
-    repetitionSamplesRef.current = [];
-    finishingRef.current = true;
-
-    try {
-      if (isRecording) {
-        await stopRecording();
-      }
-    } catch (stopError) {
-      console.error(
-        'Unable to stop Controlled Decrescendo recording:',
-        stopError,
-      );
-    } finally {
-      finishingRef.current = false;
-      clearLiveState();
-
-      phaseRef.current = 'directions';
-      setPhase('directions');
-    }
-  }, [clearLiveState, isRecording, stopRecording]);
-
-  const handleBackFromExercise = useCallback(async () => {
-    completedNaturallyRef.current = false;
-    interRepStopRef.current = false;
-    repetitionSamplesRef.current = [];
-    finishingRef.current = true;
-
-    try {
-      if (isRecording) {
-        await stopRecording();
-      }
-    } catch (stopError) {
-      console.error(
-        'Unable to stop recording before leaving:',
-        stopError,
-      );
-    } finally {
-      finishingRef.current = false;
-      router.back();
-    }
-  }, [isRecording, stopRecording]);
-
   const tryAgain = useCallback(() => {
     startExercise();
   }, [startExercise]);
-
-  if (loadingParams) {
-    return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={44} color={BROWN} />
-        </View>
-
-        <Text style={styles.preparingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-          and preparing your vocal volume targets.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-      </View>
-    );
-  }
 
   const liveSmoothness = estimateLiveSmoothness(liveHistory);
 
@@ -994,373 +1169,435 @@ export default function ControlledDecrescendoDrill({
 
   const passed = smoothness >= smoothnessTarget;
 
+  const quitModal = (
+    <QuitExerciseModal
+      visible={showQuitModal}
+      isQuitting={isQuitting}
+      onContinue={continueExercise}
+      onQuit={() => void quitExercise()}
+    />
+  );
+
+  if (loadingParams) {
+    return (
+      <>
+        <View style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
+            <Ionicons name="options-outline" size={44} color={BROWN} />
+          </View>
+
+          <Text style={styles.preparingTitle}>
+            Preparing Your Exercise
+          </Text>
+
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level
+            and preparing your vocal volume targets.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.spinner}
+          />
+        </View>
+
+        {quitModal}
+      </>
+    );
+  }
+
   if (phase === 'directions') {
     return (
-      <ExerciseScreen
-        title="Controlled Decrescendo"
-        category="VOLUME CONTROL"
-        icon="volume-low-outline"
-        tier={resolvedTier}
-        instructions={`1. Begin with a comfortable, steady voice.
+      <>
+        <ExerciseScreen
+          title="Controlled Decrescendo"
+          category="VOLUME CONTROL"
+          icon="volume-low-outline"
+          tier={resolvedTier}
+          instructions={`1. Begin with a comfortable, steady voice.
 2. Gradually decrease your volume.
 3. Keep the decrease smooth and even.
 4. Finish softly without abruptly stopping.
 5. Repeat the exercise ${repetitions} times.`}
-        summary={[
-          {
-            label: 'Reference note',
-            value: referenceNote.name,
-          },
-          {
-            label: 'Target range',
-            value: `${targetMax} → ${targetMin} dB`,
-          },
-          {
-            label: 'Duration per repetition',
-            value: `${rampSeconds} seconds`,
-          },
-        ]}
-        targetValue={`${targetMax} → ${targetMin} dB`}
-        targetHint="Begin comfortably loud, then gradually lower your volume."
-        repetitions={repetitions}
-        tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
-        onBack={() => router.back()}
-        onStart={startExercise}
-        error={errorMessage}
-        startLabel="Start Exercise"
-      >
-        <View style={styles.referenceCard}>
-          <View style={styles.referenceTopRow}>
-            <View style={styles.referenceCopy}>
-              <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
-              <Text style={styles.referenceNote}>
-                {referenceNote.name}
+          summary={[
+            {
+              label: 'Reference note',
+              value: referenceNote.name,
+            },
+            {
+              label: 'Target range',
+              value: `${targetMax} → ${targetMin} dB`,
+            },
+            {
+              label: 'Duration per repetition',
+              value: `${rampSeconds} seconds`,
+            },
+          ]}
+          targetValue={`${targetMax} → ${targetMin} dB`}
+          targetHint="Begin comfortably loud, then gradually lower your volume."
+          repetitions={repetitions}
+          tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
+          onBack={openQuitModal}
+          onStart={startExercise}
+          error={errorMessage}
+          startLabel="Start Exercise"
+        >
+          <View style={styles.referenceCard}>
+            <View style={styles.referenceTopRow}>
+              <View style={styles.referenceCopy}>
+                <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
+                <Text style={styles.referenceNote}>
+                  {referenceNote.name}
+                </Text>
+              </View>
+
+              <View style={styles.referenceIconCircle}>
+                <Ionicons
+                  name="musical-note"
+                  size={22}
+                  color={BROWN}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.referenceInstruction}>
+              Play the note, then sing it while gradually decreasing your
+              volume from loud to soft.
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.referenceButton,
+                referencePlaying && styles.disabled,
+              ]}
+              onPress={() => void playReferenceNote()}
+              activeOpacity={0.85}
+              disabled={referencePlaying}
+            >
+              {referencePlaying ? (
+                <ActivityIndicator size="small" color={BROWN} />
+              ) : (
+                <Ionicons name="play" size={17} color={BROWN} />
+              )}
+
+              <Text style={styles.referenceButtonText}>
+                {referencePlaying
+                  ? 'Playing...'
+                  : `Play ${referenceNote.name}`}
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.referenceIconCircle}>
-              <Ionicons
-                name="musical-note"
-                size={22}
-                color={BROWN}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.referenceInstruction}>
-            Play the note, then sing it while gradually decreasing your
-            volume from loud to soft.
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.referenceButton,
-              referencePlaying && styles.disabled,
-            ]}
-            onPress={() => void playReferenceNote()}
-            activeOpacity={0.85}
-            disabled={referencePlaying}
-          >
-            {referencePlaying ? (
-              <ActivityIndicator size="small" color={BROWN} />
-            ) : (
-              <Ionicons name="play" size={17} color={BROWN} />
+            {referencePlaybackError && (
+              <Text style={styles.playbackError}>
+                {referencePlaybackError}
+              </Text>
             )}
-
-            <Text style={styles.referenceButtonText}>
-              {referencePlaying
-                ? 'Playing...'
-                : `Play ${referenceNote.name}`}
-            </Text>
-          </TouchableOpacity>
-
-          {referencePlaybackError && (
-            <Text style={styles.playbackError}>
-              {referencePlaybackError}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.previewCard}>
-          <Text style={styles.previewTitle}>Follow this pattern</Text>
-
-          <View style={styles.previewVisualizer}>
-            {Array.from({ length: BAR_COUNT }, (_, index) => (
-              <View
-                key={`preview-${index}`}
-                style={[
-                  styles.previewBar,
-                  { height: `${targetHeight(index) * 80}%` },
-                ]}
-              />
-            ))}
           </View>
 
-          <View style={styles.previewLabels}>
-            <Text style={styles.previewLabel}>Loud</Text>
-            <Text style={styles.previewLabel}>Soft</Text>
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>Follow this pattern</Text>
+
+            <View style={styles.previewVisualizer}>
+              {Array.from({ length: BAR_COUNT }, (_, index) => (
+                <View
+                  key={`preview-${index}`}
+                  style={[
+                    styles.previewBar,
+                    { height: `${targetHeight(index) * 80}%` },
+                  ]}
+                />
+              ))}
+            </View>
+
+            <View style={styles.previewLabels}>
+              <Text style={styles.previewLabel}>Loud</Text>
+              <Text style={styles.previewLabel}>Soft</Text>
+            </View>
           </View>
-        </View>
-      </ExerciseScreen>
+        </ExerciseScreen>
+
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'countdown' || phase === 'repCountdown') {
     const isNextRepetition = phase === 'repCountdown';
+    const upcomingRep = isNextRepetition
+      ? Math.min(rep + 1, repetitions)
+      : rep;
 
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons name="musical-note" size={32} color={BROWN} />
-        </View>
+      <>
+        <ExerciseListeningScreen
+          icon="volume-low-outline"
+          title="Controlled Decrescendo"
+          currentRep={upcomingRep}
+          repetitions={repetitions}
+          elapsed={0}
+          targetDuration={rampSeconds}
+          promptTitle={
+            isNextRepetition
+              ? `Get ready for repetition ${upcomingRep}`
+              : 'Get ready to begin'
+          }
+          prompt={
+            isNextRepetition
+              ? 'Take a breath. Begin loudly, then gradually lower your volume.'
+              : 'Prepare your voice. Begin comfortably loud when the countdown ends.'
+          }
+          progress={0}
+          onBack={openQuitModal}
+          liveContent={
+            <View style={styles.countdownContent}>
+              <Text style={styles.countdownEyebrow}>
+                {isNextRepetition
+                  ? 'NEXT REPETITION STARTS IN'
+                  : 'YOUR EXERCISE STARTS IN'}
+              </Text>
 
-        <Text style={styles.preparingTitle}>
-          {isNextRepetition
-            ? `Repetition ${Math.min(rep + 1, repetitions)}`
-            : 'Get Ready!'}
-        </Text>
+              <View style={styles.countdownCircle}>
+                <Text style={styles.countdownNumber}>
+                  {countdownSeconds}
+                </Text>
+              </View>
 
-        <Text style={styles.preparingSubtitle}>
-          {isNextRepetition
-            ? 'Take a breath. Prepare to begin loudly, then gradually lower your volume.'
-            : 'Get ready to sing the reference note. Begin comfortably loud when the countdown ends.'}
-        </Text>
+              <Text style={styles.countdownSubtitle}>
+                Start comfortably loud and gradually become softer.
+              </Text>
 
-        <Text style={styles.countdownNumber}>
-          {countdownSeconds}
-        </Text>
+              <TargetDecrescendoGuide
+                seconds={0}
+                durationSeconds={rampSeconds}
+              />
+            </View>
+          }
+        />
 
-        <Text style={styles.countdownCaption}>
-          {isNextRepetition
-            ? `NEXT REPETITION · ${Math.min(rep + 1, repetitions)} OF ${repetitions}`
-            : 'YOUR EXERCISE STARTS IN'}
-        </Text>
-      </View>
+        {quitModal}
+      </>
     );
   }
 
   if (phase === 'exercise') {
-    const progress = clamp((seconds / rampSeconds) * 100, 0, 100);
+    const progress = clamp(seconds / rampSeconds, 0, 1);
 
     return (
-      <ExerciseListeningScreen
-        icon="volume-low-outline"
-        title="Controlled Decrescendo"
-        currentRep={rep}
-        repetitions={repetitions}
-        elapsed={seconds}
-        targetDuration={rampSeconds}
-        promptTitle={instruction.title}
-        prompt={instruction.subtitle}
-        progress={progress}
-        onBack={handleBackFromExercise}
-        liveContent={
-          <View style={styles.liveContent}>
-            <View style={styles.exerciseReference}>
+      <>
+        <View style={styles.exerciseScreen}>
+          <View style={styles.exerciseHeader}>
+            <View style={styles.exerciseHeaderCopy}>
+              <Text style={styles.exerciseScreenTitle}>
+                Controlled Decrescendo
+              </Text>
+              <Text style={styles.exerciseScreenSubtitle}>
+                Repetition {rep} of {repetitions}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.exerciseHeaderClose}
+              onPress={openQuitModal}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Pause or quit exercise"
+            >
               <Ionicons
-                name="musical-note-outline"
-                size={15}
+                name="close"
+                size={23}
                 color={BROWN}
               />
-
-              <Text style={styles.exerciseReferenceText}>
-                Sing {referenceNote.name} while following the decrescendo.
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.exerciseReplayButton,
-                  referencePlaying && styles.disabled,
-                ]}
-                onPress={() => void playReferenceNote()}
-                disabled={referencePlaying}
-                activeOpacity={0.85}
-              >
-                {referencePlaying ? (
-                  <ActivityIndicator size="small" color={BROWN} />
-                ) : (
-                  <>
-                    <Ionicons name="play" size={11} color={BROWN} />
-                    <Text style={styles.exerciseReplayText}>
-                      Replay
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            <TargetDecrescendoGuide
-              seconds={guideElapsed}
-              durationSeconds={rampSeconds}
-            />
-
-            <View style={styles.visualizerCard}>
-              <View style={styles.visualizerHeader}>
-                <View>
-                  <Text style={styles.visualizerTitle}>
-                    Your Performance
-                  </Text>
-                  <Text style={styles.visualizerSubtitle}>
-                    Compare your voice with the target above
-                  </Text>
-                </View>
-
-                <View style={styles.micCircle}>
-                  <Ionicons name="mic" size={18} color={BROWN} />
-                </View>
-              </View>
-
-              <View style={styles.visualizerLegend}>
-                <View style={styles.legendDot} />
-                <Text style={styles.legendText}>Your voice</Text>
-              </View>
-
-              <VolumeVisualizer liveHistory={liveHistory} />
-
-              <View style={styles.visualizerLabels}>
-                <Text style={styles.visualizerLabel}>LIVE AUDIO</Text>
-                <Text style={styles.visualizerLabel}>RECENT VOLUME</Text>
-              </View>
-            </View>
-
-            <View style={styles.voiceRow}>
-              <View style={styles.voiceLeft}>
-                <View style={styles.smallMic}>
-                  <Ionicons
-                    name="mic-outline"
-                    size={17}
-                    color={BROWN}
-                  />
-                </View>
-
-                <View>
-                  <Text style={styles.voiceTitle}>Your voice</Text>
-                  <Text style={styles.voiceSubtitle}>
-                    {liveFrame
-                      ? 'Microphone receiving audio'
-                      : 'Listening for your voice…'}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.voiceValue}>
-                {liveFrame && Number.isFinite(liveFrame.volume)
-                  ? liveFrame.volume.toFixed(1)
-                  : '--'}
-                <Text style={styles.voiceUnit}> dBFS</Text>
-              </Text>
-            </View>
-
-            <View style={styles.targetRow}>
-              <View>
-                <Text style={styles.targetLabel}>TARGET RANGE</Text>
-                <Text style={styles.targetValue}>
-                  {targetMax}–{targetMin} dB
-                </Text>
-              </View>
-
-              <Text style={styles.patternText}>Loud → Soft</Text>
-            </View>
-
-            <View style={styles.sessionRow}>
-              <View style={styles.sessionPart}>
-                <Text style={styles.sessionLabel}>REPETITION</Text>
-                <Text style={styles.sessionValue}>
-                  {rep} / {repetitions}
-                </Text>
-              </View>
-
-              <View style={styles.sessionDivider} />
-
-              <View style={styles.sessionPart}>
-                <Text style={styles.sessionLabel}>TIME</Text>
-                <Text style={styles.sessionValue}>
-                  0:{String(seconds).padStart(2, '0')}
-                </Text>
-              </View>
-
-              <View style={styles.sessionDivider} />
-
-              <View style={styles.sessionPart}>
-                <Text style={styles.sessionLabel}>SMOOTHNESS</Text>
-                <Text style={styles.sessionValue}>
-                  {liveSmoothness}%
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              style={styles.stopButton}
-              onPress={() => void cancelExercise()}
-            >
-              <Ionicons name="stop" size={15} color={BROWN} />
-              <Text style={styles.stopButtonText}>Stop Exercise</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
-        }
-      />
+
+          <View style={styles.exerciseProgressTrack}>
+            <View
+              style={[
+                styles.exerciseProgressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
+
+          <View style={styles.exercisePrompt}>
+            <Text style={styles.exercisePromptTitle}>
+              {instruction.title}
+            </Text>
+            <Text style={styles.exercisePromptSubtitle}>
+              {instruction.subtitle}
+            </Text>
+          </View>
+
+          <ScrollView
+            style={styles.exerciseScroll}
+            contentContainerStyle={styles.exerciseScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.liveContent}>
+              <TargetDecrescendoGuide
+                seconds={guideElapsed}
+                durationSeconds={rampSeconds}
+              />
+
+              <View style={styles.visualizerCard}>
+                <View style={styles.visualizerHeader}>
+                  <View>
+                    <Text style={styles.visualizerTitle}>
+                      Your Performance
+                    </Text>
+                    <Text style={styles.visualizerSubtitle}>
+                      Compare your voice with the target above
+                    </Text>
+                  </View>
+
+                  <View style={styles.micCircle}>
+                    <Ionicons name="mic" size={18} color={BROWN} />
+                  </View>
+                </View>
+
+                <View style={styles.visualizerLegend}>
+                  <View style={styles.legendDot} />
+                  <Text style={styles.legendText}>Your voice</Text>
+                </View>
+
+                <VolumeVisualizer liveHistory={liveHistory} />
+
+                <View style={styles.visualizerLabels}>
+                  <Text style={styles.visualizerLabel}>LIVE AUDIO</Text>
+                  <Text style={styles.visualizerLabel}>RECENT VOLUME</Text>
+                </View>
+              </View>
+
+              <View style={styles.voiceRow}>
+                <View style={styles.voiceLeft}>
+                  <View style={styles.smallMic}>
+                    <Ionicons
+                      name="mic-outline"
+                      size={17}
+                      color={BROWN}
+                    />
+                  </View>
+
+                  <View>
+                    <Text style={styles.voiceTitle}>Your voice</Text>
+                    <Text style={styles.voiceSubtitle}>
+                      {liveFrame
+                        ? 'Microphone receiving audio'
+                        : 'Listening for your voice…'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.voiceValue}>
+                  {liveFrame && Number.isFinite(liveFrame.volume)
+                    ? liveFrame.volume.toFixed(1)
+                    : '--'}
+                  <Text style={styles.voiceUnit}> dBFS</Text>
+                </Text>
+              </View>
+
+              <View style={styles.targetRow}>
+                <View>
+                  <Text style={styles.targetLabel}>TARGET RANGE</Text>
+                  <Text style={styles.targetValue}>
+                    {targetMax}–{targetMin} dB
+                  </Text>
+                </View>
+
+                <Text style={styles.patternText}>Loud → Soft</Text>
+              </View>
+
+              <View style={styles.sessionRow}>
+                <View style={styles.sessionPart}>
+                  <Text style={styles.sessionLabel}>REPETITION</Text>
+                  <Text style={styles.sessionValue}>
+                    {rep} / {repetitions}
+                  </Text>
+                </View>
+
+                <View style={styles.sessionDivider} />
+
+                <View style={styles.sessionPart}>
+                  <Text style={styles.sessionLabel}>TIME</Text>
+                  <Text style={styles.sessionValue}>
+                    0:{String(seconds).padStart(2, '0')}
+                  </Text>
+                </View>
+
+                <View style={styles.sessionDivider} />
+
+                <View style={styles.sessionPart}>
+                  <Text style={styles.sessionLabel}>SMOOTHNESS</Text>
+                  <Text style={styles.sessionValue}>
+                    {liveSmoothness}%
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+
+        {quitModal}
+      </>
     );
   }
 
   return (
-    <ExerciseResultsScreen
-      title="Controlled Decrescendo"
-      subtitle={
-        passed
-          ? 'Great job! Your decrescendo was smooth and controlled.'
-          : 'Keep practicing to make your volume decrease more smoothly.'
-      }
-      score={smoothness}
-      scoreSuffix="%"
-      scoreMessage={passed ? 'Exercise Passed' : 'Needs More Practice'}
-      resultIcon={
-        passed
-          ? 'checkmark-circle-outline'
-          : 'refresh-circle-outline'
-      }
-      scoreDetails={
-        <View style={styles.referenceCard}>
-          <ResultItem
-            label="Direction correct"
-            value={directionCorrect ? 'Yes' : 'No'}
-          />
-          <ResultItem
-            label="Target range reached"
-            value={rangeReached ? 'Yes' : 'No'}
-          />
-          <ResultItem
-            label="Observed range"
-            value={`${minDb} → ${maxDb} dBFS`}
-          />
-          <ResultItem
-            label="Start → End"
-            value={`${startDb} → ${endDb} dBFS`}
-          />
-          <ResultItem
-            label="Actual smoothness"
-            value={`${actualSmoothness}%`}
-          />
-          <ResultItem
-            label="Target smoothness"
-            value={`${smoothnessTarget}%`}
-          />
-          <ResultItem label="Difficulty tier" value={tierLabel} />
-        </View>
-      }
-      onBack={() => router.back()}
-      onRetry={tryAgain}
-      onExit={() => router.replace('/exercises/volume')}
-    >
-      <View style={styles.resultDetails}>
-        {repResults.map((value, index) => (
-          <ResultItem
-            key={`rep-${index}`}
-            label={`Repetition ${index + 1}`}
-            value={`${value}%`}
-          />
-        ))}
-      </View>
-    </ExerciseResultsScreen>
+    <>
+      <ExerciseResultsScreen
+        title="Controlled Decrescendo"
+        subtitle={
+          passed
+            ? 'Great job! Your decrescendo was smooth and controlled.'
+            : 'Keep practicing to make your volume decrease more smoothly.'
+        }
+        score={smoothness}
+        scoreSuffix="%"
+        scoreMessage={passed ? 'Exercise Passed' : 'Needs More Practice'}
+        resultIcon={
+          passed
+            ? 'checkmark-circle-outline'
+            : 'refresh-circle-outline'
+        }
+        scoreDetails={
+          <View style={styles.referenceCard}>
+            <ResultItem
+              label="Direction correct"
+              value={directionCorrect ? 'Yes' : 'No'}
+            />
+            <ResultItem
+              label="Target range reached"
+              value={rangeReached ? 'Yes' : 'No'}
+            />
+            <ResultItem
+              label="Observed range"
+              value={`${minDb} → ${maxDb} dBFS`}
+            />
+            <ResultItem
+              label="Start → End"
+              value={`${startDb} → ${endDb} dBFS`}
+            />
+            <ResultItem
+              label="Actual smoothness"
+              value={`${actualSmoothness}%`}
+            />
+            <ResultItem
+              label="Target smoothness"
+              value={`${smoothnessTarget}%`}
+            />
+            <ResultItem label="Difficulty tier" value={tierLabel} />
+          </View>
+        }
+        onBack={() => router.back()}
+        onRetry={tryAgain}
+        onExit={() => router.replace('/exercises/volume')}
+      >
+        <></>
+      </ExerciseResultsScreen>
+
+      {quitModal}
+    </>
   );
 }
 
@@ -1399,17 +1636,8 @@ const styles = StyleSheet.create({
   },
   countdownNumber: {
     fontFamily: 'FredokaBold',
-    fontSize: 72,
+    fontSize: 44,
     color: BROWN,
-    marginTop: 18,
-  },
-  countdownCaption: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 1,
-    color: ACCENT,
-    textAlign: 'center',
-    marginTop: 8,
   },
 
   referenceCard: {
@@ -1426,7 +1654,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 0,
   },
   referenceCopy: {
     flex: 1,
@@ -1524,41 +1752,115 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
+  exerciseScreen: {
+    position: 'absolute',
+    top: 90,
+    right: 8,
+    bottom: 0,
+    left: 8,
+    zIndex: 1000,
+    elevation: 1000,
+    backgroundColor: WHITE,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  exerciseHeaderCopy: {
+    flex: 1,
+  },
+  exerciseHeaderClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exerciseScreenTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 20,
+    color: BROWN,
+  },
+  exerciseScreenSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 2,
+  },
+  exerciseProgressTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#F3E4E8',
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  exerciseProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: ACCENT,
+  },
+  exercisePrompt: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  exercisePromptTitle: {
+    marginTop: 20,
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  exercisePromptSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 3,
+    marginBottom: 8,
+  },
+  exerciseScroll: {
+    flex: 1,
+  },
+  exerciseScrollContent: {
+    paddingBottom: 24,
+  },
+  countdownContent: {
+    width: '100%',
+    gap: 12,
+    alignItems: 'center',
+  },
+  countdownEyebrow: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: ACCENT,
+    textAlign: 'center',
+  },
+  countdownCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+
   liveContent: {
     width: '100%',
     gap: 8,
   },
-  exerciseReference: {
-    minHeight: 39,
-    borderRadius: 13,
-    backgroundColor: LIGHT,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  exerciseReferenceText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: BROWN,
-    marginLeft: 6,
-  },
-  exerciseReplayButton: {
-    minHeight: 27,
-    paddingHorizontal: 9,
-    borderRadius: 14,
-    backgroundColor: PINK,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exerciseReplayText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    color: BROWN,
-    marginLeft: 4,
-  },
-
   guideCard: {
     width: '100%',
     backgroundColor: LIGHT,
@@ -1680,6 +1982,7 @@ const styles = StyleSheet.create({
   visualizerLegend: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     marginTop: 7,
   },
   legendDot: {
@@ -1777,7 +2080,7 @@ const styles = StyleSheet.create({
   },
 
   targetRow: {
-    minHeight: 46,
+    minHeight: 60,
     paddingHorizontal: 12,
     borderRadius: 14,
     backgroundColor: PINK,
@@ -1787,13 +2090,13 @@ const styles = StyleSheet.create({
   },
   targetLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
+    fontSize: 10,
     letterSpacing: 0.8,
     color: ACCENT,
   },
   targetValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontSize: 20,
     color: BROWN,
     marginTop: 1,
   },
@@ -1804,7 +2107,7 @@ const styles = StyleSheet.create({
   },
 
   sessionRow: {
-    minHeight: 48,
+    minHeight: 60,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
@@ -1817,12 +2120,12 @@ const styles = StyleSheet.create({
   },
   sessionLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 7,
+    fontSize: 12,
     color: MUTED,
   },
   sessionValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 12,
+    fontSize: 20,
     color: BROWN,
     marginTop: 2,
   },
@@ -1831,30 +2134,81 @@ const styles = StyleSheet.create({
     height: 29,
     backgroundColor: BORDER,
   },
-  stopButton: {
-    minHeight: 43,
-    borderRadius: 22,
-    backgroundColor: PINK,
-    flexDirection: 'row',
+  quitModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  quitModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  quitModalIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    backgroundColor: LIGHT,
+    marginBottom: 15,
   },
-  stopButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+  quitModalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
     color: BROWN,
-    marginLeft: 6,
+    textAlign: 'center',
   },
-
-  resultDetails: {
+  quitModalSubtitle: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
     width: '100%',
-    borderRadius: 16,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
-    paddingHorizontal: 13,
-    marginTop: 12,
+    backgroundColor: WHITE,
   },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
+  },
+
   resultItem: {
     minHeight: 40,
     flexDirection: 'row',
