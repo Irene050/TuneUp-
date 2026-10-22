@@ -1159,7 +1159,7 @@ export default function VowelConsistencyExerciseScreen({
       },
       {
         label: 'HOLD',
-        value: `${formatNumber(params.durationRangeSec[0])}–${formatNumber(params.durationRangeSec[1])}s`,
+        value: `${formatNumber(params.durationRangeSec[0])} → ${formatNumber(params.durationRangeSec[1])}s`,
         hint: 'per repetition',
       },
       {

@@ -406,13 +406,6 @@ export default function ControlledCrescendoExercise({
     };
   }, []);
 
-  /*
-   * Adaptive difficulty initialization:
-   * 1. Use the supplied tier when one is provided.
-   * 2. Otherwise use the saved Volume tier.
-   * 3. Use the latest five matching exercise scores.
-   * 4. Use the latest Volume assessment only as a cold-start fallback.
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -1009,10 +1002,10 @@ export default function ControlledCrescendoExercise({
         icon="volume-high-outline"
         tier={resolvedTier}
         instructions={`1. Begin with a soft voice.
-2. Gradually increase your volume.
-3. Keep the increase smooth and even.
-4. Reach the target volume.
-5. Repeat the exercise ${repetitions} times.`}
+                      2. Gradually increase your volume.
+                      3. Keep the increase smooth and even.
+                      4. Reach the target volume.
+                      5. Repeat the exercise ${repetitions} times.`}
         summary={[
           {
             label: 'Reference note',
@@ -1020,14 +1013,14 @@ export default function ControlledCrescendoExercise({
           },
           {
             label: 'Target range',
-            value: `${targetMin}–${targetMax} dB`,
+            value: `${targetMin} → ${targetMax} dB`,
           },
           {
             label: 'Duration per repetition',
             value: `${rampSeconds} seconds`,
           },
         ]}
-        targetValue={`${targetMin}–${targetMax} dB`}
+        targetValue={`${targetMin} → ${targetMax} dB`}
         targetHint="Start softly and gradually increase your volume."
         repetitions={repetitions}
         tip="Sing the reference note while increasing your volume. Keep your pitch comfortable and avoid straining your voice."
@@ -1320,7 +1313,7 @@ export default function ControlledCrescendoExercise({
         <View style={styles.referenceCard}>
           <ResultItem
             label="Observed range"
-            value={`${minDb}–${maxDb} dB`}
+            value={`${minDb} → ${maxDb} dB`}
           />
           <ResultItem
             label="Start → End"
@@ -1351,7 +1344,7 @@ export default function ControlledCrescendoExercise({
 
         <ResultItem
           label="Observed range"
-          value={`${minDb}–${maxDb} dB`}
+          value={`${minDb} → ${maxDb} dB`}
         />
         <ResultItem
           label="Start → End"

@@ -1029,7 +1029,7 @@ export default function SustainedSSSSScreen({
               text: 'Keep the sound steady and stay close to the microphone.',
             },
           ]}
-          targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
+          targetValue={`${params.durationRangeSec[0]} → ${params.durationRangeSec[1]} sec`}
           targetHint={'sustained "ssss"'}
           repetitions={params.repetitions}
           tip={'Focus on keeping the "ssss" sound smooth and consistent instead of forcing a burst of air.'}
