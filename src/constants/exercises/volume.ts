@@ -55,7 +55,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   beginner: {
     durationSec: 4,
     repetitions: 2,
-    targetDbRange: [45, 35],
+    targetDbRange: [35, 45],
     smoothnessThreshold: 60,
     volumeIncreaseThreshold: 10,
   },
@@ -63,7 +63,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   intermediate: {
     durationSec: 5,
     repetitions: 2,
-    targetDbRange: [50, 40],
+    targetDbRange: [30, 45],
     smoothnessThreshold: 75,
     volumeIncreaseThreshold: 12,
   },
@@ -71,7 +71,7 @@ export const CONTROLLED_CRESCENDO_PARAMS: Record<
   advanced: {
     durationSec: 6,
     repetitions: 3,
-    targetDbRange: [55, 40],
+    targetDbRange: [25, 40],
     smoothnessThreshold: 88,
     volumeIncreaseThreshold: 15,
   },

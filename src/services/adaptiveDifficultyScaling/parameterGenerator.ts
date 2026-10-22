@@ -1323,64 +1323,50 @@ export function generateControlledCrescendoParams({
       ),
     );
 
-  const targetMinRange = {
-    min:
-      baseParams.targetDbRange[0] * 0.8,
+  
+  const baseMin = baseParams.targetDbRange[0];
+  const baseMax = baseParams.targetDbRange[1];
 
-    max:
-      baseParams.targetDbRange[0] * 1.2,
-  };
+  const adjustedTargetMin = calculateAdjustedParameterBounds(
+    recentScores,
+    {
+      min: baseMin * 0.8,
+      max: baseMin * 1.2,
+    },
+    'higher',
+  );
 
-  const targetMaxRange = {
-    min:
-      baseParams.targetDbRange[1] * 0.8,
+  const adjustedTargetMax = calculateAdjustedParameterBounds(
+    recentScores,
+    {
+      min: baseMax * 0.8,
+      max: baseMax * 1.2,
+    },
+    'higher',
+  );
 
-    max:
-      baseParams.targetDbRange[1] * 1.2,
-  };
+  const generatedTargetMin = Number(
+    (
+      (adjustedTargetMin.min + adjustedTargetMin.max) / 2
+    ).toFixed(2),
+  );
 
-  const adjustedTargetMin =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      targetMinRange,
-      'higher',
-    );
+  const generatedTargetMax = Number(
+    (
+      (adjustedTargetMax.min + adjustedTargetMax.max) / 2
+    ).toFixed(2),
+  );
 
-  const adjustedTargetMax =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      targetMaxRange,
-      'higher',
-    );
+  // Keep a positive gap between the lower and upper targets.
+  const minimumGap = baseMax - baseMin;
 
-  const generatedTargetMin =
-    Number(
-      (
-        (
-          adjustedTargetMin.min +
-          adjustedTargetMin.max
-        ) / 2
-      ).toFixed(2),
-    );
-
-  const generatedTargetMax =
-    Number(
-      (
-        (
-          adjustedTargetMax.min +
-          adjustedTargetMax.max
-        ) / 2
-      ).toFixed(2),
-    );
-
-  const targetDbRange: [
-    number,
-    number,
-  ] = [
+  const targetDbRange: [number, number] = [
     generatedTargetMin,
-    Math.max(
-      generatedTargetMin,
-      generatedTargetMax,
+    Number(
+      Math.max(
+        generatedTargetMax,
+        generatedTargetMin + minimumGap,
+      ).toFixed(2),
     ),
   ];
 
