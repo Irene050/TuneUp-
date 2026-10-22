@@ -189,6 +189,12 @@ export function useAudioRecorder(
     }
 
     startingRef.current = true;
+
+    console.log(
+      '[AudioRecorder] 🎙️ RECORDER STARTING',
+      new Date().toISOString(),
+    );
+
     stopRequestedRef.current = false;
     discardOnStopRef.current = false;
 
@@ -436,14 +442,18 @@ export function useAudioRecorder(
 
         if (!stopRequestedRef.current) {
           setIsRecording(true);
-        }
-      } catch (error) {
-        if (!stopRequestedRef.current) {
-          console.error(
-            'Failed to start microphone:',
-            error,
+
+          console.log(
+            '[AudioRecorder] ✅ RECORDER STARTED SUCCESSFULLY',
+            new Date().toISOString(),
           );
         }
+      } catch (error) {
+        console.error(
+          '[AudioRecorder] ❌ RECORDER START FAILED',
+          error,
+          new Date().toISOString(),
+        );
 
         if (recorder) {
           try {
@@ -510,6 +520,11 @@ export function useAudioRecorder(
     if (stopTaskRef.current) {
       return stopTaskRef.current;
     }
+    
+    console.log(
+      '[AudioRecorder] ⏹️ RECORDER STOPPING',
+      new Date().toISOString(),
+    );
 
     // Defer execution one microtask so stopTaskRef is assigned
     // before cleanup can finish, even when nothing is active.
@@ -532,9 +547,14 @@ export function useAudioRecorder(
         if (recorder) {
           try {
             await recorder.stop();
+
+            console.log(
+              '[AudioRecorder] ✅ RECORDER STOPPED SUCCESSFULLY',
+              new Date().toISOString(),
+            );
           } catch (error) {
             console.error(
-              'Failed to stop recorder:',
+              '[AudioRecorder] ❌ FAILED TO STOP RECORDER',
               error,
             );
           }
@@ -570,6 +590,15 @@ export function useAudioRecorder(
         chunksRef.current = [];
         sampleCountRef.current = 0;
         lastLiveAnalysisRef.current = 0;
+
+        console.log(
+          '[AudioRecorder] 🧹 RECORDER CLEANUP COMPLETE',
+          {
+            recorderExists: !!recorderRef.current,
+            audioSessionActive: sessionActiveRef.current,
+            timestamp: new Date().toISOString(),
+          },
+        );
 
         resetLiveDetection();
         setIsRecording(false);
