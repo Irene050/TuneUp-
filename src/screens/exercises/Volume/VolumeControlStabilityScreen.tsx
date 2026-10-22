@@ -8,6 +8,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -22,7 +24,6 @@ import {
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseListeningScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -40,20 +41,15 @@ import { createMusicalNote } from '@/utils/music/notes';
 
 const CURRENT_TIER: Tier = 'beginner';
 
-const DEFAULT_VOLUME_CONTROL_STABILITY =
+const DEFAULT_PARAMS =
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
 const NOTE = 'C4';
 const REFERENCE_NOTE = createMusicalNote(60);
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
-
-type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
-
-type MeasurementResult =
-  ReturnType<typeof measureVolumeControlStability>;
-
-type ScoreResult = ReturnType<typeof scoreVolumeControlStability>;
+const MAX_LIVE_HISTORY = 40;
+const MIN_VOICE_CLARITY = 0.45;
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -66,6 +62,14 @@ const WHITE = '#FFFFFF';
 const GUIDE_GREEN = '#278451';
 const SUCCESS_BG = '#EFF8F2';
 
+type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
+
+type MeasurementResult =
+  ReturnType<typeof measureVolumeControlStability>;
+
+type ScoreResult =
+  ReturnType<typeof scoreVolumeControlStability>;
+
 export default function VolumeControlStabilityScreen({
   tier,
 }: {
@@ -75,8 +79,7 @@ export default function VolumeControlStabilityScreen({
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
 
   const [remainingSeconds, setRemainingSeconds] = useState(
-    DEFAULT_VOLUME_CONTROL_STABILITY.durationSec *
-      DEFAULT_VOLUME_CONTROL_STABILITY.repetitions,
+    DEFAULT_PARAMS.durationSec * DEFAULT_PARAMS.repetitions,
   );
 
   const [liveVolume, setLiveVolume] = useState(-60);
@@ -84,44 +87,50 @@ export default function VolumeControlStabilityScreen({
   const [liveNote, setLiveNote] = useState('--');
   const [liveStability, setLiveStability] = useState(0);
 
-  const liveHistoryRef = useRef<number[]>([]);
-
   const [measurement, setMeasurement] =
     useState<MeasurementResult | null>(null);
-
   const [score, setScore] = useState<ScoreResult | null>(null);
 
-  const [hasPlayedReference, setHasPlayedReference] =
-    useState(false);
-
   const [referencePlaying, setReferencePlaying] = useState(false);
-
-  const [referenceError, setReferenceError] =
-    useState<string | null>(null);
-
+  const [referenceError, setReferenceError] = useState<string | null>(
+    null,
+  );
   const [isStarting, setIsStarting] = useState(false);
 
   const [resolvedTier, setResolvedTier] = useState<Tier>(
     tier ?? CURRENT_TIER,
   );
-
-  const [exerciseParams, setExerciseParams] = useState(
-    DEFAULT_VOLUME_CONTROL_STABILITY,
-  );
-
+  const [exerciseParams, setExerciseParams] = useState(DEFAULT_PARAMS);
   const [paramsReady, setParamsReady] = useState(false);
+
+  // Quit modal state.
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+
+  const liveHistoryRef = useRef<number[]>([]);
+  const mountedRef = useRef(true);
+  const exerciseStartedAtRef = useRef<number | null>(null);
+  const recordingFinishedRef = useRef(false);
+
+  // Refs prevent recorder callbacks and rapid button presses from
+  // processing an exercise after the quit modal has interrupted it.
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+  const pausedPhaseRef = useRef<Phase>('directions');
+  const pauseStopPendingRef = useRef(false);
 
   const durationSeconds = exerciseParams.durationSec;
   const repetitions = exerciseParams.repetitions;
   const targetStability = exerciseParams.stabilityThreshold;
   const totalExerciseSeconds = durationSeconds * repetitions;
 
-  const mountedRef = useRef(true);
-  const exerciseStartedAtRef = useRef<number | null>(null);
-  const recordingFinishedRef = useRef(false);
-
+  // Load adaptive exercise parameters.
   useEffect(() => {
     let cancelled = false;
+
+    setParamsReady(false);
 
     const loadParameters = async () => {
       try {
@@ -189,11 +198,15 @@ export default function VolumeControlStabilityScreen({
           error,
         );
 
-        if (!cancelled) {
-          setResolvedTier(tier ?? CURRENT_TIER);
-          setExerciseParams(DEFAULT_VOLUME_CONTROL_STABILITY);
-          setParamsReady(true);
+        if (cancelled) {
+          return;
         }
+
+        const fallbackTier = tier ?? CURRENT_TIER;
+
+        setResolvedTier(fallbackTier);
+        setExerciseParams(VOLUME_CONTROL_STABILITY_PARAMS[fallbackTier]);
+        setParamsReady(true);
       }
     };
 
@@ -204,14 +217,17 @@ export default function VolumeControlStabilityScreen({
     };
   }, [tier]);
 
+  // Prevent asynchronous callbacks from updating an unmounted screen.
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
   const playReferenceNote = useCallback(async () => {
-    if (referencePlaying) {
+    if (referencePlaying || pausedRef.current) {
       return;
     }
 
@@ -219,19 +235,22 @@ export default function VolumeControlStabilityScreen({
     setReferencePlaying(true);
 
     try {
-      await playSingleNote(
-        REFERENCE_NOTE.frequency,
-        REFERENCE_NOTE_DURATION_SEC,
-      );
-
-      if (mountedRef.current) {
-        setHasPlayedReference(true);
-      }
+      await Promise.race([
+        playSingleNote(
+          REFERENCE_NOTE.frequency,
+          REFERENCE_NOTE_DURATION_SEC,
+        ),
+        new Promise<void>((resolve) => {
+          setTimeout(
+            resolve,
+            REFERENCE_NOTE_DURATION_SEC * 1000 + 300,
+          );
+        }),
+      ]);
     } catch (error) {
       console.error('C4 reference playback error:', error);
 
       if (mountedRef.current) {
-        setHasPlayedReference(false);
         setReferenceError('Unable to play the C4 reference note.');
       }
     } finally {
@@ -241,9 +260,16 @@ export default function VolumeControlStabilityScreen({
     }
   }, [referencePlaying]);
 
+  // Handle live audio frames and final recording measurements.
   const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: (frame) => {
-      if (!mountedRef.current || phase !== 'exercise') {
+      if (
+        !mountedRef.current ||
+        phase !== 'exercise' ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
         return;
       }
 
@@ -258,16 +284,12 @@ export default function VolumeControlStabilityScreen({
         Number.isFinite(frame.pitch) &&
         frame.pitch > 0 &&
         Number.isFinite(frame.clarity) &&
-        frame.clarity >= 0.45 &&
+        frame.clarity >= MIN_VOICE_CLARITY &&
         typeof frame.note === 'string' &&
         frame.note !== '--';
 
       setLivePitch(isVoiced ? frame.pitch : null);
-      setLiveNote(
-        isVoiced && typeof frame.note === 'string'
-          ? frame.note
-          : '--',
-      );
+      setLiveNote(isVoiced ? frame.note : '--');
 
       if (!isVoiced) {
         setLiveStability(0);
@@ -275,9 +297,9 @@ export default function VolumeControlStabilityScreen({
       }
 
       const amplitudes = liveHistoryRef.current;
-      amplitudes.push(Math.pow(10, db / 20));
+      amplitudes.push(10 ** (db / 20));
 
-      if (amplitudes.length > 40) {
+      if (amplitudes.length > MAX_LIVE_HISTORY) {
         amplitudes.shift();
       }
 
@@ -297,22 +319,34 @@ export default function VolumeControlStabilityScreen({
 
       const variance =
         amplitudes.reduce(
-          (sum, value) => sum + Math.pow(value - mean, 2),
+          (sum, value) => sum + (value - mean) ** 2,
           0,
         ) / amplitudes.length;
 
       const coefficientOfVariation = Math.sqrt(variance) / mean;
 
-      setLiveStability(
-        Math.max(
-          0,
-          Math.min(100, 100 - coefficientOfVariation * 100),
-        ),
+      const stability = Math.max(
+        0,
+        Math.min(100, 100 - coefficientOfVariation * 100),
       );
+
+      setLiveStability(stability);
     },
 
     onStop: (samples, sampleRate) => {
-      if (!mountedRef.current || recordingFinishedRef.current) {
+      // A stop caused by the quit modal must never produce a score.
+      if (
+        !mountedRef.current ||
+        recordingFinishedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        pauseStopPendingRef.current
+      ) {
+        if (pauseStopPendingRef.current) {
+          pauseStopPendingRef.current = false;
+        }
+
         return;
       }
 
@@ -342,46 +376,95 @@ export default function VolumeControlStabilityScreen({
     },
   });
 
+  // Begin microphone recording after the countdown.
   const beginRecording = useCallback(async () => {
+    if (
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
     try {
       recordingFinishedRef.current = false;
 
       await startRecording();
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        // The screen may have been interrupted while the recorder
+        // was starting. Stop it without accepting a result.
+        recordingFinishedRef.current = true;
+        pauseStopPendingRef.current = true;
+
+        try {
+          await stopRecording();
+        } catch (error) {
+          console.warn(
+            'Unable to stop recording after interruption:',
+            error,
+          );
+        } finally {
+          pauseStopPendingRef.current = false;
+        }
+
         return;
       }
 
       exerciseStartedAtRef.current = Date.now();
 
+      liveHistoryRef.current = [];
       setLiveVolume(-60);
       setLiveStability(0);
-      liveHistoryRef.current = [];
       setLivePitch(null);
       setLiveNote('--');
-
       setRemainingSeconds(totalExerciseSeconds);
       setPhase('exercise');
     } catch (error) {
       console.error('Unable to start recording:', error);
 
-      if (mountedRef.current) {
-        setPhase('directions');
-        setReferenceError(
-          'Microphone could not be started. Please check microphone permission.',
-        );
+      if (!mountedRef.current) {
+        return;
       }
-    }
-  }, [startRecording, totalExerciseSeconds]);
 
+      if (pausedRef.current || showQuitModalRef.current) {
+        return;
+      }
+
+      setPhase('directions');
+      setReferenceError(
+        'Microphone could not be started. Please check microphone permission.',
+      );
+    }
+  }, [startRecording, stopRecording, totalExerciseSeconds]);
+
+  // Countdown before recording begins.
   useEffect(() => {
-    if (phase !== 'countdown') {
+    if (
+      phase !== 'countdown' ||
+      pausedRef.current ||
+      showQuitModalRef.current
+    ) {
       return;
     }
 
     setCountdown(COUNTDOWN_SECONDS);
 
     const interval = setInterval(() => {
+      if (
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        clearInterval(interval);
+        return;
+      }
+
       setCountdown((value) => {
         if (value <= 1) {
           clearInterval(interval);
@@ -398,20 +481,33 @@ export default function VolumeControlStabilityScreen({
     };
   }, [phase, beginRecording]);
 
+  // Update the exercise timer and stop recording when time expires.
   useEffect(() => {
-    if (phase !== 'exercise') {
+    if (
+      phase !== 'exercise' ||
+      pausedRef.current ||
+      showQuitModalRef.current
+    ) {
       return;
     }
 
     const interval = setInterval(() => {
+      if (
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        clearInterval(interval);
+        return;
+      }
+
       const startedAt = exerciseStartedAtRef.current;
 
-      if (!startedAt) {
+      if (startedAt === null) {
         return;
       }
 
       const elapsed = (Date.now() - startedAt) / 1000;
-
       const remaining = Math.max(
         0,
         Math.ceil(totalExerciseSeconds - elapsed),
@@ -431,7 +527,13 @@ export default function VolumeControlStabilityScreen({
   }, [phase, stopRecording, totalExerciseSeconds]);
 
   const startExercise = useCallback(() => {
-    if (!paramsReady || !hasPlayedReference || isStarting) {
+    if (
+      !paramsReady ||
+      isStarting ||
+      referencePlaying ||
+      pausedRef.current ||
+      showQuitModalRef.current
+    ) {
       return;
     }
 
@@ -439,9 +541,14 @@ export default function VolumeControlStabilityScreen({
     setMeasurement(null);
     setScore(null);
 
+    recordingFinishedRef.current = false;
+    exerciseStartedAtRef.current = null;
+
     liveHistoryRef.current = [];
     setLiveVolume(-60);
     setLiveStability(0);
+    setLivePitch(null);
+    setLiveNote('--');
     setRemainingSeconds(totalExerciseSeconds);
     setCountdown(COUNTDOWN_SECONDS);
     setReferenceError(null);
@@ -454,8 +561,8 @@ export default function VolumeControlStabilityScreen({
     }, 400);
   }, [
     paramsReady,
-    hasPlayedReference,
     isStarting,
+    referencePlaying,
     totalExerciseSeconds,
   ]);
 
@@ -464,13 +571,13 @@ export default function VolumeControlStabilityScreen({
     setScore(null);
     setLiveVolume(-60);
     setLiveStability(0);
+    setLivePitch(null);
+    setLiveNote('--');
 
     liveHistoryRef.current = [];
     setRemainingSeconds(totalExerciseSeconds);
     setCountdown(COUNTDOWN_SECONDS);
     setReferenceError(null);
-    setHasPlayedReference(false);
-    setReferencePlaying(false);
 
     recordingFinishedRef.current = false;
     exerciseStartedAtRef.current = null;
@@ -478,20 +585,221 @@ export default function VolumeControlStabilityScreen({
     setPhase('directions');
   }, [totalExerciseSeconds]);
 
+  // Open the quit confirmation modal from any phase.
+  const pauseForExitPrompt = useCallback(async () => {
+    if (
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
+    pausedPhaseRef.current = phase;
+    pausedRef.current = true;
+    showQuitModalRef.current = true;
+
+    setShowQuitModal(true);
+    setIsQuitting(false);
+
+    if (phase === 'exercise') {
+      setIsPausing(true);
+
+      // Mark the attempt as interrupted before stopping the recorder.
+      // This prevents its onStop callback from generating a result.
+      recordingFinishedRef.current = true;
+      exerciseStartedAtRef.current = null;
+      pauseStopPendingRef.current = true;
+
+      try {
+        await stopRecording();
+      } catch (error) {
+        console.warn(
+          'Unable to stop recording while opening quit modal:',
+          error,
+        );
+      } finally {
+        pauseStopPendingRef.current = false;
+
+        if (mountedRef.current) {
+          setIsPausing(false);
+        }
+      }
+    }
+  }, [phase, stopRecording]);
+
+  // Close the modal and return to the previous phase.
+  // If the microphone exercise was interrupted, restart it at countdown
+  // rather than continuing with an incomplete recording.
+  const continueExercise = useCallback(() => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    const previousPhase = pausedPhaseRef.current;
+
+    showQuitModalRef.current = false;
+    pausedRef.current = false;
+
+    setShowQuitModal(false);
+    setIsQuitting(false);
+    setIsPausing(false);
+
+    if (previousPhase === 'exercise') {
+      setMeasurement(null);
+      setScore(null);
+
+      liveHistoryRef.current = [];
+      setLiveVolume(-60);
+      setLiveStability(0);
+      setLivePitch(null);
+      setLiveNote('--');
+
+      setRemainingSeconds(totalExerciseSeconds);
+      setCountdown(COUNTDOWN_SECONDS);
+      setReferenceError(null);
+
+      recordingFinishedRef.current = false;
+      exerciseStartedAtRef.current = null;
+
+      // Start a fresh attempt from the countdown.
+      setPhase('countdown');
+      return;
+    }
+
+    // Restore directions, countdown, or results if no recording
+    // was interrupted.
+    setPhase(previousPhase);
+  }, [totalExerciseSeconds]);
+
+  // Confirm quitting, safely stop any recording, and leave the exercise.
+  const quitExercise = useCallback(async () => {
+    if (quitInProgressRef.current) {
+      return;
+    }
+
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    showQuitModalRef.current = false;
+
+    setIsQuitting(true);
+    setShowQuitModal(false);
+
+    recordingFinishedRef.current = true;
+    exerciseStartedAtRef.current = null;
+
+    if (pausedPhaseRef.current === 'exercise') {
+      pauseStopPendingRef.current = true;
+
+      try {
+        await stopRecording();
+      } catch (error) {
+        console.warn(
+          'Unable to stop recording while quitting:',
+          error,
+        );
+      } finally {
+        pauseStopPendingRef.current = false;
+      }
+    }
+
+    router.replace('/dashboard?tab=exercises' as any);
+  }, [stopRecording]);
+
+  // Android hardware back opens the same quit confirmation modal.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (quitInProgressRef.current) {
+          return true;
+        }
+
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        void pauseForExitPrompt();
+        return true;
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [pauseForExitPrompt]);
+
   const voiceDetected =
     livePitch !== null &&
     Number.isFinite(livePitch) &&
     livePitch > 0 &&
     liveNote !== '--';
 
-  const cancelAndLeave = useCallback(() => {
-    if (phase === 'exercise') {
-      recordingFinishedRef.current = true;
-      void stopRecording();
-    }
+  // Shared quit modal. It is rendered in every screen branch below.
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
 
-    router.back();
-  }, [phase, stopRecording]);
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.modalMessage}>
+            {pausedPhaseRef.current === 'exercise'
+              ? 'Your recording has been stopped. If you continue, this exercise will restart from the countdown.'
+              : pausedPhaseRef.current === 'countdown'
+                ? 'Your exercise is paused. Continue when you are ready to start the countdown again.'
+                : 'Are you sure you want to leave this exercise?'}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting || isPausing}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              (isQuitting || isPausing) && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              {isPausing ? 'Pausing...' : 'Continue Exercise'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
+            onPress={() => {
+              void quitExercise();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (!paramsReady) {
     return (
@@ -509,8 +817,8 @@ export default function VolumeControlStabilityScreen({
         </Text>
 
         <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty
-          level and preparing your vocal range.
+          Adjusting the exercise to your current difficulty level and
+          preparing your vocal range.
         </Text>
 
         <ActivityIndicator
@@ -518,6 +826,8 @@ export default function VolumeControlStabilityScreen({
           color={BROWN}
           style={styles.spinner}
         />
+
+        {quitModal}
       </View>
     );
   }
@@ -568,20 +878,13 @@ export default function VolumeControlStabilityScreen({
           repetitions={repetitions}
           tip="Choose a comfortable volume first. Avoid sudden changes in loudness while sustaining the note."
           tier={resolvedTier}
-          onBack={cancelAndLeave}
+          onBack={() => void pauseForExitPrompt()}
           onStart={startExercise}
           startDisabled={
-            !paramsReady ||
-            !hasPlayedReference ||
-            referencePlaying ||
-            isStarting
+            !paramsReady || referencePlaying || isStarting
           }
           startLabel={
-            paramsReady
-              ? hasPlayedReference
-                ? 'Start Exercise'
-                : 'Play the Reference Note First'
-              : 'Loading Exercise...'
+            paramsReady ? 'Start Exercise' : 'Loading Exercise...'
           }
           error={referenceError}
         >
@@ -605,8 +908,8 @@ export default function VolumeControlStabilityScreen({
             </View>
 
             <Text style={styles.referenceInstruction}>
-              Play the note, then sing it on “Ah” while
-              keeping your volume steady.
+              Play the note, then sing it on “Ah” while keeping your
+              volume steady.
             </Text>
 
             <Pressable
@@ -627,44 +930,10 @@ export default function VolumeControlStabilityScreen({
                 {referencePlaying ? 'Playing...' : `Play ${NOTE}`}
               </Text>
             </Pressable>
-
-            {hasPlayedReference && (
-              <View style={styles.referenceReadyRow}>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={15}
-                  color={GUIDE_GREEN}
-                />
-
-                <Text style={styles.referenceReadyText}>
-                  Reference note played. You’re ready to begin.
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoHeader}>
-              <View style={styles.infoIconCircle}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={18}
-                  color={ACCENT}
-                />
-              </View>
-
-              <Text style={styles.infoTitle}>What to focus on</Text>
-            </View>
-
-            <Text style={styles.referenceInstruction}>
-              This exercise evaluates how consistently you
-              sustain your voice and maintain its detected
-              volume over time. The measurement uses relative
-              audio levels; it does not directly measure airflow
-              or calibrated sound pressure.
-            </Text>
           </View>
         </ExerciseScreen>
+
+        {quitModal}
       </SafeAreaView>
     );
   }
@@ -678,8 +947,10 @@ export default function VolumeControlStabilityScreen({
           countdown={countdown}
           promptTitle={`Prepare to sing ${NOTE}.`}
           prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume steady for ${durationSeconds} seconds per repetition.`}
-          onBack={cancelAndLeave}
+          onBack={() => void pauseForExitPrompt()}
         />
+
+        {quitModal}
       </SafeAreaView>
     );
   }
@@ -690,15 +961,14 @@ export default function VolumeControlStabilityScreen({
       totalExerciseSeconds - remainingSeconds,
     );
 
+    const safeDuration = Math.max(1, durationSeconds);
+
     const currentRep = Math.min(
       repetitions,
-      Math.floor(
-        elapsedTotal / Math.max(1, durationSeconds),
-      ) + 1,
+      Math.floor(elapsedTotal / safeDuration) + 1,
     );
 
-    const currentRepElapsed =
-      elapsedTotal % Math.max(1, durationSeconds);
+    const currentRepElapsed = elapsedTotal % safeDuration;
 
     const liveVolumeDisplay =
       liveVolume > -60 ? Math.round(liveVolume + 70) : '--';
@@ -708,261 +978,312 @@ export default function VolumeControlStabilityScreen({
       Math.min(100, liveStability),
     );
 
+    const clampedTarget = Math.max(
+      0,
+      Math.min(100, targetStability),
+    );
+
     const meetsLiveTarget =
-      voiceDetected && liveStability >= targetStability;
+      voiceDetected && clampedStability >= targetStability;
+
+    const overallProgress =
+      (elapsedTotal / Math.max(1, totalExerciseSeconds)) * 100;
+
+    const repetitionRemaining = Math.max(
+      0,
+      durationSeconds -
+        Math.min(durationSeconds, currentRepElapsed),
+    );
 
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ExerciseListeningScreen
-          icon="pulse-outline"
-          title="Volume Control Stability"
-          currentRep={currentRep}
-          repetitions={repetitions}
-          elapsed={Math.min(durationSeconds, currentRepElapsed)}
-          targetDuration={durationSeconds}
-          promptTitle="Keep your voice steady"
-          prompt={`Sing ${NOTE} on “Ah” at a comfortable volume. Avoid sudden loudness changes until the timer ends.`}
-          progress={Math.min(
-            100,
-            (elapsedTotal / Math.max(1, totalExerciseSeconds)) *
-              100,
-          )}
-          onBack={cancelAndLeave}
-          liveContent={
-            <View style={styles.liveContent}>
-              <Pressable
-                style={[
-                  styles.replayButton,
-                  referencePlaying && styles.disabled,
-                ]}
-                disabled={referencePlaying}
-                onPress={() => void playReferenceNote()}
-              >
-                <Ionicons
-                  name={referencePlaying ? 'volume-high' : 'play'}
-                  size={16}
-                  color={ACCENT}
-                />
+        <View style={styles.exerciseScreen}>
+          {/* Header */}
+          <View style={styles.exerciseHeader}>
+            <View style={styles.exerciseHeaderText}>
+              <Text style={styles.exerciseTitle}>
+                Volume Stability
+              </Text>
 
-                <Text style={styles.replayButtonText}>
-                  {referencePlaying
-                    ? 'Playing...'
-                    : `Replay ${NOTE} Reference`}
+              <Text style={styles.exerciseEyebrow}>
+                VOLUME CONTROL
+              </Text>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open quit exercise confirmation"
+              hitSlop={10}
+              style={styles.exerciseExitButton}
+              onPress={() => void pauseForExitPrompt()}
+            >
+              <Ionicons
+                name="close"
+                size={22}
+                color={BROWN}
+              />
+            </Pressable>
+          </View>
+
+          {/* Singing prompt */}
+          <View style={styles.singingPrompt}>
+            <Text style={styles.singingPromptTitle}>
+              Keep your voice steady
+            </Text>
+
+            <Text style={styles.singingPromptText}>
+              Sing {NOTE} on “Ah” at a comfortable volume. Avoid
+              sudden loudness changes until the timer ends.
+            </Text>
+          </View>
+
+          {/* Volume stability */}
+          <View style={styles.liveCard}>
+            <View style={styles.rowBetween}>
+              <View style={styles.stabilityHeading}>
+                <Text style={styles.cardTitle}>
+                  Volume Stability
                 </Text>
-              </Pressable>
-
-              {/* LIVE VOLUME */}
-
-              <View style={styles.liveCard}>
-                <View style={styles.liveCardHeader}>
-                  <View style={styles.liveIconCircle}>
-                    <Ionicons
-                      name="volume-medium-outline"
-                      size={18}
-                      color={ACCENT}
-                    />
-                  </View>
-
-                  <View style={styles.liveCardHeading}>
-                    <Text style={styles.cardTitle}>
-                      Your Live Volume
-                    </Text>
-
-                    <Text style={styles.mutedSmall}>
-                      Relative microphone level
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.liveVolumeRow}>
-                  <Text style={styles.liveVolume}>
-                    {liveVolumeDisplay}
-                  </Text>
-
-                  <Text style={styles.liveUnit}>/ 70 level</Text>
-                </View>
-
-                <View style={styles.statusBadge}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      {
-                        backgroundColor: meetsLiveTarget
-                          ? GUIDE_GREEN
-                          : MUTED,
-                      },
-                    ]}
-                  />
-
-                  <Text
-                    style={[
-                      styles.statusText,
-                      meetsLiveTarget && styles.statusTextSuccess,
-                    ]}
-                  >
-                    {!voiceDetected
-                      ? 'WAITING FOR YOUR VOICE'
-                      : meetsLiveTarget
-                        ? 'STEADY SO FAR'
-                        : 'KEEP IT STEADY'}
-                  </Text>
-                </View>
-
-                <Text style={styles.helperText}>
-                  Relative level for feedback, not a calibrated
-                  sound-pressure measurement.
-                </Text>
-              </View>
-
-              {/* VOLUME STABILITY */}
-
-              <View style={styles.liveCard}>
-                <View style={styles.rowBetween}>
-                  <View style={styles.stabilityHeading}>
-                    <Text style={styles.cardTitle}>
-                      Volume Stability
-                    </Text>
-
-                    <Text style={styles.mutedSmall}>
-                      Live consistency estimate
-                    </Text>
-                  </View>
-
-                  <Text style={styles.stabilityValue}>
-                    {Math.round(clampedStability)}%
-                  </Text>
-                </View>
-
-                <View style={styles.stabilityTrack}>
-                  <View
-                    style={[
-                      styles.stabilityFill,
-                      { width: `${clampedStability}%` },
-                    ]}
-                  />
-
-                  <View
-                    style={[
-                      styles.stabilityTargetMarker,
-                      {
-                        left: `${Math.max(
-                          0,
-                          Math.min(100, targetStability),
-                        )}%`,
-                      },
-                    ]}
-                  />
-                </View>
-
-                <View style={styles.scaleRow}>
-                  <Text style={styles.scaleText}>Less steady</Text>
-
-                  <Text style={styles.scaleText}>
-                    Target: {Math.round(targetStability)}%
-                  </Text>
-
-                  <Text style={styles.scaleText}>More steady</Text>
-                </View>
-
-                <View style={styles.tipInline}>
-                  <Ionicons
-                    name="bulb-outline"
-                    size={15}
-                    color={ACCENT}
-                  />
-
-                  <Text style={styles.tipInlineText}>
-                    Keep a comfortable, even volume. Avoid
-                    sudden increases or drops in loudness.
-                  </Text>
-                </View>
-              </View>
-
-              {/* DETECTED NOTE */}
-
-              <View style={styles.liveCard}>
-                <View style={styles.liveCardHeader}>
-                  <View style={styles.liveIconCircle}>
-                    <Ionicons
-                      name="musical-note-outline"
-                      size={18}
-                      color={ACCENT}
-                    />
-                  </View>
-
-                  <View style={styles.liveCardHeading}>
-                    <Text style={styles.cardTitle}>
-                      Detected Note
-                    </Text>
-
-                    <Text style={styles.mutedSmall}>
-                      Sing near the microphone
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.noteStatusBadge,
-                      voiceDetected && styles.noteStatusBadgeActive,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor: voiceDetected
-                            ? GUIDE_GREEN
-                            : MUTED,
-                        },
-                      ]}
-                    />
-
-                    <Text
-                      style={[
-                        styles.noteStatusText,
-                        voiceDetected && styles.statusTextSuccess,
-                      ]}
-                    >
-                      {voiceDetected ? 'DETECTED' : 'LISTENING'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.detectedNotePanel}>
-                  <Text
-                    style={[
-                      styles.detectedNote,
-                      !voiceDetected && styles.detectedNoteWaiting,
-                    ]}
-                  >
-                    {voiceDetected ? liveNote : '--'}
-                  </Text>
-
-                  <Text style={styles.detectedFrequency}>
-                    {voiceDetected && livePitch !== null
-                      ? `${livePitch.toFixed(1)} Hz`
-                      : 'Waiting for a clear vocal sound'}
-                  </Text>
-                </View>
 
                 <Text style={styles.mutedSmall}>
-                  Try to sing close to {NOTE}. Pitch feedback
-                  helps identify the note, while this exercise
-                  focuses on volume consistency.
+                  Live consistency estimate
+                </Text>
+              </View>
+
+              <Text style={styles.stabilityValue}>
+                {Math.round(clampedStability)}%
+              </Text>
+            </View>
+
+            <View style={styles.stabilityTrack}>
+              <View
+                style={[
+                  styles.stabilityFill,
+                  { width: `${clampedStability}%` },
+                ]}
+              />
+
+              <View
+                style={[
+                  styles.stabilityTargetMarker,
+                  { left: `${clampedTarget}%` },
+                ]}
+              />
+            </View>
+
+            <View style={styles.scaleRow}>
+              <Text style={styles.scaleText}>Less steady</Text>
+
+              <Text style={styles.scaleText}>
+                Target: {Math.round(targetStability)}%
+              </Text>
+
+              <Text style={styles.scaleText}>More steady</Text>
+            </View>
+          </View>
+
+          {/* Live Volume + Detected Note */}
+          <View style={styles.liveCard}>
+            {/* Live volume header */}
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveIconCircle}>
+                <Ionicons
+                  name="volume-medium-outline"
+                  size={18}
+                  color={ACCENT}
+                />
+              </View>
+
+              <View style={styles.liveCardHeading}>
+                <Text style={styles.cardTitle}>
+                  Your Live Volume
+                </Text>
+
+                <Text style={styles.mutedSmall}>
+                  Relative microphone level
+                </Text>
+              </View>
+
+              {/* Detected note status */}
+              <View
+                style={[
+                  styles.noteStatusBadge,
+                  voiceDetected && styles.noteStatusBadgeActive,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: voiceDetected
+                        ? GUIDE_GREEN
+                        : MUTED,
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.noteStatusText,
+                    voiceDetected && styles.statusTextSuccess,
+                  ]}
+                >
+                  {voiceDetected ? 'DETECTED' : 'LISTENING'}
                 </Text>
               </View>
             </View>
-          }
-        />
+
+            {/* Volume level */}
+            <View style={styles.liveVolumeRow}>
+              <Text style={styles.liveVolume}>
+                {liveVolumeDisplay}
+              </Text>
+
+              <Text style={styles.liveUnit}>/ 70 level</Text>
+            </View>
+
+            <View style={styles.statusBadge}>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: meetsLiveTarget
+                      ? GUIDE_GREEN
+                      : MUTED,
+                  },
+                ]}
+              />
+
+              <Text
+                style={[
+                  styles.statusText,
+                  meetsLiveTarget && styles.statusTextSuccess,
+                ]}
+              >
+                {!voiceDetected
+                  ? 'WAITING FOR YOUR VOICE'
+                  : meetsLiveTarget
+                    ? 'STEADY SO FAR'
+                    : 'KEEP IT STEADY'}
+              </Text>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.liveSectionDivider} />
+
+            {/* Detected note */}
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveIconCircle}>
+                <Ionicons
+                  name="musical-note-outline"
+                  size={18}
+                  color={ACCENT}
+                />
+              </View>
+
+              <View style={styles.liveCardHeading}>
+                <Text style={styles.cardTitle}>Detected Note</Text>
+              </View>
+            </View>
+
+            <View style={styles.detectedNotePanel}>
+              <Text
+                style={[
+                  styles.detectedNote,
+                  !voiceDetected && styles.detectedNoteWaiting,
+                ]}
+              >
+                {voiceDetected ? liveNote : '--'}
+              </Text>
+
+              <Text style={styles.detectedFrequency}>
+                {voiceDetected && livePitch !== null
+                  ? `${livePitch.toFixed(1)} Hz`
+                  : 'Waiting for a clear vocal sound'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Exercise progress */}
+          <View style={styles.progressCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.mutedSmall}>
+                Repetition {currentRep} of {repetitions}
+              </Text>
+
+              <Text style={styles.progressTime}>
+                {Math.ceil(remainingSeconds)}s left
+              </Text>
+            </View>
+
+            <View style={styles.exerciseProgressTrack}>
+              <View
+                style={[
+                  styles.exerciseProgressFill,
+                  { width: `${Math.min(100, overallProgress)}%` },
+                ]}
+              />
+            </View>
+
+            <Text style={styles.progressHint}>
+              {repetitionRemaining}s remaining in this repetition
+            </Text>
+          </View>
+        </View>
+
+        {quitModal}
       </SafeAreaView>
     );
   }
 
+  // Results
   const finalScore = score?.overallScore ?? 0;
   const stabilityScore = measurement?.stability ?? 0;
   const durationScore = measurement?.durationScore ?? 0;
   const voicedCoverage = measurement?.voicedCoveragePercent ?? 0;
   const resultPassed = score?.passed ?? false;
+
+  const repStability = measurement?.repStability ?? [];
+
+  const resultRows = [
+    ...Array.from({ length: repetitions }, (_, index) => {
+      const value = repStability[index];
+
+      return {
+        label: `Repetition ${index + 1}`,
+        value:
+          value !== undefined && Number.isFinite(value)
+            ? `${Math.round(value)}%`
+            : '--',
+      };
+    }),
+    {
+      label: 'Volume Stability',
+      value: `${Math.round(stabilityScore)}%`,
+    },
+    {
+      label: 'Duration Score',
+      value: `${Math.round(durationScore)}%`,
+    },
+    {
+      label: 'Average microphone level',
+      value:
+        measurement?.averageDb !== undefined
+          ? `${Math.max(
+              0,
+              Math.min(70, Math.round(measurement.averageDb + 70)),
+            )}/70 relative level`
+          : '--',
+    },
+    {
+      label: 'Voiced Coverage',
+      value: `${Math.round(voicedCoverage)}%`,
+    },
+    {
+      label: 'Measurement Quality',
+      value: `${Math.round(measurement?.measurementQuality ?? 0)}%`,
+    },
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -982,76 +1303,37 @@ export default function VolumeControlStabilityScreen({
         }
         scoreDetails={
           <View style={styles.resultCard}>
-            {[
-              {
-                label: 'Repetition 1',
-                value: `${Math.round(
-                  measurement?.repStability?.[0] ?? 0,
-                )}%`,
-              },
-              {
-                label: 'Repetition 2',
-                value: `${Math.round(
-                  measurement?.repStability?.[1] ?? 0,
-                )}%`,
-              },
-              {
-                label: 'Volume Stability',
-                value: `${Math.round(stabilityScore)}%`,
-              },
-              {
-                label: 'Duration Score',
-                value: `${Math.round(durationScore)}%`,
-              },
-              {
-                label: 'Average microphone level',
-                value:
-                  measurement?.averageDb !== undefined
-                    ? `${Math.max(
-                        0,
-                        Math.min(
-                          70,
-                          Math.round(measurement.averageDb + 70),
-                        ),
-                      )}/70 relative level`
-                    : '--',
-              },
-              {
-                label: 'Voiced Coverage',
-                value: `${Math.round(voicedCoverage)}%`,
-              },
-              {
-                label: 'Measurement Quality',
-                value: `${Math.round(
-                  measurement?.measurementQuality ?? 0,
-                )}%`,
-              },
-            ].map((item, index, rows) => (
+            {resultRows.map((item, index) => (
               <View
                 key={item.label}
                 style={[
                   styles.resultRow,
-                  index === rows.length - 1 && styles.lastResultRow,
+                  index === resultRows.length - 1 &&
+                    styles.lastResultRow,
                 ]}
               >
-                <Text style={styles.resultLabel}>{item.label}</Text>
+                <Text style={styles.resultLabel}>
+                  {item.label}
+                </Text>
 
-                <Text style={styles.resultValue}>{item.value}</Text>
+                <Text style={styles.resultValue}>
+                  {item.value}
+                </Text>
               </View>
             ))}
           </View>
         }
         onRetry={resetExercise}
-        onExit={() => router.back()}
+        onExit={() => void pauseForExitPrompt()}
       >
         {resultPassed && (
           <Pressable
             style={styles.nextButton}
-            onPress={() =>
-              router.replace('/exercises/volume' as any)
-            }
+            onPress={() => router.replace('/exercises/volume' as any)}
           >
-            <Text style={styles.nextButtonText}>Next Exercise</Text>
+            <Text style={styles.nextButtonText}>
+              Next Exercise
+            </Text>
 
             <Ionicons
               name="arrow-forward"
@@ -1061,6 +1343,8 @@ export default function VolumeControlStabilityScreen({
           </Pressable>
         )}
       </ExerciseResultsScreen>
+
+      {quitModal}
     </SafeAreaView>
   );
 }
@@ -1070,9 +1354,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
-  /* PREPARING */
-
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1105,26 +1386,156 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
-
-  /* SHARED */
-
+  exerciseScreen: {
+    position: 'absolute',
+    top: 90,
+    right: 8,
+    bottom: 0,
+    left: 8,
+    zIndex: 1000,
+    elevation: 1000,
+    backgroundColor: WHITE,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  exerciseHeaderText: {
+    flex: 1,
+  },
+  exerciseExitButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  exerciseEyebrow: {
+    color: ACCENT,
+    fontFamily: 'FredokaBold',
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  exerciseTitle: {
+    marginTop: 2,
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 21,
+  },
+  singingPrompt: {
+    marginTop: 20,
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 17,
+    backgroundColor: WHITE,
+  },
+  singingPromptTitle: {
+    color: BROWN,
+    fontFamily: 'FredokaBold',
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  singingPromptText: {
+    marginTop: 5,
+    color: SOFT_TEXT,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
   disabled: {
     opacity: 0.55,
   },
-
-  liveContent: {
-    gap: 9,
-  },
-
   rowBetween: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
   },
-
-  /* REFERENCE NOTE */
-
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   referenceCard: {
     marginTop: 12,
     padding: 13,
@@ -1133,32 +1544,27 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   referenceTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
-
   referenceCopy: {
     flex: 1,
   },
-
   referenceLabel: {
     color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 1,
   },
-
   referenceNote: {
     marginTop: 2,
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
-
   noteIconCircle: {
     width: 42,
     height: 42,
@@ -1167,7 +1573,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: LIGHT_PINK,
   },
-
   referenceInstruction: {
     marginTop: 7,
     color: SOFT_TEXT,
@@ -1175,107 +1580,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-
   referenceButton: {
     minHeight: 43,
     marginTop: 11,
     paddingHorizontal: 12,
     borderRadius: 13,
-    backgroundColor: '#FCD6DD',
+    backgroundColor: PINK,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
   },
-
   referenceButtonText: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
-
-  referenceReadyRow: {
-    marginTop: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-
-  referenceReadyText: {
-    flex: 1,
-    color: GUIDE_GREEN,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 15,
-  },
-
-  /* INFORMATION CARD */
-
-  infoCard: {
-    marginTop: 12,
-    padding: 13,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: LIGHT_PINK,
-  },
-
-  infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  infoIconCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: WHITE,
-  },
-
-  infoTitle: {
-    color: BROWN,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-  },
-
-  /* LIVE EXERCISE */
-
-  replayButton: {
-    minHeight: 39,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-
-  replayButtonText: {
-    color: BROWN,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-  },
-
   liveCard: {
-    padding: 12,
+    padding: 20,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: WHITE,
+    marginBottom: 14,
   },
-
   liveCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
   },
-
   liveIconCircle: {
     width: 34,
     height: 34,
@@ -1284,47 +1617,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: LIGHT_PINK,
   },
-
   liveCardHeading: {
     flex: 1,
     minWidth: 0,
   },
-
   cardTitle: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
+    fontSize: 15,
   },
-
   mutedSmall: {
     marginTop: 3,
     color: MUTED,
     fontFamily: 'FredokaRegular',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 14,
   },
-
   liveVolumeRow: {
+    width: '100%',
     marginTop: 8,
     flexDirection: 'row',
     alignItems: 'baseline',
+    justifyContent: 'center',
     gap: 6,
   },
-
   liveVolume: {
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 30,
+    textAlign: 'center',
   },
-
   liveUnit: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
+    textAlign: 'center',
   },
-
   statusBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     minHeight: 25,
     marginTop: 7,
     paddingHorizontal: 9,
@@ -1334,61 +1664,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     backgroundColor: MUTED,
   },
-
   statusText: {
     color: SOFT_TEXT,
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.25,
   },
-
   statusTextSuccess: {
     color: GUIDE_GREEN,
   },
-
-  helperText: {
-    marginTop: 7,
-    color: MUTED,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 14,
+  liveSectionDivider: {
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: 12,
   },
-
-  /* STABILITY METER */
-
   stabilityHeading: {
     flex: 1,
     minWidth: 0,
   },
-
   stabilityValue: {
     color: ACCENT,
     fontFamily: 'FredokaBold',
-    fontSize: 23,
+    fontSize: 30,
   },
-
   stabilityTrack: {
-    height: 9,
+    height: 14,
     marginTop: 11,
     borderRadius: 6,
     backgroundColor: LIGHT_PINK,
     overflow: 'hidden',
     position: 'relative',
   },
-
   stabilityFill: {
     height: '100%',
     borderRadius: 6,
     backgroundColor: ACCENT,
   },
-
   stabilityTargetMarker: {
     position: 'absolute',
     top: 0,
@@ -1396,7 +1713,6 @@ const styles = StyleSheet.create({
     width: 2,
     backgroundColor: BROWN,
   },
-
   scaleRow: {
     marginTop: 6,
     flexDirection: 'row',
@@ -1404,33 +1720,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 4,
   },
-
   scaleText: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 9,
   },
-
-  tipInline: {
-    marginTop: 10,
-    padding: 9,
-    borderRadius: 11,
-    backgroundColor: LIGHT_PINK,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-  },
-
-  tipInlineText: {
-    flex: 1,
-    color: SOFT_TEXT,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-  },
-
-  /* DETECTED NOTE */
-
   noteStatusBadge: {
     flexShrink: 0,
     minHeight: 23,
@@ -1441,18 +1735,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-
   noteStatusBadgeActive: {
     backgroundColor: SUCCESS_BG,
   },
-
   noteStatusText: {
     color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 8,
     letterSpacing: 0.2,
   },
-
   detectedNotePanel: {
     marginTop: 10,
     paddingVertical: 9,
@@ -1462,18 +1753,15 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     alignItems: 'center',
   },
-
   detectedNote: {
     color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 34,
     lineHeight: 40,
   },
-
   detectedNoteWaiting: {
     color: '#B9A7A3',
   },
-
   detectedFrequency: {
     marginTop: 2,
     color: MUTED,
@@ -1481,9 +1769,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
   },
-
-  /* RESULTS */
-
+  progressCard: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 15,
+    backgroundColor: WHITE,
+  },
+  progressTime: {
+    color: BROWN,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+  },
+  exerciseProgressTrack: {
+    height: 7,
+    marginTop: 9,
+    borderRadius: 5,
+    backgroundColor: LIGHT_PINK,
+    overflow: 'hidden',
+  },
+  exerciseProgressFill: {
+    height: '100%',
+    borderRadius: 5,
+    backgroundColor: ACCENT,
+  },
+  progressHint: {
+    marginTop: 6,
+    color: MUTED,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+  },
   resultCard: {
     width: '100%',
     marginTop: 8,
@@ -1494,7 +1809,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   resultRow: {
     minHeight: 40,
     flexDirection: 'row',
@@ -1505,18 +1819,15 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 5,
   },
-
   lastResultRow: {
     borderBottomWidth: 0,
   },
-
   resultLabel: {
     flex: 1,
     color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
   },
-
   resultValue: {
     flexShrink: 1,
     color: BROWN,
@@ -1524,7 +1835,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'right',
   },
-
   nextButton: {
     minHeight: 44,
     marginTop: 10,
@@ -1537,7 +1847,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
   nextButtonText: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',

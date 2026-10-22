@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,7 +39,6 @@ import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTa
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
- 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -454,6 +455,17 @@ export default function VolumeBandTargeting({
   );
   const [noVoiceDetected, setNoVoiceDetected] = useState(false);
 
+  // Quit-modal state and refs.
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
+  const quitInProgressRef = useRef(false);
+  const pausedPhaseRef = useRef<Phase>('directions');
+  const pauseStopPendingRef = useRef(false);
+
   const exerciseDurationSec =
     params.durationSec + REP_DURATION_EXTENSION_SEC;
   const totalDurationMs =
@@ -682,6 +694,9 @@ export default function VolumeBandTargeting({
     onFrame: (frame) => {
       if (
         phaseRef.current !== 'exercise' ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
         cancelledRecordingRef.current ||
         recordingFinishedRef.current
       ) {
@@ -713,7 +728,13 @@ export default function VolumeBandTargeting({
       recordingStartedAtRef.current = null;
       setLiveFrame(null);
 
-      if (cancelledRecordingRef.current) {
+      // An interrupted recording must never be scored or saved.
+      if (
+        cancelledRecordingRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
         finishingRef.current = false;
         stopRequestedRef.current = false;
         shouldProcessResultRef.current = false;
@@ -819,10 +840,178 @@ export default function VolumeBandTargeting({
   const stopRecordingRef = useRef(stopRecording);
   stopRecordingRef.current = stopRecording;
 
+  /**
+   * Opens the quit modal and safely interrupts an active recording.
+   * This exercise records all repetitions as one continuous recording,
+   * so an interrupted attempt restarts from the countdown.
+   */
+  const pauseForExitPrompt = () => {
+    if (
+      quitInProgressRef.current ||
+      showQuitModalRef.current
+    ) {
+      return;
+    }
+
+    pausedPhaseRef.current = phaseRef.current;
+    pausedRef.current = true;
+    showQuitModalRef.current = true;
+
+    setShowQuitModal(true);
+    setIsQuitting(false);
+    setIsPausing(false);
+
+    if (
+      phaseRef.current === 'exercise' &&
+      (isRecording || recordingStartedAtRef.current !== null)
+    ) {
+      cancelledRecordingRef.current = true;
+      shouldProcessResultRef.current = false;
+      finishingRef.current = true;
+      recordingStartedAtRef.current = null;
+
+      setLiveFrame(null);
+      setLiveHistory([]);
+
+      if (!stopRequestedRef.current) {
+        stopRequestedRef.current = true;
+        pauseStopPendingRef.current = true;
+        setIsPausing(true);
+
+        void (async () => {
+          try {
+            await stopRecordingRef.current();
+          } catch (error) {
+            console.error(
+              'VOLUME BAND PAUSE RECORDING ERROR:',
+              error,
+            );
+          } finally {
+            pauseStopPendingRef.current = false;
+            setIsPausing(false);
+          }
+        })();
+      }
+    }
+  };
+
+  /**
+   * Closes the modal and returns to the previous phase.
+   * If recording was interrupted, restart this exercise from the countdown.
+   */
+  const continueExercise = () => {
+    if (
+      isQuitting ||
+      quitInProgressRef.current ||
+      pauseStopPendingRef.current
+    ) {
+      return;
+    }
+
+    const previousPhase = pausedPhaseRef.current;
+
+    showQuitModalRef.current = false;
+    pausedRef.current = false;
+    setShowQuitModal(false);
+
+    if (previousPhase === 'exercise') {
+      // Reset recording refs before restarting the full attempt.
+      finishingRef.current = false;
+      stopRequestedRef.current = false;
+      recordingFinishedRef.current = false;
+      shouldProcessResultRef.current = false;
+      cancelledRecordingRef.current = false;
+      voicedFrameCountRef.current = 0;
+      recordingStartedAtRef.current = null;
+
+      setElapsedMs(0);
+      setCountdown(PREPARATION_COUNTDOWN_SECONDS);
+      setLiveFrame(null);
+      setLiveHistory([]);
+      setRecordingNotice(null);
+      setNoVoiceDetected(false);
+
+      setScore(0);
+      setAverageDb(0);
+      setConsistency(0);
+      setTargetReached(false);
+      setPassed(false);
+      setMeasurementQuality(0);
+      setRepScores(
+        Array.from({ length: paramsRef.current.repetitions }, () => 0),
+      );
+
+      setPhase('countdown');
+      return;
+    }
+
+    // Countdown resumes from its current count; other phases stay unchanged.
+    setPhase(previousPhase);
+  };
+
+  /**
+   * Quits the exercise and returns to the exercise dashboard.
+   */
+  const quitExercise = async () => {
+    if (quitInProgressRef.current) return;
+
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    cancelledRecordingRef.current = true;
+    shouldProcessResultRef.current = false;
+    recordingStartedAtRef.current = null;
+
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
+    setIsQuitting(true);
+
+    try {
+      if (isRecording && !stopRequestedRef.current) {
+        stopRequestedRef.current = true;
+
+        try {
+          await stopRecordingRef.current();
+        } catch (error) {
+          console.error(
+            'VOLUME BAND QUIT RECORDING ERROR:',
+            error,
+          );
+        }
+      }
+    } finally {
+      router.replace('/dashboard?tab=exercises');
+    }
+  };
+
+  // Android hardware back opens the same quit modal.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (showQuitModalRef.current) {
+          return true;
+        }
+
+        pauseForExitPrompt();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [isRecording]);
+
   useEffect(() => {
     if (phase !== 'exercise') return;
 
     const timer = setInterval(() => {
+      if (
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        return;
+      }
+
       const startedAt = recordingStartedAtRef.current;
 
       if (startedAt === null || finishingRef.current) return;
@@ -870,6 +1059,14 @@ export default function VolumeBandTargeting({
   }, [phase, totalDurationMs]);
 
   const beginRecording = async () => {
+    if (
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
     finishingRef.current = false;
     stopRequestedRef.current = false;
     recordingFinishedRef.current = false;
@@ -881,7 +1078,12 @@ export default function VolumeBandTargeting({
     try {
       await startRecording();
 
-      if (cancelledRecordingRef.current) {
+      if (
+        cancelledRecordingRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
         if (!stopRequestedRef.current) {
           stopRequestedRef.current = true;
 
@@ -905,21 +1107,23 @@ export default function VolumeBandTargeting({
       recordingFinishedRef.current = false;
       shouldProcessResultRef.current = false;
 
-      setRecordingNotice(
-        'The microphone could not start. Please check microphone permission and try again.',
-      );
-      setPhase('directions');
+      if (!quitInProgressRef.current) {
+        setRecordingNotice(
+          'The microphone could not start. Please check microphone permission and try again.',
+        );
+        setPhase('directions');
+      }
     }
   };
 
   const startExercise = () => {
     if (
       !parametersReady ||
-      !hasPlayedReference ||
-      referencePlaying ||
       isRecording ||
       phase === 'countdown' ||
-      phase === 'exercise'
+      phase === 'exercise' ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -951,11 +1155,19 @@ export default function VolumeBandTargeting({
     stopRequestedRef.current = false;
     recordingFinishedRef.current = false;
 
+    pausedRef.current = false;
     setPhase('countdown');
   };
 
   useEffect(() => {
-    if (phase !== 'countdown') return;
+    if (
+      phase !== 'countdown' ||
+      pausedRef.current ||
+      showQuitModal ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
 
     if (countdown <= 0) {
       void beginRecording();
@@ -967,27 +1179,7 @@ export default function VolumeBandTargeting({
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [phase, countdown]);
-
-  const cancelAndLeave = () => {
-    cancelledRecordingRef.current = true;
-    shouldProcessResultRef.current = false;
-    finishingRef.current = true;
-    recordingStartedAtRef.current = null;
-
-    if (isRecording && !stopRequestedRef.current) {
-      stopRequestedRef.current = true;
-
-      void stopRecordingRef.current().catch((error) => {
-        console.error(
-          'VOLUME BAND CANCEL RECORDING ERROR:',
-          error,
-        );
-      });
-    }
-
-    router.back();
-  };
+  }, [phase, countdown, showQuitModal]);
 
   const currentRep = Math.min(
     params.repetitions,
@@ -1004,444 +1196,452 @@ export default function VolumeBandTargeting({
   );
 
   const liveDb = getLiveDisplayLevel(liveFrame);
-  const status = getLiveStatus(liveDb, params.targetDbRange);
-  const statusColor = getStatusColor(status);
   const targetRangeText = formatTargetRange(params.targetDbRange);
+
+  // Shared quit modal UI, used on every phase of this screen.
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons
+              name="exit-outline"
+              size={30}
+              color={BROWN}
+            />
+          </View>
+
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.modalMessage}>
+            {pausedPhaseRef.current === 'exercise'
+              ? 'Your recording has been stopped. If you continue, this exercise will restart from the countdown.'
+              : pausedPhaseRef.current === 'countdown'
+                ? 'Your exercise is paused. Continue when you are ready to start the countdown again.'
+                : 'Are you sure you want to leave Volume Band Targeting?'}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            disabled={isQuitting || isPausing}
+            onPress={continueExercise}
+            style={({ pressed }) => [
+              styles.continueButton,
+              pressed && styles.buttonPressed,
+              (isQuitting || isPausing) && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              {isPausing ? 'Pausing...' : 'Continue Exercise'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quit exercise"
+            disabled={isQuitting}
+            onPress={() => {
+              void quitExercise();
+            }}
+            style={({ pressed }) => [
+              styles.quitButton,
+              pressed && styles.buttonPressed,
+              isQuitting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
 
   if (!parametersReady || !referenceNoteReady) {
     return (
-      <SafeAreaView style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={44} color={BROWN} />
-        </View>
+      <>
+        {quitModal}
 
-        <Text style={styles.preparingTitle}>
-          Preparing Your Exercise
-        </Text>
+        <SafeAreaView style={styles.preparingScreen}>
+          <View style={styles.preparingIconCircle}>
+            <Ionicons
+              name="options-outline"
+              size={44}
+              color={BROWN}
+            />
+          </View>
 
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level and
-          preparing your vocal range.
-        </Text>
+          <Text style={styles.preparingTitle}>
+            Preparing Your Exercise
+          </Text>
 
-        <ActivityIndicator
-          size="large"
-          color={BROWN}
-          style={styles.spinner}
-        />
-      </SafeAreaView>
+          <Text style={styles.preparingSubtitle}>
+            Adjusting the exercise to your current difficulty level and
+            preparing your vocal range.
+          </Text>
+
+          <ActivityIndicator
+            size="large"
+            color={BROWN}
+            style={styles.spinner}
+          />
+        </SafeAreaView>
+      </>
     );
   }
 
   if (phase === 'directions') {
-    const startDisabled =
-      !parametersReady ||
-      !hasPlayedReference ||
-      referencePlaying ||
-      isRecording;
+    const startDisabled = !parametersReady || isRecording;
 
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ExerciseScreen
-          title="Volume Band Targeting"
-          category="VOLUME CONTROL"
-          icon="options-outline"
-          instructions={`Listen to the ${referenceNote.name} reference note, sing it on “Ah,” and keep your voice within the target volume band.`}
-          preparationSteps={[
-            {
-              icon: 'musical-note-outline',
-              text: `Play the ${referenceNote.name} reference note and listen carefully.`,
-            },
-            {
-              icon: 'mic-outline',
-              text: 'Take a comfortable breath before singing.',
-            },
-            {
-              icon: 'options-outline',
-              text: `Adjust your voice to stay within ${targetRangeText}.`,
-            },
-            {
-              icon: 'timer-outline',
-              text: `Hold the target volume for ${exerciseDurationSec} seconds per repetition.`,
-            },
-          ]}
-          summary={[
-            {
-              label: 'Duration',
-              value: `${exerciseDurationSec} sec`,
-              hint: 'per repetition',
-            },
-            {
-              label: 'Repetitions',
-              value: String(params.repetitions),
-            },
-            {
-              label: 'Target score',
-              value: `${Math.round(params.consistencyThreshold)}%`,
-            },
-          ]}
-          targetValue={targetRangeText}
-          targetHint="Move your voice into the pink band and keep the volume steady."
-          repetitions={params.repetitions}
-          tip="Don't chase the number. Find a comfortable loudness first, then make small adjustments to stay inside the band."
-          tier={resolvedTier}
-          onBack={cancelAndLeave}
-          onStart={startExercise}
-          startDisabled={startDisabled}
-          startLabel={
-            !hasPlayedReference
-              ? 'Play the Reference Note First'
-              : referencePlaying
-                ? 'Reference Note Playing...'
-                : isRecording
-                  ? 'Preparing Exercise...'
-                  : 'Start Exercise'
-          }
-          error={referencePlaybackError ?? recordingNotice ?? undefined}
-        >
-          <View style={styles.referenceCard}>
-            <View style={styles.referenceTopRow}>
-              <View style={styles.referenceCopy}>
-                <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={styles.referenceNote}>
-                  {referenceNote.name}
-                </Text>
-              </View>
+      <>
+        {quitModal}
 
-              <View style={styles.referenceIconCircle}>
-                <Ionicons
-                  name="musical-note"
-                  size={22}
-                  color={BROWN}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.referenceInstruction}>
-              Play the note, then sing it on “Ah” while adjusting your
-              volume to stay inside the target band.
-            </Text>
-
-            <ReferenceNoteButton
-              playing={referencePlaying}
-              label={`Play ${referenceNote.name}`}
-              onPress={() => void playReferenceNote()}
-            />
-
-            {hasPlayedReference && (
-              <View style={styles.referenceReadyRow}>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={16}
-                  color={GUIDE_GREEN}
-                />
-                <Text style={styles.referenceReadyText}>
-                  Reference note played. You’re ready to begin.
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <TargetBandMeter
-            liveDb={0}
-            targetRange={params.targetDbRange}
-          />
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoHeader}>
-              <View style={styles.infoIconCircle}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={19}
-                  color={DARK_PINK}
-                />
-              </View>
-
-              <Text style={styles.infoTitle}>What to focus on</Text>
-            </View>
-
-            <Text style={styles.infoText}>
-              This exercise evaluates how consistently your detected
-              microphone level stays within a target range. The displayed
-              level is a relative audio indicator, not a calibrated
-              sound-pressure measurement.
-            </Text>
-          </View>
-        </ExerciseScreen>
-      </SafeAreaView>
-    );
-  }
-
-  if (phase === 'countdown') {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ExerciseCountdownScreen
-          icon="musical-note-outline"
-          title="Get Ready"
-          countdown={countdown}
-          promptTitle={`Prepare to sing ${referenceNote.name}.`}
-          prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume inside the ${targetRangeText} target band for ${exerciseDurationSec} seconds per repetition.`}
-          onBack={cancelAndLeave}
-        />
-      </SafeAreaView>
-    );
-  }
-
-  if (phase === 'exercise') {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.activeScreen}>
-          <View style={styles.activeHeader}>
-            <Pressable
-              style={styles.backButton}
-              onPress={cancelAndLeave}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Ionicons name="arrow-back" size={22} color={BROWN} />
-            </Pressable>
-
-            <View style={styles.activeHeaderCopy}>
-              <Text style={styles.activeCategory}>
-                VOLUME CONTROL
-              </Text>
-              <Text style={styles.activeTitle}>
-                Volume Band Targeting
-              </Text>
-            </View>
-
-            <View style={styles.activeIconCircle}>
-              <Ionicons
-                name="options-outline"
-                size={22}
-                color={BROWN}
-              />
-            </View>
-          </View>
-
-          <View style={styles.activePromptBlock}>
-            <Text style={styles.activePromptTitle}>Hold the zone</Text>
-            <Text style={styles.activePrompt}>
-              Sing {referenceNote.name} on “Ah”. Move your voice into
-              the {` ${targetRangeText}`} target band and keep it steady.
-            </Text>
-          </View>
-
-          <ScrollView
-            style={styles.activeScroll}
-            contentContainerStyle={styles.liveContent}
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled
+        <SafeAreaView style={styles.safeArea}>
+          <ExerciseScreen
+            title="Volume Band Targeting"
+            category="VOLUME CONTROL"
+            icon="options-outline"
+            instructions={`Listen to the ${referenceNote.name} reference note, sing it on “Ah,” and keep your voice within the target volume band.`}
+            preparationSteps={[
+              {
+                icon: 'musical-note-outline',
+                text: `Play the ${referenceNote.name} reference note and listen carefully.`,
+              },
+              {
+                icon: 'mic-outline',
+                text: 'Take a comfortable breath before singing.',
+              },
+              {
+                icon: 'options-outline',
+                text: `Adjust your voice to stay within ${targetRangeText}.`,
+              },
+              {
+                icon: 'timer-outline',
+                text: `Hold the target volume for ${exerciseDurationSec} seconds per repetition.`,
+              },
+            ]}
+            summary={[
+              {
+                label: 'Duration',
+                value: `${exerciseDurationSec} sec`,
+                hint: 'per repetition',
+              },
+              {
+                label: 'Repetitions',
+                value: String(params.repetitions),
+              },
+              {
+                label: 'Target score',
+                value: `${Math.round(params.consistencyThreshold)}%`,
+              },
+            ]}
+            targetValue={targetRangeText}
+            targetHint="Move your voice into the pink band and keep the volume steady."
+            repetitions={params.repetitions}
+            tip="Don't chase the number. Find a comfortable loudness first, then make small adjustments to stay inside the band."
+            tier={resolvedTier}
+            onBack={pauseForExitPrompt}
+            onStart={startExercise}
+            startDisabled={startDisabled}
+            startLabel={
+              isRecording
+                ? 'Preparing Exercise...'
+                : 'Start Exercise'
+            }
+            error={referencePlaybackError ?? recordingNotice ?? undefined}
           >
+            <View style={styles.referenceCard}>
+              <View style={styles.referenceTopRow}>
+                <View style={styles.referenceCopy}>
+                  <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
+                  <Text style={styles.referenceNote}>
+                    {referenceNote.name}
+                  </Text>
+                </View>
+
+                <View style={styles.referenceIconCircle}>
+                  <Ionicons
+                    name="musical-note"
+                    size={22}
+                    color={BROWN}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.referenceInstruction}>
+                Play the note, then sing it on “Ah” while adjusting your
+                volume to stay inside the target band.
+              </Text>
+
+              <ReferenceNoteButton
+                playing={referencePlaying}
+                label={`Play ${referenceNote.name}`}
+                onPress={() => void playReferenceNote()}
+              />
+
+              {hasPlayedReference && (
+                <View style={styles.referenceReadyRow}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={GUIDE_GREEN}
+                  />
+                  <Text style={styles.referenceReadyText}>
+                    Reference note played. You’re ready to begin.
+                  </Text>
+                </View>
+              )}
+            </View>
+
             <TargetBandMeter
-              liveDb={liveDb}
+              liveDb={0}
               targetRange={params.targetDbRange}
             />
 
-            <View
-              style={[
-                styles.liveCard,
-                { borderColor: statusColor },
-              ]}
-            >
-              <View style={styles.liveCardHeader}>
-                <View style={styles.liveIconCircle}>
+            <View style={styles.infoCard}>
+              <View style={styles.infoHeader}>
+                <View style={styles.infoIconCircle}>
                   <Ionicons
-                    name="volume-medium-outline"
+                    name="information-circle-outline"
                     size={19}
                     color={DARK_PINK}
                   />
                 </View>
 
-                <View style={styles.flex}>
-                  <Text style={styles.cardTitle}>Your Live Volume</Text>
+                <Text style={styles.infoTitle}>What to focus on</Text>
+              </View>
+
+              <Text style={styles.infoText}>
+                This exercise evaluates how consistently your detected
+                microphone level stays within a target range. The displayed
+                level is a relative audio indicator, not a calibrated
+                sound-pressure measurement.
+              </Text>
+            </View>
+          </ExerciseScreen>
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  if (phase === 'countdown') {
+    return (
+      <>
+        {quitModal}
+
+        <SafeAreaView style={styles.safeArea}>
+          <ExerciseCountdownScreen
+            icon="musical-note-outline"
+            title="Get Ready"
+            countdown={countdown}
+            promptTitle={`Prepare to sing ${referenceNote.name}.`}
+            prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume inside the ${targetRangeText} target band for ${exerciseDurationSec} seconds per repetition.`}
+            onBack={pauseForExitPrompt}
+          />
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  if (phase === 'exercise') {
+    return (
+      <>
+        {quitModal}
+
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.exerciseScreen}>
+            <View style={styles.activeHeader}>
+              <View style={styles.activeHeaderCopy}>
+                <Text style={styles.activeTitle}>
+                  Volume Band Targeting
+                </Text>
+                <Text style={styles.activeCategory}>
+                  VOLUME CONTROL
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.activePromptBlock}>
+              <Text style={styles.activePromptTitle}>Hold the zone</Text>
+              <Text style={styles.activePrompt}>
+                Sing {referenceNote.name} on “Ah”. Adjust your voice to
+                reach the {targetRangeText} target band and keep it steady.
+              </Text>
+            </View>
+
+            <ScrollView
+              style={styles.activeScroll}
+              contentContainerStyle={styles.liveContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              <TargetBandMeter
+                liveDb={liveDb}
+                targetRange={params.targetDbRange}
+              />
+
+              <StabilityHistory
+                history={liveHistory}
+                targetRange={params.targetDbRange}
+              />
+
+              <View style={styles.bottomRepCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.repLabel}>Repetition</Text>
+                  <Text style={styles.repValue}>
+                    {currentRep} of {params.repetitions}
+                  </Text>
+                </View>
+
+                <View style={styles.repTrack}>
+                  <View
+                    style={[
+                      styles.repProgress,
+                      { width: `${progress * 100}%` },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.rowBetween}>
                   <Text style={styles.mutedSmall}>
-                    Relative microphone level
+                    Keep your volume steady
+                  </Text>
+                  <Text style={styles.repTimer}>
+                    {Math.max(
+                      0,
+                      exerciseDurationSec -
+                        Math.floor(currentRepElapsed / 1000),
+                    )}
+                    s left
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.liveVolumeRow}>
-                <Text style={styles.liveVolume}>
-                  {liveDb > 0 ? formatDb(liveDb) : '--'}
+              {!isRecording && (
+                <Text style={styles.waitingText}>
+                  Starting microphone...
                 </Text>
-                <Text style={styles.liveUnit}>relative level</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: `${statusColor}18` },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: statusColor },
-                  ]}
-                />
-
-                <Text
-                  style={[
-                    styles.statusText,
-                    { color: statusColor },
-                  ]}
-                >
-                  {getStatusMessage(status)}
-                </Text>
-              </View>
-
-              <Text style={styles.helperText}>
-                Relative microphone level, not calibrated acoustic dB SPL.
-              </Text>
-            </View>
-
-            <StabilityHistory
-              history={liveHistory}
-              targetRange={params.targetDbRange}
-            />
-
-            {!isRecording && (
-              <Text style={styles.waitingText}>
-                Starting microphone...
-              </Text>
-            )}
-          </ScrollView>
-
-          <View style={styles.bottomRepCard}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.repLabel}>Repetition</Text>
-              <Text style={styles.repValue}>
-                {currentRep} of {params.repetitions}
-              </Text>
-            </View>
-
-            <View style={styles.repTrack}>
-              <View
-                style={[
-                  styles.repProgress,
-                  { width: `${progress * 100}%` },
-                ]}
-              />
-            </View>
-
-            <View style={styles.rowBetween}>
-              <Text style={styles.mutedSmall}>
-                Keep your volume steady
-              </Text>
-              <Text style={styles.repTimer}>
-                {Math.max(
-                  0,
-                  exerciseDurationSec -
-                    Math.floor(currentRepElapsed / 1000),
-                )}
-                s left
-              </Text>
-            </View>
+              )}
+            </ScrollView>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ExerciseResultsScreen
-        title="Volume Band Results"
-        subtitle={
-          noVoiceDetected
-            ? `No usable singing signal was detected. No score was calculated or saved. Sing ${referenceNote.name} on “Ah” near the microphone, then try again.`
-            : passed
-              ? 'Nice control. You stayed inside the target band consistently.'
-              : targetReached
-                ? 'You reached the band. Now work on keeping the volume steadier.'
-                : `Focus on finding and staying inside the ${targetRangeText} zone.`
-        }
-        score={noVoiceDetected ? 0 : score}
-        scoreSuffix={noVoiceDetected ? 'NO INPUT' : '/100'}
-        resultIcon={
-          noVoiceDetected
-            ? 'alert-circle-outline'
-            : passed
-              ? 'checkmark-circle'
-              : 'refresh-circle'
-        }
-        scoreMessage={
-          noVoiceDetected
-            ? 'No score recorded'
-            : passed
-              ? 'Exercise passed'
-              : 'Keep practicing'
-        }
-        scoreDetails={
-          <View style={styles.resultCard}>
-            {repScores.map((repScore, index) => (
-              <View key={`rep-${index}`} style={styles.resultRow}>
-                <Text style={styles.resultLabel}>
-                  Repetition {index + 1}
-                </Text>
+    <>
+      {quitModal}
+
+      <SafeAreaView style={styles.safeArea}>
+        <ExerciseResultsScreen
+          title="Volume Band Results"
+          subtitle={
+            noVoiceDetected
+              ? `No usable singing signal was detected. No score was calculated or saved. Sing ${referenceNote.name} on “Ah” near the microphone, then try again.`
+              : passed
+                ? 'Nice control. You stayed inside the target band consistently.'
+                : targetReached
+                  ? 'You reached the band. Now work on keeping the volume steadier.'
+                  : `Focus on finding and staying inside the ${targetRangeText} zone.`
+          }
+          score={noVoiceDetected ? 0 : score}
+          scoreSuffix={noVoiceDetected ? 'NO INPUT' : '/100'}
+          resultIcon={
+            noVoiceDetected
+              ? 'alert-circle-outline'
+              : passed
+                ? 'checkmark-circle'
+                : 'refresh-circle'
+          }
+          scoreMessage={
+            noVoiceDetected
+              ? 'No score recorded'
+              : passed
+                ? 'Exercise passed'
+                : 'Keep practicing'
+          }
+          scoreDetails={
+            <View style={styles.resultCard}>
+              {repScores.map((repScore, index) => (
+                <View key={`rep-${index}`} style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>
+                    Repetition {index + 1}
+                  </Text>
+                  <Text style={styles.resultValue}>
+                    {noVoiceDetected ? '—' : `${repScore}%`}
+                  </Text>
+                </View>
+              ))}
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultLabel}>Average Volume</Text>
                 <Text style={styles.resultValue}>
-                  {noVoiceDetected ? '—' : `${repScore}%`}
-                </Text>
-              </View>
-            ))}
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Average Volume</Text>
-              <Text style={styles.resultValue}>
-                {noVoiceDetected
-                  ? 'No input'
-                  : `${formatDb(averageDb)} dB`}
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Target Band</Text>
-              <Text style={styles.resultValue}>{targetRangeText}</Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Consistency</Text>
-              <Text style={styles.resultValue}>
-                {noVoiceDetected ? '—' : `${consistency}%`}
-              </Text>
-            </View>
-
-            <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Band Compliance</Text>
-              <Text style={styles.resultValue}>
-                {noVoiceDetected
-                  ? 'No input'
-                  : targetReached
-                    ? 'Inside ✓'
-                    : 'Outside'}
-              </Text>
-            </View>
-
-            <View style={[styles.resultRow, styles.lastResultRow]}>
-              <View style={styles.flex}>
-                <Text style={styles.resultLabel}>
-                  Measurement quality
-                </Text>
-                <Text style={styles.mutedSmall}>
                   {noVoiceDetected
-                    ? 'No usable microphone signal was detected. This attempt was not scored or saved.'
-                    : `${measurementQuality}% of expected audio windows were available.`}
+                    ? 'No input'
+                    : `${formatDb(averageDb)} dB`}
                 </Text>
               </View>
 
-              <Text style={styles.resultValue}>
-                {noVoiceDetected ? '—' : `${measurementQuality}%`}
-              </Text>
+              <View style={styles.resultRow}>
+                <Text style={styles.resultLabel}>Target Band</Text>
+                <Text style={styles.resultValue}>
+                  {targetRangeText}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultLabel}>Consistency</Text>
+                <Text style={styles.resultValue}>
+                  {noVoiceDetected ? '—' : `${consistency}%`}
+                </Text>
+              </View>
+
+              <View style={styles.resultRow}>
+                <Text style={styles.resultLabel}>Band Compliance</Text>
+                <Text style={styles.resultValue}>
+                  {noVoiceDetected
+                    ? 'No input'
+                    : targetReached
+                      ? 'Inside ✓'
+                      : 'Outside'}
+                </Text>
+              </View>
+
+              <View style={[styles.resultRow, styles.lastResultRow]}>
+                <View style={styles.flex}>
+                  <Text style={styles.resultLabel}>
+                    Measurement quality
+                  </Text>
+                  <Text style={styles.mutedSmall}>
+                    {noVoiceDetected
+                      ? 'No usable microphone signal was detected. This attempt was not scored or saved.'
+                      : `${measurementQuality}% of expected audio windows were available.`}
+                  </Text>
+                </View>
+
+                <Text style={styles.resultValue}>
+                  {noVoiceDetected ? '—' : `${measurementQuality}%`}
+                </Text>
+              </View>
             </View>
-          </View>
-        }
-        onRetry={startExercise}
-        onExit={() => router.back()}
-      >
-        <></>
-      </ExerciseResultsScreen>
-    </SafeAreaView>
+          }
+          onRetry={startExercise}
+          onExit={pauseForExitPrompt}
+        >
+          <></>
+        </ExerciseResultsScreen>
+      </SafeAreaView>
+    </>
   );
 }
 
@@ -1563,20 +1763,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
-  playbackError: {
-    marginTop: 6,
-    color: GUIDE_RED,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-  },
   disabled: {
     opacity: 0.6,
   },
-  activeScreen: {
-    flex: 1,
+  exerciseScreen: {
+    position: 'absolute',
+    top: 90,
+    right: 8,
+    bottom: 0,
+    left: 8,
+    zIndex: 1000,
+    elevation: 1000,
     backgroundColor: WHITE,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 18,
   },
   activeHeader: {
@@ -1585,16 +1784,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: LIGHT_PINK,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   activeHeaderCopy: {
     position: 'absolute',
@@ -1615,14 +1804,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 17,
     textAlign: 'center',
-  },
-  activeIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   activePromptBlock: {
     alignItems: 'center',
@@ -1867,72 +2048,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: 'center',
   },
-  liveCard: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: LIGHT_PINK,
-    borderWidth: 1.5,
-    alignItems: 'center',
-  },
-  liveCardHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  liveIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: WHITE,
-  },
-  liveVolumeRow: {
-    marginTop: 5,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  liveVolume: {
-    color: BROWN,
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    lineHeight: 49,
-    includeFontPadding: false,
-  },
-  liveUnit: {
-    marginLeft: 6,
-    color: MUTED,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-  },
-  statusBadge: {
-    marginTop: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-  },
-  helperText: {
-    marginTop: 8,
-    color: MUTED,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: 'center',
-  },
   waitingText: {
     marginTop: 10,
     textAlign: 'center',
@@ -1974,5 +2089,84 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
     textAlign: 'right',
+  },
+
+  // Quit modal styling.
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  continueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  continueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  quitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  quitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  buttonPressed: {
+    opacity: 0.75,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });
