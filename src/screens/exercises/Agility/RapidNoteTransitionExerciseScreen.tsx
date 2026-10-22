@@ -1180,7 +1180,7 @@ export default function RapidNoteTransitionExerciseScreen({
           label="Pitch Range"
           value={
             assessedVocalRangeHz
-              ? `${assessedVocalRangeHz.lowHz.toFixed(0)}–${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
+              ? `${assessedVocalRangeHz.lowHz.toFixed(0)} → ${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
               : 'Tier pitch range (assessment unavailable)'
           }
         />

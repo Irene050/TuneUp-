@@ -1029,7 +1029,7 @@ export default function SustainedExhaleScreen({
               text: 'Stay close enough to the microphone for consistent audio.',
             },
           ]}
-          targetValue={`${params.durationRangeSec[0]}–${params.durationRangeSec[1]} sec`}
+          targetValue={`${params.durationRangeSec[0]} → ${params.durationRangeSec[1]} sec`}
           targetHint="sustained exhale"
           repetitions={params.repetitions}
           tip="Focus on keeping your airflow steady rather than trying to force a longer exhale."

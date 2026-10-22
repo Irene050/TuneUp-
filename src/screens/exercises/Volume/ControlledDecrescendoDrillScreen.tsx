@@ -1013,14 +1013,14 @@ export default function ControlledDecrescendoDrill({
           },
           {
             label: 'Target range',
-            value: `${targetMax}–${targetMin} dB`,
+            value: `${targetMax} → ${targetMin} dB`,
           },
           {
             label: 'Duration per repetition',
             value: `${rampSeconds} seconds`,
           },
         ]}
-        targetValue={`${targetMax}–${targetMin} dB`}
+        targetValue={`${targetMax} → ${targetMin} dB`}
         targetHint="Begin comfortably loud, then gradually lower your volume."
         repetitions={repetitions}
         tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
@@ -1330,7 +1330,7 @@ export default function ControlledDecrescendoDrill({
           />
           <ResultItem
             label="Observed range"
-            value={`${minDb}–${maxDb} dBFS`}
+            value={`${minDb} → ${maxDb} dBFS`}
           />
           <ResultItem
             label="Start → End"

@@ -74,7 +74,7 @@ function formatTargetRange(targetRange: [number, number]): string {
   const min = Math.round(Math.min(targetRange[0], targetRange[1]));
   const max = Math.round(Math.max(targetRange[0], targetRange[1]));
 
-  return `${min}–${max} dB`;
+  return `${min} → ${max} dB`;
 }
 
 function normalizeBandPosition(db: number): number {
