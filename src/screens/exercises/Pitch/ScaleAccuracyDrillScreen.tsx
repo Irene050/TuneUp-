@@ -43,7 +43,6 @@ import {
 import {
   calcLiveStability,
   calcPitchAccuracy,
-  frequencyToNote,
   segmentIntoNotes,
 } from '@/utils/dsp/pitch';
 import {
@@ -51,6 +50,7 @@ import {
   playNoteSequence,
 } from '@/utils/music/notePlayer';
 import {
+  frequencyToNoteName,
   getRandomScale,
   type VocalRange,
 } from '@/utils/music/notes';
@@ -1906,7 +1906,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
                 result.noteDeviations[index] ?? Infinity;
 
               const noteName =
-                detected > 0 ? frequencyToNote(detected) : '--';
+                detected > 0 ? frequencyToNoteName(detected) : '--';
 
               const correct =
                 detected > 0 &&

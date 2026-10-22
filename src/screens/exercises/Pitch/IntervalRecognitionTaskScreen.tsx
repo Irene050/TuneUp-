@@ -41,13 +41,11 @@ import {
 import {
   calcLiveStability,
   calcPitchAccuracy,
-  frequencyToNote,
 } from '@/utils/dsp/pitch';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  getRandomIntervalNotes,
-  type VocalRange,
+  createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
+  type VocalRange
 } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
@@ -1845,7 +1843,7 @@ export default function IntervalRecognitionTaskScreen({
                     ]}
                   >
                     {liveFrame && liveFrame.pitch > 0
-                      ? liveFrame.note || frequencyToNote(liveFrame.pitch)
+                      ? liveFrame.note || frequencyToNoteName(liveFrame.pitch)
                       : '--'}
                   </Text>
 
@@ -2246,10 +2244,10 @@ export default function IntervalRecognitionTaskScreen({
 
   if (phase === 'results' && result) {
     const detectedNote1 =
-      result.freq1 > 0 ? frequencyToNote(result.freq1) : '--';
+      result.freq1 > 0 ? frequencyToNoteName(result.freq1) : '--';
 
     const detectedNote2 =
-      result.freq2 > 0 ? frequencyToNote(result.freq2) : '--';
+      result.freq2 > 0 ? frequencyToNoteName(result.freq2) : '--';
 
     return (
       <>

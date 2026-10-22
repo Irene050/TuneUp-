@@ -38,15 +38,15 @@ import { scoreNoteMatching } from '@/services/scoring/pitch/noteMatching';
 import {
   calcLiveStability,
   calcPitchAccuracy,
-  frequencyToNote,
 } from '@/utils/dsp/pitch';
 import {
   disposeNotePlayer,
   playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
+  frequencyToNoteName,
   getRandomPitchNote,
-  type VocalRange,
+  type VocalRange
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
@@ -1634,7 +1634,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
                 </Text>
                 <Text style={styles.comparisonNote}>
                   {result.detectedFrequency > 0
-                    ? frequencyToNote(result.detectedFrequency)
+                    ? frequencyToNoteName(result.detectedFrequency)
                     : '--'}
                 </Text>
                 <Text style={styles.comparisonFrequency}>

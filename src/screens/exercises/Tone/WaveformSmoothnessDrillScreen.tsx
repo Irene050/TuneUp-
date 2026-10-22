@@ -59,13 +59,11 @@ import {
   samplesToFFTFrames,
 } from '@/utils/dsp/fft';
 import {
-  frequencyToNote,
-} from '@/utils/dsp/pitch';
-import {
   disposeNotePlayer,
   playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
+  frequencyToNoteName,
   getRandomPitchNote,
   type VocalRange,
 } from '@/utils/music/notes';
@@ -1407,7 +1405,7 @@ export default function WaveformSmoothnessDrillScreen({
       liveFrame &&
       Number.isFinite(liveFrame.pitch) &&
       liveFrame.pitch > 0
-        ? frequencyToNote(liveFrame.pitch)
+        ? frequencyToNoteName(liveFrame.pitch)
         : '--';
 
     return (

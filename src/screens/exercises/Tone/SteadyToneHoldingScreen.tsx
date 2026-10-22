@@ -50,7 +50,7 @@ import {
   type SteadyToneHoldingScoreResult,
 } from '@/services/scoring/tone/steadyToneHolding';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { frequencyToNote } from '@/utils/dsp/pitch';
+import { frequencyToNoteName } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -213,7 +213,7 @@ function RecordingScreen({
       : null;
 
   const detectedNote =
-    pitch !== null ? frequencyToNote(pitch) : '--';
+    pitch !== null ? frequencyToNoteName(pitch) : '--';
 
   return (
     <View style={styles.recordingScreen}>

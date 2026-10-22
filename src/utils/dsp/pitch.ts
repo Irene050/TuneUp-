@@ -13,7 +13,6 @@ export interface LivePitchData {
   clarity: number;
 }
 
-
 const PITCH_FRAME_SIZE = 2048;
 
 const detector =
