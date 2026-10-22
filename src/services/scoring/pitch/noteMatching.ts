@@ -19,9 +19,6 @@ export function scoreNoteMatching(
   targetFrequency: number,
   params: NoteMatchingParams,
 ): NoteMatchingScoreResult {
-  // ----------------------------------------------------------
-  // Invalid target
-  // ----------------------------------------------------------
 
   if (
     !Number.isFinite(targetFrequency) ||
@@ -37,10 +34,6 @@ export function scoreNoteMatching(
         measurement.averageClarity,
     };
   }
-
-  // ----------------------------------------------------------
-  // No reliable pitch detected
-  // ----------------------------------------------------------
 
   if (
     !Number.isFinite(
@@ -59,10 +52,6 @@ export function scoreNoteMatching(
         measurement.averageClarity,
     };
   }
-
-  // ----------------------------------------------------------
-  // Clarity requirement
-  // ----------------------------------------------------------
 
   const hasSufficientClarity =
     Number.isFinite(
@@ -91,17 +80,6 @@ export function scoreNoteMatching(
         measurement.averageClarity,
     };
   }
-
-  // ----------------------------------------------------------
-  // Evaluate every voiced frame
-  // ----------------------------------------------------------
-  //
-  // Correct voiced frames receive their pitch accuracy.
-  // Wrong voiced frames receive zero.
-  //
-  // Silence is not included because filterByClarity()
-  // already removes unvoiced frames.
-  // ----------------------------------------------------------
 
   let totalAccuracy = 0;
   let matchingFrames = 0;
@@ -172,10 +150,6 @@ export function scoreNoteMatching(
     matchingFrames++;
   }
 
-  // ----------------------------------------------------------
-  // No valid voiced frames
-  // ----------------------------------------------------------
-
   if (
     validVoicedFrames === 0 ||
     matchingFrames === 0
@@ -198,13 +172,6 @@ export function scoreNoteMatching(
     };
   }
 
-  
-  // ----------------------------------------------------------
-  // Strict match consistency
-  // ----------------------------------------------------------
-  // Incorrect voiced frames remain in the denominator.
-  // A high average accuracy cannot hide frequent wrong notes.
-
   const matchRate =
     matchingFrames / validVoicedFrames;
 
@@ -219,20 +186,10 @@ export function scoreNoteMatching(
       ? Math.max(0, Math.min(100, sustainedAccuracy))
       : 0;
 
-  // ----------------------------------------------------------
-  // Overall representative deviation
-  // ----------------------------------------------------------
-
   const deviationPct =
     (Math.abs(
       measurement.detectedFrequency - targetFrequency,
     ) / targetFrequency) * 100;
-
-  // ----------------------------------------------------------
-  // Strict pass requirement
-  // ----------------------------------------------------------
-  // At least 90% of valid voiced frames must match.
-  // The resulting score must also be at least 85.
 
   const passed =
     matchRate >= 0.90 &&

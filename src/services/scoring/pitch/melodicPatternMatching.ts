@@ -81,12 +81,6 @@ export function scoreMelodicPatternMatching(
         (Math.abs(frequency - target) / target) * 100,
     );
 
-    // Gradual pitch penalty:
-    // 0% deviation = 100
-    // 1% deviation = 90
-    // 2% deviation = 80
-    // 3% deviation = 70
-    // 5% deviation = 50
     const frameAccuracies = deviations.map(
       deviation =>
         Math.max(

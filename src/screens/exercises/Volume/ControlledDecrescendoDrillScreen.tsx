@@ -78,10 +78,6 @@ interface TargetDecrescendoGuideProps {
   durationSeconds: number;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Utilities                                                                  */
-/* -------------------------------------------------------------------------- */
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -98,18 +94,11 @@ function normalizeVolume(value: number): number {
   );
 }
 
-/**
- * Tall bars represent louder volume; short bars represent softer volume.
- */
 function targetHeight(index: number): number {
   const progress = index / Math.max(1, BAR_COUNT - 1);
   return 0.83 - progress * 0.65;
 }
 
-/**
- * Estimates how consistently the recorded volume decreases.
- * This is a live display indicator, not the final exercise score.
- */
 function calculateLiveSmoothness(values: number[]): number {
   if (values.length < 3) {
     return 0;
@@ -121,7 +110,6 @@ function calculateLiveSmoothness(values: number[]): number {
     changes.push(values[index] - values[index - 1]);
   }
 
-  // Ignore very small changes caused by minor microphone fluctuations.
   const meaningfulChanges = changes.filter(
     (change) => Math.abs(change) >= 0.15,
   );
@@ -165,10 +153,6 @@ function estimateLiveSmoothness(history: number[]): number {
 
   return calculateLiveSmoothness(dbValues);
 }
-
-/* -------------------------------------------------------------------------- */
-/* Visual components                                                          */
-/* -------------------------------------------------------------------------- */
 
 function TargetDecrescendoGuide({
   seconds,
@@ -285,10 +269,6 @@ function ResultItem({ label, value }: ResultItemProps) {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Main exercise                                                              */
-/* -------------------------------------------------------------------------- */
-
 export default function ControlledDecrescendoDrill({
   tier,
 }: ControlledDecrescendoExerciseProps) {
@@ -349,8 +329,6 @@ export default function ControlledDecrescendoDrill({
   const rampSeconds = params.durationSec;
   const repetitions = params.repetitions;
   const smoothnessTarget = params.smoothnessThreshold;
-
-  /* -------------------------- Reference note ----------------------------- */
 
   useEffect(() => {
     let cancelled = false;
@@ -444,8 +422,6 @@ export default function ControlledDecrescendoDrill({
       setReferencePlaying(false);
     }
   }, [referenceNote, referencePlaying]);
-
-  /* ---------------------- Adaptive difficulty --------------------------- */
 
   useEffect(() => {
     let cancelled = false;
@@ -571,8 +547,6 @@ export default function ControlledDecrescendoDrill({
     };
   }, [tier]);
 
-  /* -------------------------- Live guide timer -------------------------- */
-
   useEffect(() => {
     if (phase !== 'exercise') {
       setGuideElapsed(0);
@@ -590,8 +564,6 @@ export default function ControlledDecrescendoDrill({
 
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds]);
-
-  /* -------------------------- Audio recorder ---------------------------- */
 
   const clearLiveState = useCallback(() => {
     setSeconds(0);
@@ -736,8 +708,6 @@ export default function ControlledDecrescendoDrill({
     },
   });
 
-  /* --------------------- Stop between repetitions ----------------------- */
-
   useEffect(() => {
     if (
       phase !== 'repCountdown' ||
@@ -767,8 +737,6 @@ export default function ControlledDecrescendoDrill({
       setPhase('directions');
     });
   }, [phase, isRecording, stopRecording]);
-
-  /* ------------------------- Countdown handling ------------------------- */
 
   useEffect(() => {
     if (phase !== 'countdown' && phase !== 'repCountdown') {
@@ -844,8 +812,6 @@ export default function ControlledDecrescendoDrill({
     };
   }, [phase, startRecording, repetitions]);
 
-  /* ---------------------- Exercise duration timer ----------------------- */
-
   useEffect(() => {
     if (phase !== 'exercise') {
       return;
@@ -897,8 +863,6 @@ export default function ControlledDecrescendoDrill({
 
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds, repetitions, stopRecording]);
-
-  /* -------------------------- Exercise actions -------------------------- */
 
   const startExercise = useCallback(() => {
     setErrorMessage(undefined);
@@ -982,8 +946,6 @@ export default function ControlledDecrescendoDrill({
     startExercise();
   }, [startExercise]);
 
-  /* ---------------------------- Render states --------------------------- */
-
   if (loadingParams) {
     return (
       <View style={styles.preparingScreen}>
@@ -1031,8 +993,6 @@ export default function ControlledDecrescendoDrill({
     resolvedTier.charAt(0).toUpperCase() + resolvedTier.slice(1);
 
   const passed = smoothness >= smoothnessTarget;
-
-  /* ----------------------------- Directions ----------------------------- */
 
   if (phase === 'directions') {
     return (
@@ -1145,8 +1105,6 @@ export default function ControlledDecrescendoDrill({
     );
   }
 
-  /* ------------------------------ Countdown ----------------------------- */
-
   if (phase === 'countdown' || phase === 'repCountdown') {
     const isNextRepetition = phase === 'repCountdown';
 
@@ -1180,8 +1138,6 @@ export default function ControlledDecrescendoDrill({
       </View>
     );
   }
-
-  /* ------------------------------- Exercise ----------------------------- */
 
   if (phase === 'exercise') {
     const progress = clamp((seconds / rampSeconds) * 100, 0, 100);
@@ -1346,8 +1302,6 @@ export default function ControlledDecrescendoDrill({
     );
   }
 
-  /* -------------------------------- Results ----------------------------- */
-
   return (
     <ExerciseResultsScreen
       title="Controlled Decrescendo"
@@ -1409,10 +1363,6 @@ export default function ControlledDecrescendoDrill({
     </ExerciseResultsScreen>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Styles                                                                     */
-/* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
   preparingScreen: {

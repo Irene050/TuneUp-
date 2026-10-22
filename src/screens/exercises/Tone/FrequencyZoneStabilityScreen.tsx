@@ -50,10 +50,6 @@ import {
   type FrequencyZone,
 } from '@/utils/dsp/spectral';
 
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
 const LIGHT_PINK = '#FFF8FA';
@@ -67,10 +63,6 @@ const COUNTDOWN_SECONDS = 3;
 const REST_SECONDS = 2;
 const RECORDING_INTERVAL_MS = 100;
 const WAVEFORM_BAR_COUNT = 30;
-
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
 
 interface Props {
   tier?: Tier;
@@ -89,10 +81,6 @@ interface RepetitionResult {
   score: ReturnType<typeof scoreFrequencyZoneStability>;
 }
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -106,10 +94,6 @@ function zoneLabel(zone: FrequencyZone) {
     .replace(/[-_]/g, ' ')
     .replace(/\b\w/g, character => character.toUpperCase());
 }
-
-// -----------------------------------------------------------------------------
-// Live frequency waveform
-// -----------------------------------------------------------------------------
 
 function FrequencyLiveWaveform({
   pitch,
@@ -203,10 +187,6 @@ function FrequencyLiveWaveform({
   );
 }
 
-// -----------------------------------------------------------------------------
-// Screen
-// -----------------------------------------------------------------------------
-
 export default function FrequencyZoneStabilityScreen({
   tier,
 }: Props) {
@@ -243,10 +223,6 @@ export default function FrequencyZoneStabilityScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
-
-  // ---------------------------------------------------------------------------
-  // Refs
-  // ---------------------------------------------------------------------------
 
   const phaseRef = useRef<Phase>('instructions');
 
@@ -295,10 +271,6 @@ export default function FrequencyZoneStabilityScreen({
       null,
     );
 
-  // ---------------------------------------------------------------------------
-  // Shared helpers
-  // ---------------------------------------------------------------------------
-
   const setCurrentPhase = useCallback((nextPhase: Phase) => {
     phaseRef.current = nextPhase;
     setPhase(nextPhase);
@@ -321,10 +293,6 @@ export default function FrequencyZoneStabilityScreen({
     }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Live audio frame handler
-  // ---------------------------------------------------------------------------
-
   const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
     if (
       !mountedRef.current ||
@@ -345,10 +313,6 @@ export default function FrequencyZoneStabilityScreen({
       setLiveZone(null);
     }
   }, []);
-
-  // ---------------------------------------------------------------------------
-  // Load adaptive exercise parameters
-  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     let cancelled = false;
@@ -447,10 +411,6 @@ export default function FrequencyZoneStabilityScreen({
     };
   }, [tier, user]);
 
-  // ---------------------------------------------------------------------------
-  // Finish and score the exercise
-  // ---------------------------------------------------------------------------
-
   const finishExercise = useCallback(
     async (results: RepetitionResult[]) => {
       if (
@@ -532,10 +492,6 @@ export default function FrequencyZoneStabilityScreen({
     finishExerciseRef.current = finishExercise;
   }, [finishExercise]);
 
-  // ---------------------------------------------------------------------------
-  // Handle recording completion
-  // ---------------------------------------------------------------------------
-
   const handleRecordingStop = useCallback(() => {
     recordingRef.current = false;
 
@@ -615,10 +571,6 @@ export default function FrequencyZoneStabilityScreen({
     }
   }, [setCurrentPhase]);
 
-  // ---------------------------------------------------------------------------
-  // Audio recorder
-  // ---------------------------------------------------------------------------
-
   const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
@@ -628,10 +580,6 @@ export default function FrequencyZoneStabilityScreen({
     startRecordingRef.current = startRecording;
     stopRecordingRef.current = stopRecording;
   }, [startRecording, stopRecording]);
-
-  // ---------------------------------------------------------------------------
-  // Start a recording repetition
-  // ---------------------------------------------------------------------------
 
   const startRecordingPhase = useCallback(async () => {
     if (
@@ -738,10 +686,6 @@ export default function FrequencyZoneStabilityScreen({
     }
   }, [clearTimers, setCurrentPhase]);
 
-  // ---------------------------------------------------------------------------
-  // Countdown before recording
-  // ---------------------------------------------------------------------------
-
   const beginCountdown = useCallback(() => {
     if (
       !mountedRef.current ||
@@ -794,10 +738,6 @@ export default function FrequencyZoneStabilityScreen({
   useEffect(() => {
     beginCountdownRef.current = beginCountdown;
   }, [beginCountdown]);
-
-  // ---------------------------------------------------------------------------
-  // Rest between repetitions
-  // ---------------------------------------------------------------------------
 
   const handleRest = useCallback(() => {
     if (
@@ -867,10 +807,6 @@ export default function FrequencyZoneStabilityScreen({
       }
     };
   }, [phase, handleRest]);
-
-  // ---------------------------------------------------------------------------
-  // Exit prompt and pause handling
-  // ---------------------------------------------------------------------------
 
   const pauseForExitPrompt = useCallback(() => {
     if (
@@ -978,10 +914,6 @@ export default function FrequencyZoneStabilityScreen({
       }
     }
   }, [setCurrentPhase]);
-
-  // ---------------------------------------------------------------------------
-  // Start or restart the exercise
-  // ---------------------------------------------------------------------------
 
   const startExercise = useCallback(() => {
     if (
@@ -1106,10 +1038,6 @@ export default function FrequencyZoneStabilityScreen({
     pauseForExitPrompt();
   }, [pauseForExitPrompt]);
 
-  // ---------------------------------------------------------------------------
-  // Hardware back button
-  // ---------------------------------------------------------------------------
-
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1125,10 +1053,6 @@ export default function FrequencyZoneStabilityScreen({
 
     return () => subscription.remove();
   }, [handleBack]);
-
-  // ---------------------------------------------------------------------------
-  // Cleanup on unmount
-  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1158,10 +1082,6 @@ export default function FrequencyZoneStabilityScreen({
       }
     };
   }, [clearTimers]);
-
-  // ---------------------------------------------------------------------------
-  // Derived display values
-  // ---------------------------------------------------------------------------
 
   const recordingProgress =
     params.durationSec > 0
@@ -1214,10 +1134,6 @@ export default function FrequencyZoneStabilityScreen({
     item => item.score.passed,
   ).length;
 
-  // ---------------------------------------------------------------------------
-  // Instructions screen content
-  // ---------------------------------------------------------------------------
-
   const preparationSteps: ExercisePreparationStep[] = [
     {
       icon: 'body-outline',
@@ -1250,10 +1166,6 @@ export default function FrequencyZoneStabilityScreen({
       hint: 'attempts',
     },
   ];
-
-  // ---------------------------------------------------------------------------
-  // Quit confirmation modal
-  // ---------------------------------------------------------------------------
 
   const quitModal = (
     <Modal
@@ -1320,10 +1232,6 @@ export default function FrequencyZoneStabilityScreen({
     </Modal>
   );
 
-  // ---------------------------------------------------------------------------
-  // Loading screen
-  // ---------------------------------------------------------------------------
-
   if (loadingParams) {
     return (
       <>
@@ -1356,10 +1264,6 @@ export default function FrequencyZoneStabilityScreen({
       </>
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Instructions screen
-  // ---------------------------------------------------------------------------
 
   if (phase === 'instructions') {
     return (
@@ -1396,10 +1300,6 @@ export default function FrequencyZoneStabilityScreen({
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Countdown screen
-  // ---------------------------------------------------------------------------
-
   if (phase === 'countdown') {
     return (
       <>
@@ -1418,10 +1318,6 @@ export default function FrequencyZoneStabilityScreen({
       </>
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Recording screen
-  // ---------------------------------------------------------------------------
 
   if (phase === 'recording') {
     const elapsedSeconds = elapsedMs / 1000;
@@ -1586,10 +1482,6 @@ export default function FrequencyZoneStabilityScreen({
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Rest screen
-  // ---------------------------------------------------------------------------
-
   if (phase === 'rest') {
     return (
       <>
@@ -1609,10 +1501,6 @@ export default function FrequencyZoneStabilityScreen({
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Processing screen
-  // ---------------------------------------------------------------------------
-
   if (phase === 'processing') {
     return (
       <>
@@ -1627,10 +1515,6 @@ export default function FrequencyZoneStabilityScreen({
       </>
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Results screen
-  // ---------------------------------------------------------------------------
 
   if (phase === 'results' && result) {
     return (
@@ -1685,10 +1569,6 @@ export default function FrequencyZoneStabilityScreen({
 
   return <>{quitModal}</>;
 }
-
-// -----------------------------------------------------------------------------
-// Styles — only styles used by this screen
-// -----------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   // Loading
