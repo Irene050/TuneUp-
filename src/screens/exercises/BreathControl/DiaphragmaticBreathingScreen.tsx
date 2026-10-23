@@ -1127,18 +1127,6 @@ export default function DiaphragmaticBreathingScreen({
 
       {(phase === 'inhale' || phase === 'exhale') && (
         <View style={styles.exerciseContainer}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Pause exercise"
-            onPress={handleBack}
-            style={styles.backButton}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={25}
-              color={BROWN}
-            />
-          </Pressable>
 
           <View style={styles.exerciseContent}>
             <Text style={styles.phaseLabel}>
@@ -1421,14 +1409,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 25,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 48,
-    marginLeft: 0,
+    paddingTop: 180,
   },
   exerciseContent: {
     flex: 1,

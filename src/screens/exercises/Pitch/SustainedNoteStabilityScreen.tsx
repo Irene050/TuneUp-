@@ -1365,14 +1365,6 @@ export default function SustainedNoteStabilityScreen({
           contentContainerStyle={styles.recordingContent}
           showsVerticalScrollIndicator={false}
         >
-          <Pressable
-            style={styles.activeBackButton}
-            onPress={requestPause}
-            accessibilityRole="button"
-            accessibilityLabel="Pause exercise"
-          >
-            <Ionicons name="arrow-back" size={22} color={BROWN} />
-          </Pressable>
 
           <View style={styles.recordingIcon}>
             <Ionicons name="mic" size={34} color={BROWN} />

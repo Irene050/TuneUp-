@@ -1279,18 +1279,6 @@ export default function ControlledBreathReleaseScreen({
             contentContainerStyle={styles.recordingContent}
             showsVerticalScrollIndicator={false}
           >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cancel exercise"
-              style={styles.backButton}
-              onPress={openQuitModal}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={25}
-                color={BROWN}
-              />
-            </Pressable>
 
             <View style={styles.recordingHeader}>
               <Text style={styles.repLabel}>
@@ -1447,22 +1435,9 @@ export default function ControlledBreathReleaseScreen({
                 size={22}
                 color={BROWN}
               />
-
-              <View style={styles.pacingTextContainer}>
-                <Text style={styles.pacingTitle}>
-                  Keep it gentle
-                </Text>
-
-                <Text style={styles.pacingText}>
-                  Release a short breath pulse at each cue. Avoid
-                  forcing your breath; the meter shows relative
-                  microphone sound level, not measured airflow.
-                </Text>
-              </View>
             </View>
           </ScrollView>
         </View>
-
         {quitConfirmationModal}
       </>
     );
@@ -1683,13 +1658,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 58,
     paddingBottom: 40,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
   },
   recordingHeader: {
     alignItems: 'center',

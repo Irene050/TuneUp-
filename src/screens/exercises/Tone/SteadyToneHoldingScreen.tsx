@@ -1416,18 +1416,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
-  recordingBackButton: {
-    position: 'absolute',
-    top: 18,
-    left: 20,
-    zIndex: 1,
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: LIGHT_PINK,
-  },
   recordingTitle: {
     marginTop: 42,
     fontFamily: 'FredokaBold',

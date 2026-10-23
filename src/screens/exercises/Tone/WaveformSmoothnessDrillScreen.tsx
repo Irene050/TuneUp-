@@ -1631,14 +1631,6 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER,
     backgroundColor: WHITE,
   },
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: LIGHT_PINK,
-  },
   headerTitleContainer: {
     flex: 1,
     marginLeft: 12,
