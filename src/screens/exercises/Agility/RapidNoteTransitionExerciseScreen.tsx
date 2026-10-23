@@ -9,6 +9,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -506,6 +508,10 @@ export default function RapidNoteTransitionExerciseScreen({
   }, [adaptiveParams, assessedVocalRangeHz, tier, exerciseConfigVersion]);
 
   const [screenState, setScreenState] = useState<Screen>('instructions');
+  const [confirmation, setConfirmation] = useState<'tryAgain' | 'quit' | null>(null);
+  const [isPreparingResume, setIsPreparingResume] = useState(false);
+  const pausedRepetitionRef = useRef(1);
+  const pausedScreenRef = useRef<Screen>('instructions');
   const screenRef = useRef<Screen>('instructions');
 
   const setScreen = useCallback((nextScreen: Screen) => {
@@ -782,6 +788,48 @@ export default function RapidNoteTransitionExerciseScreen({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (confirmation !== null || screenRef.current === 'processing') {
+          return true;
+        }
+
+        pausedRepetitionRef.current = currentRepetition;
+        pausedScreenRef.current = screenRef.current;
+        clearTimers();
+        referenceStartedRef.current = false;
+        playingSequenceRef.current = false;
+        setActiveGuideNoteIndex(null);
+
+        if (screenRef.current === 'recording') {
+          setScreen('instructions');
+          void stopRecording();
+          resetLiveState();
+        } else if (
+          screenRef.current === 'countdown' ||
+          screenRef.current === 'listening'
+        ) {
+          setScreen('instructions');
+          setCountdown(COUNTDOWN_SECONDS);
+        }
+
+        setConfirmation('quit');
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [
+    confirmation,
+    currentRepetition,
+    clearTimers,
+    resetLiveState,
+    setScreen,
+    stopRecording,
+  ]);
 
   const startStaffGuidePlayback = useCallback(async () => {
     const noteCount = exerciseConfig.sequence.names.length;
@@ -1097,11 +1145,39 @@ export default function RapidNoteTransitionExerciseScreen({
     </View>
   );
 
+  const closeConfirmation = () => {
+    const action = confirmation;
+    setConfirmation(null);
+
+    if (
+      action === 'quit' &&
+      pausedScreenRef.current !== 'instructions' &&
+      pausedScreenRef.current !== 'results'
+    ) {
+      setCurrentRepetition(pausedRepetitionRef.current);
+      setElapsedSeconds(0);
+      setCountdown(COUNTDOWN_SECONDS);
+      resetLiveState();
+      referenceStartedRef.current = false;
+      playingSequenceRef.current = false;
+      setIsPreparingResume(true);
+
+      setTimeout(() => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setIsPreparingResume(false);
+        setPlayReferenceOnNextRender(true);
+      }, 900);
+    }
+  };
+
   const renderInstructions = () => (
     <View style={styles.content}>
       <Pressable
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={() => setConfirmation('quit')}
         hitSlop={10}
       >
         <Ionicons name="arrow-back" size={24} color={BROWN} />
@@ -1235,20 +1311,14 @@ export default function RapidNoteTransitionExerciseScreen({
   );
 
   const renderCountdown = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
+    <View style={styles.countdownScreen}>
+      <View style={styles.countdownIconCircle}>
         <Ionicons name="flash-outline" size={34} color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>
-        {attemptResults.length === 0 && currentRepetition === 1
-          ? 'Exercise Starts In'
-          : 'Next Repetition Starts In'}
-      </Text>
-      {renderRepetitionProgress()}
-      <Text style={styles.countdownText}>{countdown}</Text>
-      <Text style={styles.phaseSubtitle}>
-        You have heard the reference. Start singing when the countdown reaches
-        zero.
+      <Text style={styles.countdownTitle}>Get Ready</Text>
+      <Text style={styles.countdownNumber}>{countdown}</Text>
+      <Text style={styles.countdownSubtitle}>
+        Prepare for repetition {currentRepetition} of {exerciseConfig.repetitions}.
       </Text>
     </View>
   );
@@ -1388,13 +1458,12 @@ export default function RapidNoteTransitionExerciseScreen({
   };
 
   const renderProcessing = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
+    <View style={styles.analyzingScreen}>
+      <View style={styles.analyzingIconCircle}>
         <ActivityIndicator size="large" color={BROWN} />
       </View>
-      <Text style={styles.phaseTitle}>Analyzing Your Singing</Text>
-      {renderRepetitionProgress()}
-      <Text style={styles.phaseSubtitle}>
+      <Text style={styles.analyzingTitle}>Analyzing Your Singing</Text>
+      <Text style={styles.analyzingSubtitle}>
         Measuring note transitions, speed, sequence accuracy, and pitch
         accuracy.
       </Text>
@@ -1504,16 +1573,16 @@ export default function RapidNoteTransitionExerciseScreen({
           <Text style={styles.tipText}>{result.feedback}</Text>
         </View>
 
-        <Pressable style={styles.startButton} onPress={retryExercise}>
+        <Pressable style={styles.startButton} onPress={() => setConfirmation('tryAgain')}>
           <Ionicons name="refresh" size={18} color={WHITE} />
           <Text style={styles.startButtonText}>Try Again</Text>
         </Pressable>
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => router.replace('/dashboard?tab=exercises')}
+          onPress={() => setConfirmation('quit')}
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
       </View>
     );
@@ -1539,20 +1608,95 @@ export default function RapidNoteTransitionExerciseScreen({
     );
   }
 
+  if (isPreparingResume) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="musical-notes-outline" size={44} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Repetition</Text>
+        <Text style={styles.preparingSubtitle}>
+          Getting your reference notes ready. Your completed repetitions are preserved.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
   return (
-    <ScrollView
-      ref={scrollViewRef}
-      style={styles.screen}
-      contentContainerStyle={screen === 'results' ? styles.resultsWrapper : undefined}
-      showsVerticalScrollIndicator={false}
-    >
-      {screen === 'instructions' && renderInstructions()}
-      {screen === 'countdown' && renderCountdown()}
-      {screen === 'listening' && renderListening()}
-      {screen === 'recording' && renderRecording()}
-      {screen === 'processing' && renderProcessing()}
-      {screen === 'results' && renderResults()}
-    </ScrollView>
+    <>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.screen}
+        contentContainerStyle={screen === 'results' ? styles.resultsWrapper : undefined}
+        showsVerticalScrollIndicator={false}
+      >
+        {screen === 'instructions' && renderInstructions()}
+        {screen === 'countdown' && renderCountdown()}
+        {screen === 'listening' && renderListening()}
+        {screen === 'recording' && renderRecording()}
+        {screen === 'processing' && renderProcessing()}
+        {screen === 'results' && renderResults()}
+      </ScrollView>
+
+      <Modal
+        visible={confirmation !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeConfirmation}
+        statusBarTranslucent
+      >
+        <View style={styles.confirmationOverlay}>
+          <View style={styles.confirmationCard}>
+            <View style={styles.confirmationIconCircle}>
+              <Ionicons
+                name={confirmation === 'tryAgain' ? 'refresh' : 'log-out-outline'}
+                size={24}
+                color={BROWN}
+              />
+            </View>
+            <Text style={styles.confirmationTitle}>
+              {confirmation === 'tryAgain' ? 'Try again?' : 'Quit exercise?'}
+            </Text>
+            <Text style={styles.confirmationMessage}>
+              {confirmation === 'tryAgain'
+                ? 'Are you sure you want to repeat this exercise?'
+                : 'Are you sure you want to leave this exercise?'}
+            </Text>
+            <View style={styles.confirmationActions}>
+              <Pressable
+                style={styles.confirmationPrimaryButton}
+                onPress={closeConfirmation}
+                accessibilityRole="button"
+              >
+                <Text style={styles.confirmationPrimaryText}>Continue Exercise</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmationSecondaryButton}
+                onPress={() => {
+                  const action = confirmation;
+                  setConfirmation(null);
+                  if (action === 'tryAgain') {
+                    retryExercise();
+                  } else if (action === 'quit') {
+                    router.replace('/dashboard?tab=exercises');
+                  }
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={styles.confirmationSecondaryText}>
+                  {confirmation === 'tryAgain' ? 'Try Again' : 'Quit Exercise'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -2244,6 +2388,45 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginTop: 2,
   },
+  countdownScreen: {
+    flexGrow: 1,
+    minHeight: 700,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  countdownIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  countdownTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  countdownSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
+  },
+  countdownNumber: {
+    fontFamily: 'FredokaBold',
+    fontSize: 72,
+    color: BROWN,
+    marginTop: 20,
+  },
   centerScreen: {
     flexGrow: 1,
     minHeight: 620,
@@ -2251,6 +2434,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 22,
+  },
+  analyzingScreen: {
+    flexGrow: 1,
+    minHeight: 700,
+    backgroundColor: WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  analyzingIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: PINK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  analyzingTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 25,
+    color: BROWN,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  analyzingSubtitle: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 13,
+    lineHeight: 20,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 320,
   },
   phaseTitle: {
     fontFamily: 'FredokaBold',
@@ -2592,6 +2808,82 @@ const styles = StyleSheet.create({
   },
   doneButtonText: {
     fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmationCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  confirmationIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  confirmationTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  confirmationActions: {
+    width: '100%',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  confirmationPrimaryButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  confirmationPrimaryText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationSecondaryButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  confirmationSecondaryText: {
+    fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },

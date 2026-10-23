@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -217,6 +219,50 @@ const estimateLiveFrequency = (
   return frequency >= 70 && frequency <= 1000 ? frequency : null;
 };
 
+const fitFrequenciesToVocalRange = (
+  frequencies: number[],
+  lowHz: number,
+  highHz: number,
+): number[] => {
+  if (
+    frequencies.length === 0 ||
+    !Number.isFinite(lowHz) ||
+    !Number.isFinite(highHz) ||
+    lowHz <= 0 ||
+    highHz <= 0 ||
+    lowHz >= highHz
+  ) {
+    return frequencies;
+  }
+
+  const hzToMidi = (hz: number) => 69 + 12 * Math.log2(hz / 440);
+  const midiToHz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
+  const lowestMidi = Math.ceil(hzToMidi(lowHz));
+  const highestMidi = Math.floor(hzToMidi(highHz));
+
+  if (lowestMidi > highestMidi) return frequencies;
+
+  // Transpose using whole MIDI notes so the arpeggio's intervals stay intact.
+  const sourceMidis = frequencies.map((hz) => Math.round(hzToMidi(hz)));
+  const sourceMin = Math.min(...sourceMidis);
+  const sourceMax = Math.max(...sourceMidis);
+
+  // If the full sequence cannot fit, keep the original notes instead of
+  // changing the musical intervals.
+  if (sourceMax - sourceMin > highestMidi - lowestMidi) {
+    return frequencies;
+  }
+
+  const minShift = lowestMidi - sourceMin;
+  const maxShift = highestMidi - sourceMax;
+  const preferredShift = Math.round(
+    (lowestMidi + highestMidi - sourceMin - sourceMax) / 2,
+  );
+  const shift = Math.max(minShift, Math.min(preferredShift, maxShift));
+
+  return sourceMidis.map((midi) => midiToHz(midi + shift));
+};
+
 export default function ArpeggioSpeedDrillScreen() {
   const currentUserId = auth.currentUser?.uid ?? null;
 
@@ -288,8 +334,23 @@ export default function ArpeggioSpeedDrillScreen() {
     null,
   );
   const [isPlayingReference, setIsPlayingReference] = useState(false);
+  const timedReferenceNoteIndex =
+    phase === 'recording'
+      ? (() => {
+          const noteDurationMs = config.noteDurationSec * 1000;
+          const gapMs = config.gapSec * 1000;
+          const cycleMs = noteDurationMs + gapMs;
+          if (cycleMs <= 0 || !config.frequencies.length) return null;
+          const positionInSequence = recordingTime * 1000 % (cycleMs * config.frequencies.length);
+          const index = Math.floor(positionInSequence / cycleMs);
+          return positionInSequence - index * cycleMs < noteDurationMs
+            ? index
+            : null;
+        })()
+      : null;
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [result, setResult] = useState<Result | null>(null);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
 
   const attemptResultsRef = useRef<Result[]>([]);
   const recorderRef = useRef<AudioRecorder | null>(null);
@@ -305,6 +366,45 @@ export default function ArpeggioSpeedDrillScreen() {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  const stopRecording = useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    if (recorderRef.current) {
+      try {
+        recorderRef.current.clearOnAudioReady();
+      } catch {}
+
+      try {
+        void recorderRef.current.stop();
+      } catch {}
+
+      recorderRef.current = null;
+    }
+
+    recordingStartRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const activePhase = phaseRef.current;
+      if (activePhase === 'recording' || activePhase === 'countdown' || activePhase === 'reference') {
+        stopRecording();
+        setShowExitConfirmation(true);
+        return true;
+      }
+      if (activePhase === 'processing') return true;
+      if (activePhase === 'results') {
+        setShowExitConfirmation(true);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [stopRecording]);
 
   useEffect(() => {
     let cancelled = false;
@@ -362,8 +462,43 @@ export default function ArpeggioSpeedDrillScreen() {
           recentScores,
         });
 
+        // Fit the generated agility sequence to the vocal range detected
+        // during the user's assessment. Keep the existing tier/scoring logic.
+        const vocalAssessment = await getLatestAssessment();
+        if (cancelled) return;
+
+        const lowHz = Number(
+          vocalAssessment?.vocalRange?.lowHz ??
+            vocalAssessment?.vocalRangeLowHz ??
+            0,
+        );
+        const highHz = Number(
+          vocalAssessment?.vocalRange?.highHz ??
+            vocalAssessment?.vocalRangeHighHz ??
+            0,
+        );
+        const rangeAdjusted =
+          lowHz > 0 && highHz > lowHz
+            ? (() => {
+                const frequencies = fitFrequenciesToVocalRange(
+                  generated.frequencies,
+                  lowHz,
+                  highHz,
+                );
+
+                return {
+                  ...generated,
+                  frequencies,
+                  // Keep displayed notes aligned with the final frequencies.
+                  notes: frequencies.map((frequency) =>
+                    frequencyToNoteName(frequency),
+                  ),
+                };
+              })()
+            : generated;
+
         if (!cancelled) {
-          setConfig(generated);
+          setConfig(rangeAdjusted);
           setParamsReady(true);
         }
       } catch (error) {
@@ -385,27 +520,6 @@ export default function ArpeggioSpeedDrillScreen() {
       cancelled = true;
     };
   }, [tier, tierLoading, baseConfig]);
-
-  const stopRecording = useCallback(() => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-
-    if (recorderRef.current) {
-      try {
-        recorderRef.current.clearOnAudioReady();
-      } catch {}
-
-      try {
-        void recorderRef.current.stop();
-      } catch {}
-
-      recorderRef.current = null;
-    }
-
-    recordingStartRef.current = null;
-  }, []);
 
   useEffect(
     () => () => {
@@ -920,8 +1034,8 @@ export default function ArpeggioSpeedDrillScreen() {
         <View style={styles.referenceCard}>
           <Text style={styles.cardTitle}>Sing This Sequence</Text>
           <Text style={styles.sequenceHint}>
-            The highlighted note follows your detected pitch, not the recording
-            timer.
+            Follow the pink-highlighted note in time with the sequence. If you
+            fall behind, use the highlighted note as your timing guide.
           </Text>
 
           <View style={styles.noteSequence}>
@@ -947,7 +1061,13 @@ export default function ArpeggioSpeedDrillScreen() {
               return (
                 <View
                   key={`${frequency}-${index}`}
-                  style={[styles.notePill, noteStyle]}
+                  style={[
+                    styles.notePill,
+                    (referenceNoteIndex === index && isPlayingReference) ||
+                    timedReferenceNoteIndex === index
+                      ? styles.referenceNoteActive
+                      : noteStyle,
+                  ]}
                 >
                   <Text style={styles.noteNumber}>{index + 1}</Text>
                   <Text style={styles.noteText}>
@@ -963,6 +1083,20 @@ export default function ArpeggioSpeedDrillScreen() {
               );
             })}
           </View>
+
+          <Pressable
+            style={[
+              styles.referenceButton,
+              isPlayingReference && styles.buttonDisabled,
+            ]}
+            disabled={isPlayingReference}
+            onPress={() => void playReference()}
+          >
+            <Ionicons name="play" size={18} color={BROWN} />
+            <Text style={styles.referenceButtonText}>
+              {isPlayingReference ? 'Playing Reference...' : 'Play Reference Guide'}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.recordingBadge}>
@@ -1138,10 +1272,12 @@ export default function ArpeggioSpeedDrillScreen() {
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => router.replace('/dashboard?tab=exercises')}
+          onPress={() => setShowExitConfirmation(true)}
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
+
+
       </View>
     );
   };
@@ -1182,11 +1318,137 @@ export default function ArpeggioSpeedDrillScreen() {
       {phase === 'recording' && renderRecording()}
       {phase === 'processing' && renderProcessing()}
       {phase === 'results' && renderResults()}
+      <Modal
+        visible={showExitConfirmation}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowExitConfirmation(false)}
+      >
+        <View style={styles.agilityModalOverlay}>
+          <View style={styles.agilityModalCard}>
+            <View style={styles.agilityModalIcon}>
+              <Ionicons name="exit-outline" size={30} color={BROWN} />
+            </View>
+            <Text style={styles.agilityModalTitle}>Quit exercise?</Text>
+            <Text style={styles.agilityModalMessage}>
+              Your exercise is paused. Completed repetitions will be kept, but you will restart the current repetition when you continue.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Continue exercise"
+              onPress={() => {
+                setShowExitConfirmation(false);
+                if (phaseRef.current !== 'results') {
+                  // Discard only the interrupted repetition's samples and restart
+                  // that same repetition after the normal countdown.
+                  samplesRef.current = [];
+                  liveSamplesRef.current = [];
+                  setLivePitchHz(null);
+                  setRecordingTime(0);
+                  setCountdown(COUNTDOWN_SECONDS);
+                  setReferenceNoteIndex(null);
+                  void startCountdown();
+                }
+              }}
+              style={({ pressed }) => [styles.agilityContinueButton, pressed && styles.agilityButtonPressed]}
+            >
+              <Text style={styles.agilityContinueButtonText}>Continue Exercise</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Quit exercise"
+              onPress={() => {
+                setShowExitConfirmation(false);
+                router.replace('/dashboard?tab=exercises');
+              }}
+              style={({ pressed }) => [styles.agilityQuitButton, pressed && styles.agilityButtonPressed]}
+            >
+              <Text style={styles.agilityQuitButtonText}>Quit Exercise</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  agilityModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  agilityModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  agilityModalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  agilityModalTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  agilityModalMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  agilityContinueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  agilityContinueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  agilityQuitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  agilityQuitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: MUTED,
+  },
+  agilityButtonPressed: {
+    opacity: 0.75,
+  },
+
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1424,9 +1686,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   referenceNoteActive: {
-    backgroundColor: PINK,
+    backgroundColor: '#f184a9',
     borderWidth: 1,
-    borderColor: '#E88FA2',
+    borderColor: '#f184a9',
   },
   notePending: {
     backgroundColor: '#F1EDEB',

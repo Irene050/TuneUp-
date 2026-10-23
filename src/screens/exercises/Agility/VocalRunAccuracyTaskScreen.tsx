@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -55,6 +56,7 @@ const MAX_RECORDING_SECONDS = 10;
 type Phase =
   | 'instructions'
   | 'reference'
+  | 'loading'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -190,6 +192,7 @@ export default function VocalRunAccuracyTaskScreen() {
   const [isPlayingReference, setIsPlayingReference] = useState(false);
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
+  const [confirmationType, setConfirmationType] = useState<'quit' | 'retry' | null>(null);
 
   const mountedRef = useRef(true);
   const recentScoresRef = useRef<number[]>([]);
@@ -257,6 +260,29 @@ export default function VocalRunAccuracyTaskScreen() {
       setActiveReferenceNoteIndex(null);
     }
   }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        // Keep the confirmation visible if Back is pressed again while it is open.
+        if (confirmationType !== null) {
+          return true;
+        }
+
+        // Pause the current repetition and ask before leaving the exercise.
+        // Continue Exercise returns to this same repetition's reference screen.
+        countdownRunIdRef.current += 1;
+        cancelReferencePlayback();
+        if (phaseRef.current === 'countdown' || phaseRef.current === 'recording') {
+          stopRecording();
+        }
+        setConfirmationType('quit');
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [cancelReferencePlayback, confirmationType, stopRecording]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1129,7 +1155,7 @@ export default function VocalRunAccuracyTaskScreen() {
     <View style={styles.content}>
       <Pressable
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={() => setConfirmationType('quit')}
         hitSlop={10}
       >
         <Ionicons name="arrow-back" size={24} color={BROWN} />
@@ -1303,7 +1329,7 @@ export default function VocalRunAccuracyTaskScreen() {
     <View style={styles.content}>
       <Pressable
         style={styles.backButton}
-        onPress={returnToInstructions}
+        onPress={() => setConfirmationType('quit')}
         hitSlop={10}
       >
         <Ionicons name="arrow-back" size={24} color={BROWN} />
@@ -1782,7 +1808,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <Pressable
           style={styles.startButton}
-          onPress={resetExercise}
+          onPress={() => setConfirmationType('retry')}
         >
           <Ionicons name="refresh" size={18} color={WHITE} />
           <Text style={styles.startButtonText}>Try Again</Text>
@@ -1790,9 +1816,9 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => router.replace('/dashboard?tab=exercises')}
+          onPress={() => setConfirmationType('quit')}
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
       </View>
     );
@@ -1822,6 +1848,7 @@ export default function VocalRunAccuracyTaskScreen() {
   }
 
   return (
+    <View style={{ flex: 1, backgroundColor: WHITE }}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={
@@ -1830,16 +1857,174 @@ export default function VocalRunAccuracyTaskScreen() {
       showsVerticalScrollIndicator={false}
     >
       {phase === 'instructions' && renderInstructions()}
+      {phase === 'loading' && (
+        <View style={styles.centerScreen}>
+          <View style={styles.iconCircle}>
+            <ActivityIndicator size="large" color={BROWN} />
+          </View>
+          <Text style={styles.phaseTitle}>Getting You Ready</Text>
+          <Text style={styles.repetitionLabel}>
+            REPETITION {Math.min(currentRepetition, config.repetitions)} OF {config.repetitions}
+          </Text>
+          <Text style={styles.phaseSubtitle}>
+            Preparing your reference notes for this repetition.
+          </Text>
+        </View>
+      )}
       {phase === 'reference' && renderReference()}
       {phase === 'countdown' && renderCountdown()}
       {phase === 'recording' && renderRecording()}
       {phase === 'processing' && renderProcessing()}
       {phase === 'results' && renderResults()}
     </ScrollView>
+    {confirmationType !== null && (
+      <View style={styles.confirmationOverlay}>
+        <Pressable
+          style={styles.confirmationBackdrop}
+          onPress={() => setConfirmationType(null)}
+        />
+        <View style={styles.confirmationModal}>
+          <View style={styles.confirmationIconCircle}>
+            <Ionicons name="exit-outline" size={24} color={BROWN} />
+          </View>
+          <Text style={styles.confirmationTitle}>
+            {confirmationType === 'retry' ? 'Try again?' : 'Quit exercise?'}
+          </Text>
+          <Text style={styles.confirmationMessage}>
+            {confirmationType === 'retry'
+              ? 'Are you sure you want to restart this exercise?'
+              : 'Are you sure you want to leave this exercise?'}
+          </Text>
+          <Pressable
+            style={styles.confirmationContinueButton}
+            onPress={async () => {
+              const action = confirmationType;
+              setConfirmationType(null);
+              if (action === 'retry') return;
+              countdownRunIdRef.current += 1;
+              setCountdown(COUNTDOWN_SECONDS);
+              setRecordingTime(0);
+              setLivePitch(null);
+              setErrorMessage('');
+              setExercisePhase('loading');
+              await sleep(700);
+              if (mountedRef.current && phaseRef.current === 'loading') {
+                setExercisePhase('reference');
+              }
+            }}
+          >
+            <Text style={styles.confirmationContinueText}>
+              {confirmationType === 'retry' ? 'Keep Results' : 'Continue Exercise'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.confirmationQuitButton}
+            onPress={() => {
+              const action = confirmationType;
+              setConfirmationType(null);
+              if (action === 'retry') {
+                resetExercise();
+              } else {
+                router.replace('/dashboard?tab=exercises');
+              }
+            }}
+          >
+            <Text style={styles.confirmationQuitText}>
+              {confirmationType === 'retry' ? 'Restart Exercise' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  confirmationOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1000,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmationBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmationModal: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  confirmationIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  confirmationTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  confirmationContinueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  confirmationContinueText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationQuitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  confirmationQuitText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,

@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -115,13 +117,16 @@ export default function QuickIntervalJumpScreen() {
   );
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
+  const [isPreparingResume, setIsPreparingResume] = useState(false);
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [currentRepetition, setCurrentRepetition] = useState(1);
   const [isPlayingReference, setIsPlayingReference] = useState(false);
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
   const [result, setResult] = useState<ExerciseResult | null>(null);
+  const [confirmation, setConfirmation] = useState<'tryAgain' | 'backToExercises' | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<AudioRecorder | null>(null);
@@ -134,6 +139,8 @@ export default function QuickIntervalJumpScreen() {
   const countdownTokenRef = useRef(0);
   const playbackTokenRef = useRef(0);
   const referencePlayingRef = useRef(false);
+  const repetitionSampleStartRef = useRef(0);
+  const pausedRepetitionRef = useRef(1);
 
   const { noteDurationSec, gapSec, repetitions, accuracyTarget } =
     getQuickIntervalJumpSettings(tier);
@@ -141,19 +148,9 @@ export default function QuickIntervalJumpScreen() {
   const notesPerRepetition = adaptiveConfig.frequencies.length;
   const totalTargetNoteCount = notesPerRepetition * repetitions;
 
-  const recordingDurationSec = Math.min(
-    MAX_RECORDING_SECONDS,
-    Math.max(
-      0.1,
-      totalTargetNoteCount * noteDurationSec +
-        Math.max(0, totalTargetNoteCount - 1) * gapSec,
-    ),
-  );
-
   const repetitionDurationSec =
     notesPerRepetition * noteDurationSec +
-    Math.max(0, notesPerRepetition - 1) * gapSec +
-    gapSec;
+    Math.max(0, notesPerRepetition - 1) * gapSec;
 
   useEffect(() => {
     let cancelled = false;
@@ -498,7 +495,10 @@ export default function QuickIntervalJumpScreen() {
     setCountdown(COUNTDOWN_SECONDS);
     setRecordingTime(0);
     setResult(null);
-    samplesRef.current = [];
+    if (currentRepetition === 1) {
+      samplesRef.current = [];
+    }
+    repetitionSampleStartRef.current = samplesRef.current.length;
     processingRef.current = false;
     setPhase('countdown');
 
@@ -630,7 +630,7 @@ export default function QuickIntervalJumpScreen() {
 
     try {
       processingRef.current = false;
-      samplesRef.current = [];
+      repetitionSampleStartRef.current = samplesRef.current.length;
 
       const recorder = new AudioRecorder();
       recorderRef.current = recorder;
@@ -730,10 +730,18 @@ export default function QuickIntervalJumpScreen() {
 
         const elapsed = (Date.now() - start) / 1000;
 
-        setRecordingTime(Math.min(elapsed, recordingDurationSec));
+        setRecordingTime(Math.min(elapsed, repetitionDurationSec));
 
-        if (elapsed >= recordingDurationSec) {
-          void processRecording();
+        if (elapsed >= repetitionDurationSec) {
+          stopRecording();
+
+          if (currentRepetition < repetitions) {
+            setCurrentRepetition(previous => previous + 1);
+            setRecordingTime(0);
+            setPhase('reference');
+          } else {
+            void processRecording();
+          }
         }
       }, 100);
     } catch (error) {
@@ -760,8 +768,90 @@ export default function QuickIntervalJumpScreen() {
     samplesRef.current = [];
     setResult(null);
     setRecordingTime(0);
+    setCurrentRepetition(1);
+    repetitionSampleStartRef.current = 0;
+    pausedRepetitionRef.current = 1;
     setCountdown(COUNTDOWN_SECONDS);
     setPhase('instructions');
+  };
+
+  const confirmTryAgain = () => {
+    setConfirmation('tryAgain');
+  };
+
+  const confirmBackToExercises = () => {
+    if (confirmation !== null || phase === 'processing') {
+      return;
+    }
+
+    pausedRepetitionRef.current = currentRepetition;
+    countdownTokenRef.current += 1;
+    playbackTokenRef.current += 1;
+    referencePlayingRef.current = false;
+    setIsPlayingReference(false);
+    setActiveReferenceNoteIndex(null);
+
+    // Discard only the interrupted repetition. Samples from completed
+    // repetitions stay in memory and will not be counted again.
+    if (phase === 'recording') {
+      samplesRef.current = samplesRef.current.slice(
+        0,
+        repetitionSampleStartRef.current,
+      );
+      stopRecording();
+      setRecordingTime(0);
+      setPhase('reference');
+    } else if (phase === 'countdown') {
+      setRecordingTime(0);
+      setPhase('reference');
+    }
+
+    setConfirmation('backToExercises');
+  };
+
+  // Android hardware Back opens the same confirmation modal as the on-screen exit button.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (confirmation !== null || phase === 'processing') {
+          return true;
+        }
+
+        confirmBackToExercises();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [confirmation, phase, currentRepetition]);
+
+  const closeConfirmation = () => {
+    const action = confirmation;
+    setConfirmation(null);
+
+    if (action === 'backToExercises' && phase !== 'results') {
+      // Return to the reference screen for the interrupted repetition.
+      // Pressing "I'm Ready" there starts a fresh three-second countdown.
+      setCurrentRepetition(pausedRepetitionRef.current);
+      setRecordingTime(0);
+      setCountdown(COUNTDOWN_SECONDS);
+      processingRef.current = false;
+      setPhase('reference');
+      setIsPreparingResume(true);
+      setTimeout(() => setIsPreparingResume(false), 900);
+    }
+  };
+
+  const handleConfirmation = () => {
+    const action = confirmation;
+    setConfirmation(null);
+
+    if (action === 'tryAgain') {
+      resetExercise();
+    } else if (action === 'backToExercises') {
+      router.replace('/exercises/agility' as any);
+    }
   };
 
   const renderInstructions = () => (
@@ -815,6 +905,7 @@ export default function QuickIntervalJumpScreen() {
       </View>
 
       <Text style={styles.phaseTitle}>Listen to the Reference</Text>
+      <Text style={styles.phaseSubtitle}>Repetition {currentRepetition} of {repetitions}</Text>
       <Text style={styles.phaseSubtitle}>
         Listen carefully to the note sequence, then sing the same interval
         jumps.
@@ -857,9 +948,27 @@ export default function QuickIntervalJumpScreen() {
         </View>
 
         <Text style={styles.referenceHint}>
-          Listen to the complete pattern before starting.
+          Listen to the complete pattern before starting repetition {currentRepetition}.
         </Text>
       </View>
+
+      <Pressable
+        style={[
+          styles.referenceButton,
+          isPlayingReference && styles.disabledButton,
+        ]}
+        disabled={isPlayingReference}
+        onPress={() => void playReference()}
+      >
+        {isPlayingReference ? (
+          <ActivityIndicator size="small" color={BROWN} />
+        ) : (
+          <Ionicons name="play" size={18} color={BROWN} />
+        )}
+        <Text style={styles.referenceButtonText}>
+          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
+        </Text>
+      </Pressable>
 
       <Pressable
         style={[
@@ -867,27 +976,9 @@ export default function QuickIntervalJumpScreen() {
           isPlayingReference && styles.disabledButton,
         ]}
         disabled={isPlayingReference}
-        onPress={() => void playReference()}
-      >
-        {isPlayingReference ? (
-          <ActivityIndicator size="small" color={WHITE} />
-        ) : (
-          <Ionicons name="play" size={18} color={WHITE} />
-        )}
-        <Text style={styles.startButtonText}>
-          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[
-          styles.doneButton,
-          isPlayingReference && styles.disabledButton,
-        ]}
-        disabled={isPlayingReference}
         onPress={() => void startCountdown()}
       >
-        <Text style={styles.doneButtonText}>I'm Ready</Text>
+        <Text style={styles.startButtonText}>I'm Ready</Text>
       </Pressable>
     </View>
   );
@@ -900,13 +991,13 @@ export default function QuickIntervalJumpScreen() {
       <Text style={styles.phaseTitle}>Get Ready</Text>
       <Text style={styles.countdownText}>{countdown}</Text>
       <Text style={styles.phaseSubtitle}>
-        Prepare for the interval jumps.
+        Prepare for repetition {currentRepetition} of {repetitions}.
       </Text>
     </View>
   );
 
   const renderRecording = () => {
-    const progress = Math.min(recordingTime / recordingDurationSec, 1);
+    const progress = Math.min(recordingTime / repetitionDurationSec, 1);
     const noteSlotDurationSec = noteDurationSec + gapSec;
     const noteIndexByTime = Math.floor(
       recordingTime / noteSlotDurationSec,
@@ -920,18 +1011,25 @@ export default function QuickIntervalJumpScreen() {
         ? noteIndexByTime % notesPerRepetition
         : null;
 
-    const currentRepetition = Math.min(
-      Math.floor(recordingTime / repetitionDurationSec) + 1,
-      repetitions,
-    );
 
     return (
       <View style={styles.content}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open quit exercise confirmation"
+          hitSlop={10}
+          style={styles.quitButtonTop}
+          onPress={confirmBackToExercises}
+        >
+          <Ionicons name="close" size={22} color={BROWN} />
+        </Pressable>
+
         <View style={styles.recordingIcon}>
           <Ionicons name="mic" size={34} color={BROWN} />
         </View>
 
         <Text style={styles.recordingTitle}>Jump Between Notes</Text>
+        <Text style={styles.recordingSubtitle}>Repetition {currentRepetition} of {repetitions}</Text>
         <Text style={styles.recordingSubtitle}>
           Sing each target note clearly and make each interval change
           precise.
@@ -966,7 +1064,7 @@ export default function QuickIntervalJumpScreen() {
 
         <Text style={styles.timerText}>
           Recording Time: {recordingTime.toFixed(1)}s /{' '}
-          {recordingDurationSec.toFixed(1)}s
+          {repetitionDurationSec.toFixed(1)}s
         </Text>
 
         <View style={styles.timerTrack}>
@@ -1152,16 +1250,24 @@ export default function QuickIntervalJumpScreen() {
           <Text style={styles.tipText}>{result.feedback}</Text>
         </View>
 
-        <Pressable style={styles.startButton} onPress={resetExercise}>
+        <Pressable
+          style={styles.startButton}
+          onPress={confirmTryAgain}
+          accessibilityRole="button"
+          accessibilityLabel="Try the exercise again"
+        >
           <Ionicons name="refresh" size={18} color={WHITE} />
           <Text style={styles.startButtonText}>Try Again</Text>
         </Pressable>
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => router.replace('/dashboard?tab=exercises')}
+          onPress={confirmBackToExercises}
+          accessibilityRole="button"
+          accessibilityLabel="Back to exercises"
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Ionicons name="arrow-back" size={15} color={BROWN} />
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
       </View>
     );
@@ -1189,7 +1295,27 @@ export default function QuickIntervalJumpScreen() {
     );
   }
 
+  if (isPreparingResume) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.preparingIconCircle}>
+          <Ionicons name="musical-notes-outline" size={44} color={BROWN} />
+        </View>
+        <Text style={styles.preparingTitle}>Preparing Your Repetition</Text>
+        <Text style={styles.preparingSubtitle}>
+          Getting your reference notes ready. Your completed repetitions are preserved.
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={
@@ -1204,6 +1330,61 @@ export default function QuickIntervalJumpScreen() {
       {phase === 'processing' && renderProcessing()}
       {phase === 'results' && renderResults()}
     </ScrollView>
+
+    <Modal
+      visible={confirmation !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={closeConfirmation}
+      statusBarTranslucent
+    >
+      <View style={styles.confirmationOverlay}>
+        <View style={styles.confirmationCard}>
+          <View style={styles.confirmationIconCircle}>
+            <Ionicons
+              name={confirmation === 'tryAgain' ? 'refresh' : 'log-out-outline'}
+              size={30}
+              color={BROWN}
+            />
+          </View>
+          <Text style={styles.confirmationTitle}>
+            {confirmation === 'tryAgain' ? 'Try again?' : 'Quit exercise?'}
+          </Text>
+          <Text style={styles.confirmationMessage}>
+            {confirmation === 'tryAgain'
+              ? 'Are you sure you want to repeat this exercise? Your current result will be cleared.'
+              : 'Are you sure you want to leave this exercise?'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue exercise"
+            onPress={closeConfirmation}
+            style={({ pressed }) => [
+              styles.confirmationContinueButton,
+              pressed && styles.confirmationButtonPressed,
+            ]}
+          >
+            <Text style={styles.confirmationContinueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={confirmation === 'tryAgain' ? 'Try again' : 'Quit exercise'}
+            onPress={handleConfirmation}
+            style={({ pressed }) => [
+              styles.confirmationQuitButton,
+              pressed && styles.confirmationButtonPressed,
+            ]}
+          >
+            <Text style={styles.confirmationQuitButtonText}>
+              {confirmation === 'tryAgain' ? 'Try Again' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -1243,6 +1424,18 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: WHITE,
+  },
+  quitButtonTop: {
+    alignSelf: 'flex-end',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 8,
   },
   content: {
     flexGrow: 1,
@@ -1379,6 +1572,22 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: BROWN,
     marginLeft: 9,
+  },
+  referenceButton: {
+    width: '100%',
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: PINK,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 22,
+  },
+  referenceButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 14,
+    color: BROWN,
   },
   startButton: {
     width: '100%',
@@ -1673,5 +1882,79 @@ const styles = StyleSheet.create({
     color: BROWN,
     textAlign: 'right',
     marginLeft: 12,
+  },
+  confirmationOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmationCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  confirmationIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  confirmationTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  confirmationContinueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  confirmationContinueButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationQuitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  confirmationQuitButtonText: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationButtonPressed: {
+    opacity: 0.8,
   },
 });

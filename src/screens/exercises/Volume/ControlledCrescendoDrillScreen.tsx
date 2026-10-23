@@ -1649,7 +1649,7 @@ export default function ControlledCrescendoExercise({
         }
         onBack={handleBack}
         onRetry={tryAgain}
-        onExit={() => router.replace('/exercises/volume')}
+        onExit={handleBack}
       >
         <></>
       </ExerciseResultsScreen>

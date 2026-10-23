@@ -20,6 +20,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -49,6 +51,7 @@ const MIN_RECORDING_RMS = 0.001;
 type Phase =
   | 'instructions'
   | 'reference'
+  | 'resuming'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -98,9 +101,27 @@ export default function RapidScaleTrillScreen() {
 
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [currentRepetition, setCurrentRepetition] = useState(1);
   const [recordingTime, setRecordingTime] = useState(0);
   const [result, setResult] =
     useState<RapidScaleTrillResult | null>(null);
+  const [confirmation, setConfirmation] =
+    useState<'tryAgain' | 'quit' | null>(null);
+
+  // Brief loading guidance when the user continues the interrupted repetition.
+  useEffect(() => {
+    if (phase !== 'resuming') {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setCountdown(COUNTDOWN_SECONDS);
+      setPhase('reference');
+    }, 700);
+
+    return () => clearTimeout(timeout);
+  }, [phase]);
+
   const [referencePlaying, setReferencePlaying] = useState(false);
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
@@ -121,6 +142,7 @@ export default function RapidScaleTrillScreen() {
   const referencePlayingRef = useRef(false);
   const referenceRunRef = useRef(0);
   const savedAttemptRef = useRef(false);
+  const repetitionStartSampleCountRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +336,46 @@ export default function RapidScaleTrillScreen() {
     setActiveReferenceNoteIndex(null);
   }, []);
 
+  const requestQuitConfirmation = useCallback(() => {
+    if (confirmation !== null) {
+      return;
+    }
+
+    // Stop the current repetition without advancing it. If recording was
+    // interrupted, discard only that partial repetition and keep earlier ones.
+    if (phase === 'countdown') {
+      countdownRunRef.current += 1;
+      setPhase('reference');
+      setCountdown(COUNTDOWN_SECONDS);
+    } else if (phase === 'recording') {
+      stopRecording();
+      sampleCountRef.current = repetitionStartSampleCountRef.current;
+      setRecordingTime(0);
+      setActiveExerciseNoteIndex(null);
+      setPhase('reference');
+    }
+
+    cancelReferencePlayback();
+    setConfirmation('quit');
+  }, [confirmation, phase, stopRecording, cancelReferencePlayback]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (confirmation !== null) {
+          setConfirmation(null);
+          return true;
+        }
+
+        requestQuitConfirmation();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [confirmation, requestQuitConfirmation]);
+
   useEffect(() => {
     return () => {
       countdownRunRef.current += 1;
@@ -434,21 +496,30 @@ export default function RapidScaleTrillScreen() {
     }
 
     savedAttemptRef.current = false;
+    sampleCountRef.current = 0;
+    samplesRef.current = new Float32Array(
+      SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
+    );
+    setCurrentRepetition(1);
+    setRecordingTime(0);
     setResult(null);
     setActiveExerciseNoteIndex(null);
     setActiveReferenceNoteIndex(null);
     setPhase('reference');
   };
 
-  const startRecording = async () => {
+  const startRecording = async (preservePreviousRepetitions = false) => {
     try {
       processingRef.current = false;
       savedAttemptRef.current = false;
-      sampleCountRef.current = 0;
-      samplesRef.current = new Float32Array(
-        SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
-      );
+      if (!preservePreviousRepetitions) {
+        sampleCountRef.current = 0;
+        samplesRef.current = new Float32Array(
+          SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
+        );
+      }
 
+      repetitionStartSampleCountRef.current = sampleCountRef.current;
       const recorder = new AudioRecorder();
       recorderRef.current = recorder;
 
@@ -509,7 +580,7 @@ export default function RapidScaleTrillScreen() {
         const elapsed = (Date.now() - start) / 1000;
 
         setRecordingTime(
-          Math.min(elapsed, targetDurationSeconds),
+          Math.min(elapsed, targetSequenceDurationSeconds),
         );
 
         const noteDurationMs = Math.max(
@@ -524,7 +595,7 @@ export default function RapidScaleTrillScreen() {
         if (
           sequenceLength > 0 &&
           sequenceDurationMs > 0 &&
-          elapsedMs < targetDurationSeconds * 1000
+          elapsedMs < targetSequenceDurationSeconds * 1000
         ) {
           const positionInSequence =
             elapsedMs % sequenceDurationMs;
@@ -538,9 +609,17 @@ export default function RapidScaleTrillScreen() {
           setActiveExerciseNoteIndex(null);
         }
 
-        if (elapsed >= targetDurationSeconds) {
+        if (elapsed >= targetSequenceDurationSeconds) {
           setActiveExerciseNoteIndex(null);
-          void processRecording();
+          stopRecording();
+
+          if (currentRepetition < config.repetitions) {
+            setCurrentRepetition((previous) => previous + 1);
+            setActiveReferenceNoteIndex(null);
+            setPhase('reference');
+          } else {
+            void processRecording();
+          }
         }
       }, 30);
     } catch (error) {
@@ -746,7 +825,7 @@ export default function RapidScaleTrillScreen() {
       return;
     }
 
-    await startRecording();
+    await startRecording(true);
   };
 
   const resetExercise = () => {
@@ -764,6 +843,7 @@ export default function RapidScaleTrillScreen() {
     setResult(null);
     setRecordingTime(0);
     setCountdown(COUNTDOWN_SECONDS);
+    setCurrentRepetition(1);
     setActiveReferenceNoteIndex(null);
     setActiveExerciseNoteIndex(null);
     setPhase('instructions');
@@ -815,7 +895,7 @@ export default function RapidScaleTrillScreen() {
           ? 'Preparing Exercise...'
           : 'Start Exercise'
       }
-      onBack={() => router.back()}
+      onBack={requestQuitConfirmation}
       onStart={beginExercise}
     />
   );
@@ -826,11 +906,7 @@ export default function RapidScaleTrillScreen() {
         accessibilityRole="button"
         accessibilityLabel="Back"
         style={styles.backButton}
-        onPress={() => {
-          countdownRunRef.current += 1;
-          cancelReferencePlayback();
-          setPhase('instructions');
-        }}
+        onPress={requestQuitConfirmation}
       >
         <Ionicons name="chevron-back" size={25} color={BROWN} />
       </Pressable>
@@ -845,7 +921,7 @@ export default function RapidScaleTrillScreen() {
 
       <Text style={styles.phaseTitle}>Listen to the Reference</Text>
       <Text style={styles.phaseSubtitle}>
-        Listen carefully to the sequence before singing it.
+        Repetition {currentRepetition} of {config.repetitions}. Listen carefully to the sequence before singing it.
       </Text>
 
       <View style={styles.referenceCard}>
@@ -885,7 +961,7 @@ export default function RapidScaleTrillScreen() {
         </View>
 
         <Text style={styles.referenceHint}>
-          Listen to the complete sequence before starting.
+          Listen to the complete sequence before starting this repetition.
         </Text>
       </View>
 
@@ -917,7 +993,7 @@ export default function RapidScaleTrillScreen() {
         disabled={referencePlaying}
         onPress={() => void startCountdown()}
       >
-        <Text style={styles.doneButtonText}>I'm Ready</Text>
+        <Text style={styles.doneButtonText}>Start Repetition {currentRepetition}</Text>
       </Pressable>
     </View>
   );
@@ -931,14 +1007,14 @@ export default function RapidScaleTrillScreen() {
       <Text style={styles.phaseTitle}>Get Ready</Text>
       <Text style={styles.countdownText}>{countdown}</Text>
       <Text style={styles.phaseSubtitle}>
-        Prepare for the rapid scale pattern.
+        Get ready for repetition {currentRepetition} of {config.repetitions}.
       </Text>
     </View>
   );
 
   const renderRecording = () => {
     const progress = Math.min(
-      recordingTime / targetDurationSeconds,
+      recordingTime / targetSequenceDurationSeconds,
       1,
     );
 
@@ -960,7 +1036,7 @@ export default function RapidScaleTrillScreen() {
         </View>
 
         <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>RECORDING TIME</Text>
+          <Text style={styles.liveLabel}>REPETITION {currentRepetition} OF {config.repetitions}</Text>
           <Text style={styles.liveCurrentNote}>
             {recordingTime.toFixed(1)}s
           </Text>
@@ -988,7 +1064,7 @@ export default function RapidScaleTrillScreen() {
 
         <Text style={styles.timerText}>
           Recording Time: {recordingTime.toFixed(1)}s /{' '}
-          {targetDurationSeconds.toFixed(1)}s
+          {targetSequenceDurationSeconds.toFixed(1)}s
         </Text>
 
         <View style={styles.timerTrack}>
@@ -1049,6 +1125,20 @@ export default function RapidScaleTrillScreen() {
       </View>
     );
   };
+
+  const renderResuming = () => (
+    <View style={styles.centerScreen}>
+      <View style={styles.iconCircle}>
+        <ActivityIndicator size="large" color={BROWN} />
+      </View>
+
+      <Text style={styles.phaseTitle}>Getting You Ready</Text>
+      <Text style={styles.phaseSubtitle}>
+        Returning to repetition {currentRepetition} of {config.repetitions}.
+        You will see the reference notes and countdown before recording resumes.
+      </Text>
+    </View>
+  );
 
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
@@ -1186,7 +1276,7 @@ export default function RapidScaleTrillScreen() {
 
         <Pressable
           style={styles.startButton}
-          onPress={resetExercise}
+          onPress={() => setConfirmation('tryAgain')}
         >
           <Ionicons name="refresh" size={18} color={WHITE} />
           <Text style={styles.startButtonText}>Try Again</Text>
@@ -1194,11 +1284,9 @@ export default function RapidScaleTrillScreen() {
 
         <Pressable
           style={styles.doneButton}
-          onPress={() =>
-            router.replace('/dashboard?tab=exercises')
-          }
+          onPress={() => setConfirmation('quit')}
         >
-          <Text style={styles.doneButtonText}>Done</Text>
+          <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
       </View>
     );
@@ -1242,10 +1330,73 @@ export default function RapidScaleTrillScreen() {
     >
       {phase === 'instructions' && renderInstructions()}
       {phase === 'reference' && renderReference()}
+      {phase === 'resuming' && renderResuming()}
       {phase === 'countdown' && renderCountdown()}
       {phase === 'recording' && renderRecording()}
       {phase === 'processing' && renderProcessing()}
       {phase === 'results' && renderResults()}
+      <Modal
+        transparent
+        visible={confirmation !== null}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setConfirmation(null)}
+      >
+        <View style={styles.confirmationOverlay}>
+          <View style={styles.confirmationCard}>
+            <View style={styles.confirmationIconCircle}>
+              <Ionicons
+                name={confirmation === 'tryAgain' ? 'refresh' : 'log-out-outline'}
+                size={23}
+                color={BROWN}
+              />
+            </View>
+            <Text style={styles.confirmationTitle}>
+              {confirmation === 'tryAgain' ? 'Try again?' : 'Quit exercise?'}
+            </Text>
+            <Text style={styles.confirmationMessage}>
+              {confirmation === 'tryAgain'
+                ? 'Are you sure you want to restart this exercise?'
+                : 'Are you sure you want to leave this exercise?'}
+            </Text>
+            <Pressable
+              style={styles.confirmationContinueButton}
+              onPress={() => {
+                const action = confirmation;
+                setConfirmation(null);
+                if (action === 'tryAgain') {
+                  resetExercise();
+                } else if (action === 'quit') {
+                  cancelReferencePlayback();
+                  setCountdown(COUNTDOWN_SECONDS);
+                  setPhase('resuming');
+                }
+              }}
+            >
+              <Text style={styles.confirmationContinueText}>
+                {confirmation === 'tryAgain' ? 'Restart Exercise' : 'Continue Exercise'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.confirmationQuitButton}
+              onPress={() => {
+                const action = confirmation;
+                setConfirmation(null);
+                if (action === 'quit') {
+                  countdownRunRef.current += 1;
+                  cancelReferencePlayback();
+                  stopRecording();
+                  router.replace('/dashboard?tab=exercises');
+                }
+              }}
+            >
+              <Text style={styles.confirmationQuitText}>
+                {confirmation === 'tryAgain' ? 'Cancel' : 'Quit Exercise'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1495,6 +1646,77 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   doneButtonText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmationCard: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    borderRadius: 24,
+    backgroundColor: WHITE,
+  },
+  confirmationIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_PINK,
+    marginBottom: 15,
+  },
+  confirmationTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 23,
+    color: BROWN,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    fontFamily: 'FredokaRegular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  confirmationContinueButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: PINK,
+  },
+  confirmationContinueText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  confirmationQuitButton: {
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: WHITE,
+  },
+  confirmationQuitText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,

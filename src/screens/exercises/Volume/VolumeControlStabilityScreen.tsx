@@ -44,12 +44,82 @@ const CURRENT_TIER: Tier = 'beginner';
 const DEFAULT_PARAMS =
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
-const NOTE = 'C4';
-const REFERENCE_NOTE = createMusicalNote(60);
+const DEFAULT_REFERENCE_MIDI = 60;
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
 const MAX_LIVE_HISTORY = 40;
 const MIN_VOICE_CLARITY = 0.45;
+
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function midiToNoteName(midi: number): string {
+  const safeMidi = Math.max(0, Math.min(127, Math.round(midi)));
+  return `${NOTE_NAMES[safeMidi % 12]}${Math.floor(safeMidi / 12) - 1}`;
+}
+
+function noteValueToMidi(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Assessment data may store a MIDI note or a frequency in Hz.
+    if (value >= 0 && value <= 127 && Number.isInteger(value)) return value;
+    if (value > 0) return Math.round(69 + 12 * Math.log2(value / 440));
+  }
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  const noteMatch = /^([A-Ga-g])([#b]?)(-?\d+)$/.exec(trimmed);
+  if (noteMatch) {
+    const semitones: Record<string, number> = {
+      C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4,
+      F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9,
+      'A#': 10, Bb: 10, B: 11,
+    };
+    const pitchClass = `${noteMatch[1].toUpperCase()}${noteMatch[2]}`;
+    const semitone = semitones[pitchClass];
+    if (semitone !== undefined) return (Number(noteMatch[3]) + 1) * 12 + semitone;
+  }
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    if (numeric <= 127 && Number.isInteger(numeric)) return numeric;
+    return Math.round(69 + 12 * Math.log2(numeric / 440));
+  }
+  return null;
+}
+
+function getAssessmentReferenceMidi(assessment: unknown): number | null {
+  if (!assessment || typeof assessment !== 'object') return null;
+  const data = assessment as Record<string, any>;
+  const rangeCandidates = [
+    data.vocalRange,
+    data.detectedVocalRange,
+    data.range,
+    data.assessment?.vocalRange,
+    data.results?.vocalRange,
+  ].filter((value) => value && typeof value === 'object');
+
+  for (const range of rangeCandidates) {
+    const low = noteValueToMidi(
+      range.lowestNote ?? range.lowNote ?? range.minNote ??
+      range.lowest ?? range.min ?? range.low ?? range.minFrequency ??
+      range.lowestFrequency ?? range.minMidi,
+    );
+    const high = noteValueToMidi(
+      range.highestNote ?? range.highNote ?? range.maxNote ??
+      range.highest ?? range.max ?? range.high ?? range.maxFrequency ??
+      range.highestFrequency ?? range.maxMidi,
+    );
+    if (low !== null && high !== null && high >= low) {
+      return Math.round((low + high) / 2);
+    }
+  }
+
+  const low = noteValueToMidi(data.lowestNote ?? data.lowNote ?? data.minNote);
+  const high = noteValueToMidi(data.highestNote ?? data.highNote ?? data.maxNote);
+  return low !== null && high !== null && high >= low
+    ? Math.round((low + high) / 2)
+    : null;
+}
 
 const BROWN = '#4E2F1F';
 const PINK = '#FCD6DD';
@@ -76,6 +146,9 @@ export default function VolumeControlStabilityScreen({
   tier?: Tier;
 }) {
   const [phase, setPhase] = useState<Phase>('directions');
+  const [referenceMidi, setReferenceMidi] = useState(DEFAULT_REFERENCE_MIDI);
+  const NOTE = midiToNoteName(referenceMidi);
+  const REFERENCE_NOTE = createMusicalNote(referenceMidi);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
 
   const [remainingSeconds, setRemainingSeconds] = useState(
@@ -125,6 +198,29 @@ export default function VolumeControlStabilityScreen({
   const repetitions = exerciseParams.repetitions;
   const targetStability = exerciseParams.stabilityThreshold;
   const totalExerciseSeconds = durationSeconds * repetitions;
+
+  // Load the user's assessed vocal range and choose a comfortable midpoint note.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReferenceNote = async () => {
+      try {
+        const assessment = await getLatestAssessment();
+        const assessedMidi = getAssessmentReferenceMidi(assessment);
+        if (!cancelled && assessedMidi !== null) {
+          setReferenceMidi(assessedMidi);
+        }
+      } catch (error) {
+        // Keep the existing C4 fallback if assessment range data is unavailable.
+        console.warn('Unable to load assessed vocal range for reference note:', error);
+      }
+    };
+
+    void loadReferenceNote();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load adaptive exercise parameters.
   useEffect(() => {
@@ -248,17 +344,17 @@ export default function VolumeControlStabilityScreen({
         }),
       ]);
     } catch (error) {
-      console.error('C4 reference playback error:', error);
+      console.error(`${NOTE} reference playback error:`, error);
 
       if (mountedRef.current) {
-        setReferenceError('Unable to play the C4 reference note.');
+        setReferenceError(`Unable to play the ${NOTE} reference note.`);
       }
     } finally {
       if (mountedRef.current) {
         setReferencePlaying(false);
       }
     }
-  }, [referencePlaying]);
+  }, [referencePlaying, REFERENCE_NOTE.frequency]);
 
   // Handle live audio frames and final recording measurements.
   const { startRecording, stopRecording } = useAudioRecorder({
