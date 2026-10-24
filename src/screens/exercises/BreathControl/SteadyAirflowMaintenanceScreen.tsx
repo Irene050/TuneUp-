@@ -49,7 +49,6 @@ const ACCENT = '#D86C89';
 const BORDER = '#F2DDE5';
 
 const PREPARATION_COUNTDOWN = 3;
-const AIRFLOW_DETECTION_THRESHOLD = 0.002;
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;
 
@@ -553,67 +552,105 @@ export default function SteadyAirflowMaintenanceScreen({
     stopRecording,
   } = useAudioRecorder({
     onFrame: frame => {
-      if (
-        !mountedRef.current ||
-        exitRequestedRef.current ||
-        quitInProgressRef.current ||
-        showQuitModalRef.current ||
-        restartCurrentRepRef.current ||
-        phaseRef.current !== 'recording'
-      ) {
-        return;
-      }
 
-      const currentVolume = frame.volume ?? 0;
-      setVolume(currentVolume);
+  if (
+    !mountedRef.current ||
+    exitRequestedRef.current ||
+    quitInProgressRef.current ||
+    showQuitModalRef.current ||
+    restartCurrentRepRef.current ||
+    phaseRef.current !== 'recording'
+  ) {
+    return;
+  }
+  if (
+    !mountedRef.current ||
+    exitRequestedRef.current ||
+    quitInProgressRef.current ||
+    showQuitModalRef.current ||
+    restartCurrentRepRef.current ||
+    phaseRef.current !== 'recording'
+  ) {
+    return;
+  }
 
-      // The live indicator assumes frame.volume is a linear RMS-like value.
-      const readings = recentVolumeRef.current;
-      readings.push(currentVolume);
+  // The recorder returns volume in dB, not linear RMS.
+  const volumeDb = frame.volume;
 
-      if (readings.length > STABILITY_WINDOW_SIZE) {
-        readings.shift();
-      }
+  if (!Number.isFinite(volumeDb)) {
+    setVolume(0);
+    setAirflowDetected(false);
+    setAirflowStability(0);
+    recentVolumeRef.current = [];
+    return;
+  }
 
-      if (readings.length < MIN_STABILITY_READINGS) {
-        setAirflowDetected(false);
-        setAirflowStability(0);
-        return;
-      }
+  // Convert dB into a normalized display value from 0 to 1.
+  // -60 dB or lower = 0%; -10 dB or higher = 100%.
+  const normalizedVolume = Math.max(
+    0,
+    Math.min(1, (volumeDb + 60) / 50),
+  );
 
-      const average =
-        readings.reduce((sum, value) => sum + value, 0) /
-        readings.length;
+  setVolume(normalizedVolume);
 
-      const detected =
-        average > AIRFLOW_DETECTION_THRESHOLD;
+  // Initial detection threshold, matching the recorder's
+  // MIN_VOICED_DB setting. Tune this using actual device logs.
+  const detected = volumeDb >= -45;
 
-      setAirflowDetected(detected);
+  setAirflowDetected(detected);
 
-      if (!detected || average <= 0) {
-        setAirflowStability(0);
-        return;
-      }
+  // Only use detected airflow frames for stability calculations.
+  if (!detected) {
+    recentVolumeRef.current = [];
+    setAirflowStability(0);
+    return;
+  }
 
-      const variance =
-        readings.reduce(
-          (sum, value) => sum + (value - average) ** 2,
-          0,
-        ) / readings.length;
+  // Convert dB back into linear amplitude for the
+  // coefficient-of-variation calculation.
+  const linearAmplitude = Math.pow(10, volumeDb / 20);
 
-      const coefficientOfVariation =
-        Math.sqrt(variance) / average;
+  const readings = recentVolumeRef.current;
+  readings.push(linearAmplitude);
 
-      const stability = Math.max(
-        0,
-        Math.min(
-          100,
-          100 - coefficientOfVariation * 100,
-        ),
-      );
+  if (readings.length > STABILITY_WINDOW_SIZE) {
+    readings.shift();
+  }
 
-      setAirflowStability(Math.round(stability));
-    },
+  if (readings.length < MIN_STABILITY_READINGS) {
+    setAirflowStability(0);
+    return;
+  }
+
+  const average =
+    readings.reduce((sum, value) => sum + value, 0) /
+    readings.length;
+
+  if (average <= 0) {
+    setAirflowStability(0);
+    return;
+  }
+
+  const variance =
+    readings.reduce(
+      (sum, value) => sum + (value - average) ** 2,
+      0,
+    ) / readings.length;
+
+  const coefficientOfVariation =
+    Math.sqrt(variance) / average;
+
+  const stability = Math.max(
+    0,
+    Math.min(
+      100,
+      100 - coefficientOfVariation * 100,
+    ),
+  );
+
+  setAirflowStability(Math.round(stability));
+  },
     onStop: handleRecordingStop,
   });
 

@@ -596,6 +596,7 @@ export default function ControlledBreathReleaseScreen({
           samples,
           adaptiveParams.intervalSec,
           sampleRate,
+          adaptiveParams.pulseCount,
         );
 
         const score = scoreControlledBreathRelease(

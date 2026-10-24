@@ -2,20 +2,20 @@ import type {
   VolumeBandMeasurement,
 } from '@/services/measurement/volume/volumeBandTargeting';
 
-const DEFAULT_PASSING_SCORE = 70;
+const DEFAULT_PASSING_SCORE = 60;
+const MIN_MEASUREMENT_QUALITY = 50;
 
 export interface VolumeBandScore {
   consistency: number;
   overallScore: number;
-
   passed: boolean;
   targetReached: boolean;
-
   measurementQuality: number;
 }
 
 interface ScoreOptions {
   passingScore?: number;
+  minimumMeasurementQuality?: number;
 }
 
 function clamp(
@@ -34,7 +34,7 @@ function roundScore(
 ): number {
   return Math.round(
     clamp(
-      value,
+      Number.isFinite(value) ? value : 0,
       0,
       100,
     ),
@@ -45,36 +45,47 @@ export function scoreVolumeBandTargeting(
   measurement: VolumeBandMeasurement,
   options: ScoreOptions = {},
 ): VolumeBandScore {
-  const passingScore =
-    options.passingScore ??
-    DEFAULT_PASSING_SCORE;
+  const passingScore = clamp(
+    options.passingScore ?? DEFAULT_PASSING_SCORE,
+    0,
+    100,
+  );
 
-  const score =
-    measurement.targetReached
-      ? measurement.consistency
-      : 0;
+  const minimumMeasurementQuality = clamp(
+    options.minimumMeasurementQuality ??
+      MIN_MEASUREMENT_QUALITY,
+    0,
+    100,
+  );
 
-  const overallScore =
-    roundScore(score);
+  const consistency = roundScore(
+    measurement.consistency,
+  );
+
+  const overallScore = consistency;
+
+  const measurementQuality = roundScore(
+    measurement.measurementQuality,
+  );
+
+  const hasSufficientMeasurement =
+    measurement.validWindowCount > 0 &&
+    measurement.expectedWindowCount > 0 &&
+    measurementQuality >= minimumMeasurementQuality;
+
+  const targetReached =
+    measurement.targetReached &&
+    hasSufficientMeasurement;
+
+  const passed =
+    targetReached &&
+    overallScore >= passingScore;
 
   return {
-    consistency:
-      roundScore(
-        measurement.consistency,
-      ),
-
+    consistency,
     overallScore,
-
-    passed:
-      measurement.targetReached &&
-      overallScore >= passingScore,
-
-    targetReached:
-      measurement.targetReached,
-
-    measurementQuality:
-      roundScore(
-        measurement.measurementQuality,
-      ),
+    passed,
+    targetReached,
+    measurementQuality,
   };
 }

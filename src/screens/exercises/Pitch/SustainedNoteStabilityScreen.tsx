@@ -709,6 +709,7 @@ export default function SustainedNoteStabilityScreen({
         const score = scoreSustainedNoteStabilityRepetitions(
           measurementsRef.current,
           params,
+          targetNoteRef.current.frequency,
         );
 
         await saveCompletedExercise(

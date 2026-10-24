@@ -1,6 +1,19 @@
 import { frequencyToNoteName } from '@/utils/music/notes';
 import { PitchDetector } from 'pitchy';
 
+const MIN_TRACKING_CLARITY = 0.70;
+
+function centsBetween(
+  frequencyA: number,
+  frequencyB: number,
+): number {
+  if (frequencyA <= 0 || frequencyB <= 0) {
+    return Infinity;
+  }
+
+  return 1200 * Math.log2(frequencyA / frequencyB);
+}
+
 export interface PitchFrame {
   frequency: number;
   clarity: number;
@@ -22,9 +35,10 @@ const detector =
 
 export function analyzePitchFrame(
   samples: Float32Array,
-  sampleRate: number
+  sampleRate: number,
 ): LivePitchData {
   if (
+    !Number.isFinite(sampleRate) ||
     sampleRate <= 0 ||
     samples.length < PITCH_FRAME_SIZE
   ) {
@@ -35,39 +49,44 @@ export function analyzePitchFrame(
     };
   }
 
-  const frame =
-    samples.subarray(
-      samples.length -
-        PITCH_FRAME_SIZE
-    );
+  const frame = samples.subarray(
+    samples.length - PITCH_FRAME_SIZE,
+  );
 
   try {
-    const [
-      frequency,
-      clarity,
-    ] =
+    const [detectedFrequency, clarity] =
       detector.findPitch(frame, sampleRate);
 
     if (
-      !Number.isFinite(frequency) ||
-      frequency <= 0
+      !Number.isFinite(detectedFrequency) ||
+      detectedFrequency < 60 ||
+      detectedFrequency > 1500 ||
+      !Number.isFinite(clarity) ||
+      clarity < MIN_TRACKING_CLARITY
     ) {
       return {
         frequency: 0,
         note: '--',
-        clarity: 0,
+        clarity: Number.isFinite(clarity) ? clarity : 0,
       };
     }
 
+    const note = frequencyToNoteName(detectedFrequency);
+
+    console.log('[Pitch Detection]', {
+      frequencyHz: Number(detectedFrequency.toFixed(2)),
+      note,
+      clarity: Number(clarity.toFixed(3)),
+    });
+
     return {
-      frequency,
-      note:
-        frequencyToNoteName(
-          frequency
-        ),
+      frequency: detectedFrequency,
+      note,
       clarity,
     };
-  } catch {
+  } catch (error) {
+    console.error('[Pitch Detection] Failed:', error);
+
     return {
       frequency: 0,
       note: '--',
@@ -88,64 +107,81 @@ export function filterByClarity(
   );
 }
 
-export function trackPitchOverTime(
-  samples: Float32Array,
-  frameSizeMs: number,
-  sampleRate: number
-): PitchFrame[] {
-  if (
-    sampleRate <= 0 ||
-    samples.length < PITCH_FRAME_SIZE
-  ) {
-    return [];
-  }
+  export function trackPitchOverTime(
+    samples: Float32Array,
+    frameSizeMs: number,
+    sampleRate: number,
+  ): PitchFrame[] {
+    if (
+      !Number.isFinite(sampleRate) ||
+      sampleRate <= 0 ||
+      !Number.isFinite(frameSizeMs) ||
+      frameSizeMs <= 0 ||
+      samples.length < PITCH_FRAME_SIZE
+    ) {
+      return [];
+    }
 
-  const hopSize =
-    Math.max(
+    const hopSize = Math.max(
       1,
-      Math.floor(
-        (frameSizeMs / 1000) *
-          sampleRate
-      )
+      Math.floor((frameSizeMs / 1000) * sampleRate),
     );
 
-  const frames: PitchFrame[] = [];
+    const frames: PitchFrame[] = [];
 
-  for (
-    let i = 0;
-    i + PITCH_FRAME_SIZE <=
-      samples.length;
-    i += hopSize
-  ) {
-    const chunk =
-      samples.subarray(
+    for (
+      let i = 0;
+      i + PITCH_FRAME_SIZE <= samples.length;
+      i += hopSize
+    ) {
+      const chunk = samples.subarray(
         i,
-        i + PITCH_FRAME_SIZE
+        i + PITCH_FRAME_SIZE,
       );
 
-    try {
-      const [
-        frequency,
-        clarity,
-      ] =
-        detector.findPitch(
-          chunk,
-          sampleRate
+      // Timestamp the center of the analyzed frame.
+      const timestamp =
+        (i + PITCH_FRAME_SIZE / 2) / sampleRate;
+
+      try {
+        const [frequency, clarity] =
+          detector.findPitch(chunk, sampleRate);
+
+        const validClarity =
+          Number.isFinite(clarity) &&
+          clarity >= MIN_TRACKING_CLARITY;
+
+        const validFrequency =
+          Number.isFinite(frequency) &&
+          frequency >= 60 &&
+          frequency <= 1500;
+
+        frames.push({
+          frequency:
+            validFrequency && validClarity
+              ? frequency
+              : 0,
+          clarity: Number.isFinite(clarity)
+            ? Math.max(0, Math.min(1, clarity))
+            : 0,
+          timestamp,
+        });
+      } catch (error) {
+        console.warn(
+          '[Pitch Tracking] Frame analysis failed:',
+          error,
         );
 
-      frames.push({
-        frequency,
-        clarity,
-        timestamp:
-          i / sampleRate,
-      });
-    } catch {
-      continue;
+        frames.push({
+          frequency: 0,
+          clarity: 0,
+          timestamp,
+        });
+      }
     }
-  }
 
-  return frames;
-}
+    return frames;
+  }
 
 export function calcPitchAccuracy(
   detectedFreq: number,

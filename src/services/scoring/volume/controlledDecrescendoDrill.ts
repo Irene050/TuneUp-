@@ -17,7 +17,11 @@ interface ScoreOptions {
   passingScore?: number;
 }
 
-function clamp(value: number, min: number, max: number): number {
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+): number {
   return Math.max(min, Math.min(max, value));
 }
 
@@ -32,36 +36,32 @@ export function scoreControlledDecrescendo(
   const passingScore =
     options.passingScore ?? DEFAULT_PASSING_SCORE;
 
-  const hasEnoughAudio =
-    measurement.validWindowCount >= MIN_VALID_WINDOWS &&
-    measurement.measurementQuality >= MIN_MEASUREMENT_QUALITY &&
+  const hasValidRepetitionScores =
     measurement.repSmoothness.length > 0 &&
     measurement.repSmoothness.every(
       (score) => Number.isFinite(score) && score > 0,
     );
 
-  // Keep scores from repetitions that produced a measurable result.
-  // A failed/missing repetition must not erase scores from earlier valid reps.
-  const validRepScores = measurement.repSmoothness.filter(
-    (score) => Number.isFinite(score) && score > 0,
-  );
+  const hasEnoughAudio =
+    measurement.validWindowCount >= MIN_VALID_WINDOWS &&
+    measurement.measurementQuality >= MIN_MEASUREMENT_QUALITY &&
+    hasValidRepetitionScores;
 
-  const repetitionAverage =
-    validRepScores.length > 0
-      ? validRepScores.reduce((total, score) => total + score, 0) /
-        validRepScores.length
-      : 0;
+  const repetitionAverage = hasValidRepetitionScores
+    ? measurement.repSmoothness.reduce(
+        (total, score) => total + score,
+        0,
+      ) / measurement.repSmoothness.length
+    : 0;
 
-  // The score represents measured performance, not pass/fail status.
-  // Do not halve a valid score just because the target or direction was missed:
-  // that turned repetition scores of 77 and 62 into about 35. Keep the strict
-  // audio gate so silence/insufficient audio still receives 0, and enforce the
-  // target/direction requirements separately when determining whether it passed.
-  const overallScore = hasEnoughAudio ? roundScore(repetitionAverage) : 0;
+  // The numerical score represents smoothness. Passing additionally
+  // requires correct direction and successful target achievement.
+  const overallScore = hasEnoughAudio
+    ? roundScore(repetitionAverage)
+    : 0;
 
   const passed =
     hasEnoughAudio &&
-    validRepScores.length === measurement.repSmoothness.length &&
     measurement.directionCorrect &&
     measurement.targetReached &&
     overallScore >= passingScore;
@@ -72,6 +72,8 @@ export function scoreControlledDecrescendo(
     passed,
     targetReached: measurement.targetReached,
     directionCorrect: measurement.directionCorrect,
-    measurementQuality: roundScore(measurement.measurementQuality),
+    measurementQuality: roundScore(
+      measurement.measurementQuality,
+    ),
   };
 }

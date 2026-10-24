@@ -26,7 +26,6 @@ import type {
   ComponentId,
   ComponentProgressSummary,
   ExerciseAttempt,
-  PeriodComparison,
   ProgressPeriod,
 } from '@/services/progress/progressModule';
 
@@ -218,29 +217,6 @@ export default function ProgressScreen() {
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressError, setProgressError] = useState(false);
 
-  const allTimeComponentChanges = useMemo(() => {
-    const result = {} as Record<ComponentId, number | null>;
-
-    for (const component of components) {
-      const componentAttempts = attempts
-        .filter(attempt => attempt.componentId === component.id)
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      if (componentAttempts.length < 2) {
-        result[component.id] = null;
-        continue;
-      }
-
-      const firstScore = componentAttempts[0].scorePct;
-      const latestScore =
-        componentAttempts[componentAttempts.length - 1].scorePct;
-
-      result[component.id] = latestScore - firstScore;
-    }
-
-    return result;
-  }, [attempts]);
-
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
@@ -420,21 +396,6 @@ export default function ProgressScreen() {
       emptyProgress(componentId),
     [exerciseProgress],
   );
-
-  const componentComparisons = useMemo(() => {
-    const result = {} as Record<ComponentId, PeriodComparison>;
-
-    for (const component of components) {
-      result[component.id] = comparePeriods(
-        attempts.filter(
-          attempt => attempt.componentId === component.id,
-        ),
-        period,
-      );
-    }
-
-    return result;
-  }, [attempts, period]);
 
   return (
     <View style={styles.screen}>
@@ -862,75 +823,62 @@ export default function ProgressScreen() {
           </Text>
         </View>
 
-        {!progressLoading &&
-          components.map(component => {
-            const progress = getComponentProgress(component.id);
+      {!progressLoading &&
+        components.map(component => {
+          const progress = getComponentProgress(component.id);
 
-            const recentScore = clampPercentage(
-              progress.averageRecentScorePct,
-            );
+          const recentScore = clampPercentage(
+            progress.averageRecentScorePct,
+          );
 
-            const allTimeChange =
-              allTimeComponentChanges[component.id];
-
-            return (
-              <View
-                key={`progress-${component.id}`}
-                style={styles.componentCard}
-              >
-                <View style={styles.componentHeader}>
-                  <View style={styles.componentNameRow}>
-                    <Ionicons
-                      name={component.icon}
-                      size={18}
-                      color={BROWN}
-                    />
-
-                    <Text style={styles.componentName}>
-                      {component.name}
-                    </Text>
-                  </View>
-
-                  <View style={styles.deltaRow}>
-                    <Text style={styles.componentScore}>
-                      {recentScore}%
-                    </Text>
-
-                    <DeltaBadge delta={allTimeChange} />
-                  </View>
-                </View>
-
-                <View style={styles.progressBackground}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${recentScore}%` },
-                    ]}
+          return (
+            <View
+              key={`progress-${component.id}`}
+              style={styles.componentCard}
+            >
+              <View style={styles.componentHeader}>
+                <View style={styles.componentNameRow}>
+                  <Ionicons
+                    name={component.icon}
+                    size={18}
+                    color={BROWN}
                   />
-                </View>
 
-                <View style={styles.componentMeta}>
-                  <Text style={styles.componentMetaText}>
-                    {progress.exercisesCompleted}{' '}
-                    {progress.exercisesCompleted === 1
-                      ? 'exercise'
-                      : 'exercises'}{' '}
-                    total
-                  </Text>
-
-                  <Text style={styles.componentMetaText}>
-                    {formatTier(progress.currentTier)}
+                  <Text style={styles.componentName}>
+                    {component.name}
                   </Text>
                 </View>
 
-                <Text style={styles.comparisonHint}>
-                  {allTimeChange === null
-                    ? 'Complete another exercise to track improvement.'
-                    : 'Improvement across all recorded exercises'}
+                <Text style={styles.componentScore}>
+                  {recentScore}%
                 </Text>
               </View>
-            );
-          })}
+
+              <View style={styles.progressBackground}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${recentScore}%` },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.componentMeta}>
+                <Text style={styles.componentMetaText}>
+                  {progress.exercisesCompleted}{' '}
+                  {progress.exercisesCompleted === 1
+                    ? 'exercise'
+                    : 'exercises'}{' '}
+                  total
+                </Text>
+
+                <Text style={styles.componentMetaText}>
+                  {formatTier(progress.currentTier)}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
 
         {!progressLoading &&
           !progressError &&

@@ -717,16 +717,16 @@ export default function ControlledDecrescendoDrill({
         repetitionSamplesRef.current = [];
 
         const measurement = measureControlledDecrescendo(
-          exerciseSamples,
-          sampleRate,
-          {
-            windowMs: WINDOW_MS,
-            targetRange: [targetMin, targetMax],
-            expectedDurationSeconds: rampSeconds * repetitions,
-            repetitions,
-            volumeDecreaseThreshold: params.volumeDecreaseThreshold,
-          },
-        );
+  exerciseSamples,
+  sampleRate,
+  {
+    windowMs: WINDOW_MS,
+    targetRange: [targetMin, targetMax],
+    expectedDurationSeconds: rampSeconds,
+    repetitions,
+    volumeDecreaseThreshold: params.volumeDecreaseThreshold,
+  },
+);
 
         const result = scoreControlledDecrescendo(measurement, {
           passingScore: smoothnessTarget,

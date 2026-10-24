@@ -123,7 +123,22 @@ function generateScale(
     8,
   );
 
-  return getRandomScale(tier, noteCount, vocalRange);
+  console.log('🎼 generateScale input:', {
+    tier,
+    requestedNoteCount: params.noteCount,
+    noteCountPassedToGenerator: noteCount,
+    vocalRange,
+  });
+
+  const scale = getRandomScale(tier, noteCount, vocalRange);
+
+  console.log('🎼 getRandomScale result:', {
+    count: scale.length,
+    notes: scale.map(note => note.name),
+    frequencies: scale.map(note => note.frequency),
+  });
+
+  return scale;
 }
 
 function average(values: number[]): number {
@@ -1153,7 +1168,13 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     clearTimers();
 
-    const newScale = generateScale(params, currentTier, vocalRange);
+   const newScale = generateScale(params, currentTier, vocalRange);
+
+   console.log('🎼 Generated scale:', {
+    requestedNoteCount: params.noteCount,
+    actualNoteCount: newScale.length,
+    notes: newScale.map(note => note.name),
+  });
 
     targetNotesRef.current = newScale;
     setTargetNotes(newScale);

@@ -63,6 +63,7 @@ const GUIDE_RED = '#D64F5A';
 const GUIDE_MAX_CENTS = 100;
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;
 const RECORDING_BUFFER_SEC = 0.8;
+const PRE_RECORDING_DELAY_MS = 1500;
 
 interface Props {
   tier?: Tier;
@@ -240,6 +241,10 @@ function getPitchGuideStatus(
   };
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function formatCents(cents: number | null): string {
   if (cents === null || !Number.isFinite(cents)) {
     return 'Waiting for pitch...';
@@ -256,21 +261,10 @@ function formatCents(cents: number | null): string {
 
 function QuitExerciseModal({
   visible,
-  interruptedPhase,
   isQuitting,
   onContinue,
   onQuit,
 }: QuitExerciseModalProps) {
-  const message =
-    interruptedPhase === 'instructions' ||
-    interruptedPhase === 'results'
-      ? 'Are you sure you want to leave Interval Recognition Task?'
-      : interruptedPhase === 'recording'
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current exercise when you continue.'
-        : interruptedPhase === 'processing'
-          ? 'Your exercise is paused. Continue to resume processing your current results.'
-          : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
   return (
     <Modal
   visible={visible}
@@ -385,6 +379,8 @@ export default function IntervalRecognitionTaskScreen({
   const pausedRef = useRef(false);
   const leavingRef = useRef(false);
   const playbackRunRef = useRef(0);
+
+  const lastPitchTraceUpdateRef = useRef(0);
 
   const [isQuitting, setIsQuitting] = useState(false);
 
@@ -593,9 +589,22 @@ export default function IntervalRecognitionTaskScreen({
         return;
       }
 
+      // Update the live pitch indicator whenever a frame arrives.
       setLiveFrame(frame);
 
-      if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
+      // Keep the pitch trace history separate from the indicator updates.
+      const now = Date.now();
+
+      if (now - lastPitchTraceUpdateRef.current < 100) {
+        return;
+      }
+
+      lastPitchTraceUpdateRef.current = now;
+
+      if (
+        Number.isFinite(frame.pitch) &&
+        frame.pitch > 0
+      ) {
         pitchHistoryRef.current = [
           ...pitchHistoryRef.current,
           frame.pitch,
@@ -665,6 +674,7 @@ export default function IntervalRecognitionTaskScreen({
           sampleRate,
           params.minClarity,
           params.repetitions,
+          exercise.interval.ratio,
         );
 
         const score = scoreIntervalRecognitionTask(
@@ -755,6 +765,7 @@ export default function IntervalRecognitionTaskScreen({
 
       pitchHistoryRef.current = [];
       recordingElapsedRef.current = 0;
+      lastPitchTraceUpdateRef.current = 0;
 
       setLiveFrequencies([]);
       setLiveFrame(null);
@@ -830,6 +841,11 @@ export default function IntervalRecognitionTaskScreen({
         stopRequestedRef.current = true;
         stopInFlightRef.current = true;
 
+        // Show the analyzing screen immediately.
+        // Do not wait for the recorder's onStop callback.
+        setRecordingElapsedMs(durationMs);
+        setCurrentPhase('processing');
+
         void stopRecording().catch(error => {
           console.error(
             'Failed to stop interval recording:',
@@ -848,6 +864,7 @@ export default function IntervalRecognitionTaskScreen({
             setCurrentPhase('instructions');
           }
         });
+
       }, 100);
     } catch (error) {
       console.error(
@@ -946,6 +963,8 @@ export default function IntervalRecognitionTaskScreen({
             }
           }
         }
+
+        await delay(PRE_RECORDING_DELAY_MS);
 
         if (
           !mountedRef.current ||
@@ -1314,14 +1333,20 @@ export default function IntervalRecognitionTaskScreen({
     Math.round(params.repetitions),
   );
 
+  const isRecordingComplete = recordingProgress >= 1;
+
   const repetitionProgress = Math.min(
     repetitionCount - 1,
     Math.floor(recordingProgress * repetitionCount),
   );
 
   const currentRepetition = repetitionProgress + 1;
-  const phaseProgress = (recordingProgress * repetitionCount) % 1;
-  const firstHalf = phaseProgress < 0.5;
+
+  const phaseProgress = isRecordingComplete
+    ? 1
+    : (recordingProgress * repetitionCount) % 1;
+
+  const firstHalf = !isRecordingComplete && phaseProgress < 0.5;
   const liveTarget = firstHalf ? rootNote : targetNote;
 
   const liveAccuracy =
@@ -2099,60 +2124,6 @@ export default function IntervalRecognitionTaskScreen({
               </View>
             </View>
 
-            <View style={styles.liveStatsCard}>
-              <View style={styles.liveStat}>
-                <View style={styles.liveStatIcon}>
-                  <Ionicons
-                    name="locate-outline"
-                    size={16}
-                    color={BROWN}
-                  />
-                </View>
-
-                <Text style={styles.liveStatLabel}>
-                  Pitch accuracy
-                </Text>
-
-                <Text
-                  style={[
-                    styles.liveStatValue,
-                    {
-                      color:
-                        pitchGuide.cents === null
-                          ? BROWN
-                          : pitchGuide.color,
-                    },
-                  ]}
-                >
-                  {liveFrame && liveFrame.pitch > 0
-                    ? `${Math.round(liveAccuracy)}%`
-                    : '--'}
-                </Text>
-              </View>
-
-              <View style={styles.liveStatDivider} />
-
-              <View style={styles.liveStat}>
-                <View style={styles.liveStatIcon}>
-                  <Ionicons
-                    name="pulse-outline"
-                    size={16}
-                    color={BROWN}
-                  />
-                </View>
-
-                <Text style={styles.liveStatLabel}>
-                  Pitch stability
-                </Text>
-
-                <Text style={styles.liveStatValue}>
-                  {liveFrequencies.length > 1
-                    ? `${Math.round(liveStability)}%`
-                    : '--'}
-                </Text>
-              </View>
-            </View>
-
             <View style={styles.recordingIndicator}>
               <View
                 style={[
@@ -2503,6 +2474,7 @@ export default function IntervalRecognitionTaskScreen({
     />
   );
 }
+
 const styles = StyleSheet.create({
   // Screen layouts
   screen: {
@@ -3102,50 +3074,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
-
-  // Live statistics
-  liveStatsCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 14,
-    marginTop: 12,
-    borderRadius: 18,
-    backgroundColor: WHITE,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  liveStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  liveStatIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: BROWN,
-    marginTop: 3,
-  },
-  liveStatDivider: {
-    width: 1,
-    height: 48,
-    backgroundColor: BORDER,
-  },
-
+  
   // Interval progress
   intervalProgress: {
     width: '100%',

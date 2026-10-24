@@ -92,19 +92,9 @@ export function getPitchGenerationMidiBounds(
     return tierBounds;
   }
 
-  const minMidi = Math.max(
-    tierBounds.minMidi,
-    detectedBounds.lowMidi,
-  );
-  const maxMidi = Math.min(
-    tierBounds.maxMidi,
-    detectedBounds.highMidi,
-  );
-
-  if (minMidi <= maxMidi) {
-    return { minMidi, maxMidi };
-  }
-
+  // Use the detected vocal range when it is valid.
+  // This allows notes outside the tier's default range
+  // when the user's measured range falls outside it.
   return {
     minMidi: detectedBounds.lowMidi,
     maxMidi: detectedBounds.highMidi,
@@ -133,49 +123,66 @@ export function getRandomScale(
   vocalRange?: VocalRange | null,
 ): MusicalNote[] {
   const scaleIntervals = [0, 2, 4, 5, 7, 9, 11, 12];
-  const intervals = scaleIntervals.slice(
-    0,
-    Math.min(noteCount, scaleIntervals.length),
-  );
 
-  if (intervals.length === 0) {
-    return [];
-  }
+  const safeNoteCount = Math.min(
+    8,
+    Math.max(1, Math.round(noteCount)),
+  );
 
   const { minMidi, maxMidi } = getPitchGenerationMidiBounds(
     tier,
     vocalRange,
   );
 
+  if (minMidi > maxMidi) {
+    return [];
+  }
+
+  // Use the normal major-scale intervals when they fit.
+  const intervals = scaleIntervals.slice(0, safeNoteCount);
   const maxInterval = intervals[intervals.length - 1];
+
   const rootMin = minMidi;
   const rootMax = maxMidi - maxInterval;
 
-  if (rootMax < rootMin) {
-    const availableIntervals = intervals.filter(
-      offset => minMidi + offset <= maxMidi,
-    );
-
-    if (availableIntervals.length === 0) {
-      return [createMusicalNote(minMidi)];
-    }
-
+  if (rootMax >= rootMin) {
     const rootMidi =
-      Math.floor(Math.random() * (maxMidi - minMidi + 1)) +
-      minMidi;
+      Math.floor(Math.random() * (rootMax - rootMin + 1)) +
+      rootMin;
 
-    return availableIntervals.map(offset =>
-      createMusicalNote(Math.min(rootMidi + offset, maxMidi)),
+    return intervals.map(offset =>
+      createMusicalNote(rootMidi + offset),
     );
   }
 
-  const rootMidi =
-    Math.floor(Math.random() * (rootMax - rootMin + 1)) +
-    rootMin;
-
-  return intervals.map(offset =>
-    createMusicalNote(rootMidi + offset),
+  // If the complete scale does not fit, use the available range.
+  // Select distinct MIDI pitches where possible.
+  const availableMidiCount = maxMidi - minMidi + 1;
+  const actualNoteCount = Math.min(
+    safeNoteCount,
+    availableMidiCount,
   );
+
+  if (actualNoteCount <= 0) {
+    return [];
+  }
+
+  if (actualNoteCount === 1) {
+    return [createMusicalNote(minMidi)];
+  }
+
+  // Spread the notes across the available range.
+  const selectedMidiNotes = Array.from(
+    { length: actualNoteCount },
+    (_, index) =>
+      Math.round(
+        minMidi +
+          (index * (maxMidi - minMidi)) /
+            (actualNoteCount - 1),
+      ),
+  );
+
+  return selectedMidiNotes.map(createMusicalNote);
 }
 
 export function getRandomIntervalNotes(

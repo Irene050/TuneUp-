@@ -30,26 +30,19 @@ import {
 import ExerciseScreen, {
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-import {
-  generateDynamicRangeParams,
-} from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-import {
-  getLatestAssessment,
-} from '@/services/assessment/assessmentRepository';
+import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
+import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
   measureDynamicRange,
+  type RepetitionInterval,
 } from '@/services/measurement/volume/dynamicRangeExercise';
-import {
-  saveCompletedExercise,
-} from '@/services/progress/exerciseProgressService';
+import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
   fetchComponentProgress,
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
-import {
-  scoreDynamicRange,
-} from '@/services/scoring/volume/dynamicRangeExercise';
+import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
@@ -69,6 +62,7 @@ const WINDOW_MS = 50;
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
 const PROCESSING_MIN_DURATION_MS = 350;
+const TIMER_TICK_MS = 100;
 
 type Phase =
   | 'directions'
@@ -89,54 +83,34 @@ function wait(ms: number): Promise<void> {
 
 function normalizeVolume(value: number): number {
   if (!Number.isFinite(value)) return 0;
-
-  return Math.max(
-    0,
-    Math.min(1, (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN)),
-  );
+  return Math.max(0, Math.min(1, (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN)));
 }
 
 function referenceHeight(index: number): number {
   const middle = (BAR_COUNT - 1) / 2;
   const distance = Math.abs(index - middle) / middle;
-
   return 0.18 + (1 - distance) * 0.72;
 }
 
-/* Dynamic Range visualizer */
-
-function DynamicRangeVisualizer({
-  liveHistory,
-}: {
-  liveHistory: number[];
-}) {
+function DynamicRangeVisualizer({ liveHistory }: { liveHistory: number[] }) {
   return (
     <View style={styles.visualizer}>
       <View style={styles.targetBand} />
-
       <View style={styles.actualBars}>
         {Array.from({ length: BAR_COUNT }, (_, index) => {
           const height = liveHistory[index] ?? 0;
-
           return (
             <View
               key={`actual-${index}`}
               style={[
                 styles.actualBar,
-                {
-                  height:
-                    height > 0
-                      ? `${Math.max(5, height * 82)}%`
-                      : '0%',
-                },
+                { height: height > 0 ? `${Math.max(5, height * 82)}%` : '0%' },
               ]}
             />
           );
         })}
       </View>
-
       <View style={styles.centerLine} />
-
       <View style={styles.targetMarker}>
         <Text style={styles.targetMarkerText}>TARGET</Text>
       </View>
@@ -144,85 +118,66 @@ function DynamicRangeVisualizer({
   );
 }
 
-/* Main screen */
-
 export default function DynamicRangeExercise({
   tier,
 }: DynamicRangeExerciseProps) {
   const initialTier = tier ?? 'beginner';
 
-  const [resolvedTier, setResolvedTier] =
-    useState<Tier>(initialTier);
-
+  const [resolvedTier, setResolvedTier] = useState<Tier>(initialTier);
   const [params, setParams] = useState<DynamicRangeParams>(
     DYNAMIC_RANGE_PARAMS[initialTier],
   );
-
-  const [referenceNote, setReferenceNote] = useState(() =>
-    createMusicalNote(60),
-  );
-
+  const [referenceNote, setReferenceNote] = useState(() => createMusicalNote(60));
   const [phase, setPhase] = useState<Phase>('directions');
   const [loadingParams, setLoadingParams] = useState(true);
-
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
-  const [countdownFor, setCountdownFor] =
-    useState<CountdownFor>('start');
-
+  const [countdownFor, setCountdownFor] = useState<CountdownFor>('start');
   const [rep, setRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
-
-  const [liveFrame, setLiveFrame] =
-    useState<LiveAudioFrame | null>(null);
+  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
-
   const [score, setScore] = useState(0);
   const [rangeAccuracy, setRangeAccuracy] = useState(0);
   const [rampConsistency, setRampConsistency] = useState(0);
   const [passed, setPassed] = useState(false);
-
   const [referencePlaying, setReferencePlaying] = useState(false);
-  const [referencePlaybackError, setReferencePlaybackError] =
-    useState('');
-
+  const [referencePlaybackError, setReferencePlaybackError] = useState('');
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
 
   const targetMin = params.targetDbRange[0];
   const targetMax = params.targetDbRange[1];
+  const totalSeconds = Math.max(
+    PHASES_PER_REPETITION,
+    Math.round(params.durationSec),
+  );
+  const repetitions = Math.max(1, Math.round(params.repetitions));
 
-  const rampSeconds = Math.max(1, params.durationSec);
-  const repetitions = Math.max(1, params.repetitions);
-  const totalSeconds = rampSeconds * PHASES_PER_REPETITION;
-
-  /* Synchronous refs for async flows */
+  const firstPhaseSeconds = Math.ceil(totalSeconds / PHASES_PER_REPETITION);
+  const secondPhaseEndSeconds = Math.ceil(
+    (totalSeconds * 2) / PHASES_PER_REPETITION,
+  );
 
   const mountedRef = useRef(true);
   const phaseRef = useRef<Phase>('directions');
   const countdownRunIdRef = useRef(0);
-
   const shouldSaveResultRef = useRef(false);
   const finishingRef = useRef(false);
   const acceptFramesRef = useRef(false);
   const cancelProcessingRef = useRef(false);
-
   const pausedRef = useRef(false);
   const showQuitModalRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const discardNextStopRef = useRef(false);
-
   const pausedPhaseRef = useRef<Phase>('directions');
   const pausedHadRecordingRef = useRef(false);
   const recordingActiveRef = useRef(false);
-
   const referencePlayingRef = useRef(false);
-
-  const startRecordingRef =
-    useRef<(() => Promise<void>) | null>(null);
-
-  const stopRecordingRef =
-    useRef<(() => void | Promise<void>) | null>(null);
-
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const repetitionStartedAtRef = useRef<number | null>(null);
+  const repetitionIntervalsRef = useRef<RepetitionInterval[]>([]);
+  const currentRepetitionStartRef = useRef<number | null>(null);
+  const stopRecordingRef = useRef<(() => void | Promise<void>) | null>(null);
   const pendingStopRef = useRef<Promise<void> | null>(null);
 
   const setCurrentPhase = useCallback((next: Phase) => {
@@ -234,19 +189,40 @@ export default function DynamicRangeExercise({
     countdownRunIdRef.current += 1;
   }, []);
 
+  const getRecordingElapsedSeconds = useCallback(() => {
+    const startedAt = recordingStartedAtRef.current;
+    return startedAt === null ? 0 : Math.max(0, (Date.now() - startedAt) / 1000);
+  }, []);
+
+  const beginRecordingSession = useCallback(() => {
+    recordingStartedAtRef.current = Date.now();
+    repetitionStartedAtRef.current = Date.now();
+    repetitionIntervalsRef.current = [];
+    currentRepetitionStartRef.current = 0;
+  }, []);
+
+  const finishCurrentRepetition = useCallback(() => {
+    const startSeconds = currentRepetitionStartRef.current;
+    if (startSeconds === null) return;
+
+    const endSeconds = getRecordingElapsedSeconds();
+    if (endSeconds > startSeconds) {
+      repetitionIntervalsRef.current.push({ startSeconds, endSeconds });
+    }
+    currentRepetitionStartRef.current = null;
+    repetitionStartedAtRef.current = null;
+  }, [getRecordingElapsedSeconds]);
+
   const stopRecordingSafely = useCallback((): Promise<void> => {
     const stop = stopRecordingRef.current;
-
     if (!stop) return Promise.resolve();
 
     const task = Promise.resolve(stop()).then(() => undefined);
     pendingStopRef.current = task;
-
     return task;
   }, []);
 
-  /* Load the reference note from the user's assessment */
-
+  /* Load the user's assessed vocal range to select a reference note. */
   useEffect(() => {
     let cancelled = false;
 
@@ -254,13 +230,8 @@ export default function DynamicRangeExercise({
       try {
         const assessment = await getLatestAssessment();
         const vocalRange = assessment?.vocalRange;
-
-        const lowHz = Number(
-          vocalRange?.lowHz ?? assessment?.vocalRangeLowHz,
-        );
-        const highHz = Number(
-          vocalRange?.highHz ?? assessment?.vocalRangeHighHz,
-        );
+        const lowHz = Number(vocalRange?.lowHz ?? assessment?.vocalRangeLowHz);
+        const highHz = Number(vocalRange?.highHz ?? assessment?.vocalRangeHighHz);
 
         if (
           !Number.isFinite(lowHz) ||
@@ -271,43 +242,25 @@ export default function DynamicRangeExercise({
           return;
         }
 
-        const lowMidi = Math.round(
-          69 + 12 * Math.log2(lowHz / 440),
-        );
-        const highMidi = Math.round(
-          69 + 12 * Math.log2(highHz / 440),
-        );
-
+        const lowMidi = Math.round(69 + 12 * Math.log2(lowHz / 440));
+        const highMidi = Math.round(69 + 12 * Math.log2(highHz / 440));
         const midpointHz = Math.sqrt(lowHz * highHz);
-        const midpointMidi = Math.round(
-          69 + 12 * Math.log2(midpointHz / 440),
-        );
+        const midpointMidi = Math.round(69 + 12 * Math.log2(midpointHz / 440));
+        const midiNote = Math.max(lowMidi, Math.min(highMidi, midpointMidi));
 
-        const midiNote = Math.max(
-          lowMidi,
-          Math.min(highMidi, midpointMidi),
-        );
-
-        if (!cancelled) {
-          setReferenceNote(createMusicalNote(midiNote));
-        }
+        if (!cancelled) setReferenceNote(createMusicalNote(midiNote));
       } catch (error) {
-        console.error(
-          'Unable to load assessed vocal range for Dynamic Range:',
-          error,
-        );
+        console.error('[DynamicRange] Could not load vocal range:', error);
       }
     }
 
     void loadReferenceNote();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  /* Load adaptive exercise parameters */
-
+  /* Load adaptive difficulty parameters. */
   useEffect(() => {
     let cancelled = false;
 
@@ -316,16 +269,11 @@ export default function DynamicRangeExercise({
 
       try {
         let currentTier: Tier = tier ?? 'beginner';
-        let referenceScores: number[] = [];
-
+        let recentScores: number[] = [];
         const user = auth.currentUser;
 
         if (!tier && user) {
-          const componentProgress = await fetchComponentProgress(
-            user.uid,
-            'volume',
-          );
-
+          const componentProgress = await fetchComponentProgress(user.uid, 'volume');
           if (cancelled) return;
 
           if (
@@ -336,11 +284,7 @@ export default function DynamicRangeExercise({
             currentTier = componentProgress.currentTier;
           }
 
-          const records = await fetchExerciseRecords(
-            user.uid,
-            'volume',
-          );
-
+          const records = await fetchExerciseRecords(user.uid, 'volume');
           if (cancelled) return;
 
           const recentRecords = records
@@ -349,50 +293,36 @@ export default function DynamicRangeExercise({
                 record.templateId === 'dynamicRange' &&
                 record.tier === currentTier,
             )
-            .sort(
-              (a, b) =>
-                Number(a.timestamp ?? 0) -
-                Number(b.timestamp ?? 0),
-            );
+            .sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0));
 
-          referenceScores = recentRecords
+          recentScores = recentRecords
             .slice(-5)
             .map(record => Number(record.scorePct ?? 0));
 
-          if (referenceScores.length === 0) {
+          if (recentScores.length === 0) {
             const assessment = await getLatestAssessment();
-
             if (cancelled) return;
-
             const assessmentScore = assessment?.scores.find(
               item => item.componentId === 'volume',
             )?.scorePct;
-
             if (typeof assessmentScore === 'number') {
-              referenceScores = [assessmentScore];
+              recentScores = [assessmentScore];
             }
           }
         }
 
         if (cancelled) return;
-
-        const generatedParams = generateDynamicRangeParams({
-          tier: currentTier,
-          recentScores: referenceScores,
-        });
-
         setResolvedTier(currentTier);
-        setParams(generatedParams);
-      } catch (error) {
-        console.error(
-          'Unable to initialize Dynamic Range adaptive parameters:',
-          error,
+        setParams(
+          generateDynamicRangeParams({
+            tier: currentTier,
+            recentScores,
+          }),
         );
-
+      } catch (error) {
+        console.error('[DynamicRange] Could not load adaptive parameters:', error);
         if (cancelled) return;
-
         const fallbackTier = tier ?? 'beginner';
-
         setResolvedTier(fallbackTier);
         setParams(
           generateDynamicRangeParams({
@@ -406,13 +336,10 @@ export default function DynamicRangeExercise({
     }
 
     void initializeAdaptiveParams();
-
     return () => {
       cancelled = true;
     };
   }, [tier]);
-
-  /* Reference note playback */
 
   const playReferenceNote = useCallback(async () => {
     if (
@@ -428,13 +355,9 @@ export default function DynamicRangeExercise({
     setReferencePlaybackError('');
 
     try {
-      await playSingleNote(
-        referenceNote.frequency,
-        REFERENCE_NOTE_DURATION_SEC,
-      );
+      await playSingleNote(referenceNote.frequency, REFERENCE_NOTE_DURATION_SEC);
     } catch (error) {
-      console.error('Unable to play reference note:', error);
-
+      console.error('[DynamicRange] Could not play reference note:', error);
       if (mountedRef.current) {
         setReferencePlaybackError(
           'Unable to play the reference note. Please try again.',
@@ -442,12 +365,9 @@ export default function DynamicRangeExercise({
       }
     } finally {
       referencePlayingRef.current = false;
-
       if (mountedRef.current) setReferencePlaying(false);
     }
   }, [referenceNote]);
-
-  /* Audio recorder — shared hook remains unchanged */
 
   const {
     startRecording,
@@ -467,14 +387,10 @@ export default function DynamicRangeExercise({
       }
 
       setLiveFrame(frame);
-
       const normalized = normalizeVolume(frame.volume);
-
       setLiveHistory(previous => {
         const next = [...previous, normalized];
-        return next.length > BAR_COUNT
-          ? next.slice(-BAR_COUNT)
-          : next;
+        return next.length > BAR_COUNT ? next.slice(-BAR_COUNT) : next;
       });
     },
 
@@ -482,7 +398,6 @@ export default function DynamicRangeExercise({
       recordingActiveRef.current = false;
       acceptFramesRef.current = false;
 
-      // Stopping a paused or cancelled repetition must never score it.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         shouldSaveResultRef.current = false;
@@ -491,16 +406,12 @@ export default function DynamicRangeExercise({
       }
 
       const processingSession =
-        phaseRef.current === 'processing' &&
-        shouldSaveResultRef.current;
+        phaseRef.current === 'processing' && shouldSaveResultRef.current;
 
-      // A modal pauses normal exercise callbacks, but must not
-      // accidentally cancel an already completed processing session.
       if (
         !mountedRef.current ||
         quitInProgressRef.current ||
-        (!processingSession &&
-          (pausedRef.current || showQuitModalRef.current))
+        (!processingSession && (pausedRef.current || showQuitModalRef.current))
       ) {
         finishingRef.current = false;
         shouldSaveResultRef.current = false;
@@ -512,7 +423,7 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      // Consume this flag before the async work to prevent duplicates.
+      // Consume the flag before asynchronous work to prevent duplicate scoring.
       shouldSaveResultRef.current = false;
 
       void (async () => {
@@ -528,20 +439,29 @@ export default function DynamicRangeExercise({
         }
 
         try {
-          const measurement = measureDynamicRange(
-            samples,
-            sampleRate,
-            {
-              windowMs: WINDOW_MS,
-              targetRange: [targetMin, targetMax],
-              expectedDurationSeconds:
-                rampSeconds *
-                PHASES_PER_REPETITION *
-                repetitions,
-              repetitionDurationSeconds:
-                rampSeconds * PHASES_PER_REPETITION,
-            },
+          const repetitionIntervals = repetitionIntervalsRef.current.map(
+            interval => ({ ...interval }),
           );
+
+          const measurement = measureDynamicRange(samples, sampleRate, {
+            windowMs: WINDOW_MS,
+            targetRange: [targetMin, targetMax],
+            expectedDurationSeconds: totalSeconds * repetitions,
+            repetitionDurationSeconds: totalSeconds,
+            repetitionIntervals,
+          });
+
+          // A poor/empty measurement should not be presented as a valid pass.
+          if (
+            measurement.overallMeasurementQuality < 50 ||
+            measurement.validWindowCount === 0 ||
+            repetitionIntervals.length === 0
+          ) {
+            throw new Error(
+              `Measurement quality too low (${measurement.overallMeasurementQuality}%). ` +
+                'Please ensure the microphone captures your voice throughout each repetition.',
+            );
+          }
 
           const result = scoreDynamicRange(measurement);
 
@@ -557,10 +477,8 @@ export default function DynamicRangeExercise({
           setRampConsistency(result.rampConsistency);
           setScore(Math.round(result.overallScore));
           setPassed(result.passed);
-
           setCurrentPhase('results');
 
-          // Check cancellation immediately before saving.
           if (
             !mountedRef.current ||
             cancelProcessingRef.current ||
@@ -577,27 +495,24 @@ export default function DynamicRangeExercise({
               Math.round(result.overallScore),
             );
           } catch (saveError) {
-            console.error(
-              'Unable to save Dynamic Range progress:',
-              saveError,
-            );
+            console.error('[DynamicRange] Could not save progress:', saveError);
           }
         } catch (error) {
-          console.error(
-            'Unable to measure Dynamic Range:',
-            error,
-          );
-
+          console.error('[DynamicRange] Measurement failed:', error);
           if (
             mountedRef.current &&
             !cancelProcessingRef.current &&
             !quitInProgressRef.current
           ) {
+            setReferencePlaybackError(
+              error instanceof Error
+                ? error.message
+                : 'We could not analyze this attempt. Please try again.',
+            );
             setCurrentPhase('directions');
           }
         } finally {
           finishingRef.current = false;
-
           if (mountedRef.current) {
             setSeconds(0);
             setRep(1);
@@ -610,15 +525,12 @@ export default function DynamicRangeExercise({
   });
 
   useEffect(() => {
-    startRecordingRef.current = startRecording;
     stopRecordingRef.current = stopRecording;
-  }, [startRecording, stopRecording]);
+  }, [stopRecording]);
 
   useEffect(() => {
     recordingActiveRef.current = isRecording;
   }, [isRecording]);
-
-  /* Component lifecycle */
 
   useEffect(() => {
     mountedRef.current = true;
@@ -633,24 +545,14 @@ export default function DynamicRangeExercise({
       showQuitModalRef.current = false;
 
       try {
-        void Promise.resolve(stopRecordingRef.current?.()).catch(
-          error => {
-            console.error(
-              'Unable to stop Dynamic Range recording during cleanup:',
-              error,
-            );
-          },
-        );
+        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+          console.error('[DynamicRange] Cleanup stop failed:', error);
+        });
       } catch (error) {
-        console.error(
-          'Unable to stop Dynamic Range recording during cleanup:',
-          error,
-        );
+        console.error('[DynamicRange] Cleanup stop failed:', error);
       }
     };
   }, []);
-
-  /* Reset exercise state */
 
   const resetExercise = useCallback(() => {
     setRep(1);
@@ -661,15 +563,18 @@ export default function DynamicRangeExercise({
     setPassed(false);
     setLiveFrame(null);
     setLiveHistory([]);
+    setReferencePlaybackError('');
 
     acceptFramesRef.current = false;
     finishingRef.current = false;
     shouldSaveResultRef.current = false;
     discardNextStopRef.current = false;
     cancelProcessingRef.current = false;
+    recordingStartedAtRef.current = null;
+    repetitionStartedAtRef.current = null;
+    repetitionIntervalsRef.current = [];
+    currentRepetitionStartRef.current = null;
   }, []);
-
-  /* Shared countdown used for the first start and every repetition */
 
   const runCountdown = useCallback(
     async (runId: number, purpose: CountdownFor) => {
@@ -677,11 +582,7 @@ export default function DynamicRangeExercise({
       setCountdown(COUNTDOWN_SECONDS);
       setCurrentPhase('countdown');
 
-      for (
-        let value = COUNTDOWN_SECONDS;
-        value >= 1;
-        value--
-      ) {
+      for (let value = COUNTDOWN_SECONDS; value >= 1; value--) {
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -690,7 +591,6 @@ export default function DynamicRangeExercise({
         ) {
           return false;
         }
-
         setCountdown(value);
         await wait(1000);
       }
@@ -705,27 +605,14 @@ export default function DynamicRangeExercise({
     [setCurrentPhase],
   );
 
-  /* Start a new session */
-
   const startExercise = useCallback(async () => {
-    if (
-      loadingParams ||
-      pausedRef.current ||
-      quitInProgressRef.current
-    ) {
-      return;
-    }
+    if (loadingParams || pausedRef.current || quitInProgressRef.current) return;
 
     const runId = ++countdownRunIdRef.current;
-
     resetExercise();
 
     try {
-      const countdownFinished = await runCountdown(
-        runId,
-        'start',
-      );
-
+      const countdownFinished = await runCountdown(runId, 'start');
       if (
         !countdownFinished ||
         !mountedRef.current ||
@@ -754,24 +641,17 @@ export default function DynamicRangeExercise({
       recordingActiveRef.current = true;
       shouldSaveResultRef.current = false;
       finishingRef.current = false;
+      beginRecordingSession();
       acceptFramesRef.current = true;
-
       setSeconds(0);
+      setRep(1);
       setCurrentPhase('exercise');
     } catch (error) {
-      console.error(
-        'Unable to start Dynamic Range recording:',
-        error,
-      );
-
+      console.error('[DynamicRange] Could not start recording:', error);
       acceptFramesRef.current = false;
       shouldSaveResultRef.current = false;
       recordingActiveRef.current = false;
-
-      if (
-        mountedRef.current &&
-        runId === countdownRunIdRef.current
-      ) {
+      if (mountedRef.current && runId === countdownRunIdRef.current) {
         setCurrentPhase('directions');
       }
     }
@@ -781,20 +661,17 @@ export default function DynamicRangeExercise({
     runCountdown,
     startRecording,
     stopRecording,
+    beginRecordingSession,
     setCurrentPhase,
   ]);
 
   const tryAgain = useCallback(() => {
     if (quitInProgressRef.current) return;
-
     pausedRef.current = false;
     showQuitModalRef.current = false;
     setShowQuitModal(false);
-
     void startExercise();
   }, [startExercise]);
-
-  /* Pause the exercise and show the quit confirmation */
 
   const pauseForExitPrompt = useCallback(() => {
     if (
@@ -805,42 +682,30 @@ export default function DynamicRangeExercise({
       return;
     }
 
-    const currentPhase = phaseRef.current;
-
-    pausedPhaseRef.current = currentPhase;
+    const current = phaseRef.current;
+    pausedPhaseRef.current = current;
     pausedHadRecordingRef.current = recordingActiveRef.current;
-
-    // Let a completed session continue processing behind the modal.
-    pausedRef.current = currentPhase !== 'processing';
+    pausedRef.current = current !== 'processing';
     showQuitModalRef.current = true;
-
     clearCountdown();
     acceptFramesRef.current = false;
 
-    if (currentPhase === 'exercise') {
-      // This repetition is interrupted, so discard its stop callback.
+    if (current === 'exercise') {
       discardNextStopRef.current = true;
       shouldSaveResultRef.current = false;
       finishingRef.current = true;
-
       setSeconds(0);
       setLiveFrame(null);
       setLiveHistory([]);
-
       void stopRecordingSafely().catch(error => {
-        console.error(
-          'Unable to stop Dynamic Range while paused:',
-          error,
-        );
+        console.error('[DynamicRange] Pause stop failed:', error);
       });
-    } else if (currentPhase === 'countdown') {
+    } else if (current === 'countdown') {
       setCountdown(COUNTDOWN_SECONDS);
     }
 
     setShowQuitModal(true);
   }, [clearCountdown, stopRecordingSafely]);
-
-  /* Continue after the modal */
 
   const continueExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
@@ -853,173 +718,149 @@ export default function DynamicRangeExercise({
     pausedRef.current = false;
 
     if (interruptedPhase === 'processing') {
-      // Do not start a second recording or duplicate analysis.
+      // The finished recording is already being analyzed.
       finishingRef.current = true;
       return;
     }
 
     if (
-      interruptedPhase === 'exercise' ||
-      interruptedPhase === 'countdown'
+      interruptedPhase !== 'exercise' &&
+      interruptedPhase !== 'countdown'
     ) {
-      const runId = ++countdownRunIdRef.current;
+      return;
+    }
 
+    const runId = ++countdownRunIdRef.current;
+
+    if (interruptedPhase === 'exercise') {
+      // The old recording was discarded; restart cleanly from rep 1.
       finishingRef.current = false;
       shouldSaveResultRef.current = false;
-
+      setRep(1);
       setSeconds(0);
       setLiveFrame(null);
       setLiveHistory([]);
 
-      // Wait for the interrupted recording to finish stopping
-      // before attempting to create another recording.
-      if (interruptedPhase === 'exercise') {
-        try {
-          await pendingStopRef.current;
-        } catch (error) {
-          console.error(
-            'Unable to finish stopping the interrupted recording:',
-            error,
-          );
-        }
-
-        if (
-          !mountedRef.current ||
-          quitInProgressRef.current ||
-          runId !== countdownRunIdRef.current
-        ) {
-          return;
-        }
-
-        discardNextStopRef.current = false;
+      try {
+        await pendingStopRef.current;
+      } catch (error) {
+        console.error('[DynamicRange] Interrupted stop failed:', error);
       }
 
-      const countdownFinished = await runCountdown(
-        runId,
-        interruptedPhase === 'countdown'
-          ? countdownFor
-          : 'repetition',
-      );
-
       if (
-        !countdownFinished ||
         !mountedRef.current ||
-        pausedRef.current ||
         quitInProgressRef.current ||
         runId !== countdownRunIdRef.current
       ) {
         return;
       }
 
-      // If the recording was interrupted during the actual exercise,
-      // restart it. Otherwise the continuous recording is still active.
-      if (interruptedPhase === 'exercise' || !hadRecording) {
-        try {
-          discardNextStopRef.current = false;
-          await startRecording();
+      discardNextStopRef.current = false;
+      recordingStartedAtRef.current = null;
+      repetitionStartedAtRef.current = null;
+      repetitionIntervalsRef.current = [];
+      currentRepetitionStartRef.current = null;
+    }
 
-          if (
-            !mountedRef.current ||
-            pausedRef.current ||
-            quitInProgressRef.current ||
-            runId !== countdownRunIdRef.current
-          ) {
-            acceptFramesRef.current = false;
-            discardNextStopRef.current = true;
+    const purpose: CountdownFor =
+      interruptedPhase === 'countdown' ? countdownFor : 'start';
+    const countdownFinished = await runCountdown(runId, purpose);
 
-            await stopRecording();
-            return;
-          }
+    if (
+      !countdownFinished ||
+      !mountedRef.current ||
+      pausedRef.current ||
+      quitInProgressRef.current ||
+      runId !== countdownRunIdRef.current
+    ) {
+      return;
+    }
 
-          recordingActiveRef.current = true;
-        } catch (error) {
-          console.error(
-            'Unable to resume Dynamic Range recording:',
-            error,
-          );
+    // The recorder continues through an inter-repetition countdown.
+    // For an interrupted active rep or initial countdown, start a new recording.
+    if (interruptedPhase === 'exercise' || !hadRecording) {
+      try {
+        discardNextStopRef.current = false;
+        await startRecording();
 
-          if (mountedRef.current) {
-            setCurrentPhase('directions');
-          }
-
+        if (
+          !mountedRef.current ||
+          pausedRef.current ||
+          quitInProgressRef.current ||
+          runId !== countdownRunIdRef.current
+        ) {
+          acceptFramesRef.current = false;
+          discardNextStopRef.current = true;
+          await stopRecording();
           return;
         }
-      }
 
-      acceptFramesRef.current = true;
-      setSeconds(0);
-      setCurrentPhase('exercise');
+        recordingActiveRef.current = true;
+        beginRecordingSession();
+        setRep(1);
+      } catch (error) {
+        console.error('[DynamicRange] Could not resume recording:', error);
+        if (mountedRef.current) setCurrentPhase('directions');
+        return;
+      }
+    } else if (countdownFor === 'repetition') {
+      // Mark the next active repetition only after its countdown has ended.
+      currentRepetitionStartRef.current = getRecordingElapsedSeconds();
+      repetitionStartedAtRef.current = Date.now();
     }
+
+    acceptFramesRef.current = true;
+    setSeconds(0);
+    setCurrentPhase('exercise');
   }, [
+    beginRecordingSession,
     countdownFor,
+    getRecordingElapsedSeconds,
     runCountdown,
     startRecording,
     stopRecording,
     setCurrentPhase,
   ]);
 
-  /* Quit and navigate away */
-
   const quitExercise = useCallback(async () => {
-  if (quitInProgressRef.current) return;
+    if (quitInProgressRef.current) return;
 
-  quitInProgressRef.current = true;
-  pausedRef.current = true;
-  showQuitModalRef.current = false;
+    quitInProgressRef.current = true;
+    pausedRef.current = true;
+    showQuitModalRef.current = false;
+    clearCountdown();
+    acceptFramesRef.current = false;
+    shouldSaveResultRef.current = false;
+    cancelProcessingRef.current = true;
+    discardNextStopRef.current = true;
+    finishingRef.current = true;
+    setIsQuitting(true);
+    setShowQuitModal(false);
 
-  clearCountdown();
-  acceptFramesRef.current = false;
-  shouldSaveResultRef.current = false;
-  cancelProcessingRef.current = true;
-  discardNextStopRef.current = true;
-  finishingRef.current = true;
-
-  setIsQuitting(true);
-  setShowQuitModal(false);
-
-  try {
-    await stopRecordingSafely();
-  } catch (error) {
-    console.error(
-      'Unable to stop Dynamic Range recording:',
-      error,
-    );
-  } finally {
-    recordingActiveRef.current = false;
-
-    if (mountedRef.current) {
-      router.replace('/dashboard?tab=exercises');
+    try {
+      await stopRecordingSafely();
+    } catch (error) {
+      console.error('[DynamicRange] Quit stop failed:', error);
+    } finally {
+      recordingActiveRef.current = false;
+      if (mountedRef.current) router.replace('/dashboard?tab=exercises');
     }
-  }
-}, [clearCountdown, stopRecordingSafely]);
+  }, [clearCountdown, stopRecordingSafely]);
 
   const handleBack = useCallback(() => {
     pauseForExitPrompt();
   }, [pauseForExitPrompt]);
 
-  /* Android hardware back button */
-
   useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        if (
-          showQuitModalRef.current ||
-          quitInProgressRef.current
-        ) {
-          return true;
-        }
-
-        handleBack();
-        return true;
-      },
-    );
-
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showQuitModalRef.current || quitInProgressRef.current) return true;
+      handleBack();
+      return true;
+    });
     return () => subscription.remove();
   }, [handleBack]);
 
-  /* Timer: only runs on the independent exercise screen */
-
+  /* Drive elapsed time from the wall clock so timer ticks cannot accumulate drift. */
   useEffect(() => {
     if (
       phase !== 'exercise' ||
@@ -1043,112 +884,97 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      if (seconds >= totalSeconds - 1) {
-        if (rep < repetitions) {
-          // Keep the continuous recording active between repetitions.
-          acceptFramesRef.current = false;
+      const repStartedAt = repetitionStartedAtRef.current;
+      if (repStartedAt === null) return;
 
-          const runId = ++countdownRunIdRef.current;
-          const nextRep = rep + 1;
+      const elapsed = Math.floor((Date.now() - repStartedAt) / 1000);
+      setSeconds(Math.min(totalSeconds, elapsed));
 
-          setRep(nextRep);
+      if (elapsed < totalSeconds) return;
+
+      finishCurrentRepetition();
+
+      if (rep < repetitions) {
+        acceptFramesRef.current = false;
+        const runId = ++countdownRunIdRef.current;
+        const nextRep = rep + 1;
+
+        setRep(nextRep);
+        setSeconds(0);
+        setLiveHistory([]);
+        setLiveFrame(null);
+
+        void (async () => {
+          const countdownFinished = await runCountdown(runId, 'repetition');
+
+          if (
+            !countdownFinished ||
+            !mountedRef.current ||
+            pausedRef.current ||
+            quitInProgressRef.current ||
+            runId !== countdownRunIdRef.current
+          ) {
+            return;
+          }
+
+          currentRepetitionStartRef.current = getRecordingElapsedSeconds();
+          repetitionStartedAtRef.current = Date.now();
+          acceptFramesRef.current = true;
           setSeconds(0);
-          setLiveHistory([]);
-          setLiveFrame(null);
-
-          void (async () => {
-            const countdownFinished = await runCountdown(
-              runId,
-              'repetition',
-            );
-
-            if (
-              !countdownFinished ||
-              !mountedRef.current ||
-              pausedRef.current ||
-              quitInProgressRef.current ||
-              runId !== countdownRunIdRef.current
-            ) {
-              return;
-            }
-
-            // Resume accepting frames from the same recording.
-            acceptFramesRef.current = true;
-            setSeconds(0);
-            setCurrentPhase('exercise');
-          })();
-
-          return;
-        }
-
-        // All repetitions are complete. Show a dedicated processing
-        // screen while the recording is stopped and analyzed.
-        if (!finishingRef.current) {
-          finishingRef.current = true;
-          shouldSaveResultRef.current = true;
-          acceptFramesRef.current = false;
-
-          setCurrentPhase('processing');
-
-          void stopRecordingSafely().catch(error => {
-            console.error(
-              'Unable to finish Dynamic Range recording:',
-              error,
-            );
-
-            finishingRef.current = false;
-            shouldSaveResultRef.current = false;
-
-            if (
-              mountedRef.current &&
-              !quitInProgressRef.current
-            ) {
-              setCurrentPhase('directions');
-            }
-          });
-        }
+          setCurrentPhase('exercise');
+        })();
 
         return;
       }
 
-      setSeconds(previous => previous + 1);
-    }, 1000);
+      if (!finishingRef.current) {
+        finishingRef.current = true;
+        shouldSaveResultRef.current = true;
+        acceptFramesRef.current = false;
+        setCurrentPhase('processing');
+
+        void stopRecordingSafely().catch(error => {
+          console.error('[DynamicRange] Final recording stop failed:', error);
+          finishingRef.current = false;
+          shouldSaveResultRef.current = false;
+          if (mountedRef.current && !quitInProgressRef.current) {
+            setCurrentPhase('directions');
+          }
+        });
+      }
+    }, TIMER_TICK_MS);
 
     return () => clearInterval(interval);
   }, [
     phase,
     isRecording,
-    seconds,
     rep,
     repetitions,
     totalSeconds,
+    finishCurrentRepetition,
+    getRecordingElapsedSeconds,
     runCountdown,
     stopRecordingSafely,
     setCurrentPhase,
   ]);
 
-  /* Instruction text */
-
   let instructionTitle = 'SOFT → LOUD';
   let instructionPrompt = 'Gradually increase your volume.';
+  let secondsUntilChange = firstPhaseSeconds - seconds;
 
-  if (seconds >= rampSeconds * 2) {
-    instructionTitle = 'LOUD → SOFT';
-    instructionPrompt = 'Gradually decrease your volume.';
-  } else if (seconds >= rampSeconds) {
+  if (seconds >= firstPhaseSeconds) {
     instructionTitle = 'LOUD';
     instructionPrompt = 'Reach and maintain your loud target.';
+    secondsUntilChange = secondPhaseEndSeconds - seconds;
   }
+  if (seconds >= secondPhaseEndSeconds) {
+    instructionTitle = 'LOUD → SOFT';
+    instructionPrompt = 'Gradually decrease your volume.';
+    secondsUntilChange = totalSeconds - seconds;
+  }
+  secondsUntilChange = Math.max(0, secondsUntilChange);
 
-  const secondsUntilChange =
-    rampSeconds - (seconds % rampSeconds);
-
-  const progress = Math.min(
-    100,
-    (seconds / totalSeconds) * 100,
-  );
-
-  /* Quit confirmation modal */
+  const progress = Math.min(100, (seconds / totalSeconds) * 100);
 
   const quitModal = (
     <Modal
@@ -1156,33 +982,24 @@ export default function DynamicRangeExercise({
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={() => {
-        void continueExercise();
-      }}
+      onRequestClose={() => void continueExercise()}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
           <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={BROWN}
-            />
+            <Ionicons name="exit-outline" size={30} color={BROWN} />
           </View>
-
           <Text style={styles.modalTitle}>Quit exercise?</Text>
-
           <Text style={styles.modalMessage}>
             {pausedPhaseRef.current === 'directions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Dynamic Range?'
               : pausedPhaseRef.current === 'exercise'
-                ? 'Your exercise is paused. Your current repetition will restart when you continue.'
+                ? 'Your current recording will be discarded. Continuing restarts the exercise from repetition 1.'
                 : pausedPhaseRef.current === 'countdown'
-                  ? 'Your exercise is paused. Continue to restart the countdown and carry on with your exercise.'
+                  ? 'The countdown is paused. Continue to restart the countdown and carry on.'
                   : 'Your results are being processed. Continue to return to your results, or quit to leave this exercise.'}
           </Text>
-
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Continue exercise"
@@ -1194,11 +1011,8 @@ export default function DynamicRangeExercise({
               isQuitting && styles.buttonDisabled,
             ]}
           >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
+            <Text style={styles.continueButtonText}>Continue Exercise</Text>
           </Pressable>
-
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Quit exercise"
@@ -1219,42 +1033,24 @@ export default function DynamicRangeExercise({
     </Modal>
   );
 
-  /* Preparing screen */
-
   if (loadingParams) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={BROWN}
-            />
+        <View style={styles.centerScreen}>
+          <View style={styles.largeIconCircle}>
+            <Ionicons name="options-outline" size={44} color={BROWN} />
           </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
+          <Text style={styles.screenTitle}>Preparing Your Exercise</Text>
+          <Text style={styles.screenSubtitle}>
+            Adjusting the exercise to your current difficulty level and preparing
+            your vocal range.
           </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty
-            level and preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={BROWN}
-            style={styles.spinner}
-          />
+          <ActivityIndicator size="large" color={BROWN} style={styles.spinner} />
         </View>
-
         {quitModal}
       </>
     );
   }
-
-  /* Directions screen */
 
   if (phase === 'directions') {
     return (
@@ -1285,9 +1081,9 @@ export default function DynamicRangeExercise({
               hint: 'relative microphone level',
             },
             {
-              label: 'RAMP DURATION',
-              value: `${rampSeconds}s`,
-              hint: 'per phase',
+              label: 'PATTERN DURATION',
+              value: `${totalSeconds}s`,
+              hint: 'for all 3 phases combined',
             },
             {
               label: 'REPETITIONS',
@@ -1302,33 +1098,20 @@ export default function DynamicRangeExercise({
         >
           <View style={styles.referenceCard}>
             <View style={styles.referenceTopRow}>
-              <View style={styles.referenceCopy}>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={styles.referenceNote}>
-                  {referenceNote.name}
-                </Text>
+                <Text style={styles.referenceNote}>{referenceNote.name}</Text>
               </View>
-
               <View style={styles.referenceIconCircle}>
-                <Ionicons
-                  name="musical-note"
-                  size={22}
-                  color={BROWN}
-                />
+                <Ionicons name="musical-note" size={22} color={BROWN} />
               </View>
             </View>
-
             <Text style={styles.referenceInstruction}>
-              Play the note, then sing it while gradually
-              increasing your volume from soft to loud,
-              before returning to soft.
+              Play the note, then sing it while gradually increasing your volume
+              from soft to loud, before returning to soft.
             </Text>
-
             <TouchableOpacity
-              style={[
-                styles.referenceButton,
-                referencePlaying && styles.disabled,
-              ]}
+              style={[styles.referenceButton, referencePlaying && styles.disabled]}
               onPress={() => void playReferenceNote()}
               activeOpacity={0.85}
               disabled={referencePlaying}
@@ -1338,40 +1121,28 @@ export default function DynamicRangeExercise({
               ) : (
                 <Ionicons name="play" size={17} color={BROWN} />
               )}
-
               <Text style={styles.referenceButtonText}>
-                {referencePlaying
-                  ? 'Playing...'
-                  : `Play ${referenceNote.name}`}
+                {referencePlaying ? 'Playing...' : `Play ${referenceNote.name}`}
               </Text>
             </TouchableOpacity>
-
             {referencePlaybackError !== '' && (
-              <Text style={styles.playbackError}>
-                {referencePlaybackError}
-              </Text>
+              <Text style={styles.playbackError}>{referencePlaybackError}</Text>
             )}
           </View>
 
           <View style={styles.previewCard}>
-            <Text style={styles.previewTitle}>
-              Follow this pattern
-            </Text>
-
+            <Text style={styles.previewTitle}>Follow this pattern</Text>
             <View style={styles.previewVisualizer}>
               {Array.from({ length: BAR_COUNT }, (_, index) => (
                 <View
                   key={`preview-${index}`}
                   style={[
                     styles.previewBar,
-                    {
-                      height: `${referenceHeight(index) * 80}%`,
-                    },
+                    { height: `${referenceHeight(index) * 80}%` },
                   ]}
                 />
               ))}
             </View>
-
             <View style={styles.previewLabels}>
               <Text style={styles.previewLabel}>Soft</Text>
               <Text style={styles.previewLabel}>Loud</Text>
@@ -1379,76 +1150,52 @@ export default function DynamicRangeExercise({
             </View>
           </View>
         </ExerciseScreen>
-
         {quitModal}
       </>
     );
   }
-
-  /* Shared countdown screen for starting and repeating */
 
   if (phase === 'countdown') {
     const repetitionCountdown = countdownFor === 'repetition';
-
     return (
       <>
-        <View style={styles.countdownScreen}>
-          <View style={styles.countdownContent}>
-            <View style={styles.countdownCircle}>
-              <Text style={styles.countdownNumber}>
-                {countdown}
-              </Text>
-            </View>
-
-            <Text style={styles.countdownTitle}>
-              {repetitionCountdown
-                ? `Repetition ${rep}`
-                : 'Get Ready'}
-            </Text>
-
-            <Text style={styles.countdownPrompt}>
-              {repetitionCountdown
-                ? 'Get ready to repeat the volume pattern.'
-                : 'Recording starts when the countdown ends.'}
-            </Text>
-
-            <Text style={styles.countdownHint}>
-              Prepare to sing {referenceNote.name}. Start
-              softly, then follow the volume prompts.
-            </Text>
+        <View style={styles.centerScreen}>
+          <View style={styles.countdownCircle}>
+            <Text style={styles.countdownNumber}>{countdown}</Text>
           </View>
+          <Text style={styles.screenTitle}>
+            {repetitionCountdown ? `Repetition ${rep}` : 'Get Ready'}
+          </Text>
+          <Text style={styles.countdownPrompt}>
+            {repetitionCountdown
+              ? 'Get ready to repeat the volume pattern.'
+              : 'Recording starts when the countdown ends.'}
+          </Text>
+          <Text style={styles.screenSubtitle}>
+            Prepare to sing {referenceNote.name}. Start softly, then follow the
+            volume prompts.
+          </Text>
         </View>
-
         {quitModal}
       </>
     );
   }
-
-  /* Independent Dynamic Range exercise screen.
-     This intentionally does not render ExerciseListeningScreen. */
 
   if (phase === 'exercise') {
     return (
       <>
         <View style={styles.exerciseScreen}>
           <View style={styles.exerciseHeader}>
-            <View style={styles.exerciseHeaderText}>
-              <Text style={styles.exerciseHeaderTitle}>
-                Dynamic Range
-              </Text>
-              <Text style={styles.exerciseHeaderSubtitle}>
-                VOLUME CONTROL
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.exerciseHeaderTitle}>Dynamic Range</Text>
+              <Text style={styles.exerciseHeaderSubtitle}>VOLUME CONTROL</Text>
             </View>
           </View>
 
           <View style={styles.exercisePromptCard}>
-            <Text style={styles.exercisePromptTitle}>
-              {instructionTitle}
-            </Text>
+            <Text style={styles.exercisePromptTitle}>{instructionTitle}</Text>
             <Text style={styles.exercisePromptText}>
-              {instructionPrompt} Sing {referenceNote.name}
-              {' '}throughout the pattern.
+              {instructionPrompt} Sing {referenceNote.name} throughout the pattern.
             </Text>
           </View>
 
@@ -1457,174 +1204,107 @@ export default function DynamicRangeExercise({
             contentContainerStyle={styles.exerciseScrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.liveContent}>
-              <View style={styles.visualizerHeader}>
-                <View>
-                  <Text style={styles.visualizerTitle}>
-                    Your Performance
-                  </Text>
-                  <Text style={styles.visualizerSubtitle}>
-                    Follow the reference pattern
-                  </Text>
-                </View>
-
-                <View style={styles.micCircle}>
-                  <Ionicons name="mic" size={20} color={BROWN} />
-                </View>
+            <View style={styles.visualizerHeader}>
+              <View>
+                <Text style={styles.visualizerTitle}>Your Performance</Text>
+                <Text style={styles.visualizerSubtitle}>Follow the reference pattern</Text>
               </View>
-
-              <View style={styles.phaseCountdownCard}>
-                <Text style={styles.phaseCountdownLabel}>
-                  NEXT PHASE IN
-                </Text>
-                <Text style={styles.phaseCountdownValue}>
-                  {secondsUntilChange}s
-                </Text>
+              <View style={styles.micCircle}>
+                <Ionicons name="mic" size={20} color={BROWN} />
               </View>
+            </View>
 
-              <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View style={styles.actualDot} />
-                  <Text style={styles.legendText}>Your voice</Text>
-                </View>
-              </View>
+            <View style={styles.phaseCountdownCard}>
+              <Text style={styles.phaseCountdownLabel}>NEXT PHASE IN</Text>
+              <Text style={styles.phaseCountdownValue}>{secondsUntilChange}s</Text>
+            </View>
 
-              <DynamicRangeVisualizer liveHistory={liveHistory} />
+            <View style={styles.legend}>
+              <View style={styles.actualDot} />
+              <Text style={styles.legendText}>Your voice</Text>
+            </View>
 
-              <View style={styles.visualizerLabels}>
-                <Text style={styles.visualizerLabel}>SOFT</Text>
-                <Text style={styles.visualizerLabel}>LOUD</Text>
-                <Text style={styles.visualizerLabel}>SOFT</Text>
-              </View>
+            <DynamicRangeVisualizer liveHistory={liveHistory} />
 
-              <View style={styles.voiceRow}>
-                <View style={styles.voiceLeft}>
-                  <Ionicons
-                    name="mic-outline"
-                    size={20}
-                    color={BROWN}
-                  />
-                  <Text style={styles.voiceLabel}>
-                    {liveFrame ? 'Voice signal' : 'Listening...'}
-                  </Text>
-                </View>
+            <View style={styles.visualizerLabels}>
+              <Text style={styles.visualizerLabel}>SOFT</Text>
+              <Text style={styles.visualizerLabel}>LOUD</Text>
+              <Text style={styles.visualizerLabel}>SOFT</Text>
+            </View>
 
-                <Text style={styles.voiceValue}>
-                  {liveFrame && Number.isFinite(liveFrame.volume)
-                    ? liveFrame.volume.toFixed(1)
-                    : '--'}
-                  <Text style={styles.voiceUnit}> dBFS</Text>
+            <View style={styles.voiceRow}>
+              <View style={styles.voiceLeft}>
+                <Ionicons name="mic-outline" size={20} color={BROWN} />
+                <Text style={styles.voiceLabel}>
+                  {liveFrame ? 'Voice signal' : 'Listening...'}
                 </Text>
               </View>
+              <Text style={styles.voiceValue}>
+                {liveFrame && Number.isFinite(liveFrame.volume)
+                  ? liveFrame.volume.toFixed(1)
+                  : '--'}
+                <Text style={styles.voiceUnit}> dBFS</Text>
+              </Text>
+            </View>
 
-              <View style={styles.targetRow}>
-                <View>
-                  <Text style={styles.targetLabel}>
-                    TARGET RANGE
-                  </Text>
-                  <Text style={styles.targetValue}>
-                    {targetMin}–{targetMax} dB
-                  </Text>
-                </View>
-                <Text style={styles.pattern}>
-                  Soft → Loud → Soft
-                </Text>
+            <View style={styles.targetRow}>
+              <View>
+                <Text style={styles.targetLabel}>TARGET RANGE</Text>
+                <Text style={styles.targetValue}>{targetMin}–{targetMax} dB</Text>
               </View>
+              <Text style={styles.pattern}>Soft → Loud → Soft</Text>
+            </View>
 
-              <View style={styles.sessionRow}>
-                <View style={styles.sessionPart}>
-                  <Text style={styles.sessionLabel}>
-                    REPETITION
-                  </Text>
-                  <Text style={styles.sessionValue}>
-                    {rep} / {repetitions}
-                  </Text>
-                </View>
-
-                <View style={styles.sessionDivider} />
-
-                <View style={styles.sessionPart}>
-                  <Text style={styles.sessionLabel}>ELAPSED</Text>
-                  <Text style={styles.sessionValue}>
-                    {Math.floor(seconds / 60)}:
-                    {String(seconds % 60).padStart(2, '0')}
-                  </Text>
-                </View>
+            <View style={styles.sessionRow}>
+              <View style={styles.sessionPart}>
+                <Text style={styles.sessionLabel}>REPETITION</Text>
+                <Text style={styles.sessionValue}>{rep} / {repetitions}</Text>
               </View>
-
-              <View style={styles.liveProgressTrack}>
-                <View
-                  style={[
-                    styles.liveProgressFill,
-                    { width: `${progress}%` },
-                  ]}
-                />
-              </View>
-
-              <View style={styles.exerciseFooter}>
-                <Text style={styles.exerciseFooterText}>
-                  Repetition {rep} of {repetitions}
+              <View style={styles.sessionDivider} />
+              <View style={styles.sessionPart}>
+                <Text style={styles.sessionLabel}>ELAPSED</Text>
+                <Text style={styles.sessionValue}>
+                  {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
                 </Text>
               </View>
             </View>
+
+            <View style={styles.liveProgressTrack}>
+              <View style={[styles.liveProgressFill, { width: `${progress}%` }]} />
+            </View>
+            <View style={styles.exerciseFooter}>
+              <Text style={styles.exerciseFooterText}>
+                Repetition {rep} of {repetitions}
+              </Text>
+            </View>
           </ScrollView>
         </View>
-
         {quitModal}
       </>
     );
   }
-
-  /* Independent processing screen */
 
   if (phase === 'processing') {
     return (
       <>
-        <View style={styles.processingScreen}>
-          <View style={styles.processingIconCircle}>
-            <Ionicons
-              name="analytics-outline"
-              size={44}
-              color={BROWN}
-            />
+        <View style={styles.centerScreen}>
+          <View style={styles.largeIconCircle}>
+            <Ionicons name="analytics-outline" size={44} color={BROWN} />
           </View>
-
-          <Text style={styles.processingTitle}>
-            Analyzing Your Performance
+          <Text style={styles.screenTitle}>Analyzing Your Performance</Text>
+          <Text style={styles.screenSubtitle}>
+            Measuring your volume control and checking how consistently you
+            followed the pattern.
           </Text>
-
-          <Text style={styles.processingSubtitle}>
-            Measuring your volume control and checking how
-            consistently you followed the pattern.
-          </Text>
-
           <View style={styles.processingStatus}>
             <ActivityIndicator size="large" color={BROWN} />
-            <Text style={styles.processingStatusText}>
-              Calculating your results...
-            </Text>
+            <Text style={styles.processingStatusText}>Calculating your results...</Text>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={handleBack}
-            style={({ pressed }) => [
-              styles.processingExitButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.processingExitText}>
-              Exit exercise
-            </Text>
-          </Pressable>
         </View>
-
         {quitModal}
       </>
     );
   }
-
-  /* Results screen */
 
   return (
     <>
@@ -1636,11 +1316,7 @@ export default function DynamicRangeExercise({
             : 'Keep practicing smooth and controlled volume changes.'
         }
         score={score}
-        resultIcon={
-          passed
-            ? 'checkmark-circle-outline'
-            : 'refresh-outline'
-        }
+        resultIcon={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
         scoreMessage={
           passed
             ? 'You met the passing requirements.'
@@ -1649,21 +1325,12 @@ export default function DynamicRangeExercise({
         scoreDetails={
           <View style={styles.resultsDetails}>
             <View style={styles.resultMetric}>
-              <Text style={styles.resultValue}>
-                {rangeAccuracy}%
-              </Text>
-              <Text style={styles.resultLabel}>
-                Range Accuracy
-              </Text>
+              <Text style={styles.resultValue}>{rangeAccuracy}%</Text>
+              <Text style={styles.resultLabel}>Range Accuracy</Text>
             </View>
-
             <View style={styles.resultMetric}>
-              <Text style={styles.resultValue}>
-                {rampConsistency}%
-              </Text>
-              <Text style={styles.resultLabel}>
-                Ramp Consistency
-              </Text>
+              <Text style={styles.resultValue}>{rampConsistency}%</Text>
+              <Text style={styles.resultLabel}>Ramp Consistency</Text>
             </View>
           </View>
         }
@@ -1671,61 +1338,44 @@ export default function DynamicRangeExercise({
         onExit={handleBack}
         children={null}
       />
-
       {quitModal}
     </>
   );
 }
 
-/* Styles */
-
 const styles = StyleSheet.create({
-  preparingScreen: {
+  centerScreen: {
     flex: 1,
     backgroundColor: WHITE,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  largeIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: PINK,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-  preparingTitle: {
+  screenTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-  preparingSubtitle: {
+  screenSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 21,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 10,
+    maxWidth: 320,
   },
-  spinner: {
-    marginTop: 28,
-  },
-
-  /* Countdown */
-
-  countdownScreen: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: WHITE,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-  },
-  countdownContent: {
-    alignItems: 'center',
-    width: '100%',
-  },
+  spinner: { marginTop: 28 },
   countdownCircle: {
     width: 112,
     height: 112,
@@ -1740,12 +1390,6 @@ const styles = StyleSheet.create({
     fontSize: 54,
     color: BROWN,
   },
-  countdownTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 26,
-    color: BROWN,
-    textAlign: 'center',
-  },
   countdownPrompt: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
@@ -1753,18 +1397,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
-  countdownHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 10,
-    maxWidth: 280,
-  },
-
-  /* Reference note */
-
   referenceCard: {
     width: '100%',
     marginTop: 12,
@@ -1780,9 +1412,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-  },
-  referenceCopy: {
-    flex: 1,
   },
   eyebrow: {
     color: MUTED,
@@ -1834,12 +1463,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
-  disabled: {
-    opacity: 0.6,
-  },
-
-  /* Pattern preview */
-
+  disabled: { opacity: 0.6 },
   previewCard: {
     backgroundColor: WHITE,
     borderRadius: 16,
@@ -1877,9 +1501,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: MUTED,
   },
-
-  /* Exercise screen */
-
   exerciseScreen: {
     position: 'absolute',
     top: 90,
@@ -1897,9 +1518,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginBottom: 14,
-  },
-  exerciseHeaderText: {
-    flex: 1,
   },
   exerciseHeaderTitle: {
     fontFamily: 'FredokaBold',
@@ -1930,15 +1548,8 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginTop: 5,
   },
-  exerciseScroll: {
-    flex: 1,
-  },
-  exerciseScrollContent: {
-    paddingBottom: 24,
-  },
-  liveContent: {
-    width: '100%',
-  },
+  exerciseScroll: { flex: 1 },
+  exerciseScrollContent: { paddingBottom: 24 },
   visualizerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1989,14 +1600,10 @@ const styles = StyleSheet.create({
   },
   legend: {
     flexDirection: 'row',
-    gap: 16,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  legendItem: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: 12,
+    marginBottom: 8,
   },
   actualDot: {
     width: 15,
@@ -2009,9 +1616,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: MUTED,
   },
-
-  /* Visualizer */
-
   visualizer: {
     height: 155,
     borderRadius: 15,
@@ -2081,9 +1685,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
-
-  /* Live volume */
-
   voiceRow: {
     minHeight: 46,
     marginTop: 12,
@@ -2141,9 +1742,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: MUTED,
   },
-
-  /* Session and progress */
-
   sessionRow: {
     minHeight: 60,
     borderRadius: 14,
@@ -2153,10 +1751,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 14,
   },
-  sessionPart: {
-    flex: 1,
-    alignItems: 'center',
-  },
+  sessionPart: { flex: 1, alignItems: 'center' },
   sessionLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
@@ -2185,48 +1780,11 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     borderRadius: 3,
   },
-  exerciseFooter: {
-    alignItems: 'center',
-    marginTop: 14,
-  },
+  exerciseFooter: { alignItems: 'center', marginTop: 14 },
   exerciseFooterText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-  },
-
-  /* Processing screen */
-
-  processingScreen: {
-    flex: 1,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  processingIconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: BROWN,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 21,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 10,
-    maxWidth: 320,
   },
   processingStatus: {
     alignItems: 'center',
@@ -2238,22 +1796,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: MUTED,
   },
-  processingExitButton: {
-    marginTop: 28,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  processingExitText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: BROWN,
-  },
-
-  /* Results */
-
   resultsDetails: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -2263,11 +1805,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: BORDER,
   },
-  resultMetric: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
+  resultMetric: { flex: 1, alignItems: 'center', gap: 4 },
   resultLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -2279,9 +1817,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: BROWN,
   },
-
-  /* Quit confirmation modal */
-
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2353,10 +1888,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: MUTED,
   },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
+  buttonPressed: { opacity: 0.75 },
+  buttonDisabled: { opacity: 0.5 },
 });

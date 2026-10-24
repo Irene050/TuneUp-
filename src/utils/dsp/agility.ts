@@ -21,6 +21,7 @@ export interface AgilityPitchFrame {
 
 export interface AgilityNote {
   midi: number;
+  frequency: number;
   timestampMs: number;
 }
 
@@ -438,6 +439,7 @@ export function extractAgilityNotes(
     if (candidateCount >= confirmationRequired) {
       notes.push({
         midi,
+        frequency: frame.frequency,
         timestampMs: candidateTimestampMs,
       });
 
@@ -449,9 +451,6 @@ export function extractAgilityNotes(
 
   return notes;
 }
-
-
-// Existing helpers — preserved for existing callers.
 
 export function detectPitchChanges(
   pitchFrames: PitchFrame[],

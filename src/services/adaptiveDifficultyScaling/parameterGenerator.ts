@@ -453,7 +453,7 @@ export function generateScaleAccuracyParams({
         generatedMinClarity.toFixed(2),
       ),
 
-    noteCount: baseParams.noteCount,
+    noteCount: generatedNoteCount,
 
     scaleAccuracyThreshold:
       Number(
@@ -797,11 +797,16 @@ export function generateVowelConsistencyParams({
       ) / 2,
     );
 
-  const generatedSmoothnessThreshold =
-    (
-      adjustedSmoothnessThreshold.min +
-      adjustedSmoothnessThreshold.max
-    ) / 2;
+  const generatedSmoothnessThreshold = Math.max(
+    0,
+    Math.min(
+      100,
+      (
+        adjustedSmoothnessThreshold.min +
+        adjustedSmoothnessThreshold.max
+      ) / 2,
+    ),
+);
 
   return {
     ...baseParams,

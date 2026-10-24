@@ -18,12 +18,21 @@ export interface DynamicRangeMeasurement {
   overallMeasurementQuality: number;
 }
 
+export interface RepetitionInterval {
+  startSeconds: number;
+  endSeconds: number;
+}
+
 interface MeasureOptions {
   windowMs?: number;
   targetRange?: [number, number];
   expectedDurationSeconds?: number;
   repetitionDurationSeconds?: number;
+  repetitionIntervals?: RepetitionInterval[];
 }
+
+const ACTIVE_VOICE_FLOOR_DBFS = -45;
+const PHASES_PER_REPETITION = 3;
 
 export function measureDynamicRange(
   samples: Float32Array,
@@ -32,61 +41,58 @@ export function measureDynamicRange(
 ): DynamicRangeMeasurement {
   const windowMs = options.windowMs ?? 50;
   const targetRange = options.targetRange ?? [40, 55];
+
   const expectedDurationSeconds =
     options.expectedDurationSeconds ?? 9;
+
   const repetitionDurationSeconds =
     options.repetitionDurationSeconds ??
     expectedDurationSeconds;
 
   if (
     samples.length === 0 ||
+    !Number.isFinite(sampleRate) ||
     sampleRate <= 0 ||
+    !Number.isFinite(windowMs) ||
     windowMs <= 0 ||
+    !Number.isFinite(expectedDurationSeconds) ||
     expectedDurationSeconds <= 0 ||
-    repetitionDurationSeconds <= 0
+    !Number.isFinite(repetitionDurationSeconds) ||
+    repetitionDurationSeconds <= 0 ||
+    !Number.isFinite(targetRange[0]) ||
+    !Number.isFinite(targetRange[1]) ||
+    targetRange[0] < 0 ||
+    targetRange[1] <= targetRange[0]
   ) {
     return createEmptyMeasurement();
   }
 
-  const rmsValues = calcRMSWindows(samples, windowMs, sampleRate);
-  const allDbValues = toDbArray(rmsValues);
+  const rmsValues = calcRMSWindows(
+    samples,
+    windowMs,
+    sampleRate,
+  );
 
-  if (allDbValues.length < 3) {
+  const allDbValues = toDbArray(rmsValues).map(value =>
+    Number.isFinite(value) ? value : -100,
+  );
+
+  if (allDbValues.length < PHASES_PER_REPETITION) {
     return createEmptyMeasurement();
   }
 
-  // Preserve the original time positions, including quiet windows.
-  const expectedWindowCount = Math.floor(
-    (expectedDurationSeconds * 1000) / windowMs,
-  );
+  const actualRecordingDurationSeconds =
+    samples.length / sampleRate;
 
-  const dbValues = allDbValues
-    .slice(0, expectedWindowCount)
-    .map((value) =>
-      Number.isFinite(value) ? value : -100,
-    );
-
-  if (dbValues.length < 3) {
-    return createEmptyMeasurement();
-  }
-
-  const ACTIVE_VOICE_FLOOR_DBFS = -45;
-
-  const activeDbValues = dbValues.filter(
-    (value) => value > ACTIVE_VOICE_FLOOR_DBFS,
-  );
-
-  const windowsPerPhase = Math.max(
-    1,
-    Math.floor(
-      (repetitionDurationSeconds * 1000) / (3 * windowMs),
-    ),
-  );
-
-  const repetitionCount = Math.max(
-    1,
-    Math.ceil(expectedDurationSeconds / repetitionDurationSeconds),
-  );
+  // Prefer actual repetition boundaries. When they aren't supplied,
+  // fall back to contiguous repetitions for backward compatibility.
+  const repetitionIntervals =
+    options.repetitionIntervals?.length
+      ? options.repetitionIntervals
+      : createContiguousIntervals(
+          expectedDurationSeconds,
+          repetitionDurationSeconds,
+        );
 
   const firstValues: number[] = [];
   const middleValues: number[] = [];
@@ -98,41 +104,75 @@ export function measureDynamicRange(
   const fallingSlopes: number[] = [];
   const peakAccuracies: number[] = [];
 
-  for (let repetition = 0; repetition < repetitionCount; repetition++) {
-    const repetitionStart = Math.round(
-      (repetition * repetitionDurationSeconds * 1000) / windowMs,
-    );
+  const analyzedDbValues: number[] = [];
 
-    const firstStart = repetitionStart;
-    const middleStart = firstStart + windowsPerPhase;
-    const finalStart = middleStart + windowsPerPhase;
-    const repetitionEnd = Math.min(
-      dbValues.length,
-      Math.round(
-        ((repetition + 1) * repetitionDurationSeconds * 1000) /
-          windowMs,
-      ),
-    );
+  let requestedRepetitions = 0;
+  let incompleteRepetitionCount = 0;
 
-    const first = dbValues.slice(
-      firstStart,
-      Math.min(middleStart, repetitionEnd),
-    );
-
-    const middle = dbValues.slice(
-      middleStart,
-      Math.min(finalStart, repetitionEnd),
-    );
-
-    const final = dbValues.slice(finalStart, repetitionEnd);
-
-    if (!first.length || !middle.length || !final.length) {
+  for (const interval of repetitionIntervals) {
+    if (
+      !Number.isFinite(interval.startSeconds) ||
+      !Number.isFinite(interval.endSeconds) ||
+      interval.startSeconds < 0 ||
+      interval.endSeconds <= interval.startSeconds
+    ) {
+      incompleteRepetitionCount++;
       continue;
     }
 
-    firstValues.push(average(first));
-    middleValues.push(average(middle));
-    finalValues.push(average(final));
+    requestedRepetitions++;
+
+    const startIndex = Math.max(
+      0,
+      Math.floor(
+        (interval.startSeconds * 1000) / windowMs,
+      ),
+    );
+
+    const endIndex = Math.min(
+      allDbValues.length,
+      Math.ceil(
+        (interval.endSeconds * 1000) / windowMs,
+      ),
+    );
+
+    const repetition = allDbValues.slice(
+      startIndex,
+      endIndex,
+    );
+
+    if (repetition.length < PHASES_PER_REPETITION) {
+      incompleteRepetitionCount++;
+      continue;
+    }
+
+    // Split the available windows proportionally into three phases.
+    const firstEnd = Math.ceil(
+      repetition.length / PHASES_PER_REPETITION,
+    );
+
+    const middleEnd = Math.ceil(
+      (repetition.length * 2) / PHASES_PER_REPETITION,
+    );
+
+    const first = repetition.slice(0, firstEnd);
+    const middle = repetition.slice(firstEnd, middleEnd);
+    const final = repetition.slice(middleEnd);
+
+    if (!first.length || !middle.length || !final.length) {
+      incompleteRepetitionCount++;
+      continue;
+    }
+
+    const firstAverage = average(first);
+    const middleAverage = average(middle);
+    const finalAverage = average(final);
+
+    firstValues.push(firstAverage);
+    middleValues.push(middleAverage);
+    finalValues.push(finalAverage);
+
+    analyzedDbValues.push(...repetition);
 
     risingConsistencies.push(
       calculateDirectionalConsistency(first, 'increasing'),
@@ -147,44 +187,42 @@ export function measureDynamicRange(
 
     peakAccuracies.push(
       calculatePeakAccuracy(
-        average(first),
-        average(middle),
-        average(final),
+        firstAverage,
+        middleAverage,
+        finalAverage,
       ),
     );
   }
 
-  if (!firstValues.length) {
+  if (firstValues.length === 0) {
+    console.warn(
+      '[DynamicRange] No complete repetitions were available for analysis.',
+      {
+        actualRecordingDurationSeconds,
+        availableWindowCount: allDbValues.length,
+        requestedRepetitions,
+        incompleteRepetitionCount,
+      },
+    );
+
     return createEmptyMeasurement();
   }
 
-  
-const firstPhaseAverage = average(firstValues);
-const middlePhaseAverage = average(middleValues);
-const finalPhaseAverage = average(finalValues);
+  const firstPhaseAverage = average(firstValues);
+  const middlePhaseAverage = average(middleValues);
+  const finalPhaseAverage = average(finalValues);
 
-const repetitionContrasts = firstValues.map(
-  (first, index) => {
+  const [targetMin, targetMax] = targetRange;
+
+  const repetitionScores = firstValues.map((first, index) => {
     const middle = middleValues[index];
     const final = finalValues[index];
 
-    const contrast =
-      middle - (first + final) / 2;
+    const contrast = middle - (first + final) / 2;
 
-    if (middle <= first || middle <= final) {
+    if (middle <= first || middle <= final || contrast <= 0) {
       return 0;
     }
-
-    return contrast;
-  },
-);
-
-const targetMin = targetRange[0];
-const targetMax = targetRange[1];
-
-const repetitionScores = repetitionContrasts.map(
-  (contrast) => {
-    if (contrast <= 0) return 0;
 
     if (contrast < targetMin) {
       return (contrast / targetMin) * 100;
@@ -199,20 +237,16 @@ const repetitionScores = repetitionContrasts.map(
       0,
       100,
     );
-  },
-);
+  });
 
-const rangeAccuracy =
-  repetitionScores.length > 0
-    ? average(repetitionScores)
-    : 0;
+  const rangeAccuracy = average(repetitionScores);
 
-const risingSlope = average(risingSlopes);
-const fallingSlope = average(fallingSlopes);
+  const risingSlope = average(risingSlopes);
+  const fallingSlope = average(fallingSlopes);
 
-const risingConsistency = average(risingConsistencies);
-const fallingConsistency = average(fallingConsistencies);
-const peakAccuracy = average(peakAccuracies);
+  const risingConsistency = average(risingConsistencies);
+  const fallingConsistency = average(fallingConsistencies);
+  const peakAccuracy = average(peakAccuracies);
 
   const rampConsistency = clamp(
     risingConsistency * 0.4 +
@@ -222,14 +256,58 @@ const peakAccuracy = average(peakAccuracies);
     100,
   );
 
-  const overallMeasurementQuality = clamp(
-    (dbValues.length / expectedWindowCount) * 100,
+  const expectedWindowCount = Math.max(
+    1,
+    Math.floor(
+      (expectedDurationSeconds * 1000) / windowMs,
+    ),
+  );
+
+  const windowCoverage = clamp(
+    (analyzedDbValues.length / expectedWindowCount) * 100,
     0,
     100,
   );
 
+  const repetitionCoverage = clamp(
+    (firstValues.length /
+      Math.max(1, requestedRepetitions)) *
+      100,
+    0,
+    100,
+  );
+
+  const overallMeasurementQuality = Math.min(
+    windowCoverage,
+    repetitionCoverage,
+  );
+
+  const activeDbValues = analyzedDbValues.filter(
+    value => value > ACTIVE_VOICE_FLOOR_DBFS,
+  );
+
+  console.log(
+    '[DynamicRange] Measurement summary',
+    {
+      actualRecordingDurationSeconds,
+      expectedDurationSeconds,
+      repetitionDurationSeconds,
+      availableWindowCount: allDbValues.length,
+      analyzedWindowCount: analyzedDbValues.length,
+      requestedRepetitions,
+      completedRepetitions: firstValues.length,
+      incompleteRepetitionCount,
+      firstPhaseAverage,
+      middlePhaseAverage,
+      finalPhaseAverage,
+      rangeAccuracy,
+      rampConsistency,
+      overallMeasurementQuality,
+    },
+  );
+
   return {
-    dbValues,
+    dbValues: analyzedDbValues,
     rangeMin: activeDbValues.length
       ? Math.min(...activeDbValues)
       : 0,
@@ -248,15 +326,41 @@ const peakAccuracy = average(peakAccuracies);
   };
 }
 
-function average(values: number[]): number {
-  if (!values.length) return 0;
+function createContiguousIntervals(
+  expectedDurationSeconds: number,
+  repetitionDurationSeconds: number,
+): RepetitionInterval[] {
+  const count = Math.max(
+    1,
+    Math.ceil(
+      expectedDurationSeconds / repetitionDurationSeconds,
+    ),
+  );
 
-  return values.reduce((sum, value) => sum + value, 0) /
-    values.length;
+  return Array.from({ length: count }, (_, index) => ({
+    startSeconds: index * repetitionDurationSeconds,
+    endSeconds: Math.min(
+      expectedDurationSeconds,
+      (index + 1) * repetitionDurationSeconds,
+    ),
+  }));
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return (
+    values.reduce((sum, value) => sum + value, 0) /
+    values.length
+  );
 }
 
 function calculateSlope(values: number[]): number {
-  if (values.length < 2) return 0;
+  if (values.length < 2) {
+    return 0;
+  }
 
   const n = values.length;
   let sumX = 0;
@@ -276,16 +380,23 @@ function calculateSlope(values: number[]): number {
 
   const denominator = n * sumXX - sumX * sumX;
 
-  if (denominator === 0) return 0;
+  if (denominator === 0) {
+    return 0;
+  }
 
-  return (n * sumXY - sumX * sumY) / denominator;
+  return (
+    (n * sumXY - sumX * sumY) /
+    denominator
+  );
 }
 
 function calculateDirectionalConsistency(
   values: number[],
   direction: 'increasing' | 'decreasing',
 ): number {
-  if (values.length < 2) return 0;
+  if (values.length < 2) {
+    return 0;
+  }
 
   let totalChange = 0;
   let desiredChange = 0;
@@ -303,9 +414,15 @@ function calculateDirectionalConsistency(
     }
   }
 
-  if (totalChange === 0) return 0;
+  if (totalChange === 0) {
+    return 0;
+  }
 
-  return clamp((desiredChange / totalChange) * 100, 0, 100);
+  return clamp(
+    (desiredChange / totalChange) * 100,
+    0,
+    100,
+  );
 }
 
 function calculatePeakAccuracy(
@@ -315,8 +432,18 @@ function calculatePeakAccuracy(
 ): number {
   const middleRise = middle - first;
   const middleFall = middle - final;
-  const riseScore = clamp((middleRise / 10) * 100, 0, 100);
-  const fallScore = clamp((middleFall / 10) * 100, 0, 100);
+
+  const riseScore = clamp(
+    (middleRise / 10) * 100,
+    0,
+    100,
+  );
+
+  const fallScore = clamp(
+    (middleFall / 10) * 100,
+    0,
+    100,
+  );
 
   return (riseScore + fallScore) / 2;
 }

@@ -1,4 +1,3 @@
-
 import {
   calcLiveStability,
   filterByClarity,
@@ -106,7 +105,7 @@ const MAX_AUTOCORRELATION_AGREEMENT_CENTS = 100;
 const MIN_AUTOCORRELATION_AGREEMENT_RATIO = 0.50;
 
 const MIN_RANGE_EVIDENCE_SCORE = 0.48;
-const PITCH_TOLERANCE_PCT = 5.0;
+const PITCH_TOLERANCE_CENTS = 85;
 
 function clampScore(score: number): number {
   if (!Number.isFinite(score)) {
@@ -195,13 +194,14 @@ function calculatePitchAccuracy(
     return 0;
   }
 
-  const deviationPct =
-    (Math.abs(detectedHz - targetHz) / targetHz) * 100;
+  const deviationCents = Math.abs(
+    centsDifference(detectedHz, targetHz),
+  );
 
   const accuracy =
-    100 * (1 - deviationPct / PITCH_TOLERANCE_PCT);
+    100 * (1 - deviationCents / PITCH_TOLERANCE_CENTS);
 
-  return clampScore(Math.max(0, accuracy));
+  return clampScore(accuracy);
 }
 
 export function computeTargetNotes(
@@ -357,7 +357,7 @@ function measurePitch(
     return 0;
   }
 
-  const voicedFrames = filterByClarity(frames, 0.8);
+  const voicedFrames = filterByClarity(frames, 0.82);
 
   if (!Array.isArray(voicedFrames)) {
     return 0;
@@ -369,7 +369,7 @@ function measurePitch(
       Number.isFinite(frame.clarity),
   );
 
-  if (validFrames.length < 5) {
+  if (validFrames.length < 8) {
     console.warn(
       '⚠️ Pitch assessment: insufficient valid frames.',
       { validFrameCount: validFrames.length },
@@ -396,9 +396,9 @@ function measurePitch(
   const clarityScore = clampScore(clarity * 100);
 
   const finalScore =
-    accuracy * 0.75 +
-    stability * 0.15 +
-    clarityScore * 0.10;
+    accuracy * 0.80 +
+    stability * 0.12 +
+    clarityScore * 0.08;
 
   const score = clampScore(finalScore);
 
@@ -408,9 +408,9 @@ function measurePitch(
     averageAccuracy: Math.round(accuracy),
     stability,
     clarityScore,
-    weightedAccuracy: Math.round(accuracy * 0.75),
-    weightedStability: Math.round(stability * 0.15),
-    weightedClarity: Math.round(clarityScore * 0.10),
+    weightedAccuracy: Math.round(accuracy * 0.80),
+    weightedStability: Math.round(stability * 0.12),
+    weightedClarity: Math.round(clarityScore * 0.08),
     finalScore: score,
   });
 
@@ -665,6 +665,110 @@ function measureVolume(
   return finalScore;
 }
 
+function alignAgilityNotes(
+  detectedNotes: ReturnType<typeof extractAgilityNotes>,
+  targetNotes: number[],
+): number[] {
+  const detectedCount = detectedNotes.length;
+  const targetCount = targetNotes.length;
+
+  // dp[i][j] = minimum alignment cost for the first i detected
+  // notes and first j target notes.
+  const dp: number[][] = Array.from(
+    { length: detectedCount + 1 },
+    () => Array(targetCount + 1).fill(Infinity),
+  );
+
+  const previous: (
+    | { i: number; j: number; action: 'match' | 'skip' | 'miss' }
+    | undefined
+  )[][] = Array.from(
+    { length: detectedCount + 1 },
+    () => Array(targetCount + 1).fill(undefined),
+  );
+
+  dp[0][0] = 0;
+
+  const skipDetectionCost = 1;
+  const missingTargetCost = 1.5;
+
+  for (let i = 0; i <= detectedCount; i++) {
+    for (let j = 0; j <= targetCount; j++) {
+      const cost = dp[i][j];
+
+      if (!Number.isFinite(cost)) continue;
+
+      // Skip an extra detected note.
+      if (
+        i < detectedCount &&
+        cost + skipDetectionCost < dp[i + 1][j]
+      ) {
+        dp[i + 1][j] = cost + skipDetectionCost;
+        previous[i + 1][j] = {
+          i,
+          j,
+          action: 'skip',
+        };
+      }
+
+      // Treat a target note as missed.
+      if (
+        j < targetCount &&
+        cost + missingTargetCost < dp[i][j + 1]
+      ) {
+        dp[i][j + 1] = cost + missingTargetCost;
+        previous[i][j + 1] = {
+          i,
+          j,
+          action: 'miss',
+        };
+      }
+
+      // Match a detected note to the next target note.
+      if (i < detectedCount && j < targetCount) {
+        const detectedMidi = detectedNotes[i].midi;
+        const targetMidi = 69 + 12 * Math.log2(targetNotes[j] / 440);
+
+        const centsError = Math.abs(
+          (detectedMidi - targetMidi) * 100,
+        );
+
+        const matchCost = Math.min(centsError / 100, 3);
+
+        if (cost + matchCost < dp[i + 1][j + 1]) {
+          dp[i + 1][j + 1] = cost + matchCost;
+          previous[i + 1][j + 1] = {
+            i,
+            j,
+            action: 'match',
+          };
+        }
+      }
+    }
+  }
+
+  // Return the detected-note index assigned to each target.
+  const matchedIndices = Array<number>(targetCount).fill(-1);
+
+  let i = detectedCount;
+  let j = targetCount;
+
+  while (i > 0 || j > 0) {
+    const step = previous[i][j];
+
+    if (!step) break;
+
+    if (step.action === 'match') {
+      matchedIndices[j - 1] = i - 1;
+    }
+
+    i = step.i;
+    j = step.j;
+  }
+
+  return matchedIndices;
+}
+
 function measureAgility(
   samples: Float32Array,
   sampleRate: number,
@@ -703,7 +807,17 @@ function measureAgility(
 
   const detectedNotes = extractAgilityNotes(frames, 3);
 
-  const notesToScore = detectedNotes.slice(0, targetNotes.length);
+  const matchedIndices = alignAgilityNotes(
+    detectedNotes,
+    targetNotes,
+  );
+
+  const notesToScore = matchedIndices.map(
+    (detectedIndex) =>
+      detectedIndex >= 0
+        ? detectedNotes[detectedIndex]
+        : undefined,
+  );
 
   if (notesToScore.length === 0) {
     console.warn('⚠️ Agility assessment: no distinct notes detected.');
@@ -713,35 +827,44 @@ function measureAgility(
   const noteAccuracies: number[] = [];
   const noteStabilities: number[] = [];
 
-  /*
-   * Optimization: assign pitch frames to note segments in one pass.
-   * The previous implementation filtered the complete frame array
-   * separately for every detected note.
-   */
-  const segmentFramesByNote: (typeof frames)[] = Array.from(
-    { length: notesToScore.length },
-    () => [],
-  );
+  const segmentFramesByNote: (typeof frames)[] =
+    Array.from(
+      { length: notesToScore.length },
+      () => [],
+    );
 
-  let segmentIndex = 0;
+  const matchedNotes = notesToScore
+    .map((note, targetIndex) => ({
+      note,
+      targetIndex,
+    }))
+    .filter(
+      (
+        item,
+      ): item is {
+        note: NonNullable<(typeof notesToScore)[number]>;
+        targetIndex: number;
+      } => item.note !== undefined,
+    )
+    .sort(
+      (a, b) =>
+        a.note.timestampMs - b.note.timestampMs,
+    );
 
-  for (const frame of frames) {
-    while (
-      segmentIndex < notesToScore.length - 1 &&
-      frame.timestamp >= notesToScore[segmentIndex + 1].timestampMs
-    ) {
-      segmentIndex++;
-    }
+  for (let i = 0; i < matchedNotes.length; i++) {
+    const { note, targetIndex } = matchedNotes[i];
 
-    const currentNote = notesToScore[segmentIndex];
+    const startMs = note.timestampMs;
+    const endMs =
+      matchedNotes[i + 1]?.note.timestampMs ??
+      Infinity;
 
-    if (
-      currentNote &&
-      frame.timestamp >= currentNote.timestampMs &&
-      isValidFrequency(frame.frequency)
-    ) {
-      segmentFramesByNote[segmentIndex].push(frame);
-    }
+    segmentFramesByNote[targetIndex] = frames.filter(
+      frame =>
+        frame.timestamp >= startMs &&
+        frame.timestamp < endMs &&
+        isValidFrequency(frame.frequency),
+    );
   }
 
   for (
@@ -801,7 +924,13 @@ function measureAgility(
   );
 
   const expectedTransitions = Math.max(targetNotes.length - 1, 1);
-  const detectedTransitions = Math.max(notesToScore.length - 1, 0);
+  const successfullyDetectedNotes =
+    notesToScore.filter(Boolean).length;
+
+  const detectedTransitions = Math.max(
+    successfullyDetectedNotes - 1,
+    0,
+  );
 
   const expectedTransitionRate =
     expectedTransitions / ASSESSMENT_DURATION.agility;
@@ -841,14 +970,30 @@ function measureAgility(
     finalScore,
   });
 
-  console.log('🎵 AGILITY PER-NOTE ACCURACY', {
-    noteAccuracies: noteAccuracies.map(score => Math.round(score)),
-    noteStabilities: noteStabilities.map(score => Math.round(score)),
-    detectedNotes: notesToScore.map(note => ({
-      midi: note.midi,
-      timestampMs: Math.round(note.timestampMs),
-    })),
-  });
+console.log('🎵 AGILITY PER-NOTE ACCURACY', {
+  noteAccuracies: noteAccuracies.map(score =>
+    Math.round(score),
+  ),
+  noteStabilities: noteStabilities.map(score =>
+    Math.round(score),
+  ),
+  detectedNotes: notesToScore.map((note, index) =>
+    note
+      ? {
+          targetIndex: index,
+          targetHz: targetNotes[index],
+          midi: note.midi,
+          timestampMs: Math.round(note.timestampMs),
+        }
+      : {
+          targetIndex: index,
+          targetHz: targetNotes[index],
+          midi: null,
+          timestampMs: null,
+          status: 'No matched note',
+        },
+  ),
+});
 
   return finalScore;
 }
@@ -1055,7 +1200,7 @@ function detectFundamentalByAutocorrelation(
     }
   }
 
-  if (candidates.length === 0) {
+    if (candidates.length === 0) {
     return null;
   }
 
@@ -1067,9 +1212,35 @@ function detectFundamentalByAutocorrelation(
     return a.lag - b.lag;
   });
 
+  const strongestCandidate = candidates[0];
+
+  const octaveAlternatives = candidates.filter(candidate => {
+    const centsDifference =
+      1200 * Math.log2(
+        candidate.frequency / strongestCandidate.frequency,
+      );
+
+    return (
+      Math.abs(Math.abs(centsDifference) - 1200) <= 100
+    );
+  });
+
+  console.log('[Autocorrelation] Candidate analysis:', {
+    strongestFrequency: Number(
+      strongestCandidate.frequency.toFixed(2),
+    ),
+    strongestCorrelation: Number(
+      strongestCandidate.correlation.toFixed(3),
+    ),
+    octaveAlternatives: octaveAlternatives.map(candidate => ({
+      frequency: Number(candidate.frequency.toFixed(2)),
+      correlation: Number(candidate.correlation.toFixed(3)),
+    })),
+  });
+
   return {
-    frequency: candidates[0].frequency,
-    confidence: candidates[0].correlation,
+    frequency: strongestCandidate.frequency,
+    confidence: strongestCandidate.correlation,
   };
 }
 
@@ -1272,6 +1443,8 @@ function detectComfortableNote(
 
   const pitchyMedian = median(pitchyFrequencies);
 
+  
+
   if (
     pitchyMedian === null ||
     !isValidFrequency(pitchyMedian)
@@ -1282,6 +1455,13 @@ function detectComfortableNote(
 
     return null;
   }
+
+  console.log('[Range Debug] Pitchy frequency distribution:', {
+  medianHz: Number(pitchyMedian.toFixed(2)),
+  frequencies: pitchyFrequencies.map(frequency =>
+    Number(frequency.toFixed(2)),
+  ),
+});
 
   console.log('🎵 PITCHY RANGE ESTIMATE:', {
     median: Number(pitchyMedian.toFixed(2)),
@@ -1363,9 +1543,8 @@ function detectComfortableNote(
       );
 
       const evidenceScore =
-        pitchySupport * 0.40 +
-        autoSupport * 0.45 +
-        Math.min(autoConfidence, 1) * 0.15;
+        pitchySupport * 0.45 +
+        autoSupport * 0.55;
 
       return {
         frequency: candidateFrequency,

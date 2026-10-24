@@ -1,4 +1,3 @@
-
 import type {
   WaveformSmoothnessParams,
 } from '@/constants/exercises/tone';
@@ -18,20 +17,6 @@ function clampScore(value: number): number {
     : 0;
 }
 
-function calculateStrictScore(value: number): number {
-  return Math.max(
-    0,
-    Math.min(100, (value - 50) * 1.25),
-  );
-}
-
-function calculateAmplitudeScore(value: number): number {
-  return Math.max(
-    0,
-    Math.min(100, 0.75 * value + 25),
-  );
-}
-
 export function scoreWaveformSmoothnessDrill(
   measurement: WaveformSmoothnessMeasurement,
   params: WaveformSmoothnessParams,
@@ -44,35 +29,30 @@ export function scoreWaveformSmoothnessDrill(
     measurement.amplitudeStabilityPct,
   );
 
-  const strictCentroidScore = calculateStrictScore(
-    centroidSmoothnessScore,
-  );
-
-  const amplitudeScore = calculateAmplitudeScore(
-    amplitudeStabilityScore,
-  );
-
+  // Centroid smoothness contributes 60%.
+  // Amplitude stability contributes 40%.
   const score = Math.round(
-    strictCentroidScore * 0.7 +
-      amplitudeScore * 0.3,
+    centroidSmoothnessScore * 0.6 +
+      amplitudeStabilityScore * 0.4,
   );
 
+  // Keep higher configured thresholds for more challenging tiers.
   const requiredThreshold = Math.max(
     params.smoothnessThreshold,
-    75,
+    60,
   );
 
   const passed =
     centroidSmoothnessScore >= requiredThreshold &&
     amplitudeStabilityScore >= requiredThreshold &&
-    score >= 75;
+    score >= 60;
 
   console.log('🎵 WAVEFORM SMOOTHNESS SCORE DEBUG:', {
     centroidSmoothnessScore,
     amplitudeStabilityScore,
-    strictCentroidScore,
-    amplitudeScore,
     requiredThreshold,
+    centroidWeight: 0.6,
+    amplitudeWeight: 0.4,
     finalScore: score,
     passed,
   });

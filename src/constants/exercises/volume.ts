@@ -129,7 +129,7 @@ export const VOLUME_BAND_TARGETING_PARAMS: Record<
   beginner: {
     durationSec: 3,
     repetitions: 2,
-    targetDbRange: [35, 45],
+    targetDbRange: [45, 55],
     toleranceDb: 5,
     consistencyThreshold: 65,
   },
@@ -137,7 +137,7 @@ export const VOLUME_BAND_TARGETING_PARAMS: Record<
   intermediate: {
     durationSec: 4,
     repetitions: 2,
-    targetDbRange: [40, 50],
+    targetDbRange: [50, 60],
     toleranceDb: 4,
     consistencyThreshold: 75,
   },
@@ -145,7 +145,7 @@ export const VOLUME_BAND_TARGETING_PARAMS: Record<
   advanced: {
     durationSec: 5,
     repetitions: 3,
-    targetDbRange: [40, 55],
+    targetDbRange: [55, 65],
     toleranceDb: 3,
     consistencyThreshold: 85,
   },

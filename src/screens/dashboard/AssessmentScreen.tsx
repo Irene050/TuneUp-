@@ -1973,7 +1973,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: MUTED,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 50,
   },
   completionRangeCard: {
     marginTop: -30,

@@ -11,30 +11,49 @@ interface ScoreOptions {
   passingScore?: number;
 }
 
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+): number {
+  if (!Number.isFinite(value)) return min;
+
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value: number): number {
+  return Math.round(value);
+}
+
 export function scoreDynamicRange(
   measurement: DynamicRangeMeasurement,
-  options: ScoreOptions = {}
+  options: ScoreOptions = {},
 ): DynamicRangeScore {
-  const passingScore =
-    options.passingScore ?? 75;
+  const passingScore = clamp(
+    options.passingScore ?? 75,
+    0,
+    100,
+  );
 
   const rangeAccuracy = clamp(
     measurement.rangeAccuracy,
     0,
-    100
+    100,
   );
 
   const rampConsistency = clamp(
     measurement.rampConsistency,
     0,
-    100
+    100,
   );
 
+  // Range accuracy contributes 40% of the score.
+  // Ramp consistency contributes 60%.
   const overallScore = clamp(
     rangeAccuracy * 0.4 +
       rampConsistency * 0.6,
     0,
-    100
+    100,
   );
 
   return {
@@ -43,19 +62,4 @@ export function scoreDynamicRange(
     overallScore: round(overallScore),
     passed: overallScore >= passingScore,
   };
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number
-): number {
-  return Math.max(
-    min,
-    Math.min(max, value)
-  );
-}
-
-function round(value: number): number {
-  return Math.round(value);
 }

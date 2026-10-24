@@ -155,71 +155,125 @@ export function computeFFTMagnitudes(
 export function samplesToFFTFrames(
   samples: Float32Array,
   fftSize = 1024,
-  hopSize = 512
+  hopSize = 512,
+  minFrameRms = 0.01,
 ): Float32Array[] {
   if (
     samples.length === 0 ||
+    !Number.isInteger(fftSize) ||
     fftSize <= 0 ||
-    hopSize <= 0
+    !Number.isInteger(hopSize) ||
+    hopSize <= 0 ||
+    !Number.isFinite(minFrameRms) ||
+    minFrameRms < 0
   ) {
     return [];
   }
 
-  if (
-    (fftSize &
-      (fftSize - 1)) !==
-    0
-  ) {
-    throw new Error(
-      'fftSize must be a power of two.'
-    );
+  if ((fftSize & (fftSize - 1)) !== 0) {
+    throw new Error('fftSize must be a power of two.');
   }
 
-  const frames: Float32Array[] =
-    [];
+  if (hopSize > fftSize) {
+    throw new Error('hopSize should not exceed fftSize.');
+  }
+
+  const frames: Float32Array[] = [];
+
+  let processedFrames = 0;
+  let skippedQuietFrames = 0;
+  let skippedInvalidFrames = 0;
+  let minObservedRms = Infinity;
+  let maxObservedRms = 0;
 
   for (
     let start = 0;
-    start + fftSize <=
-      samples.length;
+    start + fftSize <= samples.length;
     start += hopSize
   ) {
-    const frame =
-      new Float32Array(
-        fftSize
-      );
-
-    frame.set(
-      samples.subarray(
-        start,
-        start + fftSize
-      )
+    const rawFrame = samples.subarray(
+      start,
+      start + fftSize,
     );
 
-    for (
-      let i = 0;
-      i < fftSize;
-      i++
-    ) {
-      const window =
-        0.5 *
-        (
-          1 -
-          Math.cos(
-            (2 * Math.PI * i) /
-              (fftSize - 1)
-          )
-        );
+    processedFrames++;
 
-      frame[i] *= window;
+    let sumSquares = 0;
+    let isFiniteFrame = true;
+
+    for (let i = 0; i < fftSize; i++) {
+      const sample = rawFrame[i];
+
+      if (!Number.isFinite(sample)) {
+        isFiniteFrame = false;
+        break;
+      }
+
+      sumSquares += sample * sample;
     }
 
-    frames.push(
-      computeFFTMagnitudes(
-        frame
-      )
-    );
+    if (!isFiniteFrame || !Number.isFinite(sumSquares)) {
+      skippedInvalidFrames++;
+      continue;
+    }
+
+    const frameRms = Math.sqrt(sumSquares / fftSize);
+
+    if (!Number.isFinite(frameRms)) {
+      skippedInvalidFrames++;
+      continue;
+    }
+
+    minObservedRms = Math.min(minObservedRms, frameRms);
+    maxObservedRms = Math.max(maxObservedRms, frameRms);
+
+    if (frameRms < minFrameRms) {
+      skippedQuietFrames++;
+      continue;
+    }
+
+    const windowedFrame = new Float32Array(fftSize);
+
+    for (let i = 0; i < fftSize; i++) {
+      const window =
+        0.5 *
+        (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
+
+      windowedFrame[i] = rawFrame[i] * window;
+    }
+
+    const magnitudes = computeFFTMagnitudes(windowedFrame);
+
+    let hasValidSpectrum = true;
+
+    for (let i = 0; i < magnitudes.length; i++) {
+      if (
+        !Number.isFinite(magnitudes[i]) ||
+        magnitudes[i] < 0
+      ) {
+        hasValidSpectrum = false;
+        break;
+      }
+    }
+
+    if (!hasValidSpectrum) {
+      skippedInvalidFrames++;
+      continue;
+    }
+
+    frames.push(magnitudes);
   }
+
+  console.log('🎤 FFT FRAME VALIDATION DEBUG:', {
+    processedFrames,
+    retainedFrames: frames.length,
+    skippedQuietFrames,
+    skippedInvalidFrames,
+    minFrameRms,
+    minObservedRms:
+      minObservedRms === Infinity ? null : minObservedRms,
+    maxObservedRms,
+  });
 
   return frames;
 }

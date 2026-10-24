@@ -12,41 +12,52 @@ export interface ControlledBreathReleaseMeasurement {
   intervalsSec: number[];
   pulseConsistencyPct: number;
   intervalAccuracyPct: number;
+  maxPulseCount?: number;
 }
 
 export function measureControlledBreathRelease(
   samples: Float32Array,
   targetIntervalSec: number,
   sampleRate: number,
+  maxPulseCount?: number,
 ): ControlledBreathReleaseMeasurement {
-
   console.log('🔎 MEASUREMENT STARTED:', {
-  sampleCount: samples.length,
-  sampleRate,
-  durationSec: samples.length / sampleRate,
-});
+    sampleCount: samples.length,
+    sampleRate,
+    durationSec: samples.length / sampleRate,
+    maxPulseCount,
+  });
 
   const rmsLevel = calcRMS(samples);
 
-  const peaks = detectPulses(
+  const detectedPeaks = detectPulses(
     samples,
     rmsLevel,
     sampleRate,
   );
 
+  const limitedPeaks =
+    typeof maxPulseCount === 'number'
+      ? detectedPeaks.slice(
+          0,
+          Math.max(0, maxPulseCount),
+        )
+      : detectedPeaks;
+
   console.log('🔎 MEASUREMENT RESULT:', {
-  detectedPulses: peaks.length,
-  sampleCount: samples.length,
-});
+    detectedPulses: detectedPeaks.length,
+    usedPulses: limitedPeaks.length,
+    maxPulseCount,
+    sampleCount: samples.length,
+  });
 
   const intervalsSec: number[] = [];
 
-  for (let i = 1; i < peaks.length; i += 1) {
-    const previous = peaks[i - 1];
-    const current = peaks[i];
+  for (let i = 1; i < limitedPeaks.length; i += 1) {
+    const previous = limitedPeaks[i - 1];
+    const current = limitedPeaks[i];
 
-    const interval =
-      current.timestamp - previous.timestamp;
+    const interval = current.timestamp - previous.timestamp;
 
     if (Number.isFinite(interval) && interval > 0) {
       intervalsSec.push(interval);
@@ -54,12 +65,13 @@ export function measureControlledBreathRelease(
   }
 
   return {
-    peaks,
+    peaks: limitedPeaks,
     intervalsSec,
-    pulseConsistencyPct: calcPulseConsistency(peaks),
+    pulseConsistencyPct: calcPulseConsistency(limitedPeaks),
     intervalAccuracyPct: calcIntervalAccuracy(
-      peaks,
+      limitedPeaks,
       targetIntervalSec,
     ),
+    maxPulseCount,
   };
 }

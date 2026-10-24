@@ -591,6 +591,8 @@ export default function VowelConsistencyExerciseScreen({
           FFT_SIZE,
         );
 
+        
+
         const scored = scoreVowelConsistencyExercise(
           measurement,
           params,
@@ -641,10 +643,22 @@ export default function VowelConsistencyExerciseScreen({
 
         processingRef.current = true;
 
+        console.log('📊 VOWEL REPETITION SCORES:', {
+  repetitionScores: nextResults.map(item => item.score),
+  repetitionCount: nextResults.length,
+  expectedRepetitions: repetitions,
+});
+
         const overallScore = Math.round(
           nextResults.reduce((sum, item) => sum + item.score, 0) /
             nextResults.length,
         );
+
+        console.log('📊 VOWEL FINAL SCORE:', {
+  overallScore,
+  savedTier: currentTier,
+  repetitionScores: nextResults.map(item => item.score),
+});
 
         const finalScored: VowelConsistencyScoreResult = {
           score: clamp(overallScore, 0, 100),

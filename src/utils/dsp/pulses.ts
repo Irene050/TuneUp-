@@ -6,11 +6,10 @@ export interface Peak {
   timestamp: number;
 }
 
-
 export function detectPulses(
   samples: Float32Array,
   _meanAmp: number,
-  sampleRate = 44100
+  sampleRate = 44100,
 ): Peak[] {
   if (
     samples.length === 0 ||
@@ -23,7 +22,7 @@ export function detectPulses(
   const windowMs = 20;
   const windowSize = Math.max(
     1,
-    Math.floor((windowMs / 1000) * sampleRate)
+    Math.floor((windowMs / 1000) * sampleRate),
   );
 
   const windows: {
@@ -32,8 +31,16 @@ export function detectPulses(
     peak: number;
   }[] = [];
 
-  for (let start = 0; start < samples.length; start += windowSize) {
-    const end = Math.min(start + windowSize, samples.length);
+  for (
+    let start = 0;
+    start < samples.length;
+    start += windowSize
+  ) {
+    const end = Math.min(
+      start + windowSize,
+      samples.length,
+    );
+
     const window = samples.subarray(start, end);
     let peak = 0;
 
@@ -52,24 +59,25 @@ export function detectPulses(
     });
   }
 
-  if (windows.length < 2) return [];
+  if (windows.length < 2) {
+    return [];
+  }
 
   const sortedRms = windows
     .map(window => window.rms)
     .sort((a, b) => a - b);
 
-  const noiseFloor =
-    sortedRms[Math.floor((sortedRms.length - 1) * 0.2)];
+  const percentile = (fraction: number) => {
+    const index = Math.floor(
+      (sortedRms.length - 1) * fraction,
+    );
 
+    return sortedRms[index];
+  };
+
+  const noiseFloor = percentile(0.2);
+  const medianRms = percentile(0.5);
   const maxRms = sortedRms[sortedRms.length - 1];
-
-  console.log('🫁 REP 3 DETECTOR DEBUG:', {
-  durationSec: samples.length / sampleRate,
-  windowCount: windows.length,
-  noiseFloor,
-  maxRms,
-  detectionRatio: noiseFloor > 0 ? maxRms / noiseFloor : null,
-});
 
   if (
     !Number.isFinite(maxRms) ||
@@ -88,14 +96,19 @@ export function detectPulses(
     noiseFloor + signalRange * 0.20;
 
   const minPulseWindows = 3;
-  const minSeparationSamples = Math.floor(0.25 * sampleRate);
+  const minSeparationSamples = Math.floor(
+    0.25 * sampleRate,
+  );
 
-    console.log('🫁 PULSE THRESHOLD DEBUG:', {
-  startThreshold,
-  endThreshold,
-  minPulseWindows: 3,
-  minSeparationSamples,
-});
+  console.log('🫁 PULSE DETECTOR:', {
+    durationSec: samples.length / sampleRate,
+    windowCount: windows.length,
+    noiseFloor,
+    medianRms,
+    maxRms,
+    startThreshold,
+    endThreshold,
+  });
 
   const peaks: Peak[] = [];
 
@@ -109,6 +122,7 @@ export function detectPulses(
   const finishPulse = () => {
     const pulseStart = startIndex;
     const pulseAmplitude = strongestAmplitude;
+
     const validPulse =
       active && activeWindows >= minPulseWindows;
 
@@ -117,7 +131,9 @@ export function detectPulses(
     belowThresholdWindows = 0;
     strongestAmplitude = 0;
 
-    if (!validPulse) return;
+    if (!validPulse) {
+      return;
+    }
 
     if (
       pulseStart - lastAcceptedIndex <
@@ -137,13 +153,16 @@ export function detectPulses(
 
   for (const window of windows) {
     if (!active) {
-      if (window.rms < startThreshold) continue;
+      if (window.rms < startThreshold) {
+        continue;
+      }
 
       active = true;
       startIndex = window.index;
       activeWindows = 1;
       belowThresholdWindows = 0;
       strongestAmplitude = window.peak;
+
       continue;
     }
 
@@ -167,13 +186,9 @@ export function detectPulses(
     finishPulse();
   }
 
-  console.log("🫁 BREATH PULSE DETECTION:", {
-    durationSec: samples.length / sampleRate,
-    noiseFloor,
-    maxWindowRms: maxRms,
-    startThreshold,
-    endThreshold,
+  console.log('🫁 BREATH PULSE DETECTION:', {
     detectedPulseCount: peaks.length,
+    durationSec: samples.length / sampleRate,
   });
 
   return peaks;

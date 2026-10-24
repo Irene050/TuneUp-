@@ -6,10 +6,6 @@ import type {
   VowelConsistencyMeasurement,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 
-import {
-  identifyVowelBand,
-} from '@/utils/dsp/spectral';
-
 export interface VowelConsistencyScoreResult {
   score: number;
   passed: boolean;
@@ -19,7 +15,7 @@ function clamp(
   value: number,
   min: number,
   max: number,
-) {
+): number {
   return Math.max(min, Math.min(max, value));
 }
 
@@ -33,38 +29,36 @@ export function scoreVowelConsistencyExercise(
       ? measurement.averageCentroidHz
       : 0;
 
-  const inBand =
-    averageCentroid > 0 &&
-    identifyVowelBand(
-      averageCentroid,
-      params.vowel,
-    );
-
   const smoothnessScore =
     Number.isFinite(measurement.smoothnessPct)
       ? clamp(measurement.smoothnessPct, 0, 100)
       : 0;
 
-  const smoothnessPoints = smoothnessScore;
-  const score = Math.round(
-    inBand
-      ? smoothnessPoints
-      : smoothnessPoints * 0.75 * 0.96,
+  const hasValidMeasurement =
+    averageCentroid > 0 &&
+    measurement.centroidOverTime.length > 0;
+
+  const score = hasValidMeasurement
+    ? Math.round(smoothnessScore)
+    : 0;
+
+  const passingThreshold = Math.max(
+    params.smoothnessThreshold,
+    75,
   );
 
   const passed =
-    smoothnessScore >=
-      Math.max(params.smoothnessThreshold, 70) &&
-    score >= 75;
+    hasValidMeasurement &&
+    score >= passingThreshold;
 
   console.log('🎤 VOWEL CONSISTENCY SCORE DEBUG:', {
     averageCentroidHz: averageCentroid,
     vowel: params.vowel,
-    inBand,
     smoothnessScore,
-    smoothnessPoints,
+    passingThreshold,
     finalScore: score,
     passed,
+    hasValidMeasurement,
   });
 
   return {

@@ -6,6 +6,7 @@ import {
 export interface SustainedNoteStabilityMeasurement {
   stabilityCents: number;
   durationSec: number;
+  medianFrequencyHz: number;
 }
 
 function median(values: number[]): number {
@@ -57,6 +58,7 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
+      medianFrequencyHz: 0,
     };
   }
 
@@ -73,6 +75,7 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
+      medianFrequencyHz: 0,
     };
   }
 
@@ -90,6 +93,7 @@ export function measureSustainedNoteStability(
     return {
       stabilityCents: 1000,
       durationSec,
+      medianFrequencyHz: medianFrequency,
     };
   }
 
@@ -98,7 +102,7 @@ export function measureSustainedNoteStability(
   );
 
   const trimCount = Math.floor(
-    sortedStable.length * 0.10,
+    sortedStable.length * 0.1,
   );
 
   const trimmedFrequencies =
@@ -109,17 +113,12 @@ export function measureSustainedNoteStability(
         )
       : sortedStable;
 
-  const referenceFrequency = median(
-    trimmedFrequencies,
-  );
+  const referenceFrequency = median(trimmedFrequencies);
 
   const centsDeviations = trimmedFrequencies.map(
     frequency =>
       Math.abs(
-        1200 *
-          Math.log2(
-            frequency / referenceFrequency,
-          ),
+        1200 * Math.log2(frequency / referenceFrequency),
       ),
   );
 
@@ -134,5 +133,6 @@ export function measureSustainedNoteStability(
       ? stabilityCents
       : 1000,
     durationSec,
+    medianFrequencyHz: median(trimmedFrequencies),
   };
 }

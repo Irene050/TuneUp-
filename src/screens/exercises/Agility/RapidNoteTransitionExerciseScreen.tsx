@@ -1371,34 +1371,6 @@ export default function RapidNoteTransitionExerciseScreen({
           <Text style={styles.recordingBadgeText}>RECORDING</Text>
         </View>
 
-        <View style={styles.beginnerGuide}>
-          <View style={styles.beginnerGuideStep}>
-            <View style={styles.beginnerStepNumber}>
-              <Text style={styles.beginnerStepNumberText}>1</Text>
-            </View>
-            <View style={styles.beginnerStepCopy}>
-              <Text style={styles.beginnerStepTitle}>Look at the note path</Text>
-              <Text style={styles.beginnerStepText}>
-                Read the note names from left to right.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.beginnerGuideStep}>
-            <View style={styles.beginnerStepNumber}>
-              <Text style={styles.beginnerStepNumberText}>2</Text>
-            </View>
-            <View style={styles.beginnerStepCopy}>
-              <Text style={styles.beginnerStepTitle}>
-                Sing one note at a time
-              </Text>
-              <Text style={styles.beginnerStepText}>
-                Move smoothly. Accuracy comes before speed.
-              </Text>
-            </View>
-          </View>
-        </View>
-
         <StaffSequenceGuide
           names={exerciseConfig.sequence.names}
           activeIndex={currentGuideNoteIndex}
