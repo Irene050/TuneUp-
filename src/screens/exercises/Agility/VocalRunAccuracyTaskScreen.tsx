@@ -266,7 +266,6 @@ export default function VocalRunAccuracyTaskScreen() {
   const referencePlaybackIdRef = useRef(0);
   const referencePlayingRef = useRef(false);
 
-  // Quit-modal coordination refs.
   const showQuitModalRef = useRef(false);
   const pausedRef = useRef(false);
   const quitInProgressRef = useRef(false);
@@ -369,7 +368,6 @@ export default function VocalRunAccuracyTaskScreen() {
     };
   }, [stopRecording]);
 
-  // Load the user's current agility tier.
   useEffect(() => {
     let cancelled = false;
 
@@ -421,7 +419,6 @@ export default function VocalRunAccuracyTaskScreen() {
     };
   }, []);
 
-  // Load adaptive exercise parameters and the assessed vocal range.
   useEffect(() => {
     if (tierLoading) {
       return;
@@ -1330,7 +1327,6 @@ export default function VocalRunAccuracyTaskScreen() {
     tier,
   ]);
 
-  // Pause the current exercise and display the exit modal.
   const pauseForExitPrompt = useCallback(() => {
     if (
       !mountedRef.current ||
@@ -1346,14 +1342,11 @@ export default function VocalRunAccuracyTaskScreen() {
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
-    // Invalidate any countdown currently in progress.
     countdownRunIdRef.current += 1;
 
-    // Stop the reference sequence if it is playing.
     cancelReferencePlayback();
 
     if (currentPhase === 'recording') {
-      // The current repetition is incomplete, so discard its audio.
       samplesRef.current = [];
 
       setRecordingTime(0);
@@ -1367,7 +1360,6 @@ export default function VocalRunAccuracyTaskScreen() {
     setShowQuitModal(true);
   }, [cancelReferencePlayback, stopRecording]);
 
-  // Close the modal and resume the exercise appropriately.
   const continueExercise = useCallback(() => {
     if (quitInProgressRef.current) {
       return;
@@ -1385,7 +1377,6 @@ export default function VocalRunAccuracyTaskScreen() {
       pausedPhase === 'countdown' ||
       pausedPhase === 'recording'
     ) {
-      // Replay the reference sequence before restarting this repetition.
       samplesRef.current = [];
 
       setRecordingTime(0);
@@ -1397,19 +1388,15 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     if (pausedPhase === 'reference') {
-      // Return to the reference screen; the user can replay the sequence.
       setExercisePhase('reference');
       return;
     }
 
     if (pausedPhase === 'processing') {
-      // Processing may have completed while the modal was open.
       if (phaseRef.current === 'results') {
         return;
       }
 
-      // If processing was interrupted before analysis completed,
-      // resume it using the captured samples.
       if (
         phaseRef.current === 'processing' &&
         !processingRef.current
@@ -1419,11 +1406,8 @@ export default function VocalRunAccuracyTaskScreen() {
 
       return;
     }
-
-    // Instructions and results need no additional phase changes.
   }, [processRecording, setExercisePhase]);
 
-  // Stop the exercise and leave the screen.
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) {
       return;
@@ -1432,8 +1416,6 @@ export default function VocalRunAccuracyTaskScreen() {
     quitInProgressRef.current = true;
     pausedRef.current = true;
     showQuitModalRef.current = false;
-
-    // Invalidate any asynchronous recording/countdown work.
     exerciseRunIdRef.current += 1;
     countdownRunIdRef.current += 1;
     referencePlaybackIdRef.current += 1;
@@ -1488,7 +1470,6 @@ export default function VocalRunAccuracyTaskScreen() {
     pauseForExitPrompt();
   }, [pauseForExitPrompt]);
 
-  // Android hardware back button.
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1508,7 +1489,6 @@ export default function VocalRunAccuracyTaskScreen() {
     return () => subscription.remove();
   }, [handleBack]);
 
-  // The modal message depends on the phase where the user requested exit.
   const quitModalMessage =
     pausedPhaseRef.current === 'instructions' ||
     pausedPhaseRef.current === 'results'
@@ -2589,8 +2569,6 @@ const styles = StyleSheet.create({
   metricBlock: {
     marginBottom: 12,
   },
-
-  // Quit modal styles matching Sustained Exhale.
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',

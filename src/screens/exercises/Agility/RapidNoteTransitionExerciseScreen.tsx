@@ -418,8 +418,6 @@ export default function RapidNoteTransitionExerciseScreen({
   }, [baseParams, tier]);
 
   const exerciseConfig = useMemo(() => {
-    // Use the constants and adaptive generator as the single source of truth.
-    // Clamp adaptive values to the selected tier's configured limits.
     const minNotes = Math.max(
       1,
       Math.min(
@@ -441,10 +439,6 @@ export default function RapidNoteTransitionExerciseScreen({
       minSpeed,
       Math.min(baseParams.maxSpeed, adaptiveParams.maxSpeed),
     );
-
-    // Keep the actual playback tempo consistent with the target speed.
-    // Use adaptive note duration where possible, but constrain it to the
-    // selected speed range so the displayed/scored target remains accurate.
     const shortestAllowedDuration = Math.max(
       0.05,
       1 / maxSpeed - REFERENCE_NOTE_GAP_SECONDS,
@@ -460,7 +454,6 @@ export default function RapidNoteTransitionExerciseScreen({
     const targetSpeed =
       1 / (noteDurationSec + REFERENCE_NOTE_GAP_SECONDS);
 
-    // Keep the assessed vocal range inside the selected tier's MIDI limits.
     const assessedMinMidi = assessedVocalRangeHz
       ? Math.max(
           adaptiveParams.minMidi,

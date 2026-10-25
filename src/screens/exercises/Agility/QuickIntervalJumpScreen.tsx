@@ -113,13 +113,6 @@ const initialAdaptiveConfig: AdaptiveConfig = {
   frequencies: [],
 };
 
-/**
- * Estimate the fundamental frequency of an audio frame using
- * normalized autocorrelation.
- *
- * Returns null when the frame is too quiet or no sufficiently clear
- * periodic signal is found.
- */
 const estimatePitch = (
   input: Float32Array,
   sampleRate: number,
@@ -128,7 +121,6 @@ const estimatePitch = (
     return null;
   }
 
-  // Downsample by two to reduce the work needed for autocorrelation.
   const downsampledLength = Math.floor(input.length / 2);
 
   if (downsampledLength < 256) {
@@ -269,7 +261,6 @@ export default function QuickIntervalJumpScreen() {
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
 
-  // Live pitch-detection state.
   const [livePitchHz, setLivePitchHz] = useState<number | null>(null);
   const [liveDetectedNote, setLiveDetectedNote] = useState<string | null>(
     null,
@@ -328,10 +319,6 @@ export default function QuickIntervalJumpScreen() {
     setLiveStatus('Sing a clear, sustained note.');
   }, []);
 
-  /**
-   * Update the visible pitch information from the latest audio frame.
-   * The closest target is determined using semitone distance.
-   */
   const updateLivePitch = useCallback(
     (audioSamples: Float32Array) => {
       const pitchHz = estimatePitch(audioSamples, SAMPLE_RATE);
@@ -592,7 +579,6 @@ export default function QuickIntervalJumpScreen() {
 
     if (!recorder) return;
 
-    // Clear the reference first so pending callbacks cannot add samples.
     recorderRef.current = null;
 
     try {
@@ -879,7 +865,6 @@ export default function QuickIntervalJumpScreen() {
             const channelData = buffer.getChannelData(0);
             const frameCount = Math.min(numFrames, channelData.length);
 
-            // Update the live pitch display from the newest microphone frame.
             if (frameCount > 0) {
               const currentFrame = channelData.slice(0, frameCount);
               updateLivePitch(currentFrame);

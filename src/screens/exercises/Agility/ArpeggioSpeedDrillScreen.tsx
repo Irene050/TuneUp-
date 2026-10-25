@@ -253,8 +253,6 @@ const generateArpeggioFromVocalRange = (
   const highestMidi = Math.floor(hzToMidi(highHz));
   const availableSemitones = highestMidi - lowestMidi;
 
-  // Prefer a major arpeggio spanning an octave. For a narrower assessed
-  // range, use a compact four-note arpeggio if at least a perfect fifth fits.
   const intervals =
     availableSemitones >= 12
       ? [0, 4, 7, 12]
@@ -422,14 +420,11 @@ export default function ArpeggioSpeedDrillScreen() {
   const pauseForExitPrompt = useCallback(() => {
     const activePhase = phaseRef.current;
 
-    // Processing is intentionally non-interruptible so a completed repetition
-    // cannot be scored twice or left in a partially processed state.
     if (activePhase === 'processing' || quitInProgressRef.current) return;
 
     pausedPhaseRef.current = activePhase;
     setShowExitConfirmation(true);
 
-    // Invalidate any countdown that is currently sleeping between numbers.
     countdownRunIdRef.current += 1;
 
     if (activePhase === 'recording' || activePhase === 'countdown') {
@@ -450,8 +445,6 @@ export default function ArpeggioSpeedDrillScreen() {
     setShowExitConfirmation(false);
 
     if (pausedPhase === 'recording' || pausedPhase === 'countdown') {
-      // The current repetition is restarted; completed repetitions remain saved
-      // in attemptResultsRef and are not repeated.
       samplesRef.current = [];
       liveSamplesRef.current = [];
       setLivePitchHz(null);
@@ -463,7 +456,6 @@ export default function ArpeggioSpeedDrillScreen() {
       return;
     }
 
-    // Instructions, reference, and results return to the phase the user left.
     setPhase(pausedPhase);
   };
 
@@ -547,8 +539,6 @@ export default function ArpeggioSpeedDrillScreen() {
           recentScores,
         });
 
-        // Search several recent assessments instead of relying only on the
-        // newest record, which may not contain a usable vocal range.
         const vocalAssessments = await getRecentAssessments(10);
         if (cancelled) return;
 

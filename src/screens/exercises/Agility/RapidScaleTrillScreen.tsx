@@ -413,7 +413,6 @@ export default function RapidScaleTrillScreen() {
     };
   }, []);
 
-  // Load the user's current Agility tier.
   useEffect(() => {
     let cancelled = false;
 
@@ -454,7 +453,6 @@ export default function RapidScaleTrillScreen() {
     };
   }, [currentUserId]);
 
-  // Load adaptive parameters and the assessed vocal range.
   useEffect(() => {
     let cancelled = false;
 
@@ -1248,11 +1246,6 @@ export default function RapidScaleTrillScreen() {
     vocalRangeError,
   ]);
 
-  /**
-   * Pause the current exercise before showing the quit modal.
-   * If recording was interrupted, discard only the samples from
-   * the current repetition. Earlier completed repetitions remain.
-   */
   const pauseForExitPrompt = useCallback(() => {
     if (
       !mountedRef.current ||
@@ -1280,7 +1273,6 @@ export default function RapidScaleTrillScreen() {
     if (interruptedPhase === 'recording') {
       stopRecording();
 
-      // Remove only the unfinished repetition's samples.
       sampleCountRef.current =
         repetitionStartSampleCountRef.current;
 
@@ -1291,8 +1283,6 @@ export default function RapidScaleTrillScreen() {
       setLivePitchStatus(null);
     }
 
-    // Stop reference playback without changing the current
-    // repetition or the samples from completed repetitions.
     cancelReferencePlayback();
 
     setCurrentConfirmation('quit');
@@ -1303,11 +1293,6 @@ export default function RapidScaleTrillScreen() {
     stopRecording,
   ]);
 
-  /**
-   * Resume the interrupted exercise.
-   * Recording and countdown interruptions restart the current
-   * repetition from the beginning.
-   */
   const continueExercise = useCallback(() => {
     if (quittingRef.current) return;
 
@@ -1328,7 +1313,6 @@ export default function RapidScaleTrillScreen() {
     ) {
       setCurrentPhase('reference');
 
-      // Let React close the modal before starting the countdown.
       setTimeout(() => {
         if (
           mountedRef.current &&
@@ -1343,8 +1327,6 @@ export default function RapidScaleTrillScreen() {
       return;
     }
 
-    // For reference, instructions, results, or processing,
-    // dismissing the modal leaves the current phase in place.
   }, [
     hasUsableSequence,
     setCurrentConfirmation,
@@ -1358,7 +1340,6 @@ export default function RapidScaleTrillScreen() {
     quittingRef.current = true;
     setIsQuitting(true);
 
-    // Invalidate any pending countdown or reference playback.
     countdownRunRef.current += 1;
     referenceRunRef.current += 1;
 
@@ -1373,7 +1354,6 @@ export default function RapidScaleTrillScreen() {
 
     setCurrentConfirmation(null);
 
-    // Do not save incomplete work when the user quits.
     router.replace('/exercises/agility');
   }, [
     cancelReferencePlayback,
@@ -1430,7 +1410,6 @@ export default function RapidScaleTrillScreen() {
     stopRecording,
   ]);
 
-  // Handle Android hardware back presses.
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1452,7 +1431,6 @@ export default function RapidScaleTrillScreen() {
     return () => subscription.remove();
   }, [pauseForExitPrompt, setCurrentConfirmation]);
 
-  // Release native audio resources when this screen unmounts.
   useEffect(() => {
     return () => {
       countdownRunRef.current += 1;
@@ -2031,7 +2009,6 @@ export default function RapidScaleTrillScreen() {
         </ScrollView>
       )}
 
-      {/* Quit exercise modal: matches Sustained Exhale's design. */}
       <Modal
         visible={confirmation === 'quit'}
         transparent
@@ -2092,7 +2069,6 @@ export default function RapidScaleTrillScreen() {
         </View>
       </Modal>
 
-      {/* Keep Try Again as a separate confirmation. */}
       <Modal
         visible={confirmation === 'tryAgain'}
         transparent
@@ -2175,7 +2151,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   preparingScreen: {
     flex: 1,
     minHeight: 600,
@@ -2184,11 +2159,9 @@ const styles = StyleSheet.create({
     padding: 28,
     backgroundColor: WHITE,
   },
-
   spinner: {
     marginTop: 24,
   },
-
   content: {
     flexGrow: 1,
     alignItems: 'center',
@@ -2197,7 +2170,6 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     backgroundColor: WHITE,
   },
-
   resultsContent: {
     flexGrow: 1,
     alignItems: 'center',
@@ -2206,12 +2178,10 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     backgroundColor: WHITE,
   },
-
   resultsWrapper: {
     flexGrow: 1,
     width: '100%',
   },
-
   centerScreen: {
     flexGrow: 1,
     minHeight: 620,
@@ -2220,7 +2190,6 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: WHITE,
   },
-
   backButton: {
     position: 'absolute',
     top: 48,
@@ -2233,7 +2202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: LIGHT_PINK,
   },
-
   iconCircle: {
     width: 76,
     height: 76,
@@ -2243,7 +2211,6 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     marginBottom: 18,
   },
-
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
@@ -2251,7 +2218,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
-
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
@@ -2261,7 +2227,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 330,
   },
-
   referenceCard: {
     width: '100%',
     padding: 18,
@@ -2271,21 +2236,18 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     marginTop: 20,
   },
-
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: BROWN,
     marginBottom: 12,
   },
-
   noteSequence: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
   },
-
   notePill: {
     minWidth: 54,
     paddingHorizontal: 10,
@@ -2296,30 +2258,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PINK,
   },
-
   notePillActive: {
     backgroundColor: '#E85D83',
     borderWidth: 1,
     borderColor: '#C93E68',
   },
-
   activeText: {
     color: WHITE,
   },
-
   noteNumber: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
     color: MUTED,
     marginBottom: 2,
   },
-
   noteText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
     color: BROWN,
   },
-
   referenceHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2327,7 +2284,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 14,
   },
-
   startButton: {
     width: '100%',
     minHeight: 52,
@@ -2340,13 +2296,11 @@ const styles = StyleSheet.create({
     backgroundColor: BROWN,
     marginTop: 14,
   },
-
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
   },
-
   doneButton: {
     width: '100%',
     minHeight: 52,
@@ -2357,24 +2311,20 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_GRAY,
     marginTop: 10,
   },
-
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: BROWN,
   },
-
   disabledButton: {
     opacity: 0.5,
   },
-
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 76,
     color: BROWN,
     marginTop: 20,
   },
-
   recordingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2386,7 +2336,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     marginTop: 18,
   },
-
   recordingDot: {
     width: 8,
     height: 8,
@@ -2394,14 +2343,12 @@ const styles = StyleSheet.create({
     backgroundColor: GUIDE_RED,
     marginRight: 7,
   },
-
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     color: BROWN,
     letterSpacing: 0.7,
   },
-
   liveCard: {
     width: '100%',
     alignItems: 'center',
@@ -2412,7 +2359,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   detectedPitchText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2420,7 +2366,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2429,7 +2374,6 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     textAlign: 'center',
   },
-
   timerTrack: {
     width: '100%',
     height: 8,
@@ -2438,13 +2382,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 5,
   },
-
   timerFill: {
     height: '100%',
     backgroundColor: '#E85D83',
     borderRadius: 4,
   },
-
   legendRow: {
     width: '100%',
     flexDirection: 'row',
@@ -2454,32 +2396,27 @@ const styles = StyleSheet.create({
     gap: 14,
     marginTop: 14,
   },
-
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-
   legendDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-
   legendText: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: MUTED,
   },
-
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: BROWN,
     textAlign: 'center',
   },
-
   scoreCard: {
     width: '100%',
     alignItems: 'center',
@@ -2488,37 +2425,31 @@ const styles = StyleSheet.create({
     padding: 22,
     marginTop: 20,
   },
-
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: BROWN,
   },
-
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
     color: BROWN,
     marginVertical: 3,
   },
-
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
   },
-
   scoreRow: {
     marginBottom: 14,
   },
-
   scoreRowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-
   metricRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2527,14 +2458,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-
   metricLabel: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: MUTED,
   },
-
   metricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
@@ -2542,7 +2471,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     textAlign: 'right',
   },
-
   tipCard: {
     width: '100%',
     flexDirection: 'row',
@@ -2553,7 +2481,6 @@ const styles = StyleSheet.create({
     backgroundColor: PINK,
     marginTop: 14,
   },
-
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
@@ -2561,8 +2488,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: BROWN,
   },
-
-  // Quit modal styles matching SustainedExhaleScreen.
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2570,7 +2495,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-
   modalCard: {
     width: '100%',
     maxWidth: 380,
@@ -2580,7 +2504,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: WHITE,
   },
-
   modalIcon: {
     width: 60,
     height: 60,
@@ -2590,14 +2513,12 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     marginBottom: 15,
   },
-
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
     color: BROWN,
     textAlign: 'center',
   },
-
   modalMessage: {
     marginTop: 10,
     marginBottom: 23,
@@ -2607,7 +2528,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   continueButton: {
     width: '100%',
     minHeight: 48,
@@ -2617,13 +2537,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: PINK,
   },
-
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },
-
   quitButton: {
     width: '100%',
     minHeight: 48,
@@ -2636,17 +2554,14 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: MUTED,
   },
-
   buttonPressed: {
     opacity: 0.75,
   },
-
   buttonDisabled: {
     opacity: 0.5,
   },
