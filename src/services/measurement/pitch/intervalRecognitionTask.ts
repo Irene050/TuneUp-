@@ -30,21 +30,11 @@ export interface IntervalRecognitionMeasurement {
 }
 
 const FRAME_MS = 30;
-
 const NOTE_CHANGE_SEMITONES = 1.5;
-
 const MIN_PITCH_HZ = 80;
 const MAX_PITCH_HZ = 1000;
-
-// Maximum gap allowed while tracking an individual note.
 const MAX_FRAME_GAP_SEC = 0.12;
-
-// Merge neighboring segments when they appear to represent
-// the same sustained note.
 const MAX_SAME_NOTE_GAP_SEC = 0.45;
-
-// Notes shorter than this are treated as tracking artifacts
-// or incomplete detections.
 const MIN_NOTE_DURATION_SEC = 0.20;
 
 const MIN_NOTE_FRAMES = 4;
@@ -129,9 +119,6 @@ function getPitchFrames(
     sampleRate,
   );
 
-  // Keep invalid frames as zero-frequency gaps.
-  // These gaps help us distinguish tracking dropouts
-  // from actual pitch transitions.
   return frames.map(frame => {
     const valid =
       Number.isFinite(frame.frequency) &&
@@ -171,9 +158,6 @@ function createDetectedNote(
   const duration =
     last.timestamp - first.timestamp;
 
-  // Keep short segments for now. A later cleanup step
-  // removes short artifacts after attempting to merge
-  // fragments of the same note.
   if (duration < 0.09) {
     return null;
   }
@@ -226,8 +210,6 @@ function detectRawNotes(
       frame.clarity > 0;
 
     if (!valid) {
-      // Don't immediately end the note on a single
-      // invalid pitch frame.
       const first = currentFrames[0];
 
       if (first && currentFrames.length > 0) {
@@ -257,7 +239,6 @@ function detectRawNotes(
     const gap =
       frame.timestamp - lastFrame.timestamp;
 
-    // A large gap separates two detected note events.
     if (gap > MAX_FRAME_GAP_SEC) {
       flushCurrentNote();
       currentFrames.push(frame);
@@ -275,7 +256,6 @@ function detectRawNotes(
         frequencyToMidi(currentMedian),
     );
 
-    // A significant pitch change starts a new raw segment.
     if (
       pitchDifference >=
       NOTE_CHANGE_SEMITONES
@@ -328,7 +308,6 @@ function mergeSamePitchFragments(
       gap <= MAX_SAME_NOTE_GAP_SEC;
 
     if (samePitch && closeEnough) {
-      // Combine fragments using their durations as weights.
       const previousDuration = Math.max(
         0,
         previous.end - previous.start,
@@ -389,9 +368,6 @@ function detectNotes(
 ): DetectedNote[] {
   const rawNotes = detectRawNotes(frames);
 
-  // Merge same-pitch fragments before filtering short events.
-  // This avoids discarding a valid note simply because the
-  // pitch tracker briefly lost track of it.
   const mergedNotes =
     mergeSamePitchFragments(rawNotes);
 
@@ -434,11 +410,7 @@ function buildAttempts(
     return attempts;
   }
 
-  // Allow one intervening false note detection.
   const MAX_NOTES_TO_SKIP = 1;
-
-  // Maximum time between the end of the first note
-  // and the beginning of the second note.
   const MAX_INTERVAL_GAP_SEC = 1.25;
 
   let i = 0;
@@ -462,8 +434,6 @@ function buildAttempts(
         }
       | undefined;
 
-    // Try the next note, then look one note further
-    // in case the tracker inserted a false detection.
     for (
       let skip = 0;
       skip <= MAX_NOTES_TO_SKIP;
@@ -478,8 +448,6 @@ function buildAttempts(
 
       const gap = second.start - first.end;
 
-      // Reject candidates that overlap substantially or
-      // are too far apart to reasonably belong together.
       if (
         gap < -0.05 ||
         gap > MAX_INTERVAL_GAP_SEC
@@ -487,7 +455,6 @@ function buildAttempts(
         continue;
       }
 
-      // The intended interval is ascending.
       if (second.frequency <= first.frequency) {
         continue;
       }
@@ -521,12 +488,10 @@ function buildAttempts(
         targetRatio *
         100;
 
-      // Retain the existing quality gate for now.
       if (deviationPct > 25) {
         continue;
       }
 
-      // Prefer the closest match to the target interval.
       if (
         !bestMatch ||
         deviationPct < bestMatch.deviationPct
@@ -540,8 +505,6 @@ function buildAttempts(
     }
 
     if (!bestMatch) {
-      // This event may be a false detection, a note
-      // transition, or a note without its matching partner.
       i += 1;
       continue;
     }
@@ -566,8 +529,6 @@ function buildAttempts(
       secondNoteClarity: second.clarity,
     });
 
-    // Continue after the matched second note so it
-    // cannot be reused as the first note of another pair.
     i = bestMatch.noteIndex + 1;
   }
 

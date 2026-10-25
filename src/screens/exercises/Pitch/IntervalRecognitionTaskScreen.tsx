@@ -22,7 +22,7 @@ import {
   INTERVAL_RECOGNITION_PARAMS,
   type IntervalRecognitionParams,
   type Tier,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -205,7 +205,6 @@ function getPitchGuideStatus(
     1,
   );
 
-  // Flat pitches move left; sharp pitches move right.
   const position = clamp(
     50 + normalizedCents * 43,
     7,
@@ -589,10 +588,7 @@ export default function IntervalRecognitionTaskScreen({
         return;
       }
 
-      // Update the live pitch indicator whenever a frame arrives.
       setLiveFrame(frame);
-
-      // Keep the pitch trace history separate from the indicator updates.
       const now = Date.now();
 
       if (now - lastPitchTraceUpdateRef.current < 100) {
@@ -840,9 +836,6 @@ export default function IntervalRecognitionTaskScreen({
 
         stopRequestedRef.current = true;
         stopInFlightRef.current = true;
-
-        // Show the analyzing screen immediately.
-        // Do not wait for the recorder's onStop callback.
         setRecordingElapsedMs(durationMs);
         setCurrentPhase('processing');
 
@@ -1778,7 +1771,6 @@ export default function IntervalRecognitionTaskScreen({
               </View>
             </View>
 
-            {/* Live pitch guide */}
             <View style={styles.pitchGuideCard}>
               <View style={styles.pitchGuideHeader}>
                 <View style={styles.pitchGuideHeading}>
@@ -2476,7 +2468,6 @@ export default function IntervalRecognitionTaskScreen({
 }
 
 const styles = StyleSheet.create({
-  // Screen layouts
   screen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2517,8 +2508,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-
-  // General icons and typography
   largeIconCircle: {
     width: 96,
     height: 96,
@@ -2590,8 +2579,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-
-  // Instructions
   instructionCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2720,8 +2707,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: WHITE,
   },
-
-  // Countdown and interval playback
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
@@ -2784,8 +2769,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
-
-  // Live pitch guide
   pitchGuideCard: {
     width: '100%',
     marginTop: 20,
@@ -3074,8 +3057,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: MUTED,
   },
-  
-  // Interval progress
   intervalProgress: {
     width: '100%',
     flexDirection: 'row',
@@ -3108,8 +3089,6 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_GRAY,
     marginHorizontal: 8,
   },
-
-  // Recording
   recordingIcon: {
     width: 64,
     height: 64,
@@ -3155,8 +3134,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginTop: 6,
   },
-
-  // Results
   resultIcon: {
     width: 82,
     height: 82,
@@ -3296,8 +3273,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
   },
-
-  // Quit exercise modal — matches Note Matching
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(30, 18, 14, 0.48)',

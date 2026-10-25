@@ -22,7 +22,7 @@ import {
 import {
   NOTE_MATCHING_PARAMS,
   type Tier,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -163,8 +163,6 @@ function getPitchGuideStatus(
     color = GUIDE_RED;
   }
 
-  // Negative cents go left; positive cents go right.
-  // The meter spans approximately -100 to +100 cents.
   const position = clamp(
     50 + cents * 0.5,
     4.2,

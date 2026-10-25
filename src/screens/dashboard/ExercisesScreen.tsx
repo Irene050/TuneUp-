@@ -374,7 +374,6 @@ export default function ExercisesScreen() {
         Volume: '/exercises/volume',
       };
 
-      // Determine the actual exercise type from its name.
       const routeKey = exercise.name.startsWith('Breath Control')
         ? 'Breath Control'
         : exercise.name.startsWith('Pitch')

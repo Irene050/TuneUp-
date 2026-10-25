@@ -1,9 +1,9 @@
 import type {
-  VowelConsistencyParams,
-} from '@/constants/exercises/tone';
+    VowelConsistencyParams,
+} from '@/constants/tone';
 
 import type {
-  VowelConsistencyMeasurement,
+    VowelConsistencyMeasurement,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 
 export interface VowelConsistencyScoreResult {

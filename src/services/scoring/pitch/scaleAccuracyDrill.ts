@@ -1,7 +1,7 @@
 
 import type {
   ScaleAccuracyParams,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 
 import {
   ScaleAccuracyMeasurement,
@@ -71,8 +71,6 @@ export function scoreScaleAccuracyDrill(
 
     noteDeviations.push(deviationPct);
 
-    // Score every valid note based on deviation.
-    // 0% deviation = 100, 5% = 50, 10% or more = 0.
     const noteScore = Math.max(
       0,
       Math.min(100, 100 - deviationPct * 30),
@@ -80,13 +78,11 @@ export function scoreScaleAccuracyDrill(
 
     noteScores.push(Math.round(noteScore));
 
-    // Only notes within the configured tolerance count as correct.
     if (deviationPct <= params.tolerancePct) {
       correctNotes++;
     }
   }
 
-  // Missing and inaccurate notes remain in the average.
   const noteAccuracy =
     noteScores.reduce((sum, value) => sum + value, 0) /
     totalNotes;
@@ -99,7 +95,6 @@ export function scoreScaleAccuracyDrill(
         )
       : 0;
 
-  // Note accuracy dominates the score.
   const rawScore =
     noteAccuracy * 0.95 +
     transitionSmoothness * 0.05;

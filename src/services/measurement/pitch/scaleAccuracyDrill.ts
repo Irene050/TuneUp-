@@ -194,7 +194,6 @@ export function measureScaleAccuracyDrill(
       detectedFreqs.length <= 1 ? 100 : 0;
   }
 
-  // Round transition smoothness to 1 decimal place.
   transitionSmoothness = Number(
     transitionSmoothness.toFixed(1)
   );
@@ -207,7 +206,6 @@ export function measureScaleAccuracyDrill(
         ) / clarityValues.length
       : 0;
 
-  // Round average clarity to 1 decimal place.
   const roundedAverageClarity = Number(
     averageClarity.toFixed(1)
   );

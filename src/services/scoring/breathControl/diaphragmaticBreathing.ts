@@ -1,5 +1,5 @@
 
-import type { DiaphragmaticBreathingParams } from '@/constants/exercises/breathControl';
+import type { DiaphragmaticBreathingParams } from '@/constants/breathControl';
 import type { DiaphragmaticBreathingMeasurement } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 
 export interface DiaphragmaticBreathingScoreResult {

@@ -23,7 +23,7 @@ import {
   FREQUENCY_ZONE_STABILITY_PARAMS,
   type FrequencyZoneStabilityParams,
   type Tier,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -109,7 +109,6 @@ function FrequencyLiveWaveform({
     Number.isFinite(pitch) &&
     pitch > 0;
 
-  // These bars are a visual pitch indicator, not raw audio samples.
   const bars = useMemo(
     () =>
       Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
@@ -1571,7 +1570,6 @@ export default function FrequencyZoneStabilityScreen({
 }
 
 const styles = StyleSheet.create({
-  // Loading
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1604,8 +1602,6 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
-
-  // Instructions disclaimer
   disclaimerCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1624,8 +1620,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginLeft: 9,
   },
-
-  // Recording screen
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1718,8 +1712,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'right',
   },
-
-  // Live monitor card
   liveCard: {
     width: '100%',
     paddingHorizontal: 16,
@@ -1778,8 +1770,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
     color: GUIDE_RED,
   },
-
-  // Waveform
   waveformContainer: {
     width: '100%',
     alignItems: 'center',
@@ -1820,8 +1810,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
-
-  // Live metrics
   liveMetricsRow: {
     width: '100%',
     flexDirection: 'row',
@@ -1858,8 +1846,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
-  // Recording tip
   recordingTip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1874,8 +1860,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: MUTED,
   },
-
-  // Results
   resultDetailsCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
@@ -1904,8 +1888,6 @@ const styles = StyleSheet.create({
     backgroundColor: BORDER,
     marginVertical: 12,
   },
-
-  // Quit modal
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',

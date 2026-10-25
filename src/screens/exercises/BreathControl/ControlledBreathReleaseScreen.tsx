@@ -21,7 +21,7 @@ import {
   CONTROLLED_BREATH_RELEASE_PARAMS,
   type ControlledBreathReleaseParams,
   type Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -115,15 +115,9 @@ export default function ControlledBreathReleaseScreen({
   const processingRef = useRef(false);
   const quitModalOpenRef = useRef(false);
   const leavingRef = useRef(false);
-
-  // The recorder cannot pause/resume. An interrupted repetition
-  // must restart instead of scoring audio captured before the modal.
   const pausedForQuitRef = useRef(false);
   const restartCurrentRepRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
-
-  // Discard the callback from a recording deliberately stopped
-  // because of interruption, retry, or navigation.
   const discardNextStopRef = useRef(false);
 
   const currentRepRef = useRef(1);
@@ -183,13 +177,6 @@ export default function ControlledBreathReleaseScreen({
     resetLiveRecordingState();
   }, [resetLiveRecordingState]);
 
-  /**
-   * Open the quit modal while retaining completed repetitions.
-   *
-   * An interrupted recording is discarded and the same repetition
-   * restarts from the countdown when Continue Exercise is selected.
-   * An already analyzed repetition resumes processing instead.
-   */
   const openQuitModal = useCallback(() => {
     if (
       !mountedRef.current ||
@@ -212,9 +199,6 @@ export default function ControlledBreathReleaseScreen({
       currentPhase === 'finishing'
     ) {
       restartCurrentRepRef.current = true;
-
-      // Set the guards before stopping because onStop may arrive
-      // asynchronously after stopRecording is called.
       cancellingRef.current = true;
       discardNextStopRef.current = true;
       startingRef.current = false;
@@ -236,9 +220,6 @@ export default function ControlledBreathReleaseScreen({
     setShowQuitModal(true);
   }, [clearTimers, resetLiveRecordingState]);
 
-  /**
-   * Continue the exercise after the quit modal is dismissed.
-   */
   const dismissQuitModal = useCallback(() => {
     if (leavingRef.current || !quitModalOpenRef.current) {
       return;
@@ -251,8 +232,6 @@ export default function ControlledBreathReleaseScreen({
     pausedForQuitRef.current = false;
 
     if (restartCurrentRepRef.current) {
-      // Discard the interrupted repetition. Do not clear its result
-      // history or increment currentRepRef.
       startingRef.current = false;
       finishingRef.current = false;
       processingRef.current = false;
@@ -269,8 +248,6 @@ export default function ControlledBreathReleaseScreen({
     }
 
     if (previousPhase === 'processing') {
-      // The current repetition has already been analyzed and stored
-      // in memory. Resume its transition without analyzing it again.
       transitionTimerRef.current = setTimeout(() => {
         transitionTimerRef.current = null;
 
@@ -302,15 +279,9 @@ export default function ControlledBreathReleaseScreen({
 
       return;
     }
-
-    // Instructions and results do not have an active recording
-    // or transition that needs to be resumed.
     cancellingRef.current = false;
   }, [resetLiveRecordingState]);
 
-  /**
-   * Stop recording and leave the exercise screen.
-   */
   const exitExercise = useCallback(() => {
     if (leavingRef.current) {
       return;
@@ -349,9 +320,6 @@ export default function ControlledBreathReleaseScreen({
     exitExercise();
   }, [exitExercise]);
 
-  /**
-   * Intercept Android's physical Back button while this screen is focused.
-   */
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener(
@@ -370,9 +338,6 @@ export default function ControlledBreathReleaseScreen({
     }, [openQuitModal]),
   );
 
-  /**
-   * Load the user's current tier and generate adaptive parameters.
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -543,15 +508,12 @@ export default function ControlledBreathReleaseScreen({
     (samples: Float32Array, sampleRate: number) => {
       if (!mountedRef.current) return;
 
-      // A deliberate stop must never be treated as a completed rep.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
 
         startingRef.current = false;
         finishingRef.current = false;
 
-        // Keep cancellation active while the modal is open or the
-        // screen is leaving. Continue explicitly releases this guard.
         if (
           !pausedForQuitRef.current &&
           !leavingRef.current
@@ -693,7 +655,6 @@ export default function ControlledBreathReleaseScreen({
         return;
       }
 
-      // Relative microphone level, not calibrated airflow.
       const volumeDb = frame.volume;
 
       setVolume(
@@ -747,8 +708,6 @@ export default function ControlledBreathReleaseScreen({
     setTargetRecordingDuration(guideDuration);
     setVolume(null);
 
-    // The previous interrupted stop callback should have been
-    // discarded during the countdown before a new recording begins.
     discardNextStopRef.current = false;
     restartCurrentRepRef.current = false;
 
@@ -1006,8 +965,6 @@ export default function ControlledBreathReleaseScreen({
     setCountdown(PREPARATION_COUNTDOWN);
     setCurrentPhase('instructions');
 
-    // The old stop callback is guarded by discardNextStopRef.
-    // Release cancellation for the next user-initiated attempt.
     cancellingRef.current = false;
   }, [clearTimers, resetRepetitionResults, setCurrentPhase]);
 

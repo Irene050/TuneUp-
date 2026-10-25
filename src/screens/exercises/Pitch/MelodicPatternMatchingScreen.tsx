@@ -22,7 +22,7 @@ import {
   MELODIC_PATTERN_MATCHING_PARAMS,
   type MelodicPatternMatchingParams,
   type Tier,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -1326,7 +1326,6 @@ export default function MelodicPatternMatchingScreen({
 
   const repetitionCount = getRepetitionCount(params);
 
-  // Responsive note chips for 4-, 6-, and 8-note patterns.
   const noteChipSize =
     params.noteCount >= 8 ? 48 :
     params.noteCount >= 6 ? 54 :
@@ -1959,7 +1958,6 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
 
-  /* Reference melody listening screen */
   playbackNoteContainer: {
     width: '100%',
     alignItems: 'center',
@@ -2019,8 +2017,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     fontFamily: 'FredokaBold',
   },
-
-  /* Independent active recording screen */
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2132,8 +2128,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: BROWN,
   },
-
-  /* Live pitch monitor */
   liveCard: {
     width: '100%',
     alignItems: 'center',
@@ -2423,8 +2417,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 10,
   },
-
-  /* Results */
   resultCard: {
     width: '100%',
     backgroundColor: WHITE,
@@ -2503,8 +2495,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     marginLeft: 10,
   },
-
-  /* Quit modal */
   quitButtonTop: {
     position: 'absolute',
     top: 52,

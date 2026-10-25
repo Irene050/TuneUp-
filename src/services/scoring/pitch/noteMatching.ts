@@ -1,4 +1,4 @@
-import type { NoteMatchingParams } from '@/constants/exercises/pitch';
+import type { NoteMatchingParams } from '@/constants/pitch';
 
 import type { NoteMatchingMeasurement } from '@/services/measurement/pitch/noteMatching';
 
@@ -118,7 +118,6 @@ export function scoreNoteMatching(
         deviationPct;
     }
 
-    // Wrong note contributes zero.
     if (
       deviationPct >
       params.tolerancePct

@@ -1,4 +1,3 @@
-
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
@@ -142,7 +141,6 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* User profile */}
         <View style={styles.userSection}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{avatarInitial}</Text>
@@ -159,7 +157,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Assessment card with two independent actions */}
         <View style={styles.assessmentCard}>
           <View style={styles.assessmentIcon}>
             <Ionicons name="mic" size={25} color={BROWN} />
@@ -209,7 +206,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Vocal range */}
         <View style={styles.rangeCard}>
           <View style={styles.rangeIcon}>
             <Ionicons
@@ -248,7 +244,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Vocal components */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Vocal Components</Text>
 
@@ -305,7 +300,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* Progress heading */}
         <View style={styles.progressHeader}>
           <View>
             <Text style={styles.sectionTitle}>My Progress</Text>
@@ -331,7 +325,6 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
 
-        {/* Progress summary */}
         <View style={styles.progressCard}>
           <View style={styles.progressIntro}>
             <View style={styles.progressIconCircle}>

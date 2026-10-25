@@ -1,70 +1,70 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  type Tier,
-  WAVEFORM_SMOOTHNESS_PARAMS,
-  type WaveformSmoothnessParams,
-} from '@/constants/exercises/tone';
+    type Tier,
+    WAVEFORM_SMOOTHNESS_PARAMS,
+    type WaveformSmoothnessParams,
+} from '@/constants/tone';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-  generateWaveformSmoothnessParams,
+    generateWaveformSmoothnessParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureWaveformSmoothness,
-  type WaveformSmoothnessMeasurement,
+    measureWaveformSmoothness,
+    type WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import {
-  saveCompletedExercise,
+    saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreWaveformSmoothnessDrill,
-  type WaveformSmoothnessScoreResult,
+    scoreWaveformSmoothnessDrill,
+    type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
 import {
-  samplesToFFTFrames,
+    samplesToFFTFrames,
 } from '@/utils/dsp/fft';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomPitchNote,
-  type VocalRange,
+    frequencyToNoteName,
+    getRandomPitchNote,
+    type VocalRange,
 } from '@/utils/music/notes';
 
 const BROWN = '#4E2F1F';

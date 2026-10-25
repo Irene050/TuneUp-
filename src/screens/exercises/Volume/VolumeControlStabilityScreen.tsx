@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -48,7 +48,7 @@ const CURRENT_TIER: Tier = 'beginner';
 const DEFAULT_PARAMS =
   VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
-const DEFAULT_REFERENCE_MIDI = 60; // C4
+const DEFAULT_REFERENCE_MIDI = 60;
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
 const COUNTDOWN_SECONDS = 3;
 const MAX_LIVE_HISTORY = 40;
@@ -77,10 +77,6 @@ type MeasurementResult =
 type ScoreResult =
   ReturnType<typeof scoreVolumeControlStability>;
 
-/**
- * Reads the vocal range from an assessment and selects
- * the midpoint between its lowest and highest usable MIDI notes.
- */
 function getAssessmentReferenceMidi(
   assessment: unknown,
 ): number | null {
@@ -223,7 +219,6 @@ export default function VolumeControlStabilityScreen({
   const totalExerciseSeconds =
     durationSeconds * repetitions;
 
-  // Keep the mounted state accurate for asynchronous callbacks.
   useEffect(() => {
     mountedRef.current = true;
 
@@ -232,8 +227,6 @@ export default function VolumeControlStabilityScreen({
     };
   }, []);
 
-  // Load the assessment and use its vocal-range midpoint
-  // as the optional reference note.
   useEffect(() => {
     let cancelled = false;
 
@@ -266,7 +259,6 @@ export default function VolumeControlStabilityScreen({
     };
   }, []);
 
-  // Load adaptive difficulty parameters.
   useEffect(() => {
     let cancelled = false;
 
@@ -380,8 +372,6 @@ export default function VolumeControlStabilityScreen({
     };
   }, [tier]);
 
-  // Play the reference note when requested.
-  // Reference-note playback is optional.
   const playReferenceNote = useCallback(async () => {
     if (
       referencePlaying ||
@@ -431,7 +421,6 @@ export default function VolumeControlStabilityScreen({
     NOTE,
   ]);
 
-  // Record audio and process live frames.
   const { startRecording, stopRecording } =
     useAudioRecorder({
       onFrame: (frame) => {
@@ -527,8 +516,6 @@ export default function VolumeControlStabilityScreen({
       },
 
       onStop: (samples, sampleRate) => {
-        // Ignore recording stops caused by exiting,
-        // interruption, or an already-finished attempt.
         if (
           !mountedRef.current ||
           recordingFinishedRef.current ||
@@ -582,7 +569,6 @@ export default function VolumeControlStabilityScreen({
       },
     });
 
-  // Start recording once the initial countdown finishes.
   const beginRecording = useCallback(async () => {
     if (
       pausedRef.current ||
@@ -657,7 +643,6 @@ export default function VolumeControlStabilityScreen({
     totalExerciseSeconds,
   ]);
 
-  // Initial preparation countdown before recording starts.
   useEffect(() => {
     if (
       phase !== 'countdown' ||
@@ -695,9 +680,6 @@ export default function VolumeControlStabilityScreen({
     };
   }, [phase, beginRecording]);
 
-  // Exercise timer.
-  // The overall timer runs continuously, while the live screen
-  // calculates a separate countdown for each repetition.
   useEffect(() => {
     if (
       phase !== 'exercise' ||
@@ -751,7 +733,6 @@ export default function VolumeControlStabilityScreen({
     totalExerciseSeconds,
   ]);
 
-  // Start an exercise without requiring reference-note playback.
   const startExercise = useCallback(() => {
     if (
       !paramsReady ||
@@ -797,7 +778,6 @@ export default function VolumeControlStabilityScreen({
     totalExerciseSeconds,
   ]);
 
-  // Reset for another attempt.
   const resetExercise = useCallback(() => {
     setMeasurement(null);
     setScore(null);
@@ -819,7 +799,6 @@ export default function VolumeControlStabilityScreen({
     setPhase('directions');
   }, [totalExerciseSeconds]);
 
-  // Open the quit confirmation modal.
   const pauseForExitPrompt = useCallback(async () => {
     if (
       showQuitModalRef.current ||
@@ -860,7 +839,6 @@ export default function VolumeControlStabilityScreen({
     }
   }, [phase, stopRecording]);
 
-  // Continue the exercise after dismissing the quit modal.
   const continueExercise = useCallback(() => {
     if (quitInProgressRef.current) {
       return;
@@ -893,9 +871,6 @@ export default function VolumeControlStabilityScreen({
 
       recordingFinishedRef.current = false;
       exerciseStartedAtRef.current = null;
-
-      // A stopped recording cannot be resumed.
-      // Start a fresh attempt from the countdown.
       setPhase('countdown');
       return;
     }
@@ -903,7 +878,6 @@ export default function VolumeControlStabilityScreen({
     setPhase(previousPhase);
   }, [totalExerciseSeconds]);
 
-  // Stop the recorder safely and leave the exercise.
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) {
       return;
@@ -937,7 +911,6 @@ export default function VolumeControlStabilityScreen({
     router.replace('/dashboard?tab=exercises' as any);
   }, [stopRecording]);
 
-  // Android hardware back opens the quit confirmation.
   useEffect(() => {
     const subscription =
       BackHandler.addEventListener(
@@ -968,7 +941,6 @@ export default function VolumeControlStabilityScreen({
     livePitch > 0 &&
     liveNote !== '--';
 
-  // Shared quit modal used in each screen phase.
   const quitModal = (
     <Modal
       visible={showQuitModal}
@@ -1043,7 +1015,6 @@ export default function VolumeControlStabilityScreen({
     </Modal>
   );
 
-  // Loading screen.
   if (!paramsReady) {
     return (
       <View style={styles.preparingScreen}>
@@ -1075,7 +1046,6 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  // Directions screen.
   if (phase === 'directions') {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1198,7 +1168,6 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  // Initial countdown screen.
   if (phase === 'countdown') {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1216,8 +1185,6 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  // Live exercise screen with an individual countdown
-  // for every repetition.
   if (phase === 'exercise') {
     const startedAt = exerciseStartedAtRef.current;
 
@@ -1255,8 +1222,6 @@ export default function VolumeControlStabilityScreen({
       (elapsedTotal /
         Math.max(1, totalExerciseSeconds)) *
       100;
-
-    // This countdown resets at the start of each repetition.
 
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1516,8 +1481,6 @@ export default function VolumeControlStabilityScreen({
       </SafeAreaView>
     );
   }
-
-  // Results screen.
   const finalScore = score?.overallScore ?? 0;
   const stabilityScore = measurement?.stability ?? 0;
   const durationScore = measurement?.durationScore ?? 0;
@@ -1638,7 +1601,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
   preparingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1646,7 +1608,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-
   preparingIconCircle: {
     width: 76,
     height: 76,
@@ -1656,14 +1617,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
   },
-
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
@@ -1671,11 +1630,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
-
   spinner: {
     marginTop: 28,
   },
-
   exerciseScreen: {
     position: 'absolute',
     top: 90,
@@ -1688,18 +1645,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
   },
-
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginBottom: 2,
   },
-
   exerciseHeaderText: {
     flex: 1,
   },
-
   exerciseExitButton: {
     width: 36,
     height: 36,
@@ -1710,21 +1664,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-
   exerciseEyebrow: {
     color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 1,
   },
-
   exerciseTitle: {
     marginTop: 2,
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 21,
   },
-
   singingPrompt: {
     marginTop: 20,
     alignItems: 'center',
@@ -1732,14 +1683,12 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     backgroundColor: WHITE,
   },
-
   singingPromptTitle: {
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 18,
     textAlign: 'center',
   },
-
   singingPromptText: {
     marginTop: 5,
     color: SOFT_TEXT,
@@ -1748,18 +1697,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
-
   disabled: {
     opacity: 0.55,
   },
-
   rowBetween: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
   },
-
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1767,7 +1713,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-
   modalCard: {
     width: '100%',
     maxWidth: 380,
@@ -1777,7 +1722,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: WHITE,
   },
-
   modalIcon: {
     width: 60,
     height: 60,
@@ -1787,14 +1731,12 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     marginBottom: 15,
   },
-
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
     color: BROWN,
     textAlign: 'center',
   },
-
   modalMessage: {
     marginTop: 10,
     marginBottom: 23,
@@ -1804,7 +1746,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-
   continueButton: {
     width: '100%',
     minHeight: 48,
@@ -1814,13 +1755,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: PINK,
   },
-
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },
-
   quitButton: {
     width: '100%',
     minHeight: 48,
@@ -1833,21 +1772,17 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: MUTED,
   },
-
   buttonPressed: {
     opacity: 0.75,
   },
-
   buttonDisabled: {
     opacity: 0.5,
   },
-
   referenceCard: {
     marginTop: 12,
     padding: 13,
@@ -1856,32 +1791,27 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   referenceTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
-
   referenceCopy: {
     flex: 1,
   },
-
   referenceLabel: {
     color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 1,
   },
-
   referenceNote: {
     marginTop: 2,
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 28,
   },
-
   noteIconCircle: {
     width: 42,
     height: 42,
@@ -1890,7 +1820,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: LIGHT_PINK,
   },
-
   referenceInstruction: {
     marginTop: 7,
     color: SOFT_TEXT,
@@ -1898,7 +1827,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-
   referenceButton: {
     minHeight: 43,
     marginTop: 11,
@@ -1910,13 +1838,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
-
   referenceButtonText: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
   },
-
   liveCard: {
     padding: 20,
     borderRadius: 16,
@@ -1925,13 +1851,11 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     marginBottom: 14,
   },
-
   liveCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
   },
-
   liveIconCircle: {
     width: 34,
     height: 34,
@@ -1940,18 +1864,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: LIGHT_PINK,
   },
-
   liveCardHeading: {
     flex: 1,
     minWidth: 0,
   },
-
   cardTitle: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
   },
-
   mutedSmall: {
     marginTop: 3,
     color: MUTED,
@@ -1959,7 +1880,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 14,
   },
-
   liveVolumeRow: {
     width: '100%',
     marginTop: 8,
@@ -1968,21 +1888,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-
   liveVolume: {
     color: BROWN,
     fontFamily: 'FredokaBold',
     fontSize: 30,
     textAlign: 'center',
   },
-
   liveUnit: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     textAlign: 'center',
   },
-
   statusBadge: {
     alignSelf: 'center',
     minHeight: 25,
@@ -1994,42 +1911,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     backgroundColor: MUTED,
   },
-
   statusText: {
     color: SOFT_TEXT,
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.25,
   },
-
   statusTextSuccess: {
     color: GUIDE_GREEN,
   },
-
   liveSectionDivider: {
     height: 1,
     backgroundColor: BORDER,
     marginVertical: 12,
   },
-
   stabilityHeading: {
     flex: 1,
     minWidth: 0,
   },
-
   stabilityValue: {
     color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 30,
   },
-
   stabilityTrack: {
     height: 14,
     marginTop: 11,
@@ -2038,13 +1948,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-
   stabilityFill: {
     height: '100%',
     borderRadius: 6,
     backgroundColor: ACCENT,
   },
-
   stabilityTargetMarker: {
     position: 'absolute',
     top: 0,
@@ -2052,7 +1960,6 @@ const styles = StyleSheet.create({
     width: 2,
     backgroundColor: BROWN,
   },
-
   scaleRow: {
     marginTop: 6,
     flexDirection: 'row',
@@ -2060,13 +1967,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 4,
   },
-
   scaleText: {
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 9,
   },
-
   noteStatusBadge: {
     flexShrink: 0,
     minHeight: 23,
@@ -2077,18 +1982,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-
   noteStatusBadgeActive: {
     backgroundColor: SUCCESS_BG,
   },
-
   noteStatusText: {
     color: MUTED,
     fontFamily: 'FredokaBold',
     fontSize: 8,
     letterSpacing: 0.2,
   },
-
   detectedNotePanel: {
     marginTop: 10,
     paddingVertical: 9,
@@ -2098,18 +2000,15 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     alignItems: 'center',
   },
-
   detectedNote: {
     color: ACCENT,
     fontFamily: 'FredokaBold',
     fontSize: 34,
     lineHeight: 40,
   },
-
   detectedNoteWaiting: {
     color: '#B9A7A3',
   },
-
   detectedFrequency: {
     marginTop: 2,
     color: MUTED,
@@ -2117,7 +2016,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
   },
-
   progressCard: {
     padding: 12,
     borderWidth: 1,
@@ -2125,13 +2023,11 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     backgroundColor: WHITE,
   },
-
   progressTime: {
     color: BROWN,
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
   },
-
   exerciseProgressTrack: {
     height: 7,
     marginTop: 9,
@@ -2139,20 +2035,17 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     overflow: 'hidden',
   },
-
   exerciseProgressFill: {
     height: '100%',
     borderRadius: 5,
     backgroundColor: ACCENT,
   },
-
   progressHint: {
     marginTop: 4,
     color: MUTED,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
   },
-
   resultCard: {
     width: '100%',
     marginTop: 8,
@@ -2163,7 +2056,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-
   resultRow: {
     minHeight: 40,
     flexDirection: 'row',
@@ -2174,18 +2066,15 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 5,
   },
-
   lastResultRow: {
     borderBottomWidth: 0,
   },
-
   resultLabel: {
     flex: 1,
     color: SOFT_TEXT,
     fontFamily: 'FredokaRegular',
     fontSize: 12,
   },
-
   resultValue: {
     flexShrink: 1,
     color: BROWN,

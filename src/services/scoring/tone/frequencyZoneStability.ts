@@ -1,6 +1,6 @@
 import type {
   FrequencyZoneStabilityParams,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 
 import type {
   FrequencyZoneStabilityMeasurement,
@@ -38,9 +38,6 @@ export function scoreFrequencyZoneStability(
         )
       : 0;
 
-  // Score the measured stability directly.
-  // Avoid applying a second penalty to an
-  // already-calculated stability percentage.
   const rawScore =
     stabilityScore * 0.7 +
     coverageScore * 0.2 +
@@ -60,8 +57,6 @@ export function scoreFrequencyZoneStability(
     measurement.durationSec >=
     params.durationSec;
 
-  // Preserve higher configured thresholds while
-  // allowing a lower threshold for beginners.
   const requiredStability = Math.max(
     params.stabilityThreshold,
     65,

@@ -1,30 +1,30 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  RAPID_NOTE_TRANSITION_PARAMS,
-  type Tier,
-} from '@/constants/exercises/agility';
+    RAPID_NOTE_TRANSITION_PARAMS,
+    type Tier,
+} from '@/constants/agility';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,9 +34,9 @@ import { saveCompletedExercise } from '@/services/progress/exerciseProgressServi
 import { fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTransitionExercise';
 import {
-  disposeNotePlayer,
-  playNoteSequence,
-  type NoteToPlay,
+    disposeNotePlayer,
+    playNoteSequence,
+    type NoteToPlay,
 } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 

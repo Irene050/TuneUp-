@@ -47,8 +47,6 @@ export function scoreDynamicRange(
     100,
   );
 
-  // Range accuracy contributes 40% of the score.
-  // Ramp consistency contributes 60%.
   const overallScore = clamp(
     rangeAccuracy * 0.4 +
       rampConsistency * 0.6,

@@ -19,7 +19,7 @@ import {
 import {
   type DiaphragmaticBreathingParams,
   type Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -781,10 +781,6 @@ export default function DiaphragmaticBreathingScreen({
       currentPhase === 'processing';
 
     if (attemptIsActive) {
-      /*
-       * The recorder does not provide a confirmed pause/resume
-       * operation. Restart the interrupted repetition instead.
-       */
       pausedForExitRef.current = true;
 
       const recordingWasActive = currentPhase === 'exhale';
@@ -841,10 +837,6 @@ export default function DiaphragmaticBreathingScreen({
     startingRef.current = false;
     processingRef.current = false;
 
-    /*
-     * Restart the interrupted repetition while retaining completed
-     * repetitions and the current repetition number.
-     */
     if (restartCurrentRepRef.current) {
       restartCurrentRepRef.current = false;
       resetLiveState();
@@ -852,9 +844,6 @@ export default function DiaphragmaticBreathingScreen({
       return;
     }
 
-    /*
-     * Countdown and inhale phases restart with a fresh countdown.
-     */
     startCountdownRef.current?.();
   }, [resetLiveState, setExitPromptVisible]);
 

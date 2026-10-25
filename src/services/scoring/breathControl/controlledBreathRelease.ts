@@ -1,7 +1,7 @@
-import type { ControlledBreathReleaseParams } from '@/constants/exercises/breathControl';
+import type { ControlledBreathReleaseParams } from '@/constants/breathControl';
 
 import type {
-  ControlledBreathReleaseMeasurement,
+    ControlledBreathReleaseMeasurement,
 } from '@/services/measurement/breathControl/controlledBreathRelease';
 
 export interface ControlledBreathReleaseScoreResult {

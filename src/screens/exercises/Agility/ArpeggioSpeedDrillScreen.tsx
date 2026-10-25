@@ -16,7 +16,7 @@ import { AudioManager, AudioRecorder } from 'react-native-audio-api';
 import {
   ARPEGGIO_SPEED_DRILL_PARAMS,
   type Tier,
-} from '@/constants/exercises/agility';
+} from '@/constants/agility';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateArpeggioSpeedDrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -242,13 +242,10 @@ const fitFrequenciesToVocalRange = (
 
   if (lowestMidi > highestMidi) return frequencies;
 
-  // Transpose using whole MIDI notes so the arpeggio's intervals stay intact.
   const sourceMidis = frequencies.map((hz) => Math.round(hzToMidi(hz)));
   const sourceMin = Math.min(...sourceMidis);
   const sourceMax = Math.max(...sourceMidis);
 
-  // If the full sequence cannot fit, keep the original notes instead of
-  // changing the musical intervals.
   if (sourceMax - sourceMin > highestMidi - lowestMidi) {
     return frequencies;
   }
@@ -462,8 +459,6 @@ export default function ArpeggioSpeedDrillScreen() {
           recentScores,
         });
 
-        // Fit the generated agility sequence to the vocal range detected
-        // during the user's assessment. Keep the existing tier/scoring logic.
         const vocalAssessment = await getLatestAssessment();
         if (cancelled) return;
 
@@ -489,7 +484,6 @@ export default function ArpeggioSpeedDrillScreen() {
                 return {
                   ...generated,
                   frequencies,
-                  // Keep displayed notes aligned with the final frequencies.
                   notes: frequencies.map((frequency) =>
                     frequencyToNoteName(frequency),
                   ),
@@ -1340,8 +1334,6 @@ export default function ArpeggioSpeedDrillScreen() {
               onPress={() => {
                 setShowExitConfirmation(false);
                 if (phaseRef.current !== 'results') {
-                  // Discard only the interrupted repetition's samples and restart
-                  // that same repetition after the normal countdown.
                   samplesRef.current = [];
                   liveSamplesRef.current = [];
                   setLivePitchHz(null);

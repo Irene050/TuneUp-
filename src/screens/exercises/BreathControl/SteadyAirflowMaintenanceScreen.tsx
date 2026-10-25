@@ -19,7 +19,7 @@ import {
 import type {
   SteadyAirflowParams,
   Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -97,15 +97,9 @@ export default function SteadyAirflowMaintenanceScreen({
   const currentRepRef = useRef(1);
   const repResultsRef = useRef<RepResult[]>([]);
   const recentVolumeRef = useRef<number[]>([]);
-
-  // Keep modal visibility in a ref so audio callbacks can block
-  // processing immediately, without waiting for a React render.
   const showQuitModalRef = useRef(false);
   const exitRequestedRef = useRef(false);
   const quitInProgressRef = useRef(false);
-
-  // If recording was interrupted, the current repetition must be
-  // repeated from the beginning. Never score its partial audio.
   const restartCurrentRepRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
 
@@ -405,9 +399,6 @@ export default function SteadyAirflowMaintenanceScreen({
     setElapsed(0);
 
     const startedAt = Date.now();
-
-    // Clear the interrupted-attempt marker only when beginning
-    // the new recording for this repetition.
     restartCurrentRepRef.current = false;
 
     void startRecordingRef.current?.();
@@ -485,8 +476,6 @@ export default function SteadyAirflowMaintenanceScreen({
       setElapsed(0);
       resetAirflowIndicator();
 
-      // This callback only runs for a completed recording. If the
-      // modal interrupted the repetition, its callback is discarded.
       const measurement = measureSteadyAirflow(
         samples,
         adaptiveParams.detectionThreshold,
@@ -574,7 +563,6 @@ export default function SteadyAirflowMaintenanceScreen({
     return;
   }
 
-  // The recorder returns volume in dB, not linear RMS.
   const volumeDb = frame.volume;
 
   if (!Number.isFinite(volumeDb)) {
@@ -585,8 +573,6 @@ export default function SteadyAirflowMaintenanceScreen({
     return;
   }
 
-  // Convert dB into a normalized display value from 0 to 1.
-  // -60 dB or lower = 0%; -10 dB or higher = 100%.
   const normalizedVolume = Math.max(
     0,
     Math.min(1, (volumeDb + 60) / 50),
@@ -594,21 +580,16 @@ export default function SteadyAirflowMaintenanceScreen({
 
   setVolume(normalizedVolume);
 
-  // Initial detection threshold, matching the recorder's
-  // MIN_VOICED_DB setting. Tune this using actual device logs.
   const detected = volumeDb >= -45;
 
   setAirflowDetected(detected);
 
-  // Only use detected airflow frames for stability calculations.
   if (!detected) {
     recentVolumeRef.current = [];
     setAirflowStability(0);
     return;
   }
 
-  // Convert dB back into linear amplitude for the
-  // coefficient-of-variation calculation.
   const linearAmplitude = Math.pow(10, volumeDb / 20);
 
   const readings = recentVolumeRef.current;
@@ -720,8 +701,6 @@ export default function SteadyAirflowMaintenanceScreen({
       currentPhase === 'processing';
 
     if (hasActiveAttempt) {
-      // Block all timers, frames, and stop callbacks before stopping
-      // the recorder. Do not reset the repetition or completed results.
       showQuitModalRef.current = true;
       restartCurrentRepRef.current =
         currentPhase === 'recording' ||
@@ -777,9 +756,6 @@ export default function SteadyAirflowMaintenanceScreen({
 
     if (!wasActive) return;
 
-    // The recorder has no safe pause/resume interface, so continue
-    // from a fresh countdown for the same repetition. Previously
-    // completed repetitions remain untouched.
     restartCurrentRepRef.current = false;
     exitRequestedRef.current = false;
     setElapsed(0);
@@ -1622,8 +1598,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
   },
-
-  // Quit confirmation modal
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',

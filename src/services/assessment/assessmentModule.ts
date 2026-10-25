@@ -526,7 +526,6 @@ function measureVolume(
     return 0;
   }
 
-  // Avoid spreading a potentially large array into Math.max.
   let maxRms = 0;
 
   for (const rms of rmsValues) {
@@ -671,9 +670,6 @@ function alignAgilityNotes(
 ): number[] {
   const detectedCount = detectedNotes.length;
   const targetCount = targetNotes.length;
-
-  // dp[i][j] = minimum alignment cost for the first i detected
-  // notes and first j target notes.
   const dp: number[][] = Array.from(
     { length: detectedCount + 1 },
     () => Array(targetCount + 1).fill(Infinity),
@@ -698,7 +694,6 @@ function alignAgilityNotes(
 
       if (!Number.isFinite(cost)) continue;
 
-      // Skip an extra detected note.
       if (
         i < detectedCount &&
         cost + skipDetectionCost < dp[i + 1][j]
@@ -711,7 +706,6 @@ function alignAgilityNotes(
         };
       }
 
-      // Treat a target note as missed.
       if (
         j < targetCount &&
         cost + missingTargetCost < dp[i][j + 1]
@@ -724,7 +718,6 @@ function alignAgilityNotes(
         };
       }
 
-      // Match a detected note to the next target note.
       if (i < detectedCount && j < targetCount) {
         const detectedMidi = detectedNotes[i].midi;
         const targetMidi = 69 + 12 * Math.log2(targetNotes[j] / 440);
@@ -747,7 +740,6 @@ function alignAgilityNotes(
     }
   }
 
-  // Return the detected-note index assigned to each target.
   const matchedIndices = Array<number>(targetCount).fill(-1);
 
   let i = detectedCount;
@@ -1126,12 +1118,6 @@ function detectFundamentalByAutocorrelation(
   }
 
   const correlations = new Float32Array(maxLag + 1);
-
-  /*
-   * Precompute cumulative squared energy. This avoids recalculating
-   * energyA and energyB by scanning the entire frame for every lag.
-   * The correlation numerator and confidence calculation are retained.
-   */
   const squaredEnergyPrefix = new Float64Array(windowed.length + 1);
 
   for (let i = 0; i < windowed.length; i++) {

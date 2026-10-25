@@ -20,7 +20,7 @@ import {
 import {
   type SustainedExhaleParams,
   type Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateSustainedExhaleParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -264,11 +264,6 @@ export default function SustainedExhaleScreen({
     };
   }, [initialTier]);
 
-  /**
-   * Resume the processing step after a modal interruption.
-   * The current repetition has already been analyzed in this phase,
-   * so it should not be recorded or scored a second time.
-   */
   const scheduleAfterProcessing = useCallback(() => {
     if (
       !mountedRef.current ||
@@ -373,8 +368,6 @@ export default function SustainedExhaleScreen({
 
   const handleRecordingStop = useCallback(
     (samples: Float32Array, sampleRate: number) => {
-      // If the recorder is returning audio from an interrupted
-      // repetition, discard it instead of scoring it.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         return;
@@ -513,9 +506,6 @@ export default function SustainedExhaleScreen({
     setError(null);
     setCurrentPhase('recording');
 
-    // The interrupted recorder's stop callback should normally
-    // have arrived before this new repetition begins. Clear the
-    // discard guard only when beginning a fresh recording.
     discardNextStopRef.current = false;
 
     try {
@@ -646,8 +636,6 @@ export default function SustainedExhaleScreen({
     clearTimers();
 
     if (currentPhase === 'recording') {
-      // Do not analyze an incomplete recording after resuming.
-      // The same repetition will restart from its countdown.
       discardNextStopRef.current = true;
       startingRef.current = false;
       finishingRef.current = true;
@@ -670,7 +658,6 @@ export default function SustainedExhaleScreen({
         );
       }
     } else if (currentPhase === 'countdown') {
-      // Keep the current repetition; restart its countdown on resume.
       setCountdown(PREPARATION_COUNTDOWN);
     }
 
@@ -691,8 +678,6 @@ export default function SustainedExhaleScreen({
       pausedPhase === 'countdown' ||
       pausedPhase === 'recording'
     ) {
-      // Recording cannot be safely paused/resumed with this hook.
-      // Restart only the current repetition, retaining earlier results.
       startingRef.current = false;
       finishingRef.current = false;
       discardNextStopRef.current = false;
@@ -703,8 +688,6 @@ export default function SustainedExhaleScreen({
     }
 
     if (pausedPhase === 'processing') {
-      // The repetition was already analyzed. Continue processing
-      // it without adding a duplicate result or advancing early.
       finishingRef.current = false;
       resumeProcessingRef.current?.();
     }

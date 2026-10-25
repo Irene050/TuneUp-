@@ -22,7 +22,7 @@ import {
   type Tier,
   VOWEL_CONSISTENCY_PARAMS,
   type VowelConsistencyParams,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 import {
   type LiveAudioFrame,
   useAudioRecorder,
@@ -114,10 +114,6 @@ function vowelDisplay(vowel: string) {
   return vowel.toUpperCase();
 }
 
-/**
- * This feedback uses only the existing live pitch and clarity values.
- * It does not claim to measure vowel consistency in real time.
- */
 function getToneFeedback(
   frame: LiveAudioFrame | null,
 ): ToneFeedback {
@@ -1625,7 +1621,6 @@ export default function VowelConsistencyExerciseScreen({
       </>
     );
   }
-
   return quitModal;
 }
 
@@ -2158,250 +2153,215 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
-
-recordingBody: {
-  flexGrow: 1,
-  alignItems: 'center',
-  paddingHorizontal: 22,
-  paddingTop: 28,
-  paddingBottom: 36,
-},
-
-repPill: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 7,
-  paddingHorizontal: 13,
-  paddingVertical: 8,
-  borderRadius: 20,
-  backgroundColor: PINK,
-},
-
-repPillText: {
-  fontFamily: 'FredokaBold',
-  fontSize: 11,
-  letterSpacing: 0.6,
-  color: BROWN,
-},
-
-recordingProgressSection: {
-  width: '100%',
-  marginTop: 26,
-  marginBottom: 20,
-},
-
-recordingProgressLabels: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 9,
-},
-
-progressLabel: {
-  fontFamily: 'FredokaBold',
-  fontSize: 11,
-  letterSpacing: 0.8,
-  color: MUTED,
-},
-
-progressTime: {
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 12,
-  color: BROWN,
-},
-
-progressTrack: {
-  width: '100%',
-  height: 8,
-  overflow: 'hidden',
-  borderRadius: 8,
-  backgroundColor: LIGHT_PINK,
-},
-
-progressFill: {
-  height: '100%',
-  borderRadius: 8,
-  backgroundColor: PINK,
-},
-
-remainingText: {
-  marginTop: 7,
-  fontFamily: 'FredokaRegular',
-  fontSize: 11,
-  color: MUTED,
-  textAlign: 'right',
-},
-
-// Replace the existing liveCard style with this definition.
-liveCard: {
-  width: '100%',
-  paddingHorizontal: 16,
-  paddingVertical: 18,
-  borderRadius: 22,
-  backgroundColor: LIGHT_PINK,
-  borderWidth: 1,
-  borderColor: BORDER,
-},
-
-liveCardHeader: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: 15,
-},
-
-liveMicCircle: {
-  width: 42,
-  height: 42,
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: 21,
-  backgroundColor: '#E5F2E8',
-},
-
-liveCardHeading: {
-  flex: 1,
-  marginLeft: 10,
-},
-
-liveCardTitle: {
-  fontFamily: 'FredokaBold',
-  fontSize: 15,
-  color: BROWN,
-},
-
-liveCardSubtitle: {
-  marginTop: 2,
-  fontFamily: 'FredokaRegular',
-  fontSize: 11,
-  color: MUTED,
-},
-
-liveIndicatorPill: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 5,
-  paddingHorizontal: 9,
-  paddingVertical: 6,
-  borderRadius: 14,
-  backgroundColor: '#FCE9EC',
-},
-
-// Update the existing recordingDot backgroundColor to GUIDE_RED.
-recordingDot: {
-  width: 7,
-  height: 7,
-  borderRadius: 4,
-  backgroundColor: GUIDE_RED,
-},
-
-liveIndicatorText: {
-  fontFamily: 'FredokaBold',
-  fontSize: 10,
-  letterSpacing: 0.7,
-  color: GUIDE_RED,
-},
-
-waveformContainer: {
-  width: '100%',
-  alignItems: 'center',
-  paddingTop: 5,
-  paddingBottom: 15,
-  marginBottom: 15,
-  borderBottomWidth: 1,
-  borderBottomColor: BORDER,
-},
-
-waveformBars: {
-  width: '100%',
-  height: 48,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 3,
-},
-
-waveformBar: {
-  flex: 1,
-  maxWidth: 6,
-  minWidth: 2,
-  borderRadius: 4,
-},
-
-waveformStatusRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginTop: 10,
-  gap: 6,
-},
-
-statusDot: {
-  width: 7,
-  height: 7,
-  borderRadius: 4,
-},
-
-waveformStatus: {
-  fontFamily: 'FredokaSemiBold',
-  fontSize: 12,
-  textAlign: 'center',
-},
-
-liveMetricsRow: {
-  width: '100%',
-  flexDirection: 'row',
-  alignItems: 'center',
-},
-
-liveMetric: {
-  flex: 1,
-  alignItems: 'center',
-  paddingHorizontal: 4,
-},
-
-liveDivider: {
-  width: 1,
-  height: 52,
-  backgroundColor: BORDER,
-},
-
-liveLabel: {
-  fontFamily: 'FredokaBold',
-  fontSize: 10,
-  letterSpacing: 0.6,
-  color: MUTED,
-  marginBottom: 5,
-  textAlign: 'center',
-},
-
-liveValue: {
-  fontFamily: 'FredokaBold',
-  fontSize: 24,
-  color: BROWN,
-},
-
-metricHint: {
-  marginTop: 3,
-  fontFamily: 'FredokaRegular',
-  fontSize: 10,
-  color: MUTED,
-  textAlign: 'center',
-},
-
-recordingTip: {
-  width: '100%',
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  gap: 8,
-  marginTop: 18,
-  paddingHorizontal: 5,
-},
-
-recordingTipText: {
-  flex: 1,
-  fontFamily: 'FredokaRegular',
-  fontSize: 12,
-  lineHeight: 18,
-  color: MUTED,
-},
+  recordingBody: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 36,
+  },
+  repPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: PINK,
+  },
+  repPillText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    color: BROWN,
+  },
+  recordingProgressSection: {
+    width: '100%',
+    marginTop: 26,
+    marginBottom: 20,
+  },
+  recordingProgressLabels: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  progressLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: MUTED,
+  },
+  progressTime: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+    color: BROWN,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 8,
+    overflow: 'hidden',
+    borderRadius: 8,
+    backgroundColor: LIGHT_PINK,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: PINK,
+  },
+  remainingText: {
+    marginTop: 7,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+    textAlign: 'right',
+  },
+  liveCard: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 22,
+    backgroundColor: LIGHT_PINK,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  liveCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  liveMicCircle: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+    backgroundColor: '#E5F2E8',
+  },
+  liveCardHeading: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  liveCardTitle: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+  },
+  liveCardSubtitle: {
+    marginTop: 2,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: MUTED,
+  },
+  liveIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#FCE9EC',
+  },
+  recordingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: GUIDE_RED,
+  },
+  liveIndicatorText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.7,
+    color: GUIDE_RED,
+  },
+  waveformContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 5,
+    paddingBottom: 15,
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  waveformBars: {
+    width: '100%',
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  waveformBar: {
+    flex: 1,
+    maxWidth: 6,
+    minWidth: 2,
+    borderRadius: 4,
+  },
+  waveformStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  waveformStatus: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  liveMetricsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveMetric: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  liveDivider: {
+    width: 1,
+    height: 52,
+    backgroundColor: BORDER,
+  },
+  liveLabel: {
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: MUTED,
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  liveValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 24,
+    color: BROWN,
+  },
+  metricHint: {
+    marginTop: 3,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  recordingTip: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 18,
+    paddingHorizontal: 5,
+  },
+  recordingTipText: {
+    flex: 1,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: MUTED,
+  },
 });

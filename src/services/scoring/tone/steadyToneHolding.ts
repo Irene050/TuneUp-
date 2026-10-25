@@ -1,13 +1,13 @@
 import type {
-  SteadyToneHoldingParams,
-} from '@/constants/exercises/tone';
+    SteadyToneHoldingParams,
+} from '@/constants/tone';
 
 import type {
-  SteadyToneHoldingMeasurement,
+    SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
 
 import {
-  calcOverallToneQuality,
+    calcOverallToneQuality,
 } from '@/utils/dsp/spectral';
 
 export interface SteadyToneHoldingScoreResult {

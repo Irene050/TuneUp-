@@ -111,10 +111,6 @@ export default function BreathControlFreeModeScreen() {
     setFlowHistory(Array(BAR_COUNT).fill(0));
   }, []);
 
-  /**
-   * Share one native stop task across simultaneous stop requests.
-   * This avoids issuing duplicate stop calls to the recorder.
-   */
   const stopRecorder = useCallback((): Promise<void> => {
     if (stopTaskRef.current) {
       return stopTaskRef.current;
@@ -148,11 +144,6 @@ export default function BreathControlFreeModeScreen() {
     return task;
   }, []);
 
-  /**
-   * Wait for recorder startup to settle before stopping.
-   * This handles quitting during microphone permission requests
-   * or native recorder initialization.
-   */
   const waitForStartAndStop = useCallback(async () => {
     const startTask = startTaskRef.current;
 
@@ -193,8 +184,6 @@ export default function BreathControlFreeModeScreen() {
       try {
         await startRecording();
 
-        // If quitting was confirmed while startup was pending,
-        // do not enter the exercise. Stop the recorder instead.
         if (
           !mountedRef.current ||
           stopRequestedRef.current ||
@@ -245,9 +234,6 @@ export default function BreathControlFreeModeScreen() {
     stopRecorder,
   ]);
 
-  /**
-   * Stop Free Mode but remain on the screen.
-   */
   const stopFreeMode = useCallback(async () => {
     if (
       stopRequestedRef.current ||
@@ -256,7 +242,6 @@ export default function BreathControlFreeModeScreen() {
       return;
     }
 
-    // Ignore incoming audio frames immediately.
     stopRequestedRef.current = true;
     setIsStopping(true);
 
@@ -281,10 +266,6 @@ export default function BreathControlFreeModeScreen() {
     }
   }, [resetExercise, waitForStartAndStop]);
 
-  /**
-   * Open the quit confirmation instead of navigating immediately.
-   * This handler is shared by the screen back arrow and Android Back.
-   */
   const handleBack = useCallback(() => {
     if (
       leaveRequestedRef.current ||
@@ -306,17 +287,11 @@ export default function BreathControlFreeModeScreen() {
     setShowQuitModal(false);
   }, []);
 
-  /**
-   * Stop recording before navigating away.
-   * Navigation happens in finally so a native stop error does not
-   * trap the user on this screen.
-   */
   const confirmQuitExercise = useCallback(async () => {
     if (leaveRequestedRef.current) {
       return;
     }
 
-    // Lock quitting synchronously to prevent duplicate confirmations.
     leaveRequestedRef.current = true;
     stopRequestedRef.current = true;
     quitModalOpenRef.current = false;
@@ -337,17 +312,11 @@ export default function BreathControlFreeModeScreen() {
     }
   }, [waitForStartAndStop]);
 
-  /**
-   * Intercept Android's physical/system Back button while focused.
-   * Returning true prevents immediate default navigation.
-   */
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
-          // React Native Modal handles Android Back through
-          // onRequestClose while the confirmation is visible.
           if (quitModalOpenRef.current) {
             dismissQuitModal();
             return true;
@@ -362,9 +331,6 @@ export default function BreathControlFreeModeScreen() {
     }, [dismissQuitModal, handleBack]),
   );
 
-  /**
-   * Final cleanup if the screen is removed by another navigation path.
-   */
   useEffect(() => {
     mountedRef.current = true;
 
@@ -998,8 +964,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-
-  // Quit confirmation modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(35, 22, 17, 0.48)',

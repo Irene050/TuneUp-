@@ -22,7 +22,7 @@ import {
   DYNAMIC_RANGE_PARAMS,
   type DynamicRangeParams,
   type Tier,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 import {
   type LiveAudioFrame,
   useAudioRecorder,
@@ -222,7 +222,6 @@ export default function DynamicRangeExercise({
     return task;
   }, []);
 
-  /* Load the user's assessed vocal range to select a reference note. */
   useEffect(() => {
     let cancelled = false;
 
@@ -260,7 +259,6 @@ export default function DynamicRangeExercise({
     };
   }, []);
 
-  /* Load adaptive difficulty parameters. */
   useEffect(() => {
     let cancelled = false;
 
@@ -423,7 +421,6 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      // Consume the flag before asynchronous work to prevent duplicate scoring.
       shouldSaveResultRef.current = false;
 
       void (async () => {
@@ -451,7 +448,6 @@ export default function DynamicRangeExercise({
             repetitionIntervals,
           });
 
-          // A poor/empty measurement should not be presented as a valid pass.
           if (
             measurement.overallMeasurementQuality < 50 ||
             measurement.validWindowCount === 0 ||
@@ -718,7 +714,6 @@ export default function DynamicRangeExercise({
     pausedRef.current = false;
 
     if (interruptedPhase === 'processing') {
-      // The finished recording is already being analyzed.
       finishingRef.current = true;
       return;
     }
@@ -733,7 +728,6 @@ export default function DynamicRangeExercise({
     const runId = ++countdownRunIdRef.current;
 
     if (interruptedPhase === 'exercise') {
-      // The old recording was discarded; restart cleanly from rep 1.
       finishingRef.current = false;
       shouldSaveResultRef.current = false;
       setRep(1);
@@ -776,8 +770,6 @@ export default function DynamicRangeExercise({
       return;
     }
 
-    // The recorder continues through an inter-repetition countdown.
-    // For an interrupted active rep or initial countdown, start a new recording.
     if (interruptedPhase === 'exercise' || !hadRecording) {
       try {
         discardNextStopRef.current = false;
@@ -804,7 +796,6 @@ export default function DynamicRangeExercise({
         return;
       }
     } else if (countdownFor === 'repetition') {
-      // Mark the next active repetition only after its countdown has ended.
       currentRepetitionStartRef.current = getRecordingElapsedSeconds();
       repetitionStartedAtRef.current = Date.now();
     }
@@ -860,7 +851,6 @@ export default function DynamicRangeExercise({
     return () => subscription.remove();
   }, [handleBack]);
 
-  /* Drive elapsed time from the wall clock so timer ticks cannot accumulate drift. */
   useEffect(() => {
     if (
       phase !== 'exercise' ||

@@ -1,6 +1,6 @@
 import type {
   SustainedNoteStabilityParams,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 
 import type {
   SustainedNoteStabilityMeasurement,
@@ -18,10 +18,6 @@ export interface SustainedNoteStabilityScoreResult {
 }
 
 const MAX_STABILITY_CENTS = 1000;
-
-// Within 25 cents of the target earns full pitch-accuracy credit.
-// Accuracy decreases as the pitch moves farther from the target.
-// At 125 cents or more, pitch-accuracy credit is zero.
 const FULL_ACCURACY_CENTS = 25;
 const ZERO_ACCURACY_CENTS = 125;
 
@@ -109,10 +105,6 @@ export function scoreSustainedNoteStability(
     targetFrequencyHz,
   );
 
-  // Stability:
-  // 0 cents = 100
-  // 25% of threshold = 50
-  // 50% of threshold or more = 0
   const stabilityScore = Math.max(
     0,
     Math.min(
@@ -121,7 +113,6 @@ export function scoreSustainedNoteStability(
     ),
   );
 
-  // Full duration credit requires 125% of the target duration.
   const durationScore =
     params.durationSec > 0
       ? Math.max(
@@ -133,13 +124,10 @@ export function scoreSustainedNoteStability(
         )
       : 0;
 
-  // First calculate performance from stability and duration.
   const performanceScore =
     stabilityScore * 0.8 +
     durationScore * 0.2;
 
-  // Pitch accuracy gates the final score.
-  // A stable, long note at the wrong pitch cannot receive a high score.
   const score = Math.round(
     performanceScore * (pitchAccuracyScore / 100),
   );
@@ -224,7 +212,6 @@ export function scoreSustainedNoteStabilityRepetitions(
     ).fill(0),
   ];
 
-  // Missing repetitions count as zero.
   const score = Math.round(
     repetitionScores.reduce(
       (sum, repetitionScore) => sum + repetitionScore,

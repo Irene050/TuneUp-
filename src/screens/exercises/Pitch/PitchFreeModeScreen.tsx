@@ -206,8 +206,6 @@ export default function PitchFreeModeScreen() {
     setShowQuitModal(false);
 
     try {
-      // If the user confirms while microphone startup is pending,
-      // wait for startup to settle before stopping the recorder.
       const startTask = startTaskRef.current;
       if (startTask) {
         try {
@@ -1024,7 +1022,6 @@ const styles = StyleSheet.create({
     marginBottom: 52,
     gap: 8,
   },
-  // Quit confirmation modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(35, 22, 17, 0.48)',

@@ -1,7 +1,7 @@
 
 import type {
   MelodicPatternMatchingParams,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 
 import type {
   MelodicPatternMeasurement,
@@ -44,9 +44,6 @@ export function scoreMelodicPatternMatching(
 
   const noteAccuracies: number[] = [];
   const notesHit: boolean[] = [];
-
-  // Use the configured tolerance, but avoid an excessively
-  // narrow tolerance if the configured value is very small.
   const tolerance = Math.max(1.5, params.tolerancePct);
 
   for (let i = 0; i < noteCount; i++) {
@@ -101,8 +98,6 @@ export function scoreMelodicPatternMatching(
         0,
       ) / deviations.length;
 
-    // Allow occasional imperfect frames, but do not let
-    // a mostly incorrect note count as a hit.
     const matchingFrames = deviations.filter(
       deviation => deviation <= tolerance,
     ).length;
@@ -142,8 +137,6 @@ export function scoreMelodicPatternMatching(
       const differenceMs =
         Math.abs(detectedTime - targetTime) * 1000;
 
-      // Full timing credit for close timing; gradual penalty
-      // up to 300 ms of timing difference.
       return Math.max(
         0,
         Math.min(100, 100 - (differenceMs / 300) * 100),

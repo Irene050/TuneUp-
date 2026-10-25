@@ -1,7 +1,7 @@
 import {
   RAPID_SCALE_TRILL_PARAMS,
   type Tier,
-} from '@/constants/exercises/agility';
+} from '@/constants/agility';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateRapidScaleTrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -108,7 +108,6 @@ export default function RapidScaleTrillScreen() {
   const [confirmation, setConfirmation] =
     useState<'tryAgain' | 'quit' | null>(null);
 
-  // Brief loading guidance when the user continues the interrupted repetition.
   useEffect(() => {
     if (phase !== 'resuming') {
       return;
@@ -340,9 +339,6 @@ export default function RapidScaleTrillScreen() {
     if (confirmation !== null) {
       return;
     }
-
-    // Stop the current repetition without advancing it. If recording was
-    // interrupted, discard only that partial repetition and keep earlier ones.
     if (phase === 'countdown') {
       countdownRunRef.current += 1;
       setPhase('reference');

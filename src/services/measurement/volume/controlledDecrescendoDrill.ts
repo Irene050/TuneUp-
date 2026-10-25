@@ -73,19 +73,6 @@ function isValidVolume(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
 }
 
-/**
- * Calculates decrescendo smoothness using positive dBFS magnitudes.
- *
- * Example:
- * - -20 dBFS becomes magnitude 20.
- * - -35 dBFS becomes magnitude 35.
- *
- * As the voice gets quieter, its dBFS value becomes more negative,
- * so its positive magnitude increases.
- *
- * Only adjacent valid windows are compared. Invalid windows break
- * the sequence so changes across gaps are not treated as continuous.
- */
 export function calculateDecrescendoSmoothness(
   dbValues: number[],
 ): number {
@@ -100,7 +87,6 @@ export function calculateDecrescendoSmoothness(
     const previous = dbValues[index - 1];
     const current = dbValues[index];
 
-    // Do not compare readings across silence or invalid windows.
     if (
       !isValidVolume(previous) ||
       !isValidVolume(current)
@@ -110,14 +96,12 @@ export function calculateDecrescendoSmoothness(
 
     const change = current - previous;
 
-    // Ignore tiny changes likely caused by measurement noise.
     if (Math.abs(change) <= 0.05) {
       continue;
     }
 
     meaningfulChanges += 1;
 
-    // A decrescendo increases positive magnitude.
     if (change > 0) {
       correctlyDirectedChanges += 1;
     }
@@ -214,8 +198,6 @@ function analyzeRepetition(
     };
   }
 
-  // Locate the first and last valid readings without changing the
-  // original window sequence.
   const firstValidIndex = windows.findIndex(isValidVolume);
 
   let lastValidIndex = -1;
@@ -229,16 +211,12 @@ function analyzeRepetition(
 
   const startDb = windows[firstValidIndex];
   const endDb = windows[lastValidIndex];
-
-  // Positive magnitude increases as the voice gets quieter.
   const decrease = endDb - startDb;
 
   const directionCorrect =
     lastValidIndex > firstValidIndex &&
     decrease > 0;
 
-  // Keep invalid windows in the original sequence so smoothness
-  // does not compare non-adjacent readings.
   const smoothness =
     calculateDecrescendoSmoothness(windows);
 
@@ -312,8 +290,6 @@ export function measureControlledDecrescendo(
     sampleRate,
   );
 
-  // Preserve every window's position. Invalid and silent windows
-  // become NaN instead of being removed.
   const dbValues = toDbArray(rmsValues).map((db) => {
     if (
       !Number.isFinite(db) ||
@@ -321,8 +297,6 @@ export function measureControlledDecrescendo(
     ) {
       return Number.NaN;
     }
-
-    // Convert negative dBFS to positive magnitude.
     return -db;
   });
 

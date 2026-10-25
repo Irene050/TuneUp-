@@ -54,8 +54,6 @@ export function scoreControlledDecrescendo(
       ) / measurement.repSmoothness.length
     : 0;
 
-  // The numerical score represents smoothness. Passing additionally
-  // requires correct direction and successful target achievement.
   const overallScore = hasEnoughAudio
     ? roundScore(repetitionAverage)
     : 0;

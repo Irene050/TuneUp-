@@ -144,7 +144,6 @@ export default function VolumeFreeModeScreen() {
 
     setLiveVolume(reading.volumeDb);
 
-    // Relative input-volume changes only; this is not an exercise score.
     const normalized = normalizeVolume(reading.volumeDb);
 
     setLiveHistory(previous =>
@@ -222,7 +221,6 @@ export default function VolumeFreeModeScreen() {
     setShowQuitModal(false);
 
     try {
-      // Wait for pending microphone startup before stopping the recorder.
       const startTask = startTaskRef.current;
 
       if (startTask) {
@@ -817,8 +815,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
   },
-
-  /* HEADER — MATCHES PITCH FREE MODE */
   header: {
     height: 56,
     flexDirection: 'row',
@@ -836,8 +832,6 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 34,
   },
-
-  /* READY SCREEN — MATCHES PITCH FREE MODE */
   readyContent: {
     flex: 1,
     justifyContent: 'center',
@@ -936,8 +930,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-
-  /* BOTTOM ACTION — MATCHES PITCH FREE MODE */
   bottomAction: {
     paddingTop: 12,
   },
@@ -966,8 +958,6 @@ const styles = StyleSheet.create({
     marginBottom: 52,
     gap: 8,
   },
-
-  /* EXERCISE SCREEN — MATCHES PITCH FREE MODE */
   exerciseContent: {
     flex: 1,
     justifyContent: 'space-between',
@@ -1048,8 +1038,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  /* LIVE VOLUME VISUALIZER */
   visualizerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1100,8 +1088,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     letterSpacing: 1,
   },
-
-  /* LIVE LEVEL CARD */
   stabilityCard: {
     marginTop: 18,
     padding: 18,
@@ -1127,8 +1113,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  /* FREE MODE NOTE — MATCHES PITCH FREE MODE */
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1147,8 +1131,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: DARK,
   },
-
-  /* QUIT CONFIRMATION MODAL — MATCHES PITCH FREE MODE */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(35, 22, 17, 0.48)',

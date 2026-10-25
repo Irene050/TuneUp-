@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -430,8 +429,6 @@ export function useAudioRecorder(
           return;
         }
 
-        // Store the recorder before awaiting start so cancellation
-        // can clean it up after startup settles.
         recorderRef.current = recorder;
 
         const result = await recorder.start();
@@ -526,8 +523,6 @@ export function useAudioRecorder(
       new Date().toISOString(),
     );
 
-    // Defer execution one microtask so stopTaskRef is assigned
-    // before cleanup can finish, even when nothing is active.
     let stopTask: Promise<void>;
 
     stopTask = Promise.resolve().then(async () => {
@@ -651,7 +646,6 @@ export function useAudioRecorder(
           );
         }
       } finally {
-        // Only the active stop task may release the lock.
         if (stopTaskRef.current === stopTask) {
           stopTaskRef.current = null;
           stopRequestedRef.current = false;
@@ -666,8 +660,6 @@ export function useAudioRecorder(
   }, [resetLiveDetection]);
 
   const cancelRecording = useCallback((): Promise<void> => {
-    // Latch cancellation before requesting cleanup. If a normal
-    // stop is already running, it will also suppress onStop.
     discardOnStopRef.current = true;
     stopRequestedRef.current = true;
 

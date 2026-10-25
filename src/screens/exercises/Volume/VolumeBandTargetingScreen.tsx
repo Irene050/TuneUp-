@@ -17,7 +17,7 @@ import {
   VOLUME_BAND_TARGETING_PARAMS,
   type Tier,
   type VolumeBandTargetingParams,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -181,13 +181,6 @@ function hasSufficientRecordedSignal(samples: Float32Array): boolean {
   return rms >= 0.002 && peak >= 0.01 && activeRatio >= 0.01;
 }
 
-/**
- * Combines the audio recorded for each repetition.
- *
- * Each chunk is padded or trimmed to the expected duration so that
- * a short recording from one repetition doesn't shift the boundaries
- * of every repetition that follows it.
- */
 function combineRepSamples(
   chunks: Float32Array[],
   sampleRate: number,
@@ -473,12 +466,8 @@ export default function VolumeBandTargeting({
   const [countdown, setCountdown] = useState(
     PREPARATION_COUNTDOWN_SECONDS,
   );
-
-  // Tracks the repetition whose countdown or recording is active.
   const [currentRep, setCurrentRep] = useState(1);
   const currentRepRef = useRef(1);
-
-  // Each repetition has its own recording chunk.
   const repSamplesRef = useRef<Float32Array[]>([]);
   const repSampleRateRef = useRef<number | null>(null);
   const totalVoicedFrameCountRef = useRef(0);
@@ -497,7 +486,6 @@ export default function VolumeBandTargeting({
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [liveDisplayDb, setLiveDisplayDb] = useState(0);
 
-  // Refs keep smoothing state between renders without affecting recorded audio.
   const smoothedLevelRef = useRef<number | null>(null);
   const quietFrameCountRef = useRef(0);
 
@@ -544,10 +532,6 @@ export default function VolumeBandTargeting({
     resolvedTierRef.current = resolvedTier;
   }, [resolvedTier]);
 
-  /**
-   * Reset the live visual indicator and its smoothing state.
-   * This does not change or clear the actual audio samples being recorded.
-   */
   const resetLiveLevel = useCallback(() => {
     smoothedLevelRef.current = null;
     quietFrameCountRef.current = 0;
@@ -799,8 +783,6 @@ export default function VolumeBandTargeting({
         return;
       }
 
-      // If the input is quiet, append a zero to the history.
-      // After consecutive quiet frames, reset the live meter.
       if (!isUsableVoiceFrame(frame)) {
         quietFrameCountRef.current += 1;
 
@@ -818,9 +800,6 @@ export default function VolumeBandTargeting({
       }
 
       quietFrameCountRef.current = 0;
-
-      // This counter is used as an input-presence check.
-      // It is not a definitive singing or pitch-detection check.
       voicedFrameCountRef.current += 1;
       totalVoicedFrameCountRef.current += 1;
 
@@ -851,7 +830,6 @@ export default function VolumeBandTargeting({
       recordingStartedAtRef.current = null;
       setLiveFrame(null);
 
-      // Discard interrupted recordings. They must not be scored or saved.
       if (
         cancelledRecordingRef.current ||
         pausedRef.current ||
@@ -918,15 +896,12 @@ export default function VolumeBandTargeting({
       }
 
       repSampleRateRef.current = sampleRate;
-
-      // Save this repetition's audio separately.
       repSamplesRef.current.push(samples);
 
       if (
         stopReason === 'rep' &&
         currentRepNumber < currentParams.repetitions
       ) {
-        // Prepare the next repetition and start its own countdown.
         finishingRef.current = false;
         stopRequestedRef.current = false;
         recordingFinishedRef.current = false;
@@ -947,7 +922,6 @@ export default function VolumeBandTargeting({
         return;
       }
 
-      // Final repetition completed. Analyze all repetitions together.
       const recordedChunks = repSamplesRef.current;
       const recordedSampleRate = repSampleRateRef.current;
 
@@ -1131,7 +1105,6 @@ export default function VolumeBandTargeting({
       previousPhase === 'exercise' ||
       previousPhase === 'countdown'
     ) {
-      // An interrupted attempt restarts at Rep 1.
       resetAttemptRefs();
 
       setCurrentRep(1);

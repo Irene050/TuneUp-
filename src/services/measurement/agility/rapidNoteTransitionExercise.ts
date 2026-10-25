@@ -70,14 +70,6 @@ function frequencyDeviationPercent(
   );
 }
 
-/**
- * Aligns detected notes to target notes using the longest
- * common subsequence algorithm. A detected note matches a
- * target note when it is within the allowed semitone error.
- *
- * The alignment preserves order and does not count a detected
- * note more than once.
- */
 function alignNotes(
   detectedNotes: number[],
   targetFrequencies: number[],

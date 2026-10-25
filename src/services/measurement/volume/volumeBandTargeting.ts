@@ -13,11 +13,7 @@ const DEFAULT_TARGET_RANGE: [number, number] = [
 const DEFAULT_DURATION_SECONDS = 3;
 const DEFAULT_REPETITIONS = 2;
 const DEFAULT_TOLERANCE_DB = 7;
-
-// Keep this aligned with the live volume meter.
 const VOLUME_DISPLAY_OFFSET_DB = 70;
-
-// Windows below this raw dBFS level are treated as silence.
 const SILENCE_THRESHOLD_DBFS = -60;
 
 const CONSISTENCY_STDDEV_RANGE_DB = 20;
@@ -77,12 +73,6 @@ function standardDeviation(values: number[]): number {
   return Math.sqrt(Math.max(variance, 0));
 }
 
-/**
- * Scores how steady the volume is.
- *
- * This uses standard deviation in dB rather than the coefficient
- * of variation, which is not ideal for logarithmic dB measurements.
- */
 export function calculateVolumeConsistency(
   dbValues: number[],
 ): number {
@@ -219,7 +209,6 @@ export function measureVolumeBandTargeting(
     sampleRate,
   );
 
-  // toDbArray returns raw dBFS values.
   const rawDbValues = toDbArray(rmsValues);
 
   if (rawDbValues.length === 0) {
@@ -230,9 +219,6 @@ export function measureVolumeBandTargeting(
     );
   }
 
-  // Preserve window positions so each repetition keeps its correct
-  // timing. Silent windows are represented as null instead of being
-  // removed and shifting subsequent windows into earlier positions.
   const shiftedDbValues: Array<number | null> =
     rawDbValues.map((db) => {
       if (!Number.isFinite(db) || db < SILENCE_THRESHOLD_DBFS) {

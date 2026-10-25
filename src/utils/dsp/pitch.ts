@@ -139,7 +139,6 @@ export function filterByClarity(
         i + PITCH_FRAME_SIZE,
       );
 
-      // Timestamp the center of the analyzed frame.
       const timestamp =
         (i + PITCH_FRAME_SIZE / 2) / sampleRate;
 

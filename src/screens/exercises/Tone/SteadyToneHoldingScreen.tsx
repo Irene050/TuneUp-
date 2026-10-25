@@ -22,7 +22,7 @@ import {
   STEADY_TONE_HOLDING_PARAMS,
   type SteadyToneHoldingParams,
   type Tier,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -441,7 +441,6 @@ export default function SteadyToneHoldingScreen({
     tierRef.current = currentTier;
   }, [currentTier]);
 
-  // Load adaptive difficulty parameters.
   useEffect(() => {
     let cancelled = false;
 
@@ -489,7 +488,6 @@ export default function SteadyToneHoldingScreen({
           .map(record => Number(record.scorePct))
           .filter(Number.isFinite);
 
-        // Use the assessment score only when exercise history is empty.
         if (recentScores.length === 0) {
           const latestAssessment = await getLatestAssessment();
 
@@ -644,7 +642,6 @@ export default function SteadyToneHoldingScreen({
         setMeasurement(measured);
         setResult(scored);
 
-        // Save this completed attempt once, even if the user resumes.
         if (!savedRef.current) {
           savedRef.current = true;
 
@@ -913,7 +910,6 @@ export default function SteadyToneHoldingScreen({
     clearTimers();
 
     if (activePhase === 'recording' || recordingRef.current) {
-      // Discard only the interrupted attempt; completed results remain saved.
       discardNextStopRef.current = true;
       stopRequestedRef.current = true;
       recordingRef.current = false;
@@ -976,7 +972,6 @@ export default function SteadyToneHoldingScreen({
         setResult(cached.result);
         setCurrentPhase('results');
       } else {
-        // If analysis or saving is still in progress, let it finish.
         setCurrentPhase('processing');
       }
 

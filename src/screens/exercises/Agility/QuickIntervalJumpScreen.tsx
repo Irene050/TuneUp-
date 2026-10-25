@@ -20,7 +20,7 @@ import {
 import {
   QUICK_INTERVAL_JUMP_PARAMS,
   type Tier,
-} from '@/constants/exercises/agility';
+} from '@/constants/agility';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -791,8 +791,6 @@ export default function QuickIntervalJumpScreen() {
     setIsPlayingReference(false);
     setActiveReferenceNoteIndex(null);
 
-    // Discard only the interrupted repetition. Samples from completed
-    // repetitions stay in memory and will not be counted again.
     if (phase === 'recording') {
       samplesRef.current = samplesRef.current.slice(
         0,
@@ -809,7 +807,6 @@ export default function QuickIntervalJumpScreen() {
     setConfirmation('backToExercises');
   };
 
-  // Android hardware Back opens the same confirmation modal as the on-screen exit button.
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -831,8 +828,6 @@ export default function QuickIntervalJumpScreen() {
     setConfirmation(null);
 
     if (action === 'backToExercises' && phase !== 'results') {
-      // Return to the reference screen for the interrupted repetition.
-      // Pressing "I'm Ready" there starts a fresh three-second countdown.
       setCurrentRepetition(pausedRepetitionRef.current);
       setRecordingTime(0);
       setCountdown(COUNTDOWN_SECONDS);

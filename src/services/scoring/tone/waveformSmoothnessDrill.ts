@@ -1,6 +1,6 @@
 import type {
   WaveformSmoothnessParams,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 
 import type {
   WaveformSmoothnessMeasurement,
@@ -29,14 +29,11 @@ export function scoreWaveformSmoothnessDrill(
     measurement.amplitudeStabilityPct,
   );
 
-  // Centroid smoothness contributes 60%.
-  // Amplitude stability contributes 40%.
   const score = Math.round(
     centroidSmoothnessScore * 0.6 +
       amplitudeStabilityScore * 0.4,
   );
 
-  // Keep higher configured thresholds for more challenging tiers.
   const requiredThreshold = Math.max(
     params.smoothnessThreshold,
     60,

@@ -107,7 +107,7 @@ export type ProgressPeriod = 'daily' | 'weekly' | 'monthly';
 export interface ExerciseAttempt {
   componentId: ComponentProgressSummary['componentId'];
   scorePct: number;
-  timestamp: number; // milliseconds since epoch
+  timestamp: number; 
 }
 
 export interface PeriodStats {

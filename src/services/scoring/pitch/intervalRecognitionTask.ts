@@ -1,5 +1,5 @@
 
-import type { IntervalRecognitionParams } from '@/constants/exercises/pitch';
+import type { IntervalRecognitionParams } from '@/constants/pitch';
 import type { IntervalRecognitionMeasurement } from '@/services/measurement/pitch/intervalRecognitionTask';
 
 export interface IntervalRecognitionScoreResult {
@@ -88,7 +88,6 @@ export function scoreIntervalRecognitionTask(
     ).fill(0),
   ];
 
-  // Missing repetitions count as zero.
   const score = Math.round(
     repetitionScores.reduce((sum, value) => sum + value, 0) /
       requestedRepetitions,

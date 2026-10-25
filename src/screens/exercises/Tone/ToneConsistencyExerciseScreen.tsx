@@ -18,11 +18,11 @@ import {
   View,
 } from 'react-native';
 
-import type { Tier } from '@/constants/exercises/pitch';
+import type { Tier } from '@/constants/pitch';
 import {
   TONE_CONSISTENCY_PARAMS,
   type ToneConsistencyParams,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -113,10 +113,6 @@ function formatVolume(volume: number): string {
   return `${Math.round(volume)} dB`;
 }
 
-/**
- * A lightweight visual monitor driven by live pitch, volume, and elapsed time.
- * These bars represent live vocal activity, not raw audio samples.
- */
 function LiveToneWaveform({
   pitch,
   volume,
@@ -319,7 +315,6 @@ export default function ToneConsistencyExerciseScreen({
     }
   }, []);
 
-  // Load adaptive difficulty and the user's assessed vocal range.
   useEffect(() => {
     let cancelled = false;
 
@@ -379,8 +374,6 @@ export default function ToneConsistencyExerciseScreen({
             setVocalRange(assessment.vocalRange ?? null);
           }
 
-          // Use the assessment as a reference only when there are
-          // no records for this exercise at the resolved tier.
           if (recentScores.length === 0) {
             const assessmentScore = assessment?.scores.find(
               score => score.componentId === 'tone',
@@ -568,7 +561,6 @@ export default function ToneConsistencyExerciseScreen({
     setCurrentScreen('recording');
 
     try {
-      // A new attempt must not inherit a stale stop callback.
       discardNextStopRef.current = false;
 
       await startRecordingRef.current();
@@ -654,7 +646,6 @@ export default function ToneConsistencyExerciseScreen({
       clearTimers();
       isRecordingRef.current = false;
 
-      // An interrupted recording must never be counted as a rep.
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
         finishingRef.current = false;
@@ -1011,7 +1002,6 @@ export default function ToneConsistencyExerciseScreen({
 
     clearTimers();
 
-    // Stop note playback if the exercise was in its listening phase.
     void disposeNotePlayer().catch(error => {
       console.warn('Failed to pause reference note:', error);
     });
@@ -1021,7 +1011,6 @@ export default function ToneConsistencyExerciseScreen({
       isRecordingRef.current ||
       isRecording
     ) {
-      // Discard the partial repetition instead of scoring it.
       discardNextStopRef.current = true;
       finishingRef.current = true;
 
@@ -1059,8 +1048,6 @@ export default function ToneConsistencyExerciseScreen({
       previousScreen === 'listening' ||
       previousScreen === 'countdown'
     ) {
-      // Restart from the beginning so interrupted audio is never
-      // included in the score.
       startingRef.current = false;
       finishingRef.current = false;
       isRecordingRef.current = false;
@@ -1090,7 +1077,6 @@ export default function ToneConsistencyExerciseScreen({
     }
 
     if (previousScreen === 'processing') {
-      // Processing continues while the modal is displayed.
       return;
     }
 
@@ -1143,7 +1129,6 @@ export default function ToneConsistencyExerciseScreen({
     openQuitModal();
   }, [openQuitModal]);
 
-  // Android hardware back opens the same quit confirmation.
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1164,7 +1149,6 @@ export default function ToneConsistencyExerciseScreen({
     return () => subscription.remove();
   }, [openQuitModal]);
 
-  // Cleanup when this screen unmounts.
   useEffect(() => {
     mountedRef.current = true;
 

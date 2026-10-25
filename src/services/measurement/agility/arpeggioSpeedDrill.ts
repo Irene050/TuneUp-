@@ -42,12 +42,6 @@ type PitchAlignment = {
   correctCount: number;
 };
 
-/**
- * Align detected notes to the target notes using dynamic programming.
- *
- * Missing and extra notes are penalized. A missed or extra note will
- * not automatically shift every subsequent note onto the wrong target.
- */
 function calculatePitchAccuracy(
   detectedNotes: number[],
   targetFrequencies: number[],
@@ -62,8 +56,6 @@ function calculatePitchAccuracy(
   const targetCount = targetFrequencies.length;
   const tolerance = Math.max(tolerancePercent, 0.1);
 
-  // dp[i][j] is the minimum alignment cost for the first i
-  // detected notes and the first j target notes.
   const dp: number[][] = Array.from(
     { length: detectedCount + 1 },
     () => Array(targetCount + 1).fill(0),
@@ -98,15 +90,12 @@ function calculatePitchAccuracy(
             100
           : 100;
 
-      // A pitch error within tolerance has a proportionally smaller cost.
-      // Errors at or beyond tolerance cost as much as a missing/extra note.
       const matchCost = clamp(errorPercent / tolerance, 0, 1);
 
       const match = dp[i - 1][j - 1] + matchCost;
       const extra = dp[i - 1][j] + 1;
       const missing = dp[i][j - 1] + 1;
 
-      // Prefer matching on ties to preserve valid note correspondences.
       if (match <= extra && match <= missing) {
         dp[i][j] = match;
         action[i][j] = 'match';
@@ -120,7 +109,6 @@ function calculatePitchAccuracy(
     }
   }
 
-  // Trace the best alignment to score the matched note pairs.
   let i = detectedCount;
   let j = targetCount;
   let totalScore = 0;
@@ -155,17 +143,14 @@ function calculatePitchAccuracy(
       i--;
       j--;
     } else if (i > 0 && (j === 0 || currentAction === 'extra')) {
-      // Extra detected note: contributes zero to the final average.
       i--;
     } else if (j > 0) {
-      // Missing target note: contributes zero to the final average.
       j--;
     } else {
       break;
     }
   }
 
-  // Missing and extra notes both count against pitch accuracy.
   const denominator = Math.max(detectedCount, targetCount);
 
   return {
@@ -174,10 +159,6 @@ function calculatePitchAccuracy(
   };
 }
 
-/**
- * Measures whether the detected notes follow the target order.
- * Notes within one semitone of a target are accepted as a sequence match.
- */
 function calculateSequenceAccuracy(
   detectedNotes: number[],
   targetFrequencies: number[],
@@ -312,8 +293,6 @@ export function measureArpeggioSpeed(
       ? (detectedNotes.length - 1) / (activeSpanMs / 1000)
       : 0;
 
-  // Retained for compatibility with the existing result type.
-  // This currently represents the average interval between note onsets.
   const averageNoteDurationMs =
     detectedNotes.length > 1
       ? activeSpanMs / (detectedNotes.length - 1)

@@ -1,4 +1,4 @@
-import type { SustainedExhaleParams } from '@/constants/exercises/breathControl';
+import type { SustainedExhaleParams } from '@/constants/breathControl';
 import type { SustainedSSSSMeasurement } from '@/services/measurement/breathControl/sustainedSSSS';
 
 export interface SustainedSSSSScoreResult {

@@ -22,7 +22,7 @@ import {
   SUSTAINED_NOTE_STABILITY_PARAMS,
   type SustainedNoteStabilityParams,
   type Tier,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -156,8 +156,6 @@ export default function SustainedNoteStabilityScreen({
     useRef<(() => Promise<void>) | null>(null);
   const stopRecordingRef =
     useRef<(() => Promise<void>) | null>(null);
-
-  // Store the recorder's startup promise so stopping can wait for startup.
   const recorderStartPromiseRef = useRef<Promise<void> | null>(null);
 
   const playTargetAndRecordRef =
@@ -242,7 +240,6 @@ export default function SustainedNoteStabilityScreen({
             .map(record => record.scorePct);
         }
 
-        // Use the assessment score only when no matching exercise history exists.
         if (recentScores.length === 0) {
           const assessment = await getLatestAssessment();
 
@@ -289,10 +286,6 @@ export default function SustainedNoteStabilityScreen({
     };
   }, [tier]);
 
-  /**
-   * Stops an interrupted recording without scoring it.
-   * If recorder startup is pending, stopping waits until startup resolves.
-   */
   const stopAndDiscardRecording = useCallback(async () => {
     discardRecordingRef.current = true;
     stopRequestedRef.current = true;
@@ -450,7 +443,6 @@ export default function SustainedNoteStabilityScreen({
       resetLiveMeasurements();
       changePhase('recording');
 
-      // Keep the raw startup promise so pause and quit can coordinate with it.
       const startPromise = start();
       recorderStartPromiseRef.current = startPromise;
 
@@ -647,7 +639,6 @@ export default function SustainedNoteStabilityScreen({
           setIsStoppingForModal(false);
         }
 
-        // Resume only after the recorder has completely stopped.
         if (
           mountedRef.current &&
           !modalVisibleRef.current &&
@@ -910,7 +901,6 @@ export default function SustainedNoteStabilityScreen({
       return;
     }
 
-    // Restart the interrupted repetition without changing completed results.
     resetLiveMeasurements();
 
     let remaining = COUNTDOWN_SECONDS;
@@ -965,7 +955,6 @@ export default function SustainedNoteStabilityScreen({
     setIsQuitModalVisible(false);
 
     try {
-      // Wait for startup to finish before attempting to stop the recorder.
       await recorderStartPromiseRef.current?.catch(error => {
         console.warn('Recorder startup ended with an error:', error);
       });
@@ -2453,8 +2442,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: BROWN,
   },
-
-  // Quit modal — matched to the Note Matching modal.
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',

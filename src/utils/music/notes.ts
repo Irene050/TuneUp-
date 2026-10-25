@@ -92,9 +92,6 @@ export function getPitchGenerationMidiBounds(
     return tierBounds;
   }
 
-  // Use the detected vocal range when it is valid.
-  // This allows notes outside the tier's default range
-  // when the user's measured range falls outside it.
   return {
     minMidi: detectedBounds.lowMidi,
     maxMidi: detectedBounds.highMidi,
@@ -138,7 +135,6 @@ export function getRandomScale(
     return [];
   }
 
-  // Use the normal major-scale intervals when they fit.
   const intervals = scaleIntervals.slice(0, safeNoteCount);
   const maxInterval = intervals[intervals.length - 1];
 
@@ -155,8 +151,6 @@ export function getRandomScale(
     );
   }
 
-  // If the complete scale does not fit, use the available range.
-  // Select distinct MIDI pitches where possible.
   const availableMidiCount = maxMidi - minMidi + 1;
   const actualNoteCount = Math.min(
     safeNoteCount,
@@ -171,7 +165,6 @@ export function getRandomScale(
     return [createMusicalNote(minMidi)];
   }
 
-  // Spread the notes across the available range.
   const selectedMidiNotes = Array.from(
     { length: actualNoteCount },
     (_, index) =>

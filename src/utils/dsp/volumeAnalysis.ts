@@ -90,7 +90,6 @@ export function analyzeVolumeWindows(
   const dbArray: number[] = [];
   const voicedArray: boolean[] = [];
 
-  // Include the final partial window.
   for (
     let start = 0;
     start < samples.length;

@@ -58,8 +58,6 @@ const RECORDING_START_DELAY_SECONDS = 0.08;
 const RECORDING_END_PADDING_MS = 500;
 const PROCESSING_DELAY_MS = 250;
 
-// Audio scheduler settings. The scheduler wakes frequently but schedules
-// clicks against AudioContext.currentTime, not against JavaScript timer timing.
 const SCHEDULER_INTERVAL_MS = 25;
 const SCHEDULER_LOOKAHEAD_SECONDS = 0.12;
 
@@ -80,10 +78,6 @@ type Phase =
   | 'processing'
   | 'results';
 
-/**
- * Determines the active melody item using the shared elapsed clock.
- * Each melody item stays active for its own number of beats.
- */
 function getCurrentMelodyNoteIndex(elapsedSeconds: number): number {
   const elapsedBeats = Math.max(0, elapsedSeconds) / BEAT_SECONDS;
   let accumulatedBeats = 0;
@@ -99,10 +93,6 @@ function getCurrentMelodyNoteIndex(elapsedSeconds: number): number {
   return MARY_MELODY.length - 1;
 }
 
-/**
- * Uses the same beat clock as the metronome and lyrics.
- * The four dots represent beats 1, 2, 3, and 4 in the measure.
- */
 function getCurrentBeatDot(elapsedSeconds: number): number {
   const elapsedBeats = Math.floor(
     Math.max(0, elapsedSeconds) / BEAT_SECONDS,
@@ -239,8 +229,6 @@ export default function SingingAssessmentScreen() {
   const beatContextRef = useRef<AudioContext | null>(null);
   const beatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nextBeatIndexRef = useRef(0);
-
-  // This timestamp is aligned with the first scheduled metronome click.
   const recordingStartAtRef = useRef<number | null>(null);
 
   const processingRef = useRef(false);
@@ -441,13 +429,6 @@ export default function SingingAssessmentScreen() {
     cancelRecordingRef.current = cancelRecording;
   }, [cancelRecording]);
 
-  /**
-   * Starts the metronome and shared clock.
-   *
-   * All clicks are scheduled against the Web Audio clock. JavaScript's
-   * interval only fills the audio schedule ahead of time; it does not decide
-   * the exact time each click is played.
-   */
   const startBeatGuide = useCallback(async () => {
     await stopBeatGuide();
 
@@ -477,7 +458,6 @@ export default function SingingAssessmentScreen() {
       const firstBeatAt =
         context.currentTime + RECORDING_START_DELAY_SECONDS;
 
-      // Align the UI's elapsed clock to the first audio-clock beat.
       const firstBeatWallTime =
         Date.now() + RECORDING_START_DELAY_SECONDS * 1000;
 
@@ -533,8 +513,6 @@ export default function SingingAssessmentScreen() {
         }
       };
 
-      // Schedule the first click immediately, then fill the audio queue
-      // ahead of time to avoid JavaScript timer drift.
       scheduleUpcomingBeats();
 
       if (nextBeatIndexRef.current < TOTAL_MELODY_BEATS) {
@@ -646,11 +624,6 @@ export default function SingingAssessmentScreen() {
     return () => clearTimeout(timeout);
   }, [phase, countdown, beginRecording]);
 
-  /**
-   * The recording timer waits until the audio guide establishes its start
-   * timestamp. Lyrics, beat dots, progress, and automatic stop all use this
-   * exact shared start timestamp.
-   */
   useEffect(() => {
     if (
       phase !== 'recording' ||
@@ -1559,8 +1532,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: '#A33A3A',
   },
-
-  // Recording screen
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -1599,8 +1570,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 3,
   },
-
-  // Active lyric: smaller than the previous 54px version.
   activeLyricCard: {
     width: '100%',
     backgroundColor: '#FFF0F4',
@@ -1685,8 +1654,6 @@ const styles = StyleSheet.create({
     color: MUTED,
     marginTop: 6,
   },
-
-  // Upcoming and completed lyric items
   lyricStripCard: {
     width: '100%',
     backgroundColor: WHITE,
@@ -1776,8 +1743,6 @@ const styles = StyleSheet.create({
   lyricChipTextPast: {
     color: MUTED,
   },
-
-  // Live pitch feedback
   liveCard: {
     backgroundColor: LIGHT_PINK,
     borderRadius: 18,
@@ -1901,8 +1866,6 @@ const styles = StyleSheet.create({
     backgroundColor: WHITE,
     justifyContent: 'center',
   },
-
-  // Results
   resultList: {
     backgroundColor: WHITE,
     borderRadius: 18,
@@ -1982,8 +1945,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: 10,
   },
-
-  // Quit confirmation modal
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',

@@ -1,4 +1,3 @@
-
 import {
   extractAgilityNotes,
   extractAgilityPitchFrames,
@@ -23,7 +22,6 @@ const MIN_FREQUENCY = 70;
 const MAX_FREQUENCY = 1000;
 const MIN_RMS = 0.008;
 const MIN_CORRELATION = 0.70;
-
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const CONFIRMATION_FRAMES = 3;
@@ -58,7 +56,6 @@ function alignNotes(
     () => Array(targetLength + 1).fill(0),
   );
 
-  // 1 = match/substitution, 2 = extra detected note, 3 = missed target.
   for (let i = 1; i <= detectedLength; i++) {
     dp[i][0] = i;
     direction[i][0] = 2;
@@ -257,9 +254,6 @@ export function measureVocalRunAccuracy(
     const currentTargetIndex =
       alignment.matchedTargetIndices[index];
 
-    // Only score consecutive target notes.
-    // Extra detected notes no longer cause the transition
-    // to be silently excluded.
     if (currentTargetIndex !== previousTargetIndex + 1) {
       continue;
     }

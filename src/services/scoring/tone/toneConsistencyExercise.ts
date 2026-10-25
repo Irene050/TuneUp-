@@ -1,13 +1,13 @@
 import type {
-  ToneConsistencyParams,
-} from '@/constants/exercises/tone';
+    ToneConsistencyParams,
+} from '@/constants/tone';
 
 import type {
-  ToneConsistencyMeasurement,
+    ToneConsistencyMeasurement,
 } from '@/services/measurement/tone/toneConsistencyExercise';
 
 import {
-  calcCrossRepConsistency,
+    calcCrossRepConsistency,
 } from '@/utils/dsp/spectral';
 
 export interface ToneConsistencyScoreResult {

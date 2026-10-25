@@ -77,30 +77,17 @@ const MIN_RMS = 0.002;
 const MIN_CLARITY = 0.7;
 const MIN_HZ = 60;
 const MAX_HZ = 1500;
-
 const MIN_EVENT_FRAMES = 2;
 const MAX_FRAME_GAP_SECONDS = 0.12;
 const NOTE_CHANGE_SEMITONES = 1.5;
-
 const MIN_DURATION_SECONDS = 5;
 const MIN_VOICED_FRAMES = 12;
 const MIN_DETECTED_EVENTS = 4;
 const MIN_VOICED_COVERAGE = 0.12;
-
-// Ignore note boundaries when measuring pitch, because transitions
-// between syllables often contain brief slides and consonant sounds.
 const NOTE_EDGE_IGNORE_RATIO = 0.15;
-
-// Permit a short leading delay before the first sung note.
-// This shifts the evaluation windows but does not award rhythm points.
 const MAX_START_OFFSET_SECONDS = 2;
 const START_OFFSET_STEP_SECONDS = 0.05;
-
-// Pitch error scoring in cents:
-// 0 cents = 100, 50 cents = 50, 100 cents or more = 0.
 const CENTS_FOR_ZERO_ACCURACY = 100;
-
-// A reference note needs enough pitch frames to be evaluated.
 const MIN_FRAMES_PER_REFERENCE_NOTE = 2;
 
 function clamp(
@@ -192,12 +179,6 @@ function getPitchFrames(
   return frames;
 }
 
-/**
- * Creates reference-note windows using the melody's expected beat lengths.
- *
- * The timestamps are relative to the start of the melody, not to the
- * current UI highlight or the recording's final duration.
- */
 function buildReferenceTimeline(): ReferenceNote[] {
   const secondsPerBeat = 60 / SINGING_ASSESSMENT_BPM;
   let cursor = 0;
@@ -226,10 +207,6 @@ function getExpectedMelodyDuration(): number {
   ].endTime;
 }
 
-/**
- * Group detected pitches for diagnostic note counts and stability analysis.
- * The final melody-accuracy score does not depend on these event boundaries.
- */
 function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
   const events: NoteEvent[] = [];
   let current: PitchFrame[] = [];
@@ -274,10 +251,6 @@ function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
   return events;
 }
 
-/**
- * Maps an absolute pitch error in cents to an accuracy score.
- * Large errors, including octave errors, receive zero accuracy.
- */
 function centsToAccuracy(errorCents: number): number {
   return round1(
     clamp(
@@ -286,12 +259,6 @@ function centsToAccuracy(errorCents: number): number {
   );
 }
 
-/**
- * Collects usable pitch frames from the interior of one expected note.
- *
- * A frame must fall within the reference note's interior, not just near
- * its start or end. This reduces the effect of pitch transitions.
- */
 function getFramesForReferenceNote(
   frames: PitchFrame[],
   note: ReferenceNote,
@@ -312,14 +279,6 @@ function getFramesForReferenceNote(
   );
 }
 
-/**
- * Evaluate the median pitch within each expected note window.
- *
- * Every reference note contributes to the final score. A note without
- * sufficient usable pitch data receives zero accuracy instead of being
- * silently omitted. The time windows identify notes; timing deviations
- * are not separately deducted as a rhythm score.
- */
 function evaluateReferenceNotes(
   frames: PitchFrame[],
   startOffset: number,
@@ -358,12 +317,6 @@ function evaluateReferenceNotes(
   });
 }
 
-/**
- * Select the leading offset that best fits the reference melody.
- *
- * A small offset helps when the singer starts just after the recording
- * begins. It does not transpose the melody or change the reference key.
- */
 function findBestMelodyAlignment(
   frames: PitchFrame[],
   durationSeconds: number,
@@ -425,15 +378,6 @@ function calculateMelodyAccuracy(
   return round1(clamp(scoreEvaluations(evaluations)));
 }
 
-/**
- * Calculate pitch stability within reference-note windows.
- *
- * This measures variation around each window's median pitch. It avoids
- * penalizing a legitimate transition from one reference note to another.
- * Notes without enough frames are excluded from stability, but they still
- * count as missing in pitch accuracy.
- */
-
 function calculateStability(events: NoteEvent[]): number {
   const usableEvents = events.filter(
     (event) => event.frames.length >= MIN_EVENT_FRAMES,
@@ -459,16 +403,11 @@ function calculateStability(events: NoteEvent[]): number {
 
   const averageVariation = totalVariation / totalFrames;
 
-  // Smoothly reduce the score as within-note pitch variation increases.
-  // 0 cents = 100; 25 cents = 75; 50 cents = 50; 100 cents = 0.
   return round1(
     clamp(100 - averageVariation),
   );
 }
 
-/**
- * Measures recorded microphone-level consistency, not vocal quality.
- */
 function calculateVocalConsistency(
   frames: PitchFrame[],
 ): number {
@@ -594,8 +533,6 @@ export function calculateSingingAssessmentScore(
     SINGING_ASSESSMENT_BUFFER_SIZE / 2,
   );
 
-  // This is an estimate because pitch-analysis windows overlap.
-  // It is used only as a rough data-quality check, not as a score.
   const voicedDurationEstimate = Math.min(
     durationSeconds,
     frames.length * (hopSize / sampleRate),
@@ -630,8 +567,6 @@ export function calculateSingingAssessmentScore(
 
   const vocalConsistency = calculateVocalConsistency(frames);
 
-  // Keep the original scoring contract: pitch correctness is primary.
-  // Vocal consistency remains informational and is not part of the total.
   const overallScore = round1(
     clamp(
       pitchAccuracy * 0.8 +

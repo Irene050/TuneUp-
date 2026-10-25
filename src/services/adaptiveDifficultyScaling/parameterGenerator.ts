@@ -9,7 +9,7 @@ import {
   type SteadyAirflowParams,
   type SustainedExhaleParams,
   type Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 
 import {
   INTERVAL_RECOGNITION_PARAMS,
@@ -22,7 +22,7 @@ import {
   type NoteMatchingParams,
   type ScaleAccuracyParams,
   type SustainedNoteStabilityParams,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 
 import {
   FREQUENCY_ZONE_STABILITY_PARAMS,
@@ -35,7 +35,7 @@ import {
   type ToneConsistencyParams,
   type VowelConsistencyParams,
   type WaveformSmoothnessParams,
-} from '@/constants/exercises/tone';
+} from '@/constants/tone';
 
 import {
   CONTROLLED_CRESCENDO_PARAMS,
@@ -48,7 +48,7 @@ import {
   type DynamicRangeParams,
   type VolumeBandTargetingParams,
   type VolumeControlStabilityParams,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 
 import {
   ARPEGGIO_SPEED_DRILL_PARAMS,
@@ -56,7 +56,7 @@ import {
   RAPID_NOTE_TRANSITION_PARAMS,
   RAPID_SCALE_TRILL_PARAMS,
   VOCAL_RUN_ACCURACY_PARAMS,
-} from '@/constants/exercises/agility';
+} from '@/constants/agility';
 
 import {
   calculateAdjustedParameterBounds,
@@ -1139,9 +1139,6 @@ export function generateSteadyToneHoldingParams({
         generatedQualityThreshold.toFixed(2),
       ),
 
-    // Retained at the tier-defined value because
-    // variancePct is not currently used by the
-    // measurement or scoring logic.
     variancePct:
       baseParams.variancePct,
   };
@@ -1362,7 +1359,6 @@ export function generateControlledCrescendoParams({
     ).toFixed(2),
   );
 
-  // Keep a positive gap between the lower and upper targets.
   const minimumGap = baseMax - baseMin;
 
   const targetDbRange: [number, number] = [

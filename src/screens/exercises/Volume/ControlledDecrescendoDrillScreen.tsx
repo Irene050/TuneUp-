@@ -15,7 +15,7 @@ import {
 import {
   CONTROLLED_DECRESCENDO_PARAMS,
   type Tier,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 import {
   type LiveAudioFrame,
   useAudioRecorder,
@@ -555,8 +555,6 @@ export default function ControlledDecrescendoDrill({
           return;
         }
 
-        // Assessment scores are used only when there is no matching
-        // completed exercise history for this tier and template.
         if (recentScores.length === 0) {
           try {
             const assessment = await getLatestAssessment();
@@ -662,14 +660,12 @@ export default function ControlledDecrescendoDrill({
     },
 
     onStop: (samples, sampleRate) => {
-      // Discard the interrupted repetition, but preserve completed reps.
       if (discardInterruptedStopRef.current) {
         discardInterruptedStopRef.current = false;
         clearLiveState();
         return;
       }
 
-      // Save a completed repetition without including its countdown.
       if (interRepStopRef.current) {
         interRepStopRef.current = false;
 
@@ -680,7 +676,6 @@ export default function ControlledDecrescendoDrill({
         return;
       }
 
-      // Manual cancellation must never produce a scored result.
       if (!completedNaturallyRef.current) {
         repetitionSamplesRef.current = [];
         finishingRef.current = false;
@@ -708,7 +703,6 @@ export default function ControlledDecrescendoDrill({
         const exerciseSamples = new Float32Array(totalSampleCount);
         let sampleOffset = 0;
 
-        // Join only recorded repetition audio. Do not pad with silence.
         for (const segment of trimmedSegments) {
           exerciseSamples.set(segment, sampleOffset);
           sampleOffset += segment.length;
@@ -794,8 +788,6 @@ export default function ControlledDecrescendoDrill({
     showQuitModalRef.current = true;
     setShowQuitModal(true);
 
-    // An interrupted repetition is discarded; completed repetitions
-    // remain in repetitionSamplesRef for when the user resumes.
     if (
       phaseRef.current === 'exercise' &&
       isRecording
@@ -827,7 +819,6 @@ export default function ControlledDecrescendoDrill({
     setShowQuitModal(false);
 
     if (pausedPhase === 'exercise') {
-      // Resume the same repetition after a fresh countdown.
       setSeconds(0);
       setGuideElapsed(0);
       setLiveFrame(null);
@@ -843,7 +834,6 @@ export default function ControlledDecrescendoDrill({
       pausedPhase === 'countdown' ||
       pausedPhase === 'repCountdown'
     ) {
-      // The countdown effect will restart when the modal closes.
       setCountdownSeconds(COUNTDOWN_SECONDS);
       phaseRef.current = pausedPhase;
       setPhase(pausedPhase);
@@ -980,8 +970,6 @@ export default function ControlledDecrescendoDrill({
             await startRecording();
 
             if (cancelled) {
-              // If the countdown was interrupted while recording
-              // was starting, stop the newly opened recording.
               try {
                 await stopRecording();
               } catch {
@@ -1054,14 +1042,12 @@ export default function ControlledDecrescendoDrill({
           return previousSeconds + 1;
         }
 
-        // Each repetition is stopped and stored separately.
         if (rep < repetitions) {
           phaseRef.current = 'repCountdown';
           setPhase('repCountdown');
           return rampSeconds;
         }
 
-        // Only the final repetition completes and triggers measurement.
         if (
           !finishingRef.current &&
           !completedNaturallyRef.current

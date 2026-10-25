@@ -1,5 +1,5 @@
 
-import type { SteadyAirflowParams } from '@/constants/exercises/breathControl';
+import type { SteadyAirflowParams } from '@/constants/breathControl';
 import type { SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 
 export interface SteadyAirflowScoreResult {

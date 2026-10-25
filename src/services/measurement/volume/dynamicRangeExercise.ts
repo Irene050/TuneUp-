@@ -84,8 +84,6 @@ export function measureDynamicRange(
   const actualRecordingDurationSeconds =
     samples.length / sampleRate;
 
-  // Prefer actual repetition boundaries. When they aren't supplied,
-  // fall back to contiguous repetitions for backward compatibility.
   const repetitionIntervals =
     options.repetitionIntervals?.length
       ? options.repetitionIntervals
@@ -146,7 +144,6 @@ export function measureDynamicRange(
       continue;
     }
 
-    // Split the available windows proportionally into three phases.
     const firstEnd = Math.ceil(
       repetition.length / PHASES_PER_REPETITION,
     );

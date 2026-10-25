@@ -1,4 +1,3 @@
-
 import {
   extractAgilityPitchFrames,
   frequencyToMidi,
@@ -266,7 +265,6 @@ export function measureQuickIntervalJump(
     100,
   );
 
-  // Pitch accuracy is evaluated using aligned note pairs.
   let totalSemitoneError = 0;
 
   for (const pair of alignment.matchedPairs) {
@@ -288,8 +286,6 @@ export function measureQuickIntervalJump(
         )
       : 0;
 
-  // Count expected target transitions. A transition is correct
-  // only when both adjacent target notes have aligned detections.
   const transitionCount = Math.max(0, targetNotes.length - 1);
   let correctTransitionCount = 0;
   const transitionTimesMs: number[] = [];

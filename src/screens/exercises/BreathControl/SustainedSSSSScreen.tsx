@@ -20,7 +20,7 @@ import {
 import type {
   SustainedExhaleParams,
   Tier,
-} from '@/constants/exercises/breathControl';
+} from '@/constants/breathControl';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -737,7 +737,6 @@ export default function SustainedSSSSScreen({
     setVolume(null);
 
     if (currentPhase === 'recording') {
-      // Discard the interrupted repetition, preserving earlier results.
       discardNextStopRef.current = true;
       startingRef.current = false;
       finishingRef.current = true;
@@ -745,11 +744,8 @@ export default function SustainedSSSSScreen({
       stopRecordingRef.current?.();
       setElapsed(0);
     } else if (currentPhase === 'countdown') {
-      // Continue with a fresh countdown for the same repetition.
       setCountdown(PREPARATION_COUNTDOWN);
     }
-
-    // If processing, retain the analyzed result and pending transition.
     setQuitModalVisible(true);
   }, [clearTimers, setQuitModalVisible]);
 
@@ -768,7 +764,6 @@ export default function SustainedSSSSScreen({
     const previousPhase = pausedPhaseRef.current;
 
     if (previousPhase === 'recording') {
-      // Restart only the interrupted repetition.
       startingRef.current = false;
       finishingRef.current = false;
       setElapsed(0);

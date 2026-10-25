@@ -25,15 +25,9 @@ export type RapidScaleTrillMeasurement = {
 const MIN_FREQUENCY = 70;
 const MAX_FREQUENCY = 1000;
 const MIN_RMS = 0.008;
-
 const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
-
-// Two consecutive frames help reject brief pitch fluctuations.
-// At 44.1 kHz with a 1024-sample hop, this is roughly 23 ms
-// between frames, though confirmation also depends on pitch validity.
 const NOTE_CONFIRMATION_FRAMES = 2;
-
 const MIN_CORRELATION = 0.3;
 const NOTE_TOLERANCE_SEMITONES = 1;
 
@@ -149,9 +143,6 @@ export function measureRapidScaleTrill(
     };
   }
 
-  // Compare each detected note against the corresponding target.
-  // Missing detected notes reduce sequence accuracy because the
-  // denominator is the full target sequence length.
   const comparedCount = Math.min(
     detectedNotes.length,
     targetNotes.length,
@@ -177,8 +168,6 @@ export function measureRapidScaleTrill(
       ? (correctNoteCount / targetNotes.length) * 100
       : 0;
 
-  // Keep pitch accuracy separate from sequence completeness.
-  // Extra detected notes cannot increase either score.
   const averageSemitoneError =
     comparedCount > 0
       ? totalSemitoneError / comparedCount
@@ -190,7 +179,6 @@ export function measureRapidScaleTrill(
     100,
   );
 
-  // Count actual detected transitions.
   const transitionCount = Math.max(
     0,
     detectedNotes.length - 1,

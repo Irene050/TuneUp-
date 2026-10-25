@@ -21,7 +21,7 @@ import {
   SCALE_ACCURACY_PARAMS,
   type ScaleAccuracyParams,
   type Tier,
-} from '@/constants/exercises/pitch';
+} from '@/constants/pitch';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
@@ -261,8 +261,6 @@ function LivePitchIndicator({
   const absoluteOffset =
     centsOffset === null ? null : Math.abs(centsOffset);
 
-  // Keep the marker inside the track so it never gets clipped.
-  // Negative cents = flat/left; positive cents = sharp/right.
   const markerPosition =
     centsOffset === null
       ? 50
@@ -2026,8 +2024,6 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
-
-  // Recording screen
   recordingScreen: {
     flex: 1,
     backgroundColor: WHITE,
@@ -2059,8 +2055,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
   },
-
-  // Main live card
   liveCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2070,8 +2064,6 @@ const styles = StyleSheet.create({
     padding: 13,
     marginTop: 19,
   },
-
-  // Live pitch guide
   pitchGuide: {
     width: '100%',
     padding: 13,
@@ -2156,8 +2148,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: 8,
   },
-
-  // Horizontal tuning meter
   pitchMeterLabels: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2289,8 +2279,6 @@ const styles = StyleSheet.create({
     minWidth: 48,
     textAlign: 'right',
   },
-
-  // Live stats
   liveStats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2335,8 +2323,6 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: BORDER,
   },
-
-  // Scale sequence
   scalePreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2401,8 +2387,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: MUTED,
   },
-
-  // Listening scale preview
   sharedScalePreview: {
     width: '100%',
     flexDirection: 'row',
@@ -2426,8 +2410,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: BROWN,
   },
-
-  // Results
   resultCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2530,8 +2512,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginLeft: 10,
   },
-
-  // Quit modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',

@@ -24,7 +24,7 @@ import {
 import {
   VOCAL_RUN_ACCURACY_PARAMS,
   type Tier,
-} from '@/constants/exercises/agility';
+} from '@/constants/agility';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -265,13 +265,9 @@ export default function VocalRunAccuracyTaskScreen() {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        // Keep the confirmation visible if Back is pressed again while it is open.
         if (confirmationType !== null) {
           return true;
         }
-
-        // Pause the current repetition and ask before leaving the exercise.
-        // Continue Exercise returns to this same repetition's reference screen.
         countdownRunIdRef.current += 1;
         cancelReferencePlayback();
         if (phaseRef.current === 'countdown' || phaseRef.current === 'recording') {

@@ -14,7 +14,6 @@ export const TIER_PROGRESSION_REQUIREMENTS = {
     minTemplatesCovered: 4,
     minPerTemplate: 3,
   },
-
   intermediateToAdvanced: {
     minExercises: 30,
     minAccuracyPct: 90,

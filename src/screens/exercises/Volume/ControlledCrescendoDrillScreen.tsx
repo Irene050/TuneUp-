@@ -22,7 +22,7 @@ import {
 import {
   CONTROLLED_CRESCENDO_PARAMS,
   type Tier,
-} from '@/constants/exercises/volume';
+} from '@/constants/volume';
 import {
   type LiveAudioFrame,
   useAudioRecorder,
@@ -370,7 +370,6 @@ export default function ControlledCrescendoExercise({
     setLiveHistory([]);
   }, []);
 
-  // Select a comfortable reference note from the saved vocal range.
   useEffect(() => {
     let cancelled = false;
 
@@ -439,7 +438,6 @@ export default function ControlledCrescendoExercise({
     };
   }, []);
 
-  // Initialize the adaptive exercise parameters.
   useEffect(() => {
     let cancelled = false;
 
@@ -634,14 +632,11 @@ export default function ControlledCrescendoExercise({
     },
 
     onStop: (samples, sampleRate) => {
-      // The recording was interrupted by opening the quit modal.
-      // Discard only this incomplete segment and preserve earlier reps.
       if (discardInterruptedStopRef.current) {
         discardInterruptedStopRef.current = false;
         return;
       }
 
-      // Keep each repetition's raw samples and exclude countdown pauses.
       if (interRepStopRef.current) {
         interRepStopRef.current = false;
 
@@ -652,7 +647,6 @@ export default function ControlledCrescendoExercise({
         return;
       }
 
-      // Do not score or save manually cancelled recordings.
       if (
         !completedNaturallyRef.current ||
         pausedRef.current ||
@@ -764,8 +758,6 @@ export default function ControlledCrescendoExercise({
     stopRecordingRef.current = stopRecording;
   }, [stopRecording]);
 
-  // Keep the guide timer paused while the quit modal is open.
-  // Resume from its previous elapsed value instead of resetting it.
   useEffect(() => {
     if (phase !== 'exercise' || showQuitModal) {
       return;
@@ -790,7 +782,6 @@ export default function ControlledCrescendoExercise({
     return () => clearInterval(interval);
   }, [phase, rep, rampSeconds, showQuitModal]);
 
-  // Update the displayed timer only while actively recording.
   useEffect(() => {
     if (phase !== 'exercise' || showQuitModal) {
       return;
@@ -813,7 +804,6 @@ export default function ControlledCrescendoExercise({
     return () => clearInterval(interval);
   }, [phase, rampSeconds, showQuitModal]);
 
-  // Pause recording between repetitions so countdown audio is not measured.
   useEffect(() => {
     if (
       phase !== 'exercise' ||
@@ -908,7 +898,6 @@ export default function ControlledCrescendoExercise({
     setCurrentPhase,
   ]);
 
-  // Start the next repetition after the countdown completes.
   useEffect(() => {
     if (
       phase !== 'countdown' ||
@@ -1030,8 +1019,6 @@ export default function ControlledCrescendoExercise({
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
-    // If recording, stop and discard only the interrupted segment.
-    // Previously completed repetition segments remain untouched.
     if (currentPhase === 'exercise' && isRecording) {
       discardInterruptedStopRef.current = true;
       completedNaturallyRef.current = false;
@@ -1062,13 +1049,11 @@ export default function ControlledCrescendoExercise({
         );
       }
 
-      // This repetition must restart from the beginning.
       setSeconds(0);
       setGuideElapsed(0);
       setCountdown(PREPARATION_COUNTDOWN);
       setCountdownReady(false);
     } else if (currentPhase === 'countdown') {
-      // Keep the current repetition but restart its countdown on resume.
       setCountdown(PREPARATION_COUNTDOWN);
       setCountdownReady(false);
     }
@@ -1088,8 +1073,6 @@ export default function ControlledCrescendoExercise({
     const pausedPhase = pausedPhaseRef.current;
 
     if (pausedPhase === 'exercise' || pausedPhase === 'countdown') {
-      // A recorder cannot reliably resume a partially interrupted
-      // recording. Restart this repetition while preserving earlier reps.
       finishingRef.current = false;
       completedNaturallyRef.current = false;
       interRepStopRef.current = false;

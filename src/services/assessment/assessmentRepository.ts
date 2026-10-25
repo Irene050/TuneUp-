@@ -134,10 +134,6 @@ export async function getLatestAssessment():
   return latest ?? null;
 }
 
-/**
- * Converts Firestore timestamps and legacy numeric timestamps
- * into milliseconds for display in the progress screen.
- */
 function toTimestampMillis(value: unknown): number {
   if (value instanceof Timestamp) {
     return value.toMillis();
@@ -184,10 +180,6 @@ function toSavedSingingAssessment(
   };
 }
 
-/**
- * Retrieves the most recent singing assessments for the
- * currently signed-in user.
- */
 export async function getRecentSingingAssessments(
   count: number = 2
 ): Promise<SavedSingingAssessmentResult[]> {

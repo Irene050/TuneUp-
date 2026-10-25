@@ -270,8 +270,6 @@ export default function AssessmentScreen() {
   const agilityConfirmationCountRef = useRef(0);
   const agilityCompletionTriggeredRef = useRef(false);
   const playbackGenerationRef = useRef(0);
-
-  // Keep current recorder functions available to asynchronous cleanup.
   const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
   const cancelRecordingRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -434,8 +432,6 @@ export default function AssessmentScreen() {
       stoppingRef.current = true;
       clearRecordingTimer();
       setRemainingSeconds(0);
-
-      // This is a normal completion, so retain the recorded audio.
       const stopPromise = stopRecordingRef.current?.();
 
       stopPromise?.catch(err => {
@@ -464,7 +460,6 @@ export default function AssessmentScreen() {
       setRemainingSeconds(0);
       stoppingRef.current = false;
 
-      // Discard callbacks belonging to an abandoned or cancelled session.
       if (quittingRef.current || !recordedStep) {
         return;
       }
@@ -536,7 +531,6 @@ export default function AssessmentScreen() {
     onStop: handleAudioStop,
   });
 
-  // Refresh these references on each render for cleanup and frame callbacks.
   stopRecordingRef.current = stopRecording;
   cancelRecordingRef.current = cancelRecording;
 
@@ -673,8 +667,6 @@ export default function AssessmentScreen() {
     try {
       await startRecording();
 
-      // Quit may have been confirmed while microphone startup was pending.
-      // Cancel instead of stopping normally so the abandoned audio is discarded.
       if (quittingRef.current) {
         try {
           await cancelRecording();
@@ -713,7 +705,6 @@ export default function AssessmentScreen() {
 
         stoppingRef.current = true;
 
-        // Timer completion should preserve and process the recorded audio.
         stopRecording().catch(err => {
           console.error('Assessment automatic stop error:', err);
 
@@ -771,7 +762,6 @@ export default function AssessmentScreen() {
     clearRecordingTimer();
 
     try {
-      // Manual stop is a normal completion; keep the captured audio.
       await stopRecording();
     } catch (err) {
       console.error('Failed to stop assessment recording:', err);
@@ -803,8 +793,6 @@ export default function AssessmentScreen() {
     if (isQuitting || quittingRef.current) {
       return;
     }
-
-    // Block onStop and all delayed callbacks before cancelling the recorder.
     quittingRef.current = true;
     playbackGenerationRef.current += 1;
 
@@ -816,7 +804,6 @@ export default function AssessmentScreen() {
     agilityCompletionTriggeredRef.current = true;
 
     try {
-      // Include pending startup, not just React's recording state.
       const recorderMayBeActive =
         isRecording ||
         isRecordingSection ||
@@ -824,7 +811,6 @@ export default function AssessmentScreen() {
         recordingStepRef.current !== null;
 
       if (recorderMayBeActive) {
-        // Quit discards the recording; it must not invoke normal completion.
         await cancelRecording();
       }
     } catch (err) {
@@ -856,8 +842,6 @@ export default function AssessmentScreen() {
       setShowQuitModal(false);
       setStep('intro');
       setIsQuitting(false);
-
-      // Keep the abandoned-session guard enabled until a new session starts.
     }
   }, [
     isQuitting,
@@ -867,7 +851,6 @@ export default function AssessmentScreen() {
     cancelRecording,
   ]);
 
-  // Handle Android hardware Back throughout the assessment.
   useEffect(() => {
     if (!isAssessmentInProgress) {
       return;
@@ -893,8 +876,6 @@ export default function AssessmentScreen() {
     return () => subscription.remove();
   }, [isAssessmentInProgress, showQuitModal, isQuitting]);
 
-  // Cancel the recorder when navigation removes this screen.
-  // Refs ensure cleanup uses the most recent recorder callback.
   useEffect(() => {
     return () => {
       quittingRef.current = true;
@@ -1446,7 +1427,6 @@ export default function AssessmentScreen() {
           style={styles.primaryButton}
           disabled={isQuitting}
           onPress={() => {
-            // Start a fresh session after a previous quit.
             quittingRef.current = false;
             startingSectionRef.current = false;
             stoppingRef.current = false;
