@@ -908,7 +908,7 @@ export default function VolumeControlStabilityScreen({
       }
     }
 
-    router.replace('/dashboard?tab=exercises' as any);
+    router.replace('/exercises/volume' as any);
   }, [stopRecording]);
 
   useEffect(() => {

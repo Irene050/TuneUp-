@@ -870,7 +870,7 @@ export default function DiaphragmaticBreathingScreen({
     }
 
     setExitPromptVisible(false);
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/breath-control');
   }, [clearTimers, setExitPromptVisible]);
 
   useEffect(() => {

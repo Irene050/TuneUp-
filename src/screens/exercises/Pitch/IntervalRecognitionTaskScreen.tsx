@@ -1233,7 +1233,7 @@ export default function IntervalRecognitionTaskScreen({
         }
       }
     } finally {
-      router.replace('/dashboard?tab=exercises');
+      router.replace('/exercises/pitch');
     }
   }, [
     clearTimers,

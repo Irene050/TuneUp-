@@ -793,7 +793,7 @@ export default function SteadyAirflowMaintenanceScreen({
       );
     } finally {
       if (mountedRef.current) {
-        router.replace('/dashboard?tab=exercises');
+        router.replace('/exercises/breath-control');
       }
     }
   }, [

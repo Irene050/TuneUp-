@@ -1247,7 +1247,7 @@ export default function MelodicPatternMatchingScreen({
     stopRequestedRef.current = false;
     processingRef.current = false;
 
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/pitch');
   }, [clearCountdownTimer, clearRecordingTimer]);
 
   const retry = useCallback(async () => {

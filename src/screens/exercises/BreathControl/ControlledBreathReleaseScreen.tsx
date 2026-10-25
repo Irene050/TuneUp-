@@ -310,7 +310,7 @@ export default function ControlledBreathReleaseScreen({
     }
 
     setShowQuitModal(false);
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/breath-control');
   }, [clearTimers]);
 
   const confirmQuitExercise = useCallback(() => {

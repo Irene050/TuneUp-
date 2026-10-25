@@ -1382,7 +1382,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       console.warn('Could not dispose note player:', error);
     }
 
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/pitch');
   }, [clearTimers, isRecording]);
 
   const goBack = useCallback(() => {

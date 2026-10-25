@@ -1003,7 +1003,7 @@ export default function VowelConsistencyExerciseScreen({
       );
     } finally {
       if (mountedRef.current) {
-        router.replace('/dashboard?tab=exercises');
+        router.replace('/exercises/tone');
       }
     }
   }, [clearTimers]);

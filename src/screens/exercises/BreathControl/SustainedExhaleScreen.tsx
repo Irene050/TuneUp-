@@ -790,7 +790,7 @@ export default function SustainedExhaleScreen({
       );
     } finally {
       if (mountedRef.current) {
-        router.replace('/dashboard?tab=exercises');
+        router.replace('/exercises/breath-control');
       }
     }
   }, [clearTimers]);

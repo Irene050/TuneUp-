@@ -989,7 +989,7 @@ export default function SustainedNoteStabilityScreen({
     }
 
     if (mountedRef.current) {
-      router.replace('/dashboard?tab=exercises');
+      router.replace('/exercises/pitch');
     }
   }, [clearTimers, isRecording]);
 

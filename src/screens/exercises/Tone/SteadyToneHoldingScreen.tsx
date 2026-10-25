@@ -1010,7 +1010,7 @@ export default function SteadyToneHoldingScreen({
       }
     }
 
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/tone');
   }, [clearTimers, isRecording]);
 
   const retry = useCallback(() => {

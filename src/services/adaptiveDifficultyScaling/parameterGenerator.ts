@@ -1931,6 +1931,11 @@ type RapidScaleTrillVocalRange = {
   lowHz: number;
   highHz: number;
 };
+const RAPID_SCALE_TRILL_PATTERNS: Record<Tier, number[]> = {
+  beginner: [0, 2, 4, 2, 0, 2, 4, 2],
+  intermediate: [0, 2, 4, 2, 0, 2, 4, 7, 4, 2],
+  advanced: [0, 2, 4, 6, 8, 6, 4, 2, 0, 2, 4, 6, 8, 6, 4, 2],
+};
 function rapidScaleTrillHzToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
@@ -1938,7 +1943,7 @@ function rapidScaleTrillMidiToHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 function generateRapidScaleTrillFrequencies(
-  baseFrequencies: readonly number[],
+  tier: Tier,
   vocalRange?: RapidScaleTrillVocalRange | null,
 ): number[] {
   if (
@@ -1946,96 +1951,92 @@ function generateRapidScaleTrillFrequencies(
     !Number.isFinite(vocalRange.lowHz) ||
     !Number.isFinite(vocalRange.highHz) ||
     vocalRange.lowHz <= 0 ||
-    vocalRange.highHz <= vocalRange.lowHz ||
-    baseFrequencies.length === 0 ||
-    baseFrequencies.some(
-      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
-    )
+    vocalRange.highHz <= vocalRange.lowHz
   ) {
-    return [...baseFrequencies];
+    return [];
   }
-
-  const baseMidis = baseFrequencies.map((frequency) =>
-    Math.round(rapidScaleTrillHzToMidi(frequency)),
-  );
-  const baseMinMidi = Math.min(...baseMidis);
-  const baseMaxMidi = Math.max(...baseMidis);
-
   const rangeMinMidi = Math.ceil(
     rapidScaleTrillHzToMidi(vocalRange.lowHz),
   );
   const rangeMaxMidi = Math.floor(
     rapidScaleTrillHzToMidi(vocalRange.highHz),
   );
-
-  const lowestAllowedShift = rangeMinMidi - baseMinMidi;
-  const highestAllowedShift = rangeMaxMidi - baseMaxMidi;
-
-  if (lowestAllowedShift > highestAllowedShift) {
-    return [...baseFrequencies];
+  if (rangeMinMidi > rangeMaxMidi) {
+    return [];
   }
+  const pattern = RAPID_SCALE_TRILL_PATTERNS[tier];
+  const maxOffset = Math.max(...pattern);
+  const availableSemitones = rangeMaxMidi - rangeMinMidi;
+  const scaleFactor =
+    maxOffset > availableSemitones && maxOffset > 0
+      ? availableSemitones / maxOffset
+      : 1;
 
-  const shiftRange = highestAllowedShift - lowestAllowedShift + 1;
-  const semitoneShift =
-    lowestAllowedShift + Math.floor(Math.random() * shiftRange);
-
-  return baseMidis.map((midi) =>
-    rapidScaleTrillMidiToHz(midi + semitoneShift),
+  const fittedPattern = pattern.map((offset) =>
+    Math.round(offset * scaleFactor),
   );
+  const fittedMaxOffset = Math.max(...fittedPattern);
+  const maxStartMidi = rangeMaxMidi - fittedMaxOffset;
+
+  if (maxStartMidi < rangeMinMidi) {
+    return [];
+  }
+  const startMidi =
+    rangeMinMidi +
+    Math.floor(
+      Math.random() * (maxStartMidi - rangeMinMidi + 1),
+    );
+  const frequencies = fittedPattern.map((offset) =>
+    rapidScaleTrillMidiToHz(startMidi + offset),
+  );
+  if (
+    frequencies.some(
+      (frequency) =>
+        frequency < vocalRange.lowHz - 0.001 ||
+        frequency > vocalRange.highHz + 0.001,
+    )
+  ) {
+    return [];
+  }
+  return frequencies;
 }
+
 export interface GenerateRapidScaleTrillParamsInput {
   tier: Tier;
   recentScores: number[];
   vocalRange?: RapidScaleTrillVocalRange | null;
 }
+
 export function generateRapidScaleTrillParams({
   tier,
   recentScores,
   vocalRange,
 }: GenerateRapidScaleTrillParamsInput) {
-  const baseParams =
-    RAPID_SCALE_TRILL_PARAMS[tier];
+  const baseParams = RAPID_SCALE_TRILL_PARAMS[tier];
 
   const noteDurationRange = {
-    min:
-      baseParams.noteDurationSec * 0.8,
-
-    max:
-      baseParams.noteDurationSec * 1.2,
+    min: baseParams.noteDurationSec * 0.8,
+    max: baseParams.noteDurationSec * 1.2,
   };
 
-  const adjustedNoteDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      noteDurationRange,
-      'lower',
-    );
+  const adjustedNoteDuration = calculateAdjustedParameterBounds(
+    recentScores,
+    noteDurationRange,
+    'lower',
+  );
 
   const generatedNoteDurationSec =
-    (
-      adjustedNoteDuration.min +
-      adjustedNoteDuration.max
-    ) / 2;
+    (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
+
+  const frequencies = generateRapidScaleTrillFrequencies(
+    tier,
+    vocalRange,
+  );
 
   return {
     ...baseParams,
-
-    noteDurationSec:
-      Number(
-        generatedNoteDurationSec.toFixed(2),
-      ),
-
-    label:
-      baseParams.label,
-
-    frequencies:
-      generateRapidScaleTrillFrequencies(
-        baseParams.frequencies,
-        vocalRange,
-      ),
-
-    speedLabel:
-      baseParams.speedLabel,
+    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
+    frequencies,
   };
 }
 
@@ -2047,110 +2048,65 @@ export function generateArpeggioSpeedDrillParams({
   tier,
   recentScores,
 }: GenerateArpeggioSpeedDrillParamsInput) {
-  const baseParams =
-    ARPEGGIO_SPEED_DRILL_PARAMS[tier];
+  const baseParams = ARPEGGIO_SPEED_DRILL_PARAMS[tier];
 
   const noteDurationRange = {
-    min:
-      baseParams.noteDurationSec * 0.8,
-
-    max:
-      baseParams.noteDurationSec * 1.2,
+    min: baseParams.noteDurationSec * 0.8,
+    max: baseParams.noteDurationSec * 1.2,
   };
 
-  const adjustedNoteDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      noteDurationRange,
-      'lower',
-    );
+  const adjustedNoteDuration = calculateAdjustedParameterBounds(
+    recentScores,
+    noteDurationRange,
+    'lower',
+  );
 
   const generatedNoteDurationSec =
-    (
-      adjustedNoteDuration.min +
-      adjustedNoteDuration.max
-    ) / 2;
+    (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
 
   const gapRange = {
-    min:
-      baseParams.gapSec * 0.8,
-
-    max:
-      baseParams.gapSec * 1.2,
+    min: baseParams.gapSec * 0.8,
+    max: baseParams.gapSec * 1.2,
   };
 
-  const adjustedGap =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      gapRange,
-      'lower',
-    );
+  const adjustedGap = calculateAdjustedParameterBounds(
+    recentScores,
+    gapRange,
+    'lower',
+  );
 
   const generatedGapSec =
-    (
-      adjustedGap.min +
-      adjustedGap.max
-    ) / 2;
+    (adjustedGap.min + adjustedGap.max) / 2;
 
   return {
     ...baseParams,
-    noteDurationSec:
-      Number(
-        generatedNoteDurationSec.toFixed(2),
-      ),
-    gapSec:
-      Number(
-        generatedGapSec.toFixed(2),
-      ),
-    name:
-      baseParams.name,
-    notes:
-      baseParams.notes,
-    frequencies:
-      baseParams.frequencies,
-    speedLabel:
-      baseParams.speedLabel,
+    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
+    gapSec: Number(generatedGapSec.toFixed(2)),
   };
 }
 
 function quickIntervalFrequencyToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
+
 function quickIntervalMidiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
-function sequencesMatch(
-  first: readonly number[],
-  second: readonly number[],
-): boolean {
-  return (
-    first.length === second.length &&
-    first.every((note, index) => note === second[index])
-  );
-}
+
 function generateQuickIntervalJumpFrequencies(
-  baseFrequencies: readonly number[],
+  noteCount: number,
   vocalRange?: { lowHz: number; highHz: number } | null,
 ): number[] {
   if (
-    baseFrequencies.length < 2 ||
-    baseFrequencies.some(
-      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
-    )
+    !Number.isInteger(noteCount) ||
+    noteCount < 2 ||
+    !vocalRange ||
+    !Number.isFinite(vocalRange.lowHz) ||
+    !Number.isFinite(vocalRange.highHz) ||
+    vocalRange.lowHz <= 0 ||
+    vocalRange.highHz <= vocalRange.lowHz
   ) {
-    return [...baseFrequencies];
-  }
-
-  const hasValidVocalRange =
-    vocalRange !== undefined &&
-    vocalRange !== null &&
-    Number.isFinite(vocalRange.lowHz) &&
-    Number.isFinite(vocalRange.highHz) &&
-    vocalRange.lowHz > 0 &&
-    vocalRange.highHz > vocalRange.lowHz;
-
-  if (!hasValidVocalRange) {
-    return [...baseFrequencies];
+    return [];
   }
 
   const lowMidi = Math.ceil(
@@ -2160,69 +2116,40 @@ function generateQuickIntervalJumpFrequencies(
     quickIntervalFrequencyToMidi(vocalRange.highHz),
   );
 
-  if (highMidi < lowMidi) {
-    const centerMidi = Math.round(
-      quickIntervalFrequencyToMidi(
-        Math.sqrt(vocalRange.lowHz * vocalRange.highHz),
-      ),
+  const availableNotes = highMidi - lowMidi + 1;
+
+  if (availableNotes < noteCount) {
+    return [];
+  }
+  const maxStartMidi = highMidi - noteCount + 1;
+  const startMidi =
+    lowMidi +
+    Math.floor(
+      Math.random() * (maxStartMidi - lowMidi + 1),
     );
-    const centerHz = Number(
-      quickIntervalMidiToFrequency(centerMidi).toFixed(3),
-    );
-    return baseFrequencies.map(() => centerHz);
-  }
 
-  const baseMidis = baseFrequencies.map((frequency) =>
-    Math.round(quickIntervalFrequencyToMidi(frequency)),
+  const sequence = Array.from(
+    { length: noteCount },
+    (_, index) => startMidi + index,
   );
-  const baseMinMidi = Math.min(...baseMidis);
-  const baseMaxMidi = Math.max(...baseMidis);
-  const baseSpan = Math.max(1, baseMaxMidi - baseMinMidi);
-  const availableSpan = highMidi - lowMidi;
-  const targetSpan = Math.min(baseSpan, availableSpan);
-  const offsets = baseMidis.map((midi) =>
-    Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
-  );
-  const actualSpan = Math.max(...offsets) - Math.min(...offsets);
-  const minOffset = Math.min(...offsets);
-  const maxOffset = Math.max(...offsets);
 
-  const candidateSequences: number[][] = [];
-  for (
-    let startMidi = lowMidi - minOffset;
-    startMidi + maxOffset <= highMidi;
-    startMidi += 1
-  ) {
-    candidateSequences.push(offsets.map((offset) => startMidi + offset));
-  }
-
-  if (candidateSequences.length === 0) {
-    return [...baseFrequencies];
-  }
-
-  const differentFromBase = candidateSequences.filter(
-    (sequence) => !sequencesMatch(sequence, baseMidis),
-  );
-  const candidates =
-    differentFromBase.length > 0 ? differentFromBase : candidateSequences;
-  const selected = candidates[Math.floor(Math.random() * candidates.length)];
-
-  return selected.map((midi) =>
+  return sequence.map((midi) =>
     Number(quickIntervalMidiToFrequency(midi).toFixed(3)),
   );
 }
+
 export interface GenerateQuickIntervalJumpParamsInput {
   tier: Tier;
   recentScores: number[];
   vocalRange?: { lowHz: number; highHz: number } | null;
 }
+
 export function generateQuickIntervalJumpParams({
   tier,
   recentScores,
   vocalRange,
 }: GenerateQuickIntervalJumpParamsInput) {
-  const baseParams =
-    QUICK_INTERVAL_JUMP_PARAMS[tier];
+  const baseParams = QUICK_INTERVAL_JUMP_PARAMS[tier];
 
   const baseNoteDurationSec = 0.30;
 
@@ -2231,18 +2158,14 @@ export function generateQuickIntervalJumpParams({
     max: baseNoteDurationSec * 1.2,
   };
 
-  const adjustedNoteDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      noteDurationRange,
-      'lower',
-    );
+  const adjustedNoteDuration = calculateAdjustedParameterBounds(
+    recentScores,
+    noteDurationRange,
+    'lower',
+  );
 
   const generatedNoteDurationSec =
-    (
-      adjustedNoteDuration.min +
-      adjustedNoteDuration.max
-    ) / 2;
+    (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
 
   const baseGapSec = 0.35;
 
@@ -2251,41 +2174,31 @@ export function generateQuickIntervalJumpParams({
     max: baseGapSec * 1.2,
   };
 
-  const adjustedGap =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      gapRange,
-      'lower',
-    );
+  const adjustedGap = calculateAdjustedParameterBounds(
+    recentScores,
+    gapRange,
+    'lower',
+  );
 
   const generatedGapSec =
-    (
-      adjustedGap.min +
-      adjustedGap.max
-    ) / 2;
+    (adjustedGap.min + adjustedGap.max) / 2;
+
+  const noteCountByTier: Record<Tier, number> = {
+    beginner: 4,
+    intermediate: 5,
+    advanced: 6,
+  };
 
   const frequencies = generateQuickIntervalJumpFrequencies(
-    baseParams.frequencies,
+    noteCountByTier[tier],
     vocalRange,
   );
 
   return {
     ...baseParams,
-    noteDurationSec:
-      Number(
-        generatedNoteDurationSec.toFixed(2),
-      ),
-    gapSec:
-      Number(
-        generatedGapSec.toFixed(2),
-      ),
-    label:
-      baseParams.label,
+    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
+    gapSec: Number(generatedGapSec.toFixed(2)),
     frequencies,
-    speedLabel:
-      baseParams.speedLabel,
-    accuracyThreshold:
-      baseParams.accuracyThreshold,
   };
 }
 
@@ -2298,12 +2211,15 @@ export interface GenerateVocalRunAccuracyParamsInput {
   } | null;
   previousFrequencies?: readonly number[];
 }
+
 function vocalRunFrequencyToMidi(frequencyHz: number): number {
   return 69 + 12 * Math.log2(frequencyHz / 440);
 }
+
 function vocalRunMidiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+
 function areVocalRunSequencesEqual(
   first: readonly number[],
   second: readonly number[],
@@ -2313,117 +2229,134 @@ function areVocalRunSequencesEqual(
     first.every((note, index) => note === second[index])
   );
 }
+
 function generateVocalRunFrequencies(
-  baseFrequencies: readonly number[],
+  noteCount: number,
   recentScores: number[],
   vocalRange?: { lowHz: number; highHz: number } | null,
   previousFrequencies?: readonly number[],
 ): number[] {
-  if (
-    baseFrequencies.length < 2 ||
-    baseFrequencies.some(
-      (frequency) => !Number.isFinite(frequency) || frequency <= 0,
-    )
-  ) {
-    return [...baseFrequencies];
-  }
-
-  const baseMidis = baseFrequencies.map((frequency) =>
-    Math.round(vocalRunFrequencyToMidi(frequency)),
-  );
-  const baseMinMidi = Math.min(...baseMidis);
-  const baseMaxMidi = Math.max(...baseMidis);
-  const baseSpan = baseMaxMidi - baseMinMidi;
-
-  if (baseSpan < 1) {
-    return [...baseFrequencies];
-  }
-
   const hasValidVocalRange =
-    vocalRange !== undefined &&
-    vocalRange !== null &&
+    vocalRange != null &&
     Number.isFinite(vocalRange.lowHz) &&
     Number.isFinite(vocalRange.highHz) &&
     vocalRange.lowHz > 0 &&
     vocalRange.highHz > vocalRange.lowHz;
 
-  const lowMidi = hasValidVocalRange
-    ? Math.ceil(vocalRunFrequencyToMidi(vocalRange.lowHz))
-    : baseMinMidi - 4;
-  const highMidi = hasValidVocalRange
-    ? Math.floor(vocalRunFrequencyToMidi(vocalRange.highHz))
-    : baseMaxMidi + 4;
-  const availableSpan = highMidi - lowMidi;
+  if (!hasValidVocalRange || noteCount < 3) {
+    return [];
+  }
 
-  if (availableSpan < 1) {
-    return [...baseFrequencies];
+  const lowMidi = Math.ceil(
+    vocalRunFrequencyToMidi(vocalRange.lowHz),
+  );
+  const highMidi = Math.floor(
+    vocalRunFrequencyToMidi(vocalRange.highHz),
+  );
+
+  if (highMidi - lowMidi < 2) {
+    return [];
   }
 
   const validScores = recentScores.filter(
-    (score) => Number.isFinite(score) && score >= 0 && score <= 100,
-  );
-  const averageScore = validScores.length
-    ? validScores.reduce((sum, score) => sum + score, 0) /
-      validScores.length
-    : null;
-
-  const scoreSpanAdjustment =
-    averageScore === null ? 0 : averageScore < 55 ? -1 : averageScore >= 85 ? 1 : 0;
-  const targetSpan = Math.max(
-    1,
-    Math.min(availableSpan, baseSpan + scoreSpanAdjustment),
+    (score) =>
+      Number.isFinite(score) &&
+      score >= 0 &&
+      score <= 100,
   );
 
-  const contourOffsets = baseMidis.map((midi) =>
-    Math.round(((midi - baseMinMidi) / baseSpan) * targetSpan),
-  );
-  const actualMaxOffset = Math.max(...contourOffsets);
+  const averageScore =
+    validScores.length > 0
+      ? validScores.reduce((sum, score) => sum + score, 0) /
+        validScores.length
+      : null;
 
-  if (actualMaxOffset < 1 || actualMaxOffset > availableSpan) {
-    return [...baseFrequencies];
-  }
+  const availableSpan = highMidi - lowMidi;
+  const desiredSpan =
+    averageScore === null
+      ? Math.min(availableSpan, 4)
+      : averageScore < 55
+        ? Math.min(availableSpan, 3)
+        : averageScore >= 85
+          ? availableSpan
+          : Math.min(availableSpan, 5);
 
-  const candidateSequences: number[][] = [];
+  const span = Math.max(2, desiredSpan);
+  const possibleStarts: number[] = [];
+
   for (
     let startMidi = lowMidi;
-    startMidi <= highMidi - actualMaxOffset;
-    startMidi += 1
+    startMidi + span <= highMidi;
+    startMidi++
   ) {
-    candidateSequences.push(
-      contourOffsets.map((offset) => startMidi + offset),
+    possibleStarts.push(startMidi);
+  }
+
+  if (possibleStarts.length === 0) {
+    return [];
+  }
+
+  const previousMidis =
+    previousFrequencies &&
+    previousFrequencies.length > 0 &&
+    previousFrequencies.every(
+      (frequency) =>
+        Number.isFinite(frequency) && frequency > 0,
+    )
+      ? previousFrequencies.map((frequency) =>
+          Math.round(vocalRunFrequencyToMidi(frequency)),
+        )
+      : [];
+
+  const ascendingCount = Math.ceil(noteCount / 2);
+  const descendingCount = noteCount - ascendingCount;
+
+  const contour: number[] = [];
+
+  for (let index = 0; index < ascendingCount; index++) {
+    contour.push(
+      Math.round(
+        (index / Math.max(1, ascendingCount - 1)) * span,
+      ),
     );
   }
 
-  if (candidateSequences.length === 0) {
-    return [...baseFrequencies];
+  for (let index = descendingCount - 1; index >= 0; index--) {
+    contour.push(
+      Math.round(
+        (index / Math.max(1, ascendingCount - 1)) * span,
+      ),
+    );
   }
 
-  const previousMidis = previousFrequencies?.every(
-    (frequency) => Number.isFinite(frequency) && frequency > 0,
-  )
-    ? previousFrequencies.map((frequency) =>
-        Math.round(vocalRunFrequencyToMidi(frequency)),
-      )
-    : [];
+  const normalizedContour = contour.slice(0, noteCount);
+
+  if (normalizedContour.length !== noteCount) {
+    return [];
+  }
+
+  const candidateSequences = possibleStarts.map((startMidi) =>
+    normalizedContour.map((offset) => startMidi + offset),
+  );
 
   const differentFromPrevious = candidateSequences.filter(
-    (sequence) => !areVocalRunSequencesEqual(sequence, previousMidis),
+    (sequence) =>
+      !areVocalRunSequencesEqual(sequence, previousMidis),
   );
-  const differentFromBase = differentFromPrevious.filter(
-    (sequence) => !areVocalRunSequencesEqual(sequence, baseMidis),
-  );
-  const choices =
-    differentFromBase.length > 0
-      ? differentFromBase
-      : differentFromPrevious.length > 0
-        ? differentFromPrevious
-        : candidateSequences;
 
-  const selectedMidis = choices[Math.floor(Math.random() * choices.length)];
+  const choices =
+    differentFromPrevious.length > 0
+      ? differentFromPrevious
+      : candidateSequences;
+
+  const selectedMidis =
+    choices[Math.floor(Math.random() * choices.length)];
+
   return selectedMidis.map((midi) =>
     Number(vocalRunMidiToFrequency(midi).toFixed(3)),
   );
 }
+
 export function generateVocalRunAccuracyParams({
   tier,
   recentScores,
@@ -2446,8 +2379,14 @@ export function generateVocalRunAccuracyParams({
   const generatedNoteDurationSec =
     (adjustedNoteDuration.min + adjustedNoteDuration.max) / 2;
 
+  const noteCountByTier: Record<Tier, number> = {
+    beginner: 5,
+    intermediate: 6,
+    advanced: 7,
+  };
+
   const frequencies = generateVocalRunFrequencies(
-    baseParams.frequencies,
+    noteCountByTier[tier],
     recentScores,
     vocalRange,
     previousFrequencies,
@@ -2455,11 +2394,9 @@ export function generateVocalRunAccuracyParams({
 
   return {
     ...baseParams,
-    noteDurationSec: Number(generatedNoteDurationSec.toFixed(2)),
-    label: baseParams.label,
+    noteDurationSec: Number(
+      generatedNoteDurationSec.toFixed(2),
+    ),
     frequencies,
-    speedLabel: baseParams.speedLabel,
-    accuracyThreshold: baseParams.accuracyThreshold,
-    repetitions: baseParams.repetitions,
   };
 }

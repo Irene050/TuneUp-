@@ -958,7 +958,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     }
 
     if (mountedRef.current) {
-      router.replace('/dashboard?tab=exercises');
+      router.replace('/exercises/pitch');
     }
   }, [clearTimers]);
 

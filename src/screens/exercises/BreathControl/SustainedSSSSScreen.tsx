@@ -810,7 +810,7 @@ export default function SustainedSSSSScreen({
     try {
       stopRecordingRef.current?.();
     } finally {
-      router.replace('/dashboard?tab=exercises');
+      router.replace('/exercises/breath-control');
     }
   }, [clearTimers, setQuitModalVisible]);
 

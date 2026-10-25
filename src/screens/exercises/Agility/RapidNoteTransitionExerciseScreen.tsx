@@ -1,30 +1,30 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  BackHandler,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import {
-    RAPID_NOTE_TRANSITION_PARAMS,
-    type Tier,
+  RAPID_NOTE_TRANSITION_PARAMS,
+  type Tier,
 } from '@/constants/agility';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,9 +34,9 @@ import { saveCompletedExercise } from '@/services/progress/exerciseProgressServi
 import { fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTransitionExercise';
 import {
-    disposeNotePlayer,
-    playNoteSequence,
-    type NoteToPlay,
+  disposeNotePlayer,
+  playNoteSequence,
+  type NoteToPlay,
 } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
@@ -55,43 +55,6 @@ const GUIDE_RED = '#D64F5A';
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
-
-const RAPID_NOTE_TRANSITION_TEMPLATE: Record<
-  Tier,
-  {
-    minNotes: number;
-    maxNotes: number;
-    minSpeed: number;
-    maxSpeed: number;
-    repetitions: number;
-    accuracyThreshold: number;
-  }
-> = {
-  beginner: {
-    minNotes: 4,
-    maxNotes: 6,
-    minSpeed: 2,
-    maxSpeed: 3,
-    repetitions: 3,
-    accuracyThreshold: 60,
-  },
-  intermediate: {
-    minNotes: 5,
-    maxNotes: 7,
-    minSpeed: 3,
-    maxSpeed: 4,
-    repetitions: 4,
-    accuracyThreshold: 70,
-  },
-  advanced: {
-    minNotes: 6,
-    maxNotes: 8,
-    minSpeed: 4,
-    maxSpeed: 6,
-    repetitions: 5,
-    accuracyThreshold: 80,
-  },
-};
 
 type Screen =
   | 'instructions'
@@ -455,57 +418,92 @@ export default function RapidNoteTransitionExerciseScreen({
   }, [baseParams, tier]);
 
   const exerciseConfig = useMemo(() => {
-    const template = RAPID_NOTE_TRANSITION_TEMPLATE[tier];
-
+    // Use the constants and adaptive generator as the single source of truth.
+    // Clamp adaptive values to the selected tier's configured limits.
     const minNotes = Math.max(
-      template.minNotes,
-      Math.min(template.maxNotes, Math.ceil(adaptiveParams.minNotes)),
+      1,
+      Math.min(
+        baseParams.maxNotes,
+        Math.max(baseParams.minNotes, Math.ceil(adaptiveParams.minNotes)),
+      ),
     );
     const maxNotes = Math.max(
       minNotes,
-      Math.min(template.maxNotes, Math.floor(adaptiveParams.maxNotes)),
+      Math.min(baseParams.maxNotes, Math.floor(adaptiveParams.maxNotes)),
     );
     const noteCount = getRandomInteger(minNotes, maxNotes);
 
     const minSpeed = Math.max(
-      template.minSpeed,
-      Math.min(template.maxSpeed, adaptiveParams.minSpeed),
+      baseParams.minSpeed,
+      Math.min(baseParams.maxSpeed, adaptiveParams.minSpeed),
     );
     const maxSpeed = Math.max(
       minSpeed,
-      Math.min(
-        template.maxSpeed,
-        Math.max(template.minSpeed, adaptiveParams.maxSpeed),
-      ),
-    );
-    const targetSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed);
-    const noteDurationSec = Math.max(
-      0.05,
-      1 / targetSpeed - REFERENCE_NOTE_GAP_SECONDS,
+      Math.min(baseParams.maxSpeed, adaptiveParams.maxSpeed),
     );
 
+    // Keep the actual playback tempo consistent with the target speed.
+    // Use adaptive note duration where possible, but constrain it to the
+    // selected speed range so the displayed/scored target remains accurate.
+    const shortestAllowedDuration = Math.max(
+      0.05,
+      1 / maxSpeed - REFERENCE_NOTE_GAP_SECONDS,
+    );
+    const longestAllowedDuration = Math.max(
+      shortestAllowedDuration,
+      1 / minSpeed - REFERENCE_NOTE_GAP_SECONDS,
+    );
+    const noteDurationSec = Math.min(
+      longestAllowedDuration,
+      Math.max(shortestAllowedDuration, adaptiveParams.noteDurationSec),
+    );
+    const targetSpeed =
+      1 / (noteDurationSec + REFERENCE_NOTE_GAP_SECONDS);
+
+    // Keep the assessed vocal range inside the selected tier's MIDI limits.
     const assessedMinMidi = assessedVocalRangeHz
-      ? Math.ceil(frequencyToMidi(assessedVocalRangeHz.lowHz))
+      ? Math.max(
+          adaptiveParams.minMidi,
+          Math.ceil(frequencyToMidi(assessedVocalRangeHz.lowHz)),
+        )
       : adaptiveParams.minMidi;
     const assessedMaxMidi = assessedVocalRangeHz
-      ? Math.floor(frequencyToMidi(assessedVocalRangeHz.highHz))
+      ? Math.min(
+          adaptiveParams.maxMidi,
+          Math.floor(frequencyToMidi(assessedVocalRangeHz.highHz)),
+        )
       : adaptiveParams.maxMidi;
     const hasUsableRange = assessedMaxMidi - assessedMinMidi >= 2;
+
+    const minMidi = hasUsableRange
+      ? assessedMinMidi
+      : adaptiveParams.minMidi;
+    const maxMidi = hasUsableRange
+      ? assessedMaxMidi
+      : adaptiveParams.maxMidi;
 
     return {
       noteCount,
       targetSpeed,
-      repetitions: template.repetitions,
-      accuracyThreshold: template.accuracyThreshold,
+      repetitions: Math.max(
+        1,
+        Math.min(baseParams.repetitions, Math.round(adaptiveParams.repetitions)),
+      ),
+      accuracyThreshold: baseParams.accuracyThreshold,
       noteDurationSec,
       sequence: generateExerciseSequence(
-        hasUsableRange ? assessedMinMidi : adaptiveParams.minMidi,
-        hasUsableRange ? assessedMaxMidi : adaptiveParams.maxMidi,
+        minMidi,
+        maxMidi,
         noteCount,
         noteDurationSec,
       ),
     };
-  }, [adaptiveParams, assessedVocalRangeHz, tier, exerciseConfigVersion]);
+  }, [
+    adaptiveParams,
+    assessedVocalRangeHz,
+    baseParams,
+    exerciseConfigVersion,
+  ]);
 
   const [screenState, setScreenState] = useState<Screen>('instructions');
   const [confirmation, setConfirmation] = useState<'tryAgain' | 'quit' | null>(null);
@@ -1202,11 +1200,6 @@ export default function RapidNoteTransitionExerciseScreen({
           'Focus on maintaining accurate pitch throughout the sequence.',
         ].map(item => (
           <View key={item} style={styles.prepareItem}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={17}
-              color={BROWN}
-            />
             <Text style={styles.prepareText}>{item}</Text>
           </View>
         ))}
@@ -1655,7 +1648,7 @@ export default function RapidNoteTransitionExerciseScreen({
                   if (action === 'tryAgain') {
                     retryExercise();
                   } else if (action === 'quit') {
-                    router.replace('/dashboard?tab=exercises');
+                    router.replace('/exercises/breath-control');
                   }
                 }}
                 accessibilityRole="button"

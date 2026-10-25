@@ -1122,7 +1122,7 @@ export default function ToneConsistencyExerciseScreen({
 
     isRecordingRef.current = false;
 
-    router.replace('/dashboard?tab=exercises');
+    router.replace('/exercises/tone');
   }, [clearTimers, isRecording]);
 
   const goBack = useCallback(() => {

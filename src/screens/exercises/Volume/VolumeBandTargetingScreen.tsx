@@ -1167,7 +1167,7 @@ export default function VolumeBandTargeting({
         }
       }
     } finally {
-      router.replace('/dashboard?tab=exercises');
+      router.replace('/exercises/volume');
     }
   };
 

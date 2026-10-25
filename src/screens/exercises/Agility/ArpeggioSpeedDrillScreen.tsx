@@ -19,7 +19,10 @@ import {
 } from '@/constants/agility';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateArpeggioSpeedDrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
-import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
+import {
+  getLatestAssessment,
+  getRecentAssessments,
+} from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureArpeggioSpeed } from '@/services/measurement/agility/arpeggioSpeedDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -53,6 +56,16 @@ type Phase =
   | 'recording'
   | 'processing'
   | 'results';
+
+type ArpeggioExerciseConfig = {
+  name: string;
+  notes: string[];
+  frequencies: number[];
+  speedLabel: string;
+  noteDurationSec: number;
+  gapSec: number;
+  pitchTolerancePercent: number;
+};
 
 type Result = {
   overall: number;
@@ -219,45 +232,53 @@ const estimateLiveFrequency = (
   return frequency >= 70 && frequency <= 1000 ? frequency : null;
 };
 
-const fitFrequenciesToVocalRange = (
-  frequencies: number[],
+const midiToFrequency = (midi: number): number =>
+  440 * 2 ** ((midi - 69) / 12);
+
+const generateArpeggioFromVocalRange = (
   lowHz: number,
   highHz: number,
-): number[] => {
+): { name: string; notes: string[]; frequencies: number[] } | null => {
   if (
-    frequencies.length === 0 ||
     !Number.isFinite(lowHz) ||
     !Number.isFinite(highHz) ||
     lowHz <= 0 ||
-    highHz <= 0 ||
-    lowHz >= highHz
+    highHz <= lowHz
   ) {
-    return frequencies;
+    return null;
   }
 
   const hzToMidi = (hz: number) => 69 + 12 * Math.log2(hz / 440);
-  const midiToHz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
   const lowestMidi = Math.ceil(hzToMidi(lowHz));
   const highestMidi = Math.floor(hzToMidi(highHz));
+  const availableSemitones = highestMidi - lowestMidi;
 
-  if (lowestMidi > highestMidi) return frequencies;
+  // Prefer a major arpeggio spanning an octave. For a narrower assessed
+  // range, use a compact four-note arpeggio if at least a perfect fifth fits.
+  const intervals =
+    availableSemitones >= 12
+      ? [0, 4, 7, 12]
+      : availableSemitones >= 7
+        ? [0, 3, 5, 7]
+        : null;
 
-  const sourceMidis = frequencies.map((hz) => Math.round(hzToMidi(hz)));
-  const sourceMin = Math.min(...sourceMidis);
-  const sourceMax = Math.max(...sourceMidis);
+  if (!intervals) return null;
 
-  if (sourceMax - sourceMin > highestMidi - lowestMidi) {
-    return frequencies;
-  }
-
-  const minShift = lowestMidi - sourceMin;
-  const maxShift = highestMidi - sourceMax;
-  const preferredShift = Math.round(
-    (lowestMidi + highestMidi - sourceMin - sourceMax) / 2,
+  const maxRoot = highestMidi - Math.max(...intervals);
+  const preferredRoot =
+    Math.round((lowestMidi + highestMidi) / 2) -
+    Math.round(Math.max(...intervals) / 2);
+  const rootMidi = Math.max(lowestMidi, Math.min(preferredRoot, maxRoot));
+  const frequencies = intervals.map((interval) =>
+    midiToFrequency(rootMidi + interval),
   );
-  const shift = Math.max(minShift, Math.min(preferredShift, maxShift));
+  const notes = frequencies.map((frequency) => frequencyToNoteName(frequency));
 
-  return sourceMidis.map((midi) => midiToHz(midi + shift));
+  return {
+    name: 'Personalized Arpeggio',
+    notes,
+    frequencies,
+  };
 };
 
 export default function ArpeggioSpeedDrillScreen() {
@@ -321,8 +342,17 @@ export default function ArpeggioSpeedDrillScreen() {
     [activeTier],
   );
 
-  const [config, setConfig] = useState(baseConfig);
+  const [config, setConfig] = useState<ArpeggioExerciseConfig>({
+    ...baseConfig,
+    name: 'Personalized Arpeggio',
+    notes: [],
+    frequencies: [],
+  });
   const [paramsReady, setParamsReady] = useState(false);
+  const [vocalRangeAvailable, setVocalRangeAvailable] = useState(false);
+  const [vocalRangeMessage, setVocalRangeMessage] = useState(
+    'Checking your saved vocal assessment.',
+  );
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -410,47 +440,39 @@ export default function ArpeggioSpeedDrillScreen() {
       if (tierLoading || !tier) return;
 
       setParamsReady(false);
-
-      const user = auth.currentUser;
-
-      if (!user) {
-        if (!cancelled) {
-          setConfig(baseConfig);
-          setParamsReady(true);
-        }
-        return;
-      }
+      setVocalRangeAvailable(false);
 
       try {
-        const records = await fetchExerciseRecords(user.uid, 'agility');
-
-        if (cancelled) return;
-
-        const currentExerciseRecords = records
-          .filter(
-            (record) =>
-              record.templateId === 'arpeggioSpeedDrill' &&
-              record.tier === tier,
-          )
-          .sort((a, b) => a.timestamp - b.timestamp);
-
+        const user = auth.currentUser;
         let recentScores: number[] = [];
 
-        if (currentExerciseRecords.length > 0) {
-          recentScores = currentExerciseRecords
-            .slice(-5)
-            .map((record) => record.scorePct);
-        } else {
-          const latestAssessment = await getLatestAssessment();
-
+        if (user) {
+          const records = await fetchExerciseRecords(user.uid, 'agility');
           if (cancelled) return;
 
-          const assessmentScore = latestAssessment?.scores.find(
-            (score) => score.componentId === 'agility',
-          )?.scorePct;
+          const currentExerciseRecords = records
+            .filter(
+              (record) =>
+                record.templateId === 'arpeggioSpeedDrill' &&
+                record.tier === tier,
+            )
+            .sort((a, b) => a.timestamp - b.timestamp);
 
-          if (typeof assessmentScore === 'number') {
-            recentScores = [assessmentScore];
+          if (currentExerciseRecords.length > 0) {
+            recentScores = currentExerciseRecords
+              .slice(-5)
+              .map((record) => record.scorePct);
+          } else {
+            const latestAssessment = await getLatestAssessment();
+            if (cancelled) return;
+
+            const assessmentScore = latestAssessment?.scores.find(
+              (score) => score.componentId === 'agility',
+            )?.scorePct;
+
+            if (typeof assessmentScore === 'number') {
+              recentScores = [assessmentScore];
+            }
           }
         }
 
@@ -459,40 +481,52 @@ export default function ArpeggioSpeedDrillScreen() {
           recentScores,
         });
 
-        const vocalAssessment = await getLatestAssessment();
+        // Search several recent assessments instead of relying only on the
+        // newest record, which may not contain a usable vocal range.
+        const vocalAssessments = await getRecentAssessments(10);
         if (cancelled) return;
 
-        const lowHz = Number(
-          vocalAssessment?.vocalRange?.lowHz ??
-            vocalAssessment?.vocalRangeLowHz ??
-            0,
-        );
-        const highHz = Number(
-          vocalAssessment?.vocalRange?.highHz ??
-            vocalAssessment?.vocalRangeHighHz ??
-            0,
-        );
-        const rangeAdjusted =
-          lowHz > 0 && highHz > lowHz
-            ? (() => {
-                const frequencies = fitFrequenciesToVocalRange(
-                  generated.frequencies,
-                  lowHz,
-                  highHz,
-                );
+        let arpeggio: ReturnType<typeof generateArpeggioFromVocalRange> = null;
 
-                return {
-                  ...generated,
-                  frequencies,
-                  notes: frequencies.map((frequency) =>
-                    frequencyToNoteName(frequency),
-                  ),
-                };
-              })()
-            : generated;
+        for (const assessment of vocalAssessments) {
+          const lowHz = Number(
+            assessment.vocalRange?.lowHz ?? assessment.vocalRangeLowHz ?? 0,
+          );
+          const highHz = Number(
+            assessment.vocalRange?.highHz ?? assessment.vocalRangeHighHz ?? 0,
+          );
+
+          const candidate = generateArpeggioFromVocalRange(lowHz, highHz);
+          if (candidate) {
+            arpeggio = candidate;
+            console.log('Using saved vocal range for Arpeggio Speed Drill:', {
+              assessmentId: assessment.id,
+              lowHz,
+              highHz,
+              notes: candidate.notes,
+            });
+            break;
+          }
+        }
 
         if (!cancelled) {
-          setConfig(rangeAdjusted);
+          setConfig({
+            ...generated,
+            name: arpeggio?.name ?? 'Personalized Arpeggio',
+            notes: arpeggio?.notes ?? [],
+            frequencies: arpeggio?.frequencies ?? [],
+          });
+          setVocalRangeAvailable(arpeggio !== null);
+          setVocalRangeMessage(
+            arpeggio
+              ? ''
+              : vocalAssessments.length === 0
+                ? 'No saved vocal range assessment was found for this account. Check that you are signed in to the account used for the assessment.'
+                : 'Your saved assessment was found, but none of the 10 most recent assessments has a range wide enough for this arpeggio. Please redo the vocal range assessment.',
+          );
+          if (vocalAssessments.length === 0) {
+            console.warn('No saved vocal range assessments found for current user.');
+          }
           setParamsReady(true);
         }
       } catch (error) {
@@ -502,7 +536,14 @@ export default function ArpeggioSpeedDrillScreen() {
         );
 
         if (!cancelled) {
-          setConfig(baseConfig);
+          setConfig({
+            ...baseConfig,
+            name: 'Personalized Arpeggio',
+            notes: [],
+            frequencies: [],
+          });
+          setVocalRangeAvailable(false);
+          setVocalRangeMessage('Unable to load your vocal assessment. Please check your connection and try again.');
           setParamsReady(true);
         }
       }
@@ -838,10 +879,22 @@ export default function ArpeggioSpeedDrillScreen() {
           },
           { label: 'ARPEGGIO', value: config.notes.join(' • ') },
         ]}
-        tip="Focus on matching each note accurately first. Gradually build speed while keeping the sequence clear and controlled."
+        tip={
+          vocalRangeAvailable
+            ? 'Focus on matching each note accurately first. Gradually build speed while keeping the sequence clear and controlled.'
+            : vocalRangeMessage
+        }
         tier={tier}
-        startDisabled={tierLoading}
-        startLabel={tierLoading ? 'Preparing Exercise...' : 'Start Exercise'}
+        startDisabled={tierLoading || !paramsReady || !vocalRangeAvailable || !config.frequencies.length}
+        startLabel={
+          tierLoading || !paramsReady
+            ? 'Preparing Exercise...'
+            : vocalRangeAvailable
+              ? 'Start Exercise'
+              : vocalRangeMessage.startsWith('No saved vocal range')
+                ? 'Vocal Assessment Required'
+                : 'Vocal Range Needs Review'
+        }
         onBack={() => router.back()}
         onStart={beginExercise}
       />
@@ -1352,7 +1405,7 @@ export default function ArpeggioSpeedDrillScreen() {
               accessibilityLabel="Quit exercise"
               onPress={() => {
                 setShowExitConfirmation(false);
-                router.replace('/dashboard?tab=exercises');
+                router.replace('/exercises/breath-control');
               }}
               style={({ pressed }) => [styles.agilityQuitButton, pressed && styles.agilityButtonPressed]}
             >
