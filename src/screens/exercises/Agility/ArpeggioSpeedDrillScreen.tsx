@@ -378,6 +378,7 @@ export default function ArpeggioSpeedDrillScreen() {
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [result, setResult] = useState<Result | null>(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
 
   const attemptResultsRef = useRef<Result[]>([]);
   const recorderRef = useRef<AudioRecorder | null>(null);
@@ -389,6 +390,9 @@ export default function ArpeggioSpeedDrillScreen() {
   );
   const processingRef = useRef(false);
   const phaseRef = useRef<Phase>('instructions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
+  const quitInProgressRef = useRef(false);
+  const countdownRunIdRef = useRef(0);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -415,23 +419,85 @@ export default function ArpeggioSpeedDrillScreen() {
     recordingStartRef.current = null;
   }, []);
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const activePhase = phaseRef.current;
-      if (activePhase === 'recording' || activePhase === 'countdown' || activePhase === 'reference') {
-        stopRecording();
-        setShowExitConfirmation(true);
-        return true;
-      }
-      if (activePhase === 'processing') return true;
-      if (activePhase === 'results') {
-        setShowExitConfirmation(true);
-        return true;
-      }
-      return false;
-    });
-    return () => subscription.remove();
+  const pauseForExitPrompt = useCallback(() => {
+    const activePhase = phaseRef.current;
+
+    // Processing is intentionally non-interruptible so a completed repetition
+    // cannot be scored twice or left in a partially processed state.
+    if (activePhase === 'processing' || quitInProgressRef.current) return;
+
+    pausedPhaseRef.current = activePhase;
+    setShowExitConfirmation(true);
+
+    // Invalidate any countdown that is currently sleeping between numbers.
+    countdownRunIdRef.current += 1;
+
+    if (activePhase === 'recording' || activePhase === 'countdown') {
+      stopRecording();
+      samplesRef.current = [];
+      liveSamplesRef.current = [];
+      setLivePitchHz(null);
+      setRecordingTime(0);
+      setCountdown(COUNTDOWN_SECONDS);
+      setReferenceNoteIndex(null);
+    }
   }, [stopRecording]);
+
+  const continueExercise = () => {
+    if (quitInProgressRef.current) return;
+
+    const pausedPhase = pausedPhaseRef.current;
+    setShowExitConfirmation(false);
+
+    if (pausedPhase === 'recording' || pausedPhase === 'countdown') {
+      // The current repetition is restarted; completed repetitions remain saved
+      // in attemptResultsRef and are not repeated.
+      samplesRef.current = [];
+      liveSamplesRef.current = [];
+      setLivePitchHz(null);
+      setRecordingTime(0);
+      setCountdown(COUNTDOWN_SECONDS);
+      setReferenceNoteIndex(null);
+      processingRef.current = false;
+      void startCountdown();
+      return;
+    }
+
+    // Instructions, reference, and results return to the phase the user left.
+    setPhase(pausedPhase);
+  };
+
+  const quitExercise = async () => {
+    if (quitInProgressRef.current) return;
+
+    quitInProgressRef.current = true;
+    setIsQuitting(true);
+    setShowExitConfirmation(false);
+    countdownRunIdRef.current += 1;
+    stopRecording();
+
+    try {
+      await Promise.resolve();
+      router.replace('/exercises/agility');
+    } catch (error) {
+      console.error('Failed to leave Arpeggio Speed Drill:', error);
+      quitInProgressRef.current = false;
+      setIsQuitting(false);
+    }
+  };
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (phaseRef.current === 'processing') return true;
+        pauseForExitPrompt();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [pauseForExitPrompt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -719,15 +785,24 @@ export default function ArpeggioSpeedDrillScreen() {
   };
 
   const startCountdown = async () => {
-    if (processingRef.current || isPlayingReference) return;
+    if (processingRef.current || isPlayingReference || quitInProgressRef.current) return;
 
+    const runId = ++countdownRunIdRef.current;
     setPhase('countdown');
 
     for (let value = COUNTDOWN_SECONDS; value >= 1; value--) {
+      if (
+        runId !== countdownRunIdRef.current ||
+        quitInProgressRef.current
+      ) {
+        return;
+      }
+
       setCountdown(value);
       await sleep(1000);
     }
 
+    if (runId !== countdownRunIdRef.current || quitInProgressRef.current) return;
     await startRecording();
   };
 
@@ -829,7 +904,9 @@ export default function ArpeggioSpeedDrillScreen() {
   };
 
   const resetExercise = () => {
+    countdownRunIdRef.current += 1;
     stopRecording();
+    setShowExitConfirmation(false);
     processingRef.current = false;
     samplesRef.current = [];
     liveSamplesRef.current = [];
@@ -895,7 +972,7 @@ export default function ArpeggioSpeedDrillScreen() {
                 ? 'Vocal Assessment Required'
                 : 'Vocal Range Needs Review'
         }
-        onBack={() => router.back()}
+        onBack={pauseForExitPrompt}
         onStart={beginExercise}
       />
     );
@@ -911,20 +988,12 @@ export default function ArpeggioSpeedDrillScreen() {
       <Text style={styles.phaseSubtitle}>
         Repetition {currentRepetition} of {repetitionCount}
       </Text>
-      <Text style={styles.phaseSubtitle}>
-        Listen to the complete arpeggio, then sing the same notes in order.
-      </Text>
 
       <View style={styles.paceGuideCard}>
         <View style={styles.paceGuideHeader}>
           <Ionicons name="speedometer-outline" size={18} color={BROWN} />
           <Text style={styles.paceGuideTitle}>Your Pace Guide</Text>
         </View>
-
-        <Text style={styles.paceGuideDescription}>
-          Sing one note at a time. Keep each note clear, then move to the next
-          note after the short gap.
-        </Text>
 
         <View style={styles.paceGuideStats}>
           <View style={styles.paceGuideStat}>
@@ -1048,19 +1117,10 @@ export default function ArpeggioSpeedDrillScreen() {
         <Text style={styles.recordingSubtitle}>
           Repetition {currentRepetition} of {repetitionCount}
         </Text>
-        <Text style={styles.recordingSubtitle}>
-          Follow the notes in order while keeping each note accurate and clear.
-        </Text>
 
-        <View style={styles.recordingPaceCard}>
-          <Ionicons name="timer-outline" size={18} color={BROWN} />
-          <View style={styles.recordingPaceTextWrap}>
-            <Text style={styles.recordingPaceTitle}>Stay on the beat</Text>
-            <Text style={styles.recordingPaceText}>
-              Hold each note for {config.noteDurationSec.toFixed(2)} s, then
-              leave a {config.gapSec.toFixed(2)} s gap before the next one.
-            </Text>
-          </View>
+        <View style={styles.recordingBadge}>
+          <View style={styles.recordingDot} />
+          <Text style={styles.recordingBadgeText}>RECORDING</Text>
         </View>
 
         <View style={styles.liveCard}>
@@ -1130,25 +1190,6 @@ export default function ArpeggioSpeedDrillScreen() {
               );
             })}
           </View>
-
-          <Pressable
-            style={[
-              styles.referenceButton,
-              isPlayingReference && styles.buttonDisabled,
-            ]}
-            disabled={isPlayingReference}
-            onPress={() => void playReference()}
-          >
-            <Ionicons name="play" size={18} color={BROWN} />
-            <Text style={styles.referenceButtonText}>
-              {isPlayingReference ? 'Playing Reference...' : 'Play Reference Guide'}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.recordingBadge}>
-          <View style={styles.recordingDot} />
-          <Text style={styles.recordingBadgeText}>RECORDING</Text>
         </View>
 
         <Text style={styles.timerText}>
@@ -1158,14 +1199,6 @@ export default function ArpeggioSpeedDrillScreen() {
         <View style={styles.timerTrack}>
           <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
-
-        <Pressable
-          style={styles.finishButton}
-          onPress={() => void processRecording()}
-        >
-          <Ionicons name="stop" size={18} color={BROWN} />
-          <Text style={styles.finishButtonText}>Finish Recording</Text>
-        </Pressable>
       </View>
     );
   };
@@ -1319,7 +1352,7 @@ export default function ArpeggioSpeedDrillScreen() {
 
         <Pressable
           style={styles.doneButton}
-          onPress={() => setShowExitConfirmation(true)}
+          onPress={pauseForExitPrompt}
         >
           <Text style={styles.doneButtonText}>Back to Exercises</Text>
         </Pressable>
@@ -1370,46 +1403,57 @@ export default function ArpeggioSpeedDrillScreen() {
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => setShowExitConfirmation(false)}
+        onRequestClose={continueExercise}
       >
-        <View style={styles.agilityModalOverlay}>
-          <View style={styles.agilityModalCard}>
-            <View style={styles.agilityModalIcon}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIcon}>
               <Ionicons name="exit-outline" size={30} color={BROWN} />
             </View>
-            <Text style={styles.agilityModalTitle}>Quit exercise?</Text>
-            <Text style={styles.agilityModalMessage}>
-              Your exercise is paused. Completed repetitions will be kept, but you will restart the current repetition when you continue.
+
+            <Text style={styles.modalTitle}>Quit exercise?</Text>
+
+            <Text style={styles.modalMessage}>
+              {pausedPhaseRef.current === 'instructions' ||
+              pausedPhaseRef.current === 'results'
+                ? 'Are you sure you want to leave Arpeggio Speed Drill?'
+                : pausedPhaseRef.current === 'recording'
+                  ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                  : pausedPhaseRef.current === 'countdown'
+                    ? 'Your exercise is paused. Your completed repetitions will be kept. The countdown will restart when you continue.'
+                    : pausedPhaseRef.current === 'reference'
+                      ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to return to the reference arpeggio.'
+                      : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
             </Text>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Continue exercise"
-              onPress={() => {
-                setShowExitConfirmation(false);
-                if (phaseRef.current !== 'results') {
-                  samplesRef.current = [];
-                  liveSamplesRef.current = [];
-                  setLivePitchHz(null);
-                  setRecordingTime(0);
-                  setCountdown(COUNTDOWN_SECONDS);
-                  setReferenceNoteIndex(null);
-                  void startCountdown();
-                }
-              }}
-              style={({ pressed }) => [styles.agilityContinueButton, pressed && styles.agilityButtonPressed]}
+              disabled={isQuitting}
+              onPress={continueExercise}
+              style={({ pressed }) => [
+                styles.continueButton,
+                pressed && styles.buttonPressed,
+                isQuitting && styles.modalButtonDisabled,
+              ]}
             >
-              <Text style={styles.agilityContinueButtonText}>Continue Exercise</Text>
+              <Text style={styles.continueButtonText}>Continue Exercise</Text>
             </Pressable>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Quit exercise"
-              onPress={() => {
-                setShowExitConfirmation(false);
-                router.replace('/exercises/breath-control');
-              }}
-              style={({ pressed }) => [styles.agilityQuitButton, pressed && styles.agilityButtonPressed]}
+              disabled={isQuitting}
+              onPress={() => void quitExercise()}
+              style={({ pressed }) => [
+                styles.quitButton,
+                pressed && styles.buttonPressed,
+                isQuitting && styles.modalButtonDisabled,
+              ]}
             >
-              <Text style={styles.agilityQuitButtonText}>Quit Exercise</Text>
+              <Text style={styles.quitButtonText}>
+                {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1419,14 +1463,14 @@ export default function ArpeggioSpeedDrillScreen() {
 }
 
 const styles = StyleSheet.create({
-  agilityModalOverlay: {
+  modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  agilityModalCard: {
+  modalCard: {
     width: '100%',
     maxWidth: 380,
     alignItems: 'center',
@@ -1435,7 +1479,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: WHITE,
   },
-  agilityModalIcon: {
+  modalIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
@@ -1444,13 +1488,13 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
     marginBottom: 15,
   },
-  agilityModalTitle: {
+  modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
     color: BROWN,
     textAlign: 'center',
   },
-  agilityModalMessage: {
+  modalMessage: {
     marginTop: 10,
     marginBottom: 23,
     fontFamily: 'FredokaRegular',
@@ -1459,7 +1503,7 @@ const styles = StyleSheet.create({
     color: MUTED,
     textAlign: 'center',
   },
-  agilityContinueButton: {
+  continueButton: {
     width: '100%',
     minHeight: 48,
     alignItems: 'center',
@@ -1468,12 +1512,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: PINK,
   },
-  agilityContinueButtonText: {
+  continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: BROWN,
   },
-  agilityQuitButton: {
+  quitButton: {
     width: '100%',
     minHeight: 48,
     alignItems: 'center',
@@ -1485,13 +1529,16 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: WHITE,
   },
-  agilityQuitButtonText: {
+  quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: MUTED,
   },
-  agilityButtonPressed: {
+  buttonPressed: {
     opacity: 0.75,
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
   },
 
   preparingScreen: {
@@ -1533,7 +1580,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 92,
+    paddingTop: 100,
     paddingBottom: 60,
     alignItems: 'center',
   },
@@ -1610,14 +1657,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: BROWN,
   },
-  paceGuideDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 8,
-  },
   paceGuideStats: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1656,33 +1695,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     textAlign: 'center',
     marginTop: 11,
-  },
-  recordingPaceCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 13,
-    marginTop: 16,
-    borderRadius: 15,
-    backgroundColor: LIGHT_PINK,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  recordingPaceTextWrap: {
-    flex: 1,
-  },
-  recordingPaceTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-    marginBottom: 3,
-  },
-  recordingPaceText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: MUTED,
   },
   referenceCard: {
     width: '100%',
@@ -1818,22 +1830,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: WHITE,
-  },
-  finishButton: {
-    width: '100%',
-    height: 53,
-    borderRadius: 27,
-    backgroundColor: LIGHT_GRAY,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  finishButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
   },
   doneButton: {
     width: '100%',

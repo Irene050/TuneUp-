@@ -1125,21 +1125,6 @@ export default function RapidNoteTransitionExerciseScreen({
           {currentRepetition} OF {exerciseConfig.repetitions}
         </Text>
       </View>
-      <View style={styles.repetitionProgressSegments}>
-        {Array.from({ length: exerciseConfig.repetitions }, (_, index) => (
-          <View
-            key={`rep-progress-${index + 1}`}
-            style={[
-              styles.repetitionProgressSegment,
-              index < attemptResults.length
-                ? styles.repetitionProgressCompleted
-                : index === currentRepetition - 1
-                  ? styles.repetitionProgressCurrent
-                  : null,
-            ]}
-          />
-        ))}
-      </View>
     </View>
   );
 
@@ -1353,11 +1338,6 @@ export default function RapidNoteTransitionExerciseScreen({
         </View>
         <Text style={styles.recordingTitle}>Sing the Sequence</Text>
         {renderRepetitionProgress()}
-        <Text style={styles.recordingSubtitle}>
-          Follow the highlighted note path and sing the sequence in order. Keep
-          your voice relaxed, move smoothly between notes, and prioritize
-          accuracy.
-        </Text>
 
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
@@ -1378,23 +1358,6 @@ export default function RapidNoteTransitionExerciseScreen({
           <Text style={styles.liveFrequency}>
             {livePitch.pitch > 0 ? `${livePitch.pitch.toFixed(1)} Hz` : '--'}
           </Text>
-          <View style={styles.liveDivider} />
-          <View style={styles.liveStats}>
-            <LiveStat
-              label="Transitions"
-              value={String(liveTransitionCount)}
-            />
-            <LiveStat
-              label="Transitions/sec"
-              value={liveTransitionSpeed.toFixed(1)}
-            />
-          </View>
-          <View style={styles.liveStats}>
-            <LiveStat
-              label="Clarity"
-              value={`${Math.round(livePitch.clarity * 100)}%`}
-            />
-          </View>
         </View>
 
         <Text style={styles.timerText}>
@@ -1405,19 +1368,6 @@ export default function RapidNoteTransitionExerciseScreen({
           <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
 
-        <Pressable
-          style={[
-            styles.finishButton,
-            !isRecording && styles.disabledButton,
-          ]}
-          onPress={finishRecording}
-          disabled={!isRecording}
-        >
-          <Ionicons name="stop" size={18} color={BROWN} />
-          <Text style={styles.finishButtonText}>
-            Finish This Repetition
-          </Text>
-        </Pressable>
       </View>
     );
   };
@@ -1648,7 +1598,7 @@ export default function RapidNoteTransitionExerciseScreen({
                   if (action === 'tryAgain') {
                     retryExercise();
                   } else if (action === 'quit') {
-                    router.replace('/exercises/breath-control');
+                    router.replace('/exercises/agility');
                   }
                 }}
                 accessibilityRole="button"
@@ -1853,21 +1803,6 @@ function DetailRow({
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-}
-
-function LiveStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.liveStat}>
-      <Text style={styles.liveStatLabel}>{label}</Text>
-      <Text style={styles.liveStatValue}>{value}</Text>
     </View>
   );
 }
@@ -2111,25 +2046,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: WHITE,
   },
-  finishButton: {
-    width: '100%',
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: LIGHT_GRAY,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  finishButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
-  },
-  disabledButton: {
-    opacity: 0.55,
-  },
   staffGuideCard: {
     width: '100%',
     backgroundColor: LIGHT_PINK,
@@ -2268,8 +2184,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     marginTop: 10,
-    marginBottom: 8,
-    paddingHorizontal: 14,
+    marginBottom: 4,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
@@ -2287,71 +2203,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.7,
     color: MUTED,
+    marginBottom: -10,
   },
   repetitionProgressCount: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: BROWN,
-  },
-  repetitionProgressSegments: {
-    flexDirection: 'row',
-    gap: 6,
-    width: '100%',
-  },
-  repetitionProgressSegment: {
-    flex: 1,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: LIGHT_GRAY,
-  },
-  repetitionProgressCompleted: {
-    backgroundColor: GUIDE_GREEN,
-  },
-  repetitionProgressCurrent: {
-    backgroundColor: ACTIVE_REFERENCE_PINK,
-  },
-  beginnerGuide: {
-    width: '100%',
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 16,
-    backgroundColor: LIGHT_PINK,
-    borderWidth: 1,
-    borderColor: BORDER,
-    gap: 12,
-  },
-  beginnerGuideStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  beginnerStepNumber: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
-    backgroundColor: PINK,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  beginnerStepNumberText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-  },
-  beginnerStepCopy: {
-    flex: 1,
-  },
-  beginnerStepTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: BROWN,
-  },
-  beginnerStepText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    color: MUTED,
-    marginTop: 2,
+    marginBottom: -10,
   },
   countdownScreen: {
     flexGrow: 1,
@@ -2449,17 +2307,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 320,
   },
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 84,
-    color: BROWN,
-    marginTop: 16,
-  },
   recordingContent: {
     flexGrow: 1,
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 28,
+    paddingHorizontal: 20,
+    paddingTop: 120,
     paddingBottom: 24,
     alignItems: 'center',
   },
@@ -2477,15 +2329,6 @@ const styles = StyleSheet.create({
     fontSize: 25,
     color: BROWN,
     textAlign: 'center',
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
-    color: MUTED,
-    textAlign: 'center',
-    marginTop: 4,
-    maxWidth: 310,
   },
   recordingBadge: {
     marginTop: 10,
@@ -2556,34 +2399,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: MUTED,
-  },
-  liveDivider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: BORDER,
-    marginVertical: 15,
-  },
-  liveStats: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 6,
-  },
-  liveStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: MUTED,
-    textAlign: 'center',
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: BROWN,
-    marginTop: 3,
   },
   resultIcon: {
     width: 82,
