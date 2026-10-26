@@ -29,6 +29,8 @@ import {
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
 
+import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
+
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
 
 export type ComponentId =
@@ -147,22 +149,6 @@ function centsDifference(
   }
 
   return 1200 * Math.log2(frequencyA / frequencyB);
-}
-
-function frequencyToMidi(frequency: number): number {
-  if (!isValidFrequency(frequency)) {
-    return NaN;
-  }
-
-  return 69 + 12 * Math.log2(frequency / 440);
-}
-
-function midiToFrequency(midi: number): number {
-  if (!Number.isFinite(midi)) {
-    return NaN;
-  }
-
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 function median(values: number[]): number | null {

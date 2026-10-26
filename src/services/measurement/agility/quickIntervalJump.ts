@@ -1,7 +1,8 @@
 import {
-  extractAgilityPitchFrames,
-  frequencyToMidi,
+  extractAgilityPitchFrames
 } from '@/utils/dsp/agility';
+
+import { frequencyToMidi } from '@/utils/music/notes';
 
 export type QuickIntervalJumpMeasurement = {
   detectedPitches: number[];

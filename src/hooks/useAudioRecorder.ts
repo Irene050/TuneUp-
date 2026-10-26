@@ -41,15 +41,6 @@ function centsBetween(
   return 1200 * Math.log2(frequencyA / frequencyB);
 }
 
-export interface LiveAudioFrame {
-  pitch: number;
-  note: string;
-  clarity: number;
-  volume: number;
-  samples: Float32Array;
-  sampleRate: number;
-}
-
 interface UseAudioRecorderOptions {
   onFrame?: (frame: LiveAudioFrame) => void;
   onStop?: (
@@ -122,6 +113,15 @@ function analyzeAudioSignal(
     peak,
     dcOffset,
   };
+}
+
+export interface LiveAudioFrame {
+  pitch: number;
+  note: string;
+  clarity: number;
+  volume: number;
+  samples: Float32Array;
+  sampleRate: number;
 }
 
 export function useAudioRecorder(

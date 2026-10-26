@@ -1,6 +1,7 @@
 
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
+import { frequencyToMidi } from '@/utils/music/notes';
 
 export const SINGING_ASSESSMENT_BPM = 100;
 export const SINGING_ASSESSMENT_SAMPLE_RATE = 44100;
@@ -101,10 +102,6 @@ function clamp(
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function frequencyToMidi(frequency: number): number {
-  return 69 + 12 * Math.log2(frequency / 440);
 }
 
 function centsDistance(a: number, b: number): number {

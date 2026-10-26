@@ -1,4 +1,4 @@
-
+import { frequencyToMidi } from '@/utils/music/notes';
 import type { PitchFrame } from './pitch';
 
 export interface PitchTransition {
@@ -112,25 +112,6 @@ function fft(
   }
 }
 
-export function frequencyToMidi(
-  frequency: number,
-): number {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
-    return NaN;
-  }
-
-  return 69 + 12 * Math.log2(frequency / 440);
-}
-
-export function midiToFrequency(
-  midi: number,
-): number {
-  if (!Number.isFinite(midi)) {
-    return NaN;
-  }
-
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
 
 export function detectPitchAutocorrelation(
   frame: Float32Array,

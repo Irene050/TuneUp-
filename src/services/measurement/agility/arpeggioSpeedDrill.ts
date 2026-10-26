@@ -1,9 +1,9 @@
-
 import {
   extractAgilityNotes,
   extractAgilityPitchFrames,
-  frequencyToMidi,
 } from '@/utils/dsp/agility';
+
+import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
 
 export type ArpeggioSpeedMeasurement = {
   detectedPitches: number[];
@@ -31,10 +31,6 @@ const NOTE_CONFIRMATION_FRAMES = 2;
 function clamp(value: number, min = 0, max = 100): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
-}
-
-function midiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 type PitchAlignment = {

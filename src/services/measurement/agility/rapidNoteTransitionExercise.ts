@@ -3,6 +3,8 @@ import {
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
 
+import { midiToFrequency } from '@/utils/music/notes';
+
 export type RapidNoteTransitionMeasurement = {
   detectedPitches: number[];
   detectedNotes: number[];
@@ -43,10 +45,6 @@ function clamp(value: number, min = 0, max = 100): number {
   }
 
   return Math.min(max, Math.max(min, value));
-}
-
-function midiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 function frequencyDeviationPercent(

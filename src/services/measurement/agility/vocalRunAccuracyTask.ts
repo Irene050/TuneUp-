@@ -1,8 +1,9 @@
 import {
   extractAgilityNotes,
   extractAgilityPitchFrames,
-  frequencyToMidi,
 } from '@/utils/dsp/agility';
+
+import { frequencyToMidi } from '@/utils/music/notes';
 
 export type VocalRunAccuracyMeasurement = {
   detectedPitches: number[];

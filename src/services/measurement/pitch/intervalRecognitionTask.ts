@@ -3,6 +3,8 @@ import {
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
 
+import { frequencyToMidi } from '@/utils/music/notes';
+
 export interface IntervalRecognitionAttemptMeasurement {
   freq1: number;
   freq2: number;
@@ -74,25 +76,6 @@ function median(values: number[]): number {
         sorted[middle]
       ) / 2
     : sorted[middle];
-}
-
-function frequencyToMidi(
-  frequency: number,
-): number {
-  if (
-    !Number.isFinite(frequency) ||
-    frequency <= 0
-  ) {
-    return 0;
-  }
-
-  return (
-    69 +
-    12 *
-      Math.log2(
-        frequency / 440,
-      )
-  );
 }
 
 interface PitchPoint {
