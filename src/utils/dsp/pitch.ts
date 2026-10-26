@@ -3,17 +3,6 @@ import { PitchDetector } from 'pitchy';
 
 const MIN_TRACKING_CLARITY = 0.70;
 
-function centsBetween(
-  frequencyA: number,
-  frequencyB: number,
-): number {
-  if (frequencyA <= 0 || frequencyB <= 0) {
-    return Infinity;
-  }
-
-  return 1200 * Math.log2(frequencyA / frequencyB);
-}
-
 export interface PitchFrame {
   frequency: number;
   clarity: number;
@@ -184,32 +173,24 @@ export function filterByClarity(
 
 export function calcPitchAccuracy(
   detectedFreq: number,
-  targetFreq: number
+  targetFreq: number,
 ): number {
   if (
-    !Number.isFinite(
-      detectedFreq
-    ) ||
-    !Number.isFinite(
-      targetFreq
-    ) ||
+    !Number.isFinite(detectedFreq) ||
+    !Number.isFinite(targetFreq) ||
     detectedFreq <= 0 ||
     targetFreq <= 0
   ) {
     return 0;
   }
 
-  const deviation =
-    Math.abs(
-      detectedFreq -
-        targetFreq
-    ) /
-    targetFreq;
+  const deviationCents = Math.abs(
+    1200 * Math.log2(detectedFreq / targetFreq),
+  );
 
   return Math.max(
     0,
-    100 -
-      deviation * 100
+    Math.min(100, 100 * (1 - deviationCents / 100)),
   );
 }
 

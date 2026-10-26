@@ -26,6 +26,21 @@ const MAX_PITCH_HZ = 1500;
 const MIN_PITCH_CLARITY = 0.70;
 const LIVE_DROPOUT_TOLERANCE_MS = 250;
 
+const OCTAVE_JUMP_CENTS = 1200;
+const OCTAVE_TOLERANCE_CENTS = 100;
+const OCTAVE_CONFIRMATION_FRAMES = 3;
+
+function centsBetween(
+  frequencyA: number,
+  frequencyB: number,
+): number {
+  if (frequencyA <= 0 || frequencyB <= 0) {
+    return Infinity;
+  }
+
+  return 1200 * Math.log2(frequencyA / frequencyB);
+}
+
 export interface LiveAudioFrame {
   pitch: number;
   note: string;
@@ -138,6 +153,9 @@ export function useAudioRecorder(
   const lastLiveAnalysisRef = useRef(0);
   const sessionActiveRef = useRef(false);
 
+  const pendingOctavePitchRef = useRef<number | null>(null);
+  const pendingOctaveCountRef = useRef(0);
+
   const startingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const discardOnStopRef = useRef(false);
@@ -155,6 +173,9 @@ export function useAudioRecorder(
     lastValidNoteRef.current = '--';
     lastValidClarityRef.current = 0;
     lastValidPitchTimeRef.current = 0;
+
+    pendingOctavePitchRef.current = null;
+    pendingOctaveCountRef.current = 0;
   }, []);
 
   const emitLiveFrame = useCallback(
@@ -386,10 +407,61 @@ export function useAudioRecorder(
                 !validClarity ||
                 !validNote
               ) {
+                pendingOctavePitchRef.current = null;
+                pendingOctaveCountRef.current = 0;
+
                 emitInvalidFrame();
                 return;
               }
 
+              const previousPitch = lastValidPitchRef.current;
+
+              if (previousPitch > 0) {
+                const pitchDifferenceCents = Math.abs(
+                  centsBetween(detectedPitch, previousPitch),
+                );
+
+                const isOctaveJump =
+                  Math.abs(
+                    pitchDifferenceCents - OCTAVE_JUMP_CENTS,
+                  ) <= OCTAVE_TOLERANCE_CENTS;
+
+                if (isOctaveJump) {
+                  const pendingPitch = pendingOctavePitchRef.current;
+
+                  const matchesPendingPitch =
+                    pendingPitch !== null &&
+                    Math.abs(centsBetween(detectedPitch, pendingPitch)) <=
+                      OCTAVE_TOLERANCE_CENTS;
+
+                  if (matchesPendingPitch) {
+                    pendingOctaveCountRef.current += 1;
+                  } else {
+                    pendingOctavePitchRef.current = detectedPitch;
+                    pendingOctaveCountRef.current = 1;
+                  }
+
+                  console.warn('[Pitch Tracking] Possible octave jump', {
+                    previousPitchHz: Number(previousPitch.toFixed(2)),
+                    detectedPitchHz: Number(detectedPitch.toFixed(2)),
+                    differenceCents: Number(
+                      pitchDifferenceCents.toFixed(1),
+                    ),
+                    confirmationCount: pendingOctaveCountRef.current,
+                  });
+
+                  if (
+                    pendingOctaveCountRef.current <
+                    OCTAVE_CONFIRMATION_FRAMES
+                  ) {
+                    emitInvalidFrame();
+                    return;
+                  }
+                }
+              }
+
+              pendingOctavePitchRef.current = null;
+              pendingOctaveCountRef.current = 0;
               lastValidPitchRef.current = detectedPitch;
               lastValidNoteRef.current = detectedNote;
               lastValidClarityRef.current = detectedClarity;
@@ -403,6 +475,8 @@ export function useAudioRecorder(
                 samples,
                 sampleRate: DEFAULT_SAMPLE_RATE,
               });
+
+              
             } catch (error) {
               console.error(
                 'Audio callback error:',

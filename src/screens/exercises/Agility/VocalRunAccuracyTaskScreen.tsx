@@ -50,7 +50,6 @@ const COUNTDOWN_SECONDS = 3;
 type Phase =
   | 'instructions'
   | 'reference'
-  | 'loading'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -68,8 +67,6 @@ type LivePitch = {
   frequency: number;
 };
 
-type PitchStatus = 'inTune' | 'close' | 'notInTune' | 'listening';
-
 type ExerciseResult = {
   overall: number;
   pitchScore: number;
@@ -85,6 +82,8 @@ type ExerciseResult = {
   durationMs: number;
   repetitionsCompleted: number;
 };
+
+type PitchStatus = 'inTune' | 'close' | 'notInTune' | 'listening';
 
 const sleep = (ms: number) =>
   new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -143,10 +142,12 @@ function getTimedTargetNoteIndex(
     return null;
   }
 
-  const cycle =
-    noteDurationSec +
-    Math.max(0, Number.isFinite(gapSec) ? gapSec : 0);
+  const gap = Math.max(
+    0,
+    Number.isFinite(gapSec) ? gapSec : 0,
+  );
 
+  const cycle = noteDurationSec + gap;
   const index = Math.floor(elapsedSeconds / cycle);
 
   if (index >= targetNoteCount) {
@@ -200,30 +201,20 @@ function getPitchAccuracy(
   const absoluteCents = Math.abs(cents);
 
   if (absoluteCents <= 25) {
-    return {
-      cents,
-      status: 'inTune',
-    };
+    return { cents, status: 'inTune' };
   }
 
   if (absoluteCents <= 50) {
-    return {
-      cents,
-      status: 'close',
-    };
+    return { cents, status: 'close' };
   }
 
-  return {
-    cents,
-    status: 'notInTune',
-  };
+  return { cents, status: 'notInTune' };
 }
 
 export default function VocalRunAccuracyTaskScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
   const [tierLoading, setTierLoading] = useState(true);
-  const [adaptiveConfig, setAdaptiveConfig] =
-    useState<Config | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
 
@@ -234,6 +225,7 @@ export default function VocalRunAccuracyTaskScreen() {
   const [result, setResult] = useState<ExerciseResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [livePitch, setLivePitch] = useState<LivePitch | null>(null);
+
   const [isPlayingReference, setIsPlayingReference] = useState(false);
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
@@ -242,9 +234,6 @@ export default function VocalRunAccuracyTaskScreen() {
   const [isQuitting, setIsQuitting] = useState(false);
 
   const mountedRef = useRef(true);
-  const recentScoresRef = useRef<number[]>([]);
-  const vocalRangeRef = useRef<VocalRange | null>(null);
-
   const phaseRef = useRef<Phase>('instructions');
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -259,19 +248,24 @@ export default function VocalRunAccuracyTaskScreen() {
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const processingRef = useRef(false);
-
   const exerciseRunIdRef = useRef(0);
   const countdownRunIdRef = useRef(0);
   const referencePlaybackIdRef = useRef(0);
-  const referencePlayingRef = useRef(false);
 
-  const showQuitModalRef = useRef(false);
+  const referencePlayingRef = useRef(false);
+  const processingRef = useRef(false);
+  const recordingStartInProgressRef = useRef(false);
+
   const pausedRef = useRef(false);
+  const showQuitModalRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
 
+  const recentScoresRef = useRef<number[]>([]);
+  const vocalRangeRef = useRef<VocalRange | null>(null);
+
   const setExercisePhase = useCallback((next: Phase) => {
+    console.log(`[VocalRun] Phase: ${phaseRef.current} -> ${next}`);
     phaseRef.current = next;
     setPhase(next);
   }, []);
@@ -292,25 +286,29 @@ export default function VocalRunAccuracyTaskScreen() {
     if (recorder) {
       try {
         recorder.clearOnAudioReady();
-      } catch {
-        // The recorder may already have stopped.
+      } catch (error) {
+        console.warn('[VocalRun] Could not clear audio callback:', error);
       }
 
       try {
         void Promise.resolve(recorder.stop()).catch(error => {
-          console.warn('Failed to stop audio recorder:', error);
+          console.warn('[VocalRun] Recorder stop failed:', error);
         });
       } catch (error) {
-        console.warn('Failed to stop audio recorder:', error);
+        console.warn('[VocalRun] Recorder stop failed:', error);
       }
     }
 
     recordingStartRef.current = null;
 
     try {
-      void AudioManager.setAudioSessionActivity(false);
+      void Promise.resolve(
+        AudioManager.setAudioSessionActivity(false),
+      ).catch(error => {
+        console.warn('[VocalRun] Audio session stop failed:', error);
+      });
     } catch (error) {
-      console.warn('Failed to deactivate audio session:', error);
+      console.warn('[VocalRun] Audio session stop failed:', error);
     }
   }, [clearRecordingTimer]);
 
@@ -323,13 +321,10 @@ export default function VocalRunAccuracyTaskScreen() {
     if (context) {
       try {
         void context.suspend().catch(error => {
-          console.warn(
-            'Failed to suspend reference audio:',
-            error,
-          );
+          console.warn('[VocalRun] Could not suspend reference audio:', error);
         });
       } catch (error) {
-        console.warn('Failed to suspend reference audio:', error);
+        console.warn('[VocalRun] Could not suspend reference audio:', error);
       }
     }
 
@@ -344,14 +339,12 @@ export default function VocalRunAccuracyTaskScreen() {
 
     return () => {
       mountedRef.current = false;
-
       exerciseRunIdRef.current += 1;
       countdownRunIdRef.current += 1;
       referencePlaybackIdRef.current += 1;
 
-      referencePlayingRef.current = false;
       pausedRef.current = true;
-      showQuitModalRef.current = false;
+      referencePlayingRef.current = false;
 
       stopRecording();
 
@@ -361,8 +354,8 @@ export default function VocalRunAccuracyTaskScreen() {
       if (context) {
         try {
           void context.close();
-        } catch {
-          // The context may already be closed.
+        } catch (error) {
+          console.warn('[VocalRun] Could not close audio context:', error);
         }
       }
     };
@@ -371,7 +364,7 @@ export default function VocalRunAccuracyTaskScreen() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadTier = async () => {
+    async function loadTier() {
       const user = auth.currentUser;
 
       if (!user) {
@@ -379,7 +372,6 @@ export default function VocalRunAccuracyTaskScreen() {
           setTier('beginner');
           setTierLoading(false);
         }
-
         return;
       }
 
@@ -397,10 +389,7 @@ export default function VocalRunAccuracyTaskScreen() {
           );
         }
       } catch (error) {
-        console.warn(
-          'Failed to load agility component tier:',
-          error,
-        );
+        console.warn('[VocalRun] Could not load tier:', error);
 
         if (!cancelled) {
           setTier('beginner');
@@ -410,7 +399,7 @@ export default function VocalRunAccuracyTaskScreen() {
           setTierLoading(false);
         }
       }
-    };
+    }
 
     void loadTier();
 
@@ -426,7 +415,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
     let cancelled = false;
 
-    const loadAdaptiveParameters = async () => {
+    async function loadParameters() {
       setIsLoadingAdaptiveParams(true);
 
       let recentScores: number[] = [];
@@ -447,10 +436,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
           recentScores = getRecentVocalRunScores(records, tier);
         } catch (error) {
-          console.warn(
-            'Failed to load Vocal Run Accuracy score history:',
-            error,
-          );
+          console.warn('[VocalRun] Could not load score history:', error);
         }
 
         if (cancelled) {
@@ -477,16 +463,10 @@ export default function VocalRunAccuracyTaskScreen() {
             typeof highHz === 'number' &&
             isValidVocalRange({ lowHz, highHz })
           ) {
-            vocalRange = {
-              lowHz,
-              highHz,
-            };
+            vocalRange = { lowHz, highHz };
           }
         } catch (error) {
-          console.warn(
-            'Failed to load assessment vocal range:',
-            error,
-          );
+          console.warn('[VocalRun] Could not load vocal range:', error);
         }
       }
 
@@ -504,16 +484,22 @@ export default function VocalRunAccuracyTaskScreen() {
       });
 
       if (!cancelled) {
-        setAdaptiveConfig(generated);
+        console.log('[VocalRun] Adaptive parameters loaded:', {
+          tier,
+          hasVocalRange: isValidVocalRange(vocalRange),
+          noteCount: generated.frequencies.length,
+          repetitions: generated.repetitions,
+          noteDurationSec: generated.noteDurationSec,
+          gapSec: generated.gapSec,
+        });
+
+        setConfig(generated);
         setIsLoadingAdaptiveParams(false);
       }
-    };
+    }
 
-    void loadAdaptiveParameters().catch(error => {
-      console.warn(
-        'Failed to generate Vocal Run Accuracy parameters:',
-        error,
-      );
+    void loadParameters().catch(error => {
+      console.warn('[VocalRun] Parameter loading failed:', error);
 
       if (!cancelled) {
         const fallback = generateVocalRunAccuracyParams({
@@ -522,7 +508,7 @@ export default function VocalRunAccuracyTaskScreen() {
           vocalRange: vocalRangeRef.current,
         });
 
-        setAdaptiveConfig(fallback);
+        setConfig(fallback);
         setIsLoadingAdaptiveParams(false);
       }
     });
@@ -531,8 +517,6 @@ export default function VocalRunAccuracyTaskScreen() {
       cancelled = true;
     };
   }, [tier, tierLoading]);
-
-  const config = adaptiveConfig;
 
   const hasValidGeneratedSequence =
     !!config &&
@@ -570,7 +554,7 @@ export default function VocalRunAccuracyTaskScreen() {
       : null;
 
   const pitchAccuracy =
-    livePitch !== null && targetFrequency !== null
+    livePitch && targetFrequency !== null
       ? getPitchAccuracy(livePitch.frequency, targetFrequency)
       : null;
 
@@ -602,27 +586,19 @@ export default function VocalRunAccuracyTaskScreen() {
           await AudioManager.requestRecordingPermissions();
 
         if (permission !== 'Granted') {
-          if (mountedRef.current) {
-            setErrorMessage(
-              'Microphone permission is required to perform this exercise.',
-            );
-          }
-
+          setErrorMessage(
+            'Microphone permission is required to perform this exercise.',
+          );
           return false;
         }
 
         return true;
       } catch (error) {
-        console.warn(
-          'Microphone permission request failed:',
-          error,
-        );
+        console.warn('[VocalRun] Microphone permission failed:', error);
 
-        if (mountedRef.current) {
-          setErrorMessage(
-            'We could not access the microphone. Please check your microphone permissions.',
-          );
-        }
+        setErrorMessage(
+          'We could not access the microphone. Please check your microphone permissions.',
+        );
 
         return false;
       }
@@ -704,7 +680,7 @@ export default function VocalRunAccuracyTaskScreen() {
         }
       }
     } catch (error) {
-      console.warn('Reference playback failed:', error);
+      console.warn('[VocalRun] Reference playback failed:', error);
 
       if (
         mountedRef.current &&
@@ -742,7 +718,6 @@ export default function VocalRunAccuracyTaskScreen() {
       setErrorMessage(
         'A valid vocal range could not be found. Please complete your vocal range assessment before starting this exercise.',
       );
-
       return;
     }
 
@@ -756,6 +731,7 @@ export default function VocalRunAccuracyTaskScreen() {
     measurementsRef.current = [];
     samplesRef.current = [];
     processingRef.current = false;
+    recordingStartInProgressRef.current = false;
 
     setCurrentRepetition(1);
     setCountdown(COUNTDOWN_SECONDS);
@@ -793,8 +769,7 @@ export default function VocalRunAccuracyTaskScreen() {
       showQuitModalRef.current ||
       quitInProgressRef.current ||
       !config ||
-      (phaseRef.current !== 'recording' &&
-        phaseRef.current !== 'processing')
+      phaseRef.current !== 'recording'
     ) {
       return;
     }
@@ -804,10 +779,9 @@ export default function VocalRunAccuracyTaskScreen() {
     const runId = exerciseRunIdRef.current;
 
     try {
-      stopRecording();
-
-      setLivePitch(null);
       setExercisePhase('processing');
+      stopRecording();
+      setLivePitch(null);
 
       await sleep(200);
 
@@ -823,7 +797,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
       const samples = new Float32Array(samplesRef.current);
 
-      if (!samples.length) {
+      if (samples.length === 0) {
         throw new Error('No audio samples were captured.');
       }
 
@@ -833,7 +807,8 @@ export default function VocalRunAccuracyTaskScreen() {
         config.frequencies,
       );
 
-      console.log('Vocal Run Accuracy measurement:', {
+      console.log('[VocalRun] Measurement:', {
+        sampleCount: samples.length,
         targetNotes: measurement.targetNotes,
         detectedNotes: measurement.detectedNotes,
         pitchAccuracy: measurement.pitchAccuracy,
@@ -862,8 +837,9 @@ export default function VocalRunAccuracyTaskScreen() {
         setCountdown(COUNTDOWN_SECONDS);
         setRecordingTime(0);
         setLivePitch(null);
-        setExercisePhase('reference');
 
+        processingRef.current = false;
+        setExercisePhase('reference');
         return;
       }
 
@@ -988,13 +964,9 @@ export default function VocalRunAccuracyTaskScreen() {
         repetitionsCompleted: measurements.length,
       });
 
-      setLivePitch(null);
       setExercisePhase('results');
     } catch (error) {
-      console.warn(
-        'Vocal Run Accuracy processing failed:',
-        error,
-      );
+      console.warn('[VocalRun] Recording processing failed:', error);
 
       if (
         mountedRef.current &&
@@ -1004,7 +976,6 @@ export default function VocalRunAccuracyTaskScreen() {
         setErrorMessage(
           'We could not analyze this recording. Please try again.',
         );
-
         setExercisePhase('instructions');
       }
     } finally {
@@ -1016,6 +987,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const startRecording = useCallback(async () => {
     if (
+      recordingStartInProgressRef.current ||
       recorderRef.current ||
       phaseRef.current !== 'countdown' ||
       pausedRef.current ||
@@ -1026,7 +998,10 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
+    recordingStartInProgressRef.current = true;
+
     const runId = exerciseRunIdRef.current;
+
     const maxSamples = Math.ceil(
       recordingDurationSec * SAMPLE_RATE,
     );
@@ -1038,6 +1013,8 @@ export default function VocalRunAccuracyTaskScreen() {
 
       const recorder = new AudioRecorder();
       recorderRef.current = recorder;
+
+      console.log('[VocalRun] Configuring audio recorder.');
 
       const callbackResult = recorder.onAudioReady(
         {
@@ -1074,8 +1051,10 @@ export default function VocalRunAccuracyTaskScreen() {
             );
 
             for (let i = 0; i < copyCount; i++) {
-              if (Number.isFinite(channelData[i])) {
-                samplesRef.current.push(channelData[i]);
+              const sample = channelData[i];
+
+              if (Number.isFinite(sample)) {
+                samplesRef.current.push(sample);
               }
             }
 
@@ -1106,14 +1085,11 @@ export default function VocalRunAccuracyTaskScreen() {
                 note: frequencyToNoteName(detected),
                 frequency: detected,
               });
-            } else if (mountedRef.current) {
+            } else {
               setLivePitch(null);
             }
           } catch (error) {
-            console.warn(
-              'Could not process live audio frame:',
-              error,
-            );
+            console.warn('[VocalRun] Live audio analysis failed:', error);
           }
         },
       );
@@ -1135,6 +1111,14 @@ export default function VocalRunAccuracyTaskScreen() {
         return;
       }
 
+      console.log('[VocalRun] Transitioning to recording phase.');
+
+      recordingStartRef.current = Date.now();
+
+      setExercisePhase('recording');
+
+      console.log('[VocalRun] Starting audio recorder.');
+
       const startResult = await recorder.start();
 
       if (startResult.status === 'error') {
@@ -1152,10 +1136,7 @@ export default function VocalRunAccuracyTaskScreen() {
         return;
       }
 
-      recordingStartRef.current = Date.now();
-
-      setRecordingTime(0);
-      setExercisePhase('recording');
+      console.log('[VocalRun] Recording started successfully.');
 
       recordingTimerRef.current = setInterval(() => {
         const started = recordingStartRef.current;
@@ -1173,18 +1154,21 @@ export default function VocalRunAccuracyTaskScreen() {
         }
 
         const elapsed = (Date.now() - started) / 1000;
-
-        setRecordingTime(
-          Math.min(elapsed, recordingDurationSec),
+        const boundedElapsed = Math.min(
+          elapsed,
+          recordingDurationSec,
         );
+
+        setRecordingTime(boundedElapsed);
 
         if (elapsed >= recordingDurationSec) {
           setRecordingTime(recordingDurationSec);
+          clearRecordingTimer();
           void processRecording();
         }
       }, 100);
     } catch (error) {
-      console.warn('Recording failed:', error);
+      console.warn('[VocalRun] Could not start recording:', error);
 
       stopRecording();
 
@@ -1195,12 +1179,15 @@ export default function VocalRunAccuracyTaskScreen() {
       ) {
         setLivePitch(null);
         setErrorMessage(
-          'We could not start the recording. Please try again.',
+          'We could not start the recording. Please check microphone access and try again.',
         );
         setExercisePhase('instructions');
       }
+    } finally {
+      recordingStartInProgressRef.current = false;
     }
   }, [
+    clearRecordingTimer,
     config,
     processRecording,
     recordingDurationSec,
@@ -1222,6 +1209,7 @@ export default function VocalRunAccuracyTaskScreen() {
     const runId = ++countdownRunIdRef.current;
 
     setErrorMessage('');
+    setCountdown(COUNTDOWN_SECONDS);
     setExercisePhase('countdown');
 
     for (
@@ -1254,7 +1242,7 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     setCountdown(0);
-    await sleep(1000);
+    await sleep(500);
 
     if (
       !mountedRef.current ||
@@ -1281,6 +1269,7 @@ export default function VocalRunAccuracyTaskScreen() {
     stopRecording();
 
     processingRef.current = false;
+    recordingStartInProgressRef.current = false;
     samplesRef.current = [];
     measurementsRef.current = [];
 
@@ -1309,7 +1298,7 @@ export default function VocalRunAccuracyTaskScreen() {
     setShowQuitModal(false);
     setIsQuitting(false);
 
-    setAdaptiveConfig(nextConfig);
+    setConfig(nextConfig);
     setResult(null);
     setCurrentRepetition(1);
     setRecordingTime(0);
@@ -1336,9 +1325,7 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
-    const currentPhase = phaseRef.current;
-
-    pausedPhaseRef.current = currentPhase;
+    pausedPhaseRef.current = phaseRef.current;
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
@@ -1346,14 +1333,14 @@ export default function VocalRunAccuracyTaskScreen() {
 
     cancelReferencePlayback();
 
-    if (currentPhase === 'recording') {
+    if (pausedPhaseRef.current === 'recording') {
       samplesRef.current = [];
 
       setRecordingTime(0);
       setLivePitch(null);
 
       stopRecording();
-    } else if (currentPhase === 'countdown') {
+    } else if (pausedPhaseRef.current === 'countdown') {
       setCountdown(COUNTDOWN_SECONDS);
     }
 
@@ -1365,7 +1352,7 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
-    const pausedPhase = pausedPhaseRef.current;
+    const previousPhase = pausedPhaseRef.current;
 
     pausedRef.current = false;
     showQuitModalRef.current = false;
@@ -1374,8 +1361,8 @@ export default function VocalRunAccuracyTaskScreen() {
     setErrorMessage('');
 
     if (
-      pausedPhase === 'countdown' ||
-      pausedPhase === 'recording'
+      previousPhase === 'countdown' ||
+      previousPhase === 'recording'
     ) {
       samplesRef.current = [];
 
@@ -1387,24 +1374,18 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
-    if (pausedPhase === 'reference') {
+    if (previousPhase === 'reference') {
       setExercisePhase('reference');
       return;
     }
 
-    if (pausedPhase === 'processing') {
-      if (phaseRef.current === 'results') {
-        return;
-      }
-
+    if (previousPhase === 'processing') {
       if (
         phaseRef.current === 'processing' &&
         !processingRef.current
       ) {
         void processRecording();
       }
-
-      return;
     }
   }, [processRecording, setExercisePhase]);
 
@@ -1416,18 +1397,19 @@ export default function VocalRunAccuracyTaskScreen() {
     quitInProgressRef.current = true;
     pausedRef.current = true;
     showQuitModalRef.current = false;
+
     exerciseRunIdRef.current += 1;
     countdownRunIdRef.current += 1;
     referencePlaybackIdRef.current += 1;
 
     referencePlayingRef.current = false;
     processingRef.current = false;
+    recordingStartInProgressRef.current = false;
 
     setIsQuitting(true);
     setShowQuitModal(false);
 
     clearRecordingTimer();
-
     samplesRef.current = [];
 
     cancelReferencePlayback();
@@ -1440,26 +1422,11 @@ export default function VocalRunAccuracyTaskScreen() {
       try {
         await context.close();
       } catch (error) {
-        console.warn(
-          'Failed to close reference audio context:',
-          error,
-        );
+        console.warn('[VocalRun] Could not close audio context:', error);
       }
     }
 
-    try {
-      router.replace('/exercises/agility');
-    } catch (error) {
-      console.error(
-        'Failed to navigate away from Vocal Run Accuracy:',
-        error,
-      );
-
-      if (mountedRef.current) {
-        setIsQuitting(false);
-        quitInProgressRef.current = false;
-      }
-    }
+    router.replace('/exercises/agility');
   }, [
     cancelReferencePlayback,
     clearRecordingTimer,
@@ -1494,115 +1461,19 @@ export default function VocalRunAccuracyTaskScreen() {
     pausedPhaseRef.current === 'results'
       ? 'Are you sure you want to leave Vocal Run Accuracy?'
       : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+        ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
         : pausedPhaseRef.current === 'countdown'
-          ? 'Your exercise is paused. Your completed repetitions will be kept. The current repetition will restart when you continue.'
+          ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
           : pausedPhaseRef.current === 'reference'
-            ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to return to the reference sequence.'
-            : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
-  const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            {quitModalMessage}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
-              void quitExercise();
-            }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  if (tierLoading || isLoadingAdaptiveParams || !config) {
-    return (
-      <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.iconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={38}
-              color={BROWN}
-            />
-          </View>
-
-          <Text style={styles.title}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Loading your difficulty level and assessed vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={BROWN}
-            style={styles.spinner}
-          />
-        </View>
-
-        {quitModal}
-      </>
-    );
-  }
+            ? 'Your completed repetitions will be kept. Continue to return to the reference sequence.'
+            : 'Your completed repetitions will be kept. Continue to resume your exercise.';
 
   const renderSequence = (
     activeIndex: number | null,
     live = false,
   ) => (
     <View style={styles.sequence}>
-      {config.frequencies.map((frequency, index) => {
+      {config!.frequencies.map((frequency, index) => {
         const active = activeIndex === index;
 
         return (
@@ -1637,36 +1508,37 @@ export default function VocalRunAccuracyTaskScreen() {
     </View>
   );
 
-  const renderInstructions = () => (
-    <View style={styles.content}>
+  const renderHeader = (
+    icon: React.ComponentProps<typeof Ionicons>['name'],
+    title: string,
+    subtitle: string,
+  ) => (
+    <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back"
         style={styles.backButton}
         onPress={handleBack}
       >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
+        <Ionicons name="arrow-back" size={24} color={BROWN} />
       </Pressable>
 
       <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={BROWN}
-        />
+        <Ionicons name={icon} size={34} color={BROWN} />
       </View>
 
-      <Text style={styles.title}>
-        Vocal Run Accuracy
-      </Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.subtitle}>{subtitle}</Text>
+    </>
+  );
 
-      <Text style={styles.subtitle}>
-        VOCAL AGILITY
-      </Text>
+  const renderInstructions = () => (
+    <View style={styles.content}>
+      {renderHeader(
+        'flash-outline',
+        'Vocal Run Accuracy',
+        'VOCAL AGILITY',
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
@@ -1677,26 +1549,24 @@ export default function VocalRunAccuracyTaskScreen() {
           'Listen carefully to the reference vocal run.',
           'Sing every note in the same order.',
           'Keep your pitch accurate and move smoothly between notes.',
-          `Complete all ${config.repetitions} repetitions.`,
-        ].map(line => (
-          <Text key={line} style={styles.bodyText}>
-           {line}
+          `Complete all ${config!.repetitions} repetitions.`,
+        ].map((line, index) => (
+          <Text key={index} style={styles.bodyText}>
+            {index + 1}. {line}
           </Text>
         ))}
 
-        <Text style={styles.cardTitle}>
-          Exercise Details
-        </Text>
+        <Text style={styles.cardTitle}>Exercise Details</Text>
 
         {[
-          ['Difficulty', config.label],
-          ['Speed', config.speedLabel],
-          ['Notes', String(config.frequencies.length)],
-          ['Repetitions', String(config.repetitions)],
-          ['Accuracy Target', `${config.accuracyThreshold}%`],
+          ['Difficulty', config!.label],
+          ['Speed', config!.speedLabel],
+          ['Notes', String(config!.frequencies.length)],
+          ['Repetitions', String(config!.repetitions)],
+          ['Accuracy Target', `${config!.accuracyThreshold}%`],
           [
             'Note Duration',
-            `${config.noteDurationSec.toFixed(2)} sec`,
+            `${config!.noteDurationSec.toFixed(2)} sec`,
           ],
         ].map(([label, value]) => (
           <View key={label} style={styles.detailRow}>
@@ -1716,58 +1586,24 @@ export default function VocalRunAccuracyTaskScreen() {
           !hasValidGeneratedSequence && styles.disabled,
         ]}
         disabled={!hasValidGeneratedSequence}
-        onPress={() => {
-          void beginExercise();
-        }}
+        onPress={() => void beginExercise()}
       >
-        <Ionicons
-          name="play"
-          size={18}
-          color={WHITE}
-        />
-
-        <Text style={styles.buttonText}>
-          Start Exercise
-        </Text>
+        <Ionicons name="play" size={18} color={WHITE} />
+        <Text style={styles.buttonText}>Start Exercise</Text>
       </Pressable>
     </View>
   );
 
   const renderReference = () => (
     <View style={styles.content}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.backButton}
-        onPress={handleBack}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
-
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="musical-notes-outline"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.title}>
-        Repetition {currentRepetition}
-      </Text>
-
-      <Text style={styles.subtitle}>
-        OF {config.repetitions} REPETITIONS
-      </Text>
+      {renderHeader(
+        'musical-notes-outline',
+        `Vocal Run Accuracy`,
+        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
+      )}
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          Listen to the Sequence
-        </Text>
+        <Text style={styles.cardTitle}>Listen to the Sequence</Text>
 
         {renderSequence(activeReferenceNoteIndex)}
 
@@ -1782,24 +1618,16 @@ export default function VocalRunAccuracyTaskScreen() {
           isPlayingReference && styles.disabled,
         ]}
         disabled={isPlayingReference}
-        onPress={() => {
-          void playReference();
-        }}
+        onPress={() => void playReference()}
       >
         {isPlayingReference ? (
           <ActivityIndicator color={WHITE} />
         ) : (
-          <Ionicons
-            name="play"
-            size={18}
-            color={WHITE}
-          />
+          <Ionicons name="play" size={18} color={WHITE} />
         )}
 
         <Text style={styles.buttonText}>
-          {isPlayingReference
-            ? 'Playing Reference...'
-            : 'Play Reference'}
+          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
         </Text>
       </Pressable>
 
@@ -1809,53 +1637,24 @@ export default function VocalRunAccuracyTaskScreen() {
           isPlayingReference && styles.disabled,
         ]}
         disabled={isPlayingReference}
-        onPress={() => {
-          void startCountdown();
-        }}
+        onPress={() => void startCountdown()}
       >
-        <Text style={styles.secondaryButtonText}>
-          Continue
-        </Text>
+        <Text style={styles.secondaryButtonText}>Continue</Text>
       </Pressable>
 
       {errorMessage ? (
-        <Text style={styles.errorText}>
-          {errorMessage}
-        </Text>
+        <Text style={styles.errorText}>{errorMessage}</Text>
       ) : null}
     </View>
   );
 
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.backButton}
-        onPress={handleBack}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
-
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.title}>
-        Get Ready
-      </Text>
-
-      <Text style={styles.subtitle}>
-        REPETITION {currentRepetition} OF {config.repetitions}
-      </Text>
+      {renderHeader(
+        'flash-outline',
+        'Get Ready',
+        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
+      )}
 
       <Text style={styles.countdown}>
         {countdown === 0 ? 'READY' : countdown}
@@ -1868,48 +1667,21 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderRecording = () => (
-    <View style={styles.content}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.backButton}
-        onPress={handleBack}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
+    <View style={styles.recordingContent}>
+      {renderHeader(
+        'mic',
+        'Sing the Vocal Run',
+        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
+      )}
 
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="mic"
-          size={34}
-          color={BROWN}
-        />
-      </View>
-
-      <Text style={styles.title}>
-        Sing the Vocal Run
-      </Text>
-
-      <Text style={styles.subtitle}>
-        REPETITION {currentRepetition} OF {config.repetitions}
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          Target Sequence
-        </Text>
+      <View style={styles.recordingCard}>
+        <Text style={styles.cardTitle}>Target Sequence</Text>
 
         {renderSequence(activeTargetNoteIndex, true)}
 
         <View style={styles.divider} />
 
-        <Text style={styles.cardTitle}>
-          Live Pitch Accuracy
-        </Text>
+        <Text style={styles.cardTitle}>Live Pitch Accuracy</Text>
 
         <View
           style={[
@@ -1952,7 +1724,7 @@ export default function VocalRunAccuracyTaskScreen() {
             : 'Listening for a clear vocal pitch'}
         </Text>
 
-        {pitchAccuracy && targetFrequency !== null ? (
+        {pitchAccuracy ? (
           <Text style={styles.pitchDeviation}>
             {Math.abs(pitchAccuracy.cents).toFixed(0)} cents{' '}
             {pitchAccuracy.cents > 0
@@ -1964,88 +1736,61 @@ export default function VocalRunAccuracyTaskScreen() {
         ) : null}
 
         <View style={styles.pitchLegend}>
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: GREEN },
-              ]}
-            />
-            <Text style={styles.legendText}>
-              In tune
-            </Text>
-          </View>
+          {[
+            [GREEN, 'In tune'],
+            [YELLOW, 'Close'],
+            [RED, 'Not in tune'],
+          ].map(([color, label]) => (
+            <View key={label} style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendDot,
+                  { backgroundColor: color },
+                ]}
+              />
+              <Text style={styles.legendText}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
 
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: YELLOW },
-              ]}
-            />
-            <Text style={styles.legendText}>
-              Close
-            </Text>
-          </View>
+      <View style={styles.timerContainer}>
+        <Text style={styles.timerLabel}>Recording progress</Text>
 
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: RED },
-              ]}
-            />
-            <Text style={styles.legendText}>
-              Not in tune
-            </Text>
-          </View>
+        <Text style={styles.timerText}>
+          {recordingTime.toFixed(1)} / {recordingDurationSec.toFixed(1)} sec
+        </Text>
+
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${
+                  recordingDurationSec > 0
+                    ? Math.min(
+                        100,
+                        (recordingTime / recordingDurationSec) * 100,
+                      )
+                    : 0
+                }%`,
+              },
+            ]}
+          />
         </View>
       </View>
 
       <Text style={styles.hint}>
-        Recording: {Math.min(recordingTime, recordingDurationSec).toFixed(1)}{' '}
-        / {recordingDurationSec.toFixed(1)} sec
+        Sing each note in the displayed order.
       </Text>
-
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            {
-              width: `${Math.min(
-                100,
-                (recordingTime / recordingDurationSec) * 100,
-              )}%`,
-            },
-          ]}
-        />
-      </View>
     </View>
   );
 
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.backButton}
-        onPress={handleBack}
-      >
-        <Ionicons
-          name="arrow-back"
-          size={24}
-          color={BROWN}
-        />
-      </Pressable>
+      <ActivityIndicator size="large" color={BROWN} />
 
-      <ActivityIndicator
-        size="large"
-        color={BROWN}
-      />
-
-      <Text style={styles.title}>
-        Analyzing Your Singing
-      </Text>
+      <Text style={styles.title}>Analyzing Your Singing</Text>
 
       <Text style={styles.hint}>
         Measuring pitch, sequence, and transition accuracy.
@@ -2055,7 +1800,12 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const renderResults = () => {
     if (!result) {
-      return null;
+      return (
+        <View style={styles.centerScreen}>
+          <ActivityIndicator size="large" color={BROWN} />
+          <Text style={styles.hint}>Preparing your results...</Text>
+        </View>
+      );
     }
 
     const accuracyItems: [string, number][] = [
@@ -2082,43 +1832,16 @@ export default function VocalRunAccuracyTaskScreen() {
 
     return (
       <View style={styles.content}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to exercises"
-          style={styles.backButton}
-          onPress={handleBack}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={BROWN}
-          />
-        </Pressable>
-
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name={
-              result.passed
-                ? 'checkmark-circle-outline'
-                : 'refresh-outline'
-            }
-            size={38}
-            color={BROWN}
-          />
-        </View>
-
-        <Text style={styles.title}>
-          {result.passed ? 'Great Job!' : 'Keep Practicing!'}
-        </Text>
-
-        <Text style={styles.subtitle}>
-          VOCAL RUN ACCURACY RESULT
-        </Text>
+        {renderHeader(
+          result.passed
+            ? 'checkmark-circle-outline'
+            : 'refresh-outline',
+          result.passed ? 'Great Job!' : 'Keep Practicing!',
+          'VOCAL RUN ACCURACY RESULT',
+        )}
 
         <View style={styles.scoreCard}>
-          <Text style={styles.cardTitle}>
-            OVERALL SCORE
-          </Text>
+          <Text style={styles.cardTitle}>OVERALL SCORE</Text>
 
           <Text style={styles.score}>
             {Math.round(result.overall)}
@@ -2135,23 +1858,18 @@ export default function VocalRunAccuracyTaskScreen() {
           </Text>
 
           <Text style={styles.hint}>
-            {result.repetitionsCompleted} of {config.repetitions}{' '}
+            {result.repetitionsCompleted} of {config!.repetitions}{' '}
             repetitions completed
           </Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            Accuracy Breakdown
-          </Text>
+          <Text style={styles.cardTitle}>Accuracy Breakdown</Text>
 
           {accuracyItems.map(([label, value]) => (
             <View key={label} style={styles.metricBlock}>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>
-                  {label}
-                </Text>
-
+                <Text style={styles.detailLabel}>{label}</Text>
                 <Text style={styles.detailValue}>
                   {Math.round(value)}%
                 </Text>
@@ -2162,10 +1880,7 @@ export default function VocalRunAccuracyTaskScreen() {
                   style={[
                     styles.progressFill,
                     {
-                      width: `${Math.max(
-                        0,
-                        Math.min(100, value),
-                      )}%`,
+                      width: `${Math.max(0, Math.min(100, value))}%`,
                     },
                   ]}
                 />
@@ -2174,53 +1889,31 @@ export default function VocalRunAccuracyTaskScreen() {
           ))}
 
           <Text style={styles.hint}>
-            Sequence target: {config.accuracyThreshold}%
+            Sequence target: {config!.accuracyThreshold}%
           </Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            Performance Metrics
-          </Text>
+          <Text style={styles.cardTitle}>Performance Metrics</Text>
 
           {metrics.map(([label, value]) => (
             <View key={label} style={styles.detailRow}>
-              <Text style={styles.detailLabel}>
-                {label}
-              </Text>
-
-              <Text style={styles.detailValue}>
-                {value}
-              </Text>
+              <Text style={styles.detailLabel}>{label}</Text>
+              <Text style={styles.detailValue}>{value}</Text>
             </View>
           ))}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.bodyText}>
-            {result.feedback}
-          </Text>
+          <Text style={styles.bodyText}>{result.feedback}</Text>
         </View>
 
-        <Pressable
-          style={styles.button}
-          onPress={resetExercise}
-        >
-          <Ionicons
-            name="refresh"
-            size={18}
-            color={WHITE}
-          />
-
-          <Text style={styles.buttonText}>
-            Try Again
-          </Text>
+        <Pressable style={styles.button} onPress={resetExercise}>
+          <Ionicons name="refresh" size={18} color={WHITE} />
+          <Text style={styles.buttonText}>Try Again</Text>
         </Pressable>
 
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={handleBack}
-        >
+        <Pressable style={styles.secondaryButton} onPress={handleBack}>
           <Text style={styles.secondaryButtonText}>
             Back to Exercises
           </Text>
@@ -2229,24 +1922,90 @@ export default function VocalRunAccuracyTaskScreen() {
     );
   };
 
+  const quitModal = (
+    <Modal
+      visible={showQuitModal}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={continueExercise}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIcon}>
+            <Ionicons name="exit-outline" size={30} color={BROWN} />
+          </View>
+
+          <Text style={styles.modalTitle}>Quit exercise?</Text>
+
+          <Text style={styles.modalMessage}>
+            {quitModalMessage}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isQuitting}
+            onPress={continueExercise}
+            style={[
+              styles.continueButton,
+              isQuitting && styles.disabled,
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue Exercise
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isQuitting}
+            onPress={() => void quitExercise()}
+            style={[
+              styles.quitButton,
+              isQuitting && styles.disabled,
+            ]}
+          >
+            <Text style={styles.quitButtonText}>
+              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  if (tierLoading || isLoadingAdaptiveParams || !config) {
+    return (
+      <View style={styles.preparingScreen}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="options-outline" size={38} color={BROWN} />
+        </View>
+
+        <Text style={styles.title}>Preparing Your Exercise</Text>
+
+        <Text style={styles.subtitle}>
+          Loading your difficulty level and assessed vocal range.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={BROWN}
+          style={styles.spinner}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <ScrollView
+        key={phase}
         style={styles.screen}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {phase === 'instructions' && renderInstructions()}
-
-        {phase === 'loading' && (
-          <View style={styles.centerScreen}>
-            <ActivityIndicator color={BROWN} />
-            <Text style={styles.title}>
-              Getting You Ready
-            </Text>
-          </View>
-        )}
-
         {phase === 'reference' && renderReference()}
         {phase === 'countdown' && renderCountdown()}
         {phase === 'recording' && renderRecording()}
@@ -2285,21 +2044,30 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 120,
-    paddingBottom: 48,
+    paddingTop: 130,
+    paddingBottom: 36,
+  },
+  recordingContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 80,
+    paddingBottom: 28,
   },
   centerScreen: {
     flexGrow: 1,
-    minHeight: 520,
+    minHeight: 450,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 100,
+    paddingBottom: 32,
   },
   backButton: {
     position: 'absolute',
-    top: 44,
-    left: 24,
-    zIndex: 1,
+    top: 24,
+    left: 20,
+    zIndex: 2,
     width: 42,
     height: 42,
     alignItems: 'center',
@@ -2308,13 +2076,13 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_PINK,
   },
   iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: PINK,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   title: {
     fontFamily: 'FredokaBold',
@@ -2327,7 +2095,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: MUTED,
     marginTop: 5,
-    marginBottom: 20,
+    marginBottom: 18,
     textAlign: 'center',
     letterSpacing: 0.6,
   },
@@ -2340,17 +2108,28 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 14,
   },
+  recordingCard: {
+    width: '100%',
+    borderRadius: 20,
+    backgroundColor: LIGHT_PINK,
+    borderColor: BORDER,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 10,
+  },
   cardTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 22,
+    fontSize: 20,
     color: BROWN,
-    marginBottom: 12,
-    marginTop: 10,
+    marginBottom: 10,
+    marginTop: 6,
+    textAlign: 'center',
   },
   bodyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    lineHeight: 19,
+    lineHeight: 20,
     color: BROWN,
     marginBottom: 6,
   },
@@ -2377,13 +2156,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
-    marginVertical: 10,
+    gap: 7,
+    marginVertical: 8,
   },
   notePill: {
-    minWidth: 52,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    minWidth: 48,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
     borderRadius: 12,
     backgroundColor: PINK,
     alignItems: 'center',
@@ -2408,7 +2187,7 @@ const styles = StyleSheet.create({
     color: WHITE,
   },
   liveNote: {
-    minWidth: 48,
+    minWidth: 44,
   },
   hint: {
     fontFamily: 'FredokaRegular',
@@ -2416,7 +2195,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: MUTED,
     textAlign: 'center',
-    marginTop: 10,
+    marginTop: 8,
   },
   errorText: {
     fontFamily: 'FredokaRegular',
@@ -2469,21 +2248,14 @@ const styles = StyleSheet.create({
     color: BROWN,
     marginVertical: 16,
   },
-  livePitch: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: BROWN,
-    textAlign: 'center',
-    marginTop: 8,
-  },
   pitchStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     marginTop: 4,
@@ -2495,22 +2267,28 @@ const styles = StyleSheet.create({
   },
   pitchStatusText: {
     fontFamily: 'FredokaBold',
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 0.5,
+  },
+  livePitch: {
+    fontFamily: 'FredokaBold',
+    fontSize: 38,
+    textAlign: 'center',
+    marginTop: 6,
   },
   pitchDeviation: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
     color: BROWN,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 5,
   },
   pitchLegend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 12,
-    marginTop: 16,
+    marginTop: 12,
   },
   legendItem: {
     flexDirection: 'row',
@@ -2530,7 +2308,25 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: BORDER,
-    marginVertical: 14,
+    marginVertical: 10,
+  },
+  timerContainer: {
+    width: '100%',
+    paddingHorizontal: 4,
+    marginTop: 2,
+  },
+  timerLabel: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 12,
+    color: MUTED,
+    textAlign: 'center',
+  },
+  timerText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 15,
+    color: BROWN,
+    textAlign: 'center',
+    marginTop: 4,
   },
   progressTrack: {
     width: '100%',
@@ -2639,11 +2435,5 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
     color: MUTED,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });
