@@ -39,8 +39,7 @@ import {
   type IntervalRecognitionScoreResult,
 } from '@/services/scoring/pitch/intervalRecognitionTask';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
+  calcPitchAccuracy
 } from '@/utils/dsp/pitch';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
@@ -48,17 +47,7 @@ import {
   type VocalRange
 } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
-
-const GUIDE_GREEN = '#4F9B67';
-const GUIDE_YELLOW = '#D9A72E';
-const GUIDE_RED = '#D64F5A';
+import { COLORS } from '@/constants/appConstants';
 
 const GUIDE_MAX_CENTS = 100;
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;
@@ -191,7 +180,7 @@ function getPitchGuideStatus(
     return {
       cents: null,
       position: 50,
-      color: MUTED,
+      color: COLORS.muted,
       label: 'LISTENING',
     };
   }
@@ -218,7 +207,7 @@ function getPitchGuideStatus(
     return {
       cents,
       position,
-      color: GUIDE_GREEN,
+      color: COLORS.guideGreen,
       label: absoluteCents <= 5 ? 'IN TUNE' : 'CLOSE',
     };
   }
@@ -227,7 +216,7 @@ function getPitchGuideStatus(
     return {
       cents,
       position,
-      color: GUIDE_YELLOW,
+      color: COLORS.guideYellow,
       label: `SLIGHTLY ${direction}`,
     };
   }
@@ -235,7 +224,7 @@ function getPitchGuideStatus(
   return {
     cents,
     position,
-    color: GUIDE_RED,
+    color: COLORS.guideRed,
     label: `TOO ${direction}`,
   };
 }
@@ -277,7 +266,7 @@ function QuitExerciseModal({
         <Ionicons
           name="exit-outline"
           size={30}
-          color={BROWN}
+          color={COLORS.brown}
         />
       </View>
 
@@ -1350,8 +1339,6 @@ export default function IntervalRecognitionTaskScreen({
         )
       : 0;
 
-  const liveStability = calcLiveStability(liveFrequencies);
-
   const pitchGuide = getPitchGuideStatus(
     liveFrame?.pitch,
     liveTarget.frequency,
@@ -1380,7 +1367,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="options-outline"
               size={44}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -1394,7 +1381,7 @@ export default function IntervalRecognitionTaskScreen({
 
           <ActivityIndicator
             size="large"
-            color={BROWN}
+            color={COLORS.brown}
             style={styles.spinner}
           />
         </View>
@@ -1423,7 +1410,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="arrow-back"
               size={22}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </Pressable>
 
@@ -1435,7 +1422,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name="swap-vertical-outline"
                 size={34}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -1469,7 +1456,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="mic-outline"
                     size={21}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.prepareTitle}>
@@ -1481,7 +1468,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="volume-mute-outline"
                     size={17}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.prepareText}>
@@ -1493,7 +1480,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="body-outline"
                     size={17}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.prepareText}>
@@ -1506,7 +1493,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="mic-outline"
                     size={17}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.prepareText}>
@@ -1520,7 +1507,7 @@ export default function IntervalRecognitionTaskScreen({
                 <Ionicons
                   name="swap-vertical"
                   size={25}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
 
                 <Text style={styles.targetText}>
@@ -1538,7 +1525,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name="bulb-outline"
                 size={21}
-                color={BROWN}
+                color={COLORS.brown}
               />
 
               <Text style={styles.tipText}>
@@ -1565,7 +1552,7 @@ export default function IntervalRecognitionTaskScreen({
               {isLoadingAdaptiveParams ? (
                 <ActivityIndicator
                   size="small"
-                  color={WHITE}
+                  color={COLORS.white}
                 />
               ) : (
                 <>
@@ -1576,7 +1563,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="arrow-forward"
                     size={18}
-                    color={WHITE}
+                    color={COLORS.white}
                   />
                 </>
               )}
@@ -1611,7 +1598,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="musical-notes-outline"
               size={34}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -1644,7 +1631,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="volume-high-outline"
               size={34}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -1667,7 +1654,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="arrow-forward"
               size={25}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <View style={styles.intervalNote}>
@@ -1686,7 +1673,7 @@ export default function IntervalRecognitionTaskScreen({
 
           <ActivityIndicator
             size="small"
-            color={BROWN}
+            color={COLORS.brown}
             style={styles.playingIndicator}
           />
         </View>
@@ -1716,7 +1703,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name="mic"
                 size={32}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -1779,7 +1766,7 @@ export default function IntervalRecognitionTaskScreen({
                       <Ionicons
                         name="pulse-outline"
                         size={17}
-                        color={BROWN}
+                        color={COLORS.brown}
                       />
                     </View>
 
@@ -1795,11 +1782,11 @@ export default function IntervalRecognitionTaskScreen({
                     {
                       backgroundColor:
                         pitchGuide.cents === null
-                          ? WHITE
+                          ? COLORS.white
                           : `${pitchGuide.color}15`,
                       borderColor:
                         pitchGuide.cents === null
-                          ? BORDER
+                          ? COLORS.border
                           : `${pitchGuide.color}66`,
                     },
                   ]}
@@ -1850,7 +1837,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         color:
                           pitchGuide.cents === null
-                            ? BROWN
+                            ? COLORS.brown
                             : pitchGuide.color,
                       },
                     ]}
@@ -1890,7 +1877,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         left: '0%',
                         width: '20%',
-                        backgroundColor: GUIDE_RED,
+                        backgroundColor: COLORS.guideRed,
                       },
                     ]}
                   />
@@ -1901,7 +1888,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         left: '20%',
                         width: '15%',
-                        backgroundColor: GUIDE_YELLOW,
+                        backgroundColor: COLORS.guideYellow,
                       },
                     ]}
                   />
@@ -1912,7 +1899,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         left: '35%',
                         width: '30%',
-                        backgroundColor: GUIDE_GREEN,
+                        backgroundColor: COLORS.guideGreen,
                       },
                     ]}
                   />
@@ -1923,7 +1910,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         left: '65%',
                         width: '15%',
-                        backgroundColor: GUIDE_YELLOW,
+                        backgroundColor: COLORS.guideYellow,
                       },
                     ]}
                   />
@@ -1934,7 +1921,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         left: '80%',
                         width: '20%',
-                        backgroundColor: GUIDE_RED,
+                        backgroundColor: COLORS.guideRed,
                       },
                     ]}
                   />
@@ -1953,10 +1940,10 @@ export default function IntervalRecognitionTaskScreen({
 
                     const traceColor =
                       deviation <= 25
-                        ? GUIDE_GREEN
+                        ? COLORS.guideGreen
                         : deviation <= 50
-                          ? GUIDE_YELLOW
-                          : GUIDE_RED;
+                          ? COLORS.guideYellow
+                          : COLORS.guideRed;
 
                     return (
                       <View
@@ -1985,7 +1972,7 @@ export default function IntervalRecognitionTaskScreen({
                         borderColor: pitchGuide.color,
                         backgroundColor:
                           pitchGuide.cents === null
-                            ? WHITE
+                            ? COLORS.white
                             : pitchGuide.color,
                       },
                     ]}
@@ -2019,7 +2006,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         backgroundColor:
                           pitchGuide.cents === null
-                            ? WHITE
+                            ? COLORS.white
                             : `${pitchGuide.color}15`,
                       },
                     ]}
@@ -2058,7 +2045,7 @@ export default function IntervalRecognitionTaskScreen({
                       {
                         color:
                           pitchGuide.cents === null
-                            ? MUTED
+                            ? COLORS.muted
                             : pitchGuide.color,
                       },
                     ]}
@@ -2075,7 +2062,7 @@ export default function IntervalRecognitionTaskScreen({
                   <View
                     style={[
                       styles.pitchLegendDot,
-                      { backgroundColor: GUIDE_GREEN },
+                      { backgroundColor: COLORS.guideGreen },
                     ]}
                   />
 
@@ -2088,7 +2075,7 @@ export default function IntervalRecognitionTaskScreen({
                   <View
                     style={[
                       styles.pitchLegendDot,
-                      { backgroundColor: GUIDE_YELLOW },
+                      { backgroundColor: COLORS.guideYellow },
                     ]}
                   />
 
@@ -2101,7 +2088,7 @@ export default function IntervalRecognitionTaskScreen({
                   <View
                     style={[
                       styles.pitchLegendDot,
-                      { backgroundColor: GUIDE_RED },
+                      { backgroundColor: COLORS.guideRed },
                     ]}
                   />
 
@@ -2118,8 +2105,8 @@ export default function IntervalRecognitionTaskScreen({
                   styles.recordingDot,
                   {
                     backgroundColor: isRecording
-                      ? GUIDE_RED
-                      : GUIDE_YELLOW,
+                      ? COLORS.guideRed
+                      : COLORS.guideYellow,
                   },
                 ]}
               />
@@ -2165,7 +2152,7 @@ export default function IntervalRecognitionTaskScreen({
             <Ionicons
               name="analytics-outline"
               size={34}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -2179,7 +2166,7 @@ export default function IntervalRecognitionTaskScreen({
 
           <ActivityIndicator
             size="large"
-            color={BROWN}
+            color={COLORS.brown}
             style={styles.processingIndicator}
           />
         </View>
@@ -2222,7 +2209,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name={result.passed ? 'checkmark' : 'refresh'}
                 size={40}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -2264,7 +2251,7 @@ export default function IntervalRecognitionTaskScreen({
                   <Ionicons
                     name="arrow-forward"
                     size={23}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.intervalArrowLabel}>
@@ -2401,7 +2388,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name="bulb-outline"
                 size={21}
-                color={BROWN}
+                color={COLORS.brown}
               />
 
               <Text style={styles.tipText}>
@@ -2422,7 +2409,7 @@ export default function IntervalRecognitionTaskScreen({
               <Ionicons
                 name="refresh"
                 size={18}
-                color={WHITE}
+                color={COLORS.white}
               />
             </Pressable>
 
@@ -2463,11 +2450,11 @@ const styles = StyleSheet.create({
   screen: {
     paddingTop: 40,
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   centerScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
@@ -2505,7 +2492,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -2514,7 +2501,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -2522,40 +2509,40 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 24,
   },
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
   },
   processingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   processingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -2568,33 +2555,33 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 12,
   },
   instructionCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 14,
   },
   instruction: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 10,
   },
   targetBox: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 14,
     paddingVertical: 15,
     flexDirection: 'row',
@@ -2606,13 +2593,13 @@ const styles = StyleSheet.create({
   targetText: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
   },
   helperText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 17,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -2620,7 +2607,7 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 15,
     padding: 14,
     marginTop: 14,
@@ -2630,17 +2617,17 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 10,
   },
   prepareCard: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 16,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   prepareHeader: {
     flexDirection: 'row',
@@ -2650,7 +2637,7 @@ const styles = StyleSheet.create({
   prepareTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 9,
   },
   prepareItem: {
@@ -2663,7 +2650,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 17,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 9,
   },
   difficultyRow: {
@@ -2677,19 +2664,19 @@ const styles = StyleSheet.create({
   difficultyLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   difficultyValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     textTransform: 'capitalize',
   },
   startButton: {
     width: '100%',
     height: 54,
     borderRadius: 27,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2698,12 +2685,12 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: WHITE,
+    color: COLORS.white,
   },
   countdownText: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 20,
   },
   intervalPreview: {
@@ -2715,28 +2702,28 @@ const styles = StyleSheet.create({
   },
   intervalNote: {
     minWidth: 95,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     paddingVertical: 17,
     paddingHorizontal: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   intervalNoteLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.5,
   },
   intervalNoteName: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 4,
   },
   intervalNameBadge: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 15,
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -2745,13 +2732,13 @@ const styles = StyleSheet.create({
   intervalNameText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   playingIndicator: {
     marginTop: 24,
   },
   repetitionBadge: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 15,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -2760,16 +2747,16 @@ const styles = StyleSheet.create({
   repetitionBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   pitchGuideCard: {
     width: '100%',
     marginTop: 20,
     padding: 17,
     borderRadius: 24,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   pitchGuideHeader: {
     flexDirection: 'row',
@@ -2789,7 +2776,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2797,13 +2784,13 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 12,
     letterSpacing: 0.4,
-    color: BROWN,
+    color: COLORS.brown,
   },
   pitchGuideSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 15,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 7,
   },
   guideStatusPill: {
@@ -2836,9 +2823,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 13,
     borderRadius: 17,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   pitchSummaryColumn: {
     flex: 1,
@@ -2847,25 +2834,25 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 9,
     letterSpacing: 0.5,
-    color: MUTED,
+    color: COLORS.muted,
   },
   pitchTargetValue: {
     fontFamily: 'FredokaBold',
     fontSize: 29,
     lineHeight: 35,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 2,
   },
   pitchTargetFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 1,
   },
   pitchTargetDivider: {
     width: 1,
     height: 48,
-    backgroundColor: BORDER,
+    backgroundColor: COLORS.border,
     marginHorizontal: 13,
   },
   pitchDetectedSummary: {
@@ -2892,23 +2879,23 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.7,
-    color: MUTED,
+    color: COLORS.muted,
   },
   pitchMeterCenterLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.5,
-    color: GUIDE_GREEN,
+    color: COLORS.guideGreen,
   },
   pitchMeterTrack: {
     width: '100%',
     height: 20,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     position: 'relative',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   pitchMeterZone: {
     position: 'absolute',
@@ -2922,10 +2909,10 @@ const styles = StyleSheet.create({
     left: '50%',
     width: 2,
     marginLeft: -1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: 'rgba(78, 47, 31, 0.2)',
+    borderColor: COLORS.transparentbrown,
     zIndex: 2,
   },
   pitchMeterTrace: {
@@ -2956,7 +2943,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   pitchMeterScale: {
     flexDirection: 'row',
@@ -2966,7 +2953,7 @@ const styles = StyleSheet.create({
   pitchMeterScaleText: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   pitchGuideFooter: {
     flexDirection: 'row',
@@ -2975,7 +2962,7 @@ const styles = StyleSheet.create({
     marginTop: 17,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopColor: COLORS.border,
   },
   pitchDeviationInfo: {
     flexDirection: 'row',
@@ -2997,7 +2984,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 9,
     letterSpacing: 0.5,
-    color: MUTED,
+    color: COLORS.muted,
   },
   pitchDeviationValue: {
     fontFamily: 'FredokaBold',
@@ -3011,20 +2998,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: 14,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   pitchAccuracyBadgeLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 8,
     letterSpacing: 0.7,
-    color: MUTED,
+    color: COLORS.muted,
   },
   pitchAccuracyBadgeValue: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 1,
   },
   pitchGuideLegend: {
@@ -3048,7 +3035,7 @@ const styles = StyleSheet.create({
   pitchLegendText: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   intervalProgress: {
     width: '100%',
@@ -3060,33 +3047,33 @@ const styles = StyleSheet.create({
     minWidth: 70,
     height: 70,
     borderRadius: 100,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
   intervalProgressActive: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   intervalProgressText: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: MUTED,
+    color: COLORS.muted,
   },
   intervalProgressTextActive: {
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressLine: {
     flex: 1,
     height: 2,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     marginHorizontal: 8,
   },
   recordingIcon: {
     width: 64,
     height: 64,
     borderRadius: 22,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -3105,26 +3092,26 @@ const styles = StyleSheet.create({
   recordingText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   recordingBar: {
     width: '100%',
     height: 6,
     borderRadius: 3,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
     marginTop: 13,
   },
   recordingBarFill: {
     height: '100%',
-    backgroundColor: GUIDE_GREEN,
+    backgroundColor: COLORS.guideGreen,
     borderRadius: 3,
   },
   recordingProgressLabel: {
     alignSelf: 'flex-end',
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 6,
   },
   resultIcon: {
@@ -3136,27 +3123,27 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   resultIconPassed: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   resultIconFailed: {
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
   },
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 22,
   },
   scoreCard: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 22,
     padding: 22,
     alignItems: 'center',
@@ -3164,42 +3151,42 @@ const styles = StyleSheet.create({
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
-    color: BROWN,
+    color: COLORS.brown,
     marginVertical: 3,
   },
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   intervalResultCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   resultCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 10,
   },
   intervalResultDisplay: {
@@ -3215,12 +3202,12 @@ const styles = StyleSheet.create({
   intervalResultLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   intervalResultNoteName: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 3,
   },
   intervalArrow: {
@@ -3230,7 +3217,7 @@ const styles = StyleSheet.create({
   intervalArrowLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 3,
   },
@@ -3243,20 +3230,20 @@ const styles = StyleSheet.create({
   resultRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     flex: 1,
   },
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 12,
   },
   doneButton: {
     width: '100%',
     height: 50,
     borderRadius: 25,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
@@ -3264,11 +3251,11 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(30, 18, 14, 0.48)',
+    backgroundColor: COLORS.transparentbrown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -3276,16 +3263,16 @@ const styles = StyleSheet.create({
   quitModalCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 24,
     paddingHorizontal: 24,
     paddingTop: 26,
     paddingBottom: 22,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     elevation: 8,
-    shadowColor: '#000000',
+    shadowColor: COLORS.black,
     shadowOffset: {
       width: 0,
       height: 5,
@@ -3297,7 +3284,7 @@ const styles = StyleSheet.create({
     width: 66,
     height: 66,
     borderRadius: 33,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -3305,14 +3292,14 @@ const styles = StyleSheet.create({
   quitModalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   quitModalMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 9,
     marginBottom: 22,
@@ -3321,7 +3308,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 46,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
@@ -3329,15 +3316,15 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   quitButton: {
     width: '100%',
     minHeight: 46,
     borderRadius: 14,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
@@ -3346,7 +3333,7 @@ const styles = StyleSheet.create({
   quitButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
   },
   modalButtonPressed: {
     opacity: 0.78,

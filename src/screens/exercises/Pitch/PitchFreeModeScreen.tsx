@@ -27,14 +27,7 @@ import {
 import { measurePitchFreeModeFrame } from '@/services/measurement/freemode/pitch';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const DARK = '#5A343D';
-const PINK = '#FCD6DD';
-const LIGHT = '#FFF8FA';
-const BORDER = '#F1DCE2';
-const ACCENT = '#D86C89';
-const MUTED = '#9A817D';
-const WHITE = '#FFFFFF';
+import { COLORS } from '@/constants/appConstants';
 
 type Phase = 'ready' | 'exercise';
 
@@ -260,7 +253,7 @@ export default function PitchFreeModeScreen() {
           style={styles.confirmationCard}
         >
           <View style={styles.modalIconCircle}>
-            <Ionicons name="musical-notes-outline" size={34} color={BROWN} />
+            <Ionicons name="musical-notes-outline" size={34} color={COLORS.brown} />
           </View>
 
           <Text style={styles.modalTitle}>Quit Exercise?</Text>
@@ -303,7 +296,7 @@ export default function PitchFreeModeScreen() {
               ]}
             >
               {isQuitting ? (
-                <ActivityIndicator size="small" color={WHITE} />
+                <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
                 <Text style={styles.quitButtonText}>Yes, Quit</Text>
               )}
@@ -434,7 +427,7 @@ export default function PitchFreeModeScreen() {
             <Ionicons
               name="arrow-back"
               size={20}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </Pressable>
 
@@ -451,7 +444,7 @@ export default function PitchFreeModeScreen() {
             <Ionicons
               name="musical-notes"
               size={36}
-              color={ACCENT}
+              color={COLORS.accent}
             />
           </View>
 
@@ -474,7 +467,7 @@ export default function PitchFreeModeScreen() {
                 <Ionicons
                   name="mic-outline"
                   size={20}
-                  color={ACCENT}
+                  color={COLORS.accent}
                 />
               </View>
 
@@ -494,7 +487,7 @@ export default function PitchFreeModeScreen() {
                 <Ionicons
                   name="trending-up-outline"
                   size={20}
-                  color={ACCENT}
+                  color={COLORS.accent}
                 />
               </View>
 
@@ -514,7 +507,7 @@ export default function PitchFreeModeScreen() {
             <Ionicons
               name="information-circle-outline"
               size={20}
-              color={ACCENT}
+              color={COLORS.accent}
             />
 
             <Text style={styles.noTargetText}>
@@ -545,13 +538,13 @@ export default function PitchFreeModeScreen() {
             disabled={isStarting}
           >
             {isStarting ? (
-              <ActivityIndicator color={WHITE} />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
               <>
                 <Ionicons
                   name="mic"
                   size={19}
-                  color={WHITE}
+                  color={COLORS.white}
                 />
 
                 <Text style={styles.startButtonText}>
@@ -589,7 +582,7 @@ export default function PitchFreeModeScreen() {
           <Ionicons
             name="arrow-back"
             size={20}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </Pressable>
 
@@ -617,7 +610,7 @@ export default function PitchFreeModeScreen() {
             <Ionicons
               name="time-outline"
               size={16}
-              color={ACCENT}
+              color={COLORS.accent}
             />
 
             <Text style={styles.timeText}>
@@ -648,7 +641,7 @@ export default function PitchFreeModeScreen() {
               <Ionicons
                 name="musical-note"
                 size={27}
-                color={ACCENT}
+                color={COLORS.accent}
               />
             </View>
           </View>
@@ -689,7 +682,7 @@ export default function PitchFreeModeScreen() {
             <Ionicons
               name="analytics-outline"
               size={25}
-              color={ACCENT}
+              color={COLORS.accent}
             />
           </View>
         </View>
@@ -698,7 +691,7 @@ export default function PitchFreeModeScreen() {
           <Ionicons
             name="sparkles-outline"
             size={18}
-            color={ACCENT}
+            color={COLORS.accent}
           />
 
           <Text style={styles.noteText}>
@@ -725,7 +718,7 @@ export default function PitchFreeModeScreen() {
           <Ionicons
             name="stop"
             size={18}
-            color={WHITE}
+            color={COLORS.white}
           />
 
           <Text style={styles.startButtonText}>
@@ -742,7 +735,7 @@ export default function PitchFreeModeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   header: {
     height: 56,
@@ -754,7 +747,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -769,7 +762,7 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 28,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -778,28 +771,28 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   pageDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
   },
   infoCard: {
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 18,
     marginTop: 24,
   },
   infoTitle: {
     fontFamily: 'FredokaBold',
-    color: BROWN,
+    color: COLORS.brown,
     fontSize: 11,
     letterSpacing: 1.4,
     marginBottom: 12,
@@ -813,7 +806,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -824,22 +817,22 @@ const styles = StyleSheet.create({
   infoName: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   infoDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
     lineHeight: 18,
   },
   noTargetCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 14,
     marginTop: 18,
   },
@@ -849,13 +842,13 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
   },
   errorText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: '#B42336',
+    color: COLORS.error,
     textAlign: 'center',
     marginTop: 12,
   },
@@ -865,7 +858,7 @@ const styles = StyleSheet.create({
   startButton: {
     height: 52,
     borderRadius: 16,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -874,7 +867,7 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: WHITE,
+    color: COLORS.white,
   },
   exerciseContent: {
     flex: 1,
@@ -891,13 +884,13 @@ const styles = StyleSheet.create({
   modeLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
-    color: ACCENT,
+    color: COLORS.accent,
     letterSpacing: 1.4,
   },
   exerciseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
   },
   timeBadge: {
@@ -907,27 +900,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   timeText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
   },
   liveCard: {
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 18,
     marginBottom: -70,
   },
   cardLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
-    color: BROWN,
+    color: COLORS.brown,
     letterSpacing: 1.3,
   },
   pitchDisplay: {
@@ -939,19 +932,19 @@ const styles = StyleSheet.create({
   noteValue: {
     fontFamily: 'FredokaBold',
     fontSize: 36,
-    color: BROWN,
+    color: COLORS.brown,
   },
   frequencyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   pitchIcon: {
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -965,16 +958,16 @@ const styles = StyleSheet.create({
   wave: {
     width: 11,
     borderRadius: 999,
-    backgroundColor: ACCENT,
+    backgroundColor: COLORS.accent,
     minHeight: 10,
   },
   stabilityCard: {
     marginTop: 18,
     padding: 18,
     borderRadius: 20,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -982,25 +975,25 @@ const styles = StyleSheet.create({
   stabilityValue: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 5,
   },
   stabilityIcon: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     marginBottom: 25,
   },
   noteText: {
@@ -1009,12 +1002,12 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: DARK,
+    color: COLORS.dark,
   },
   stopButton: {
     height: 52,
     borderRadius: 16,
-    backgroundColor: DARK,
+    backgroundColor: COLORS.dark,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1024,7 +1017,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(35, 22, 17, 0.48)',
+    backgroundColor: COLORS.transparentbrown,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -1032,15 +1025,15 @@ const styles = StyleSheet.create({
   confirmationCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     paddingHorizontal: 24,
     paddingTop: 28,
     paddingBottom: 24,
     alignItems: 'center',
-    shadowColor: BROWN,
+    shadowColor: COLORS.brown,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
     shadowRadius: 18,
@@ -1050,7 +1043,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1058,14 +1051,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: DARK,
+    color: COLORS.dark,
     textAlign: 'center',
     marginTop: 10,
   },
@@ -1073,7 +1066,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -1088,8 +1081,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
@@ -1097,14 +1090,14 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   quitButton: {
     flex: 1,
     minHeight: 48,
     borderRadius: 999,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
@@ -1112,7 +1105,7 @@ const styles = StyleSheet.create({
   quitButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
     textAlign: 'center',
   },
   buttonPressed: {

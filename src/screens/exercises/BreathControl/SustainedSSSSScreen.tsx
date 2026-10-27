@@ -44,13 +44,7 @@ import {
   type SustainedSSSSScoreResult,
 } from '@/services/scoring/breathControl/sustainedSSSS';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
+import { COLORS } from '@/constants/appConstants';
 
 const PREPARATION_COUNTDOWN = 3;
 const PROCESSING_DELAY_MS = 1200;
@@ -916,7 +910,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="exit-outline"
               size={30}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -974,7 +968,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="options-outline"
               size={44}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -988,7 +982,7 @@ export default function SustainedSSSSScreen({
 
           <ActivityIndicator
             size="large"
-            color={BROWN}
+            color={COLORS.brown}
             style={styles.spinner}
           />
         </View>
@@ -1073,7 +1067,7 @@ export default function SustainedSSSSScreen({
               <Ionicons
                 name="cloud-outline"
                 size={27}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -1104,7 +1098,7 @@ export default function SustainedSSSSScreen({
                 <Ionicons
                   name="mic"
                   size={48}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
               </View>
             </View>
@@ -1188,7 +1182,7 @@ export default function SustainedSSSSScreen({
           <Ionicons
             name="pause-circle-outline"
             size={25}
-            color={BROWN}
+            color={COLORS.brown}
           />
 
           <Text style={styles.processingPauseText}>
@@ -1216,7 +1210,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="timer-outline"
               size={24}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.resultMetricValue}>
@@ -1232,7 +1226,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="pulse-outline"
               size={24}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.resultMetricValue}>
@@ -1248,7 +1242,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="repeat-outline"
               size={24}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.resultMetricValue}>
@@ -1264,7 +1258,7 @@ export default function SustainedSSSSScreen({
             <Ionicons
               name="checkmark-circle-outline"
               size={24}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.resultMetricValue}>
@@ -1281,7 +1275,7 @@ export default function SustainedSSSSScreen({
           <Ionicons
             name="chatbubble-ellipses-outline"
             size={24}
-            color={BROWN}
+            color={COLORS.brown}
           />
 
           <View style={styles.feedbackContent}>
@@ -1349,13 +1343,13 @@ export default function SustainedSSSSScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     paddingTop: 60,
   },
   primaryButton: {
     height: 54,
     borderRadius: 27,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -1364,12 +1358,12 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
-    color: WHITE,
+    color: COLORS.white,
     marginLeft: 8,
   },
   centerScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
@@ -1378,7 +1372,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -1397,7 +1391,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1408,43 +1402,43 @@ const styles = StyleSheet.create({
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
   },
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   pauseButton: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sssssCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     paddingVertical: 24,
     paddingHorizontal: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   sssssText: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
     letterSpacing: 3,
-    color: BROWN,
+    color: COLORS.brown,
   },
   sssssHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
   },
   micArea: {
@@ -1455,7 +1449,7 @@ const styles = StyleSheet.create({
     width: 164,
     height: 164,
     borderRadius: 82,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1463,7 +1457,7 @@ const styles = StyleSheet.create({
     width: 116,
     height: 116,
     borderRadius: 58,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1471,7 +1465,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 18,
     paddingHorizontal: 13,
     paddingVertical: 7,
@@ -1480,32 +1474,32 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#C94D5B',
+    backgroundColor: COLORS.guideRed,
     marginRight: 7,
   },
   recordingBadgeText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
-    color: BROWN,
+    color: COLORS.brown,
     letterSpacing: 0.5,
   },
   timerText: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 18,
   },
   progressTrack: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
     marginTop: 12,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 5,
   },
   liveMetrics: {
@@ -1515,7 +1509,7 @@ const styles = StyleSheet.create({
   },
   liveMetricCard: {
     flex: 1,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 16,
     padding: 14,
     alignItems: 'center',
@@ -1523,25 +1517,25 @@ const styles = StyleSheet.create({
   liveMetricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.4,
   },
   liveMetricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 4,
   },
   preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -1557,14 +1551,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   processingPauseText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 5,
   },
   modalOverlay: {
@@ -1572,7 +1566,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: COLORS.transparentbrown,
   },
   modalCard: {
     width: '100%',
@@ -1581,7 +1575,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   modalIcon: {
     width: 60,
@@ -1589,13 +1583,13 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalMessage: {
@@ -1604,7 +1598,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   continueButton: {
@@ -1614,12 +1608,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   quitButton: {
     width: '100%',
@@ -1630,13 +1624,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
   },
   buttonPressed: {
     opacity: 0.75,
@@ -1653,7 +1647,7 @@ const styles = StyleSheet.create({
   resultMetricCard: {
     width: '48%',
     flexGrow: 1,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     padding: 16,
     alignItems: 'center',
@@ -1661,17 +1655,17 @@ const styles = StyleSheet.create({
   resultMetricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 5,
   },
   resultMetricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   feedbackCard: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 16,
     flexDirection: 'row',
@@ -1685,26 +1679,26 @@ const styles = StyleSheet.create({
   feedbackTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
   },
   feedbackText: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 4,
   },
   repResultsTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 22,
     marginBottom: 10,
   },
   repResultCard: {
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     borderRadius: 17,
     padding: 14,
     flexDirection: 'row',
@@ -1721,7 +1715,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1729,17 +1723,17 @@ const styles = StyleSheet.create({
   repNumberText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   repResultTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   repResultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   repScore: {
@@ -1749,12 +1743,12 @@ const styles = StyleSheet.create({
   repScoreText: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-    color: BROWN,
+    color: COLORS.brown,
   },
   repScorePercent: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginLeft: 1,
   },
 });

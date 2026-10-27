@@ -22,20 +22,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  COLORS
+} from '@/constants/appConstants';
+import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { measureBreathControlFreeModeFrame } from '@/services/measurement/freemode/breathControl';
-
-const BROWN = '#4E2F1F';
-const DARK = '#5A343D';
-const PINK = '#FCD6DD';
-const LIGHT = '#FFF8FA';
-const BORDER = '#F1DCE2';
-const ACCENT = '#D86C89';
-const MUTED = '#9A817D';
-const WHITE = '#FFFFFF';
-
 type Phase = 'ready' | 'exercise';
 
 const BAR_COUNT = 20;
@@ -380,7 +373,7 @@ export default function BreathControlFreeModeScreen() {
         accessibilityLabel="Go back"
         disabled={isQuitting}
       >
-        <Ionicons name="arrow-back" size={20} color={BROWN} />
+        <Ionicons name="arrow-back" size={20} color={COLORS.brown} />
       </Pressable>
 
       <View style={styles.headerSpacer} />
@@ -419,7 +412,7 @@ export default function BreathControlFreeModeScreen() {
             <Ionicons
               name="mic-off-outline"
               size={34}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -469,7 +462,7 @@ export default function BreathControlFreeModeScreen() {
               {isQuitting ? (
                 <ActivityIndicator
                   size="small"
-                  color={WHITE}
+                  color={COLORS.white}
                 />
               ) : (
                 <Text style={styles.quitButtonText}>
@@ -504,7 +497,7 @@ export default function BreathControlFreeModeScreen() {
               <Ionicons
                 name="water-outline"
                 size={36}
-                color={ACCENT}
+                color={COLORS.accent}
               />
             </View>
 
@@ -527,7 +520,7 @@ export default function BreathControlFreeModeScreen() {
                   <Ionicons
                     name="pulse-outline"
                     size={20}
-                    color={ACCENT}
+                    color={COLORS.accent}
                   />
                 </View>
 
@@ -548,7 +541,7 @@ export default function BreathControlFreeModeScreen() {
               <Ionicons
                 name="information-circle-outline"
                 size={20}
-                color={ACCENT}
+                color={COLORS.accent}
               />
 
               <Text style={styles.noTargetText}>
@@ -576,13 +569,13 @@ export default function BreathControlFreeModeScreen() {
               accessibilityRole="button"
             >
               {isStarting ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={COLORS.white} />
               ) : (
                 <>
                   <Ionicons
                     name="mic"
                     size={19}
-                    color={WHITE}
+                    color={COLORS.white}
                   />
 
                   <Text style={styles.startButtonText}>
@@ -643,7 +636,7 @@ export default function BreathControlFreeModeScreen() {
               <Ionicons
                 name="time-outline"
                 size={16}
-                color={ACCENT}
+                color={COLORS.accent}
               />
 
               <Text style={styles.timeText}>
@@ -684,7 +677,7 @@ export default function BreathControlFreeModeScreen() {
             <Ionicons
               name="flower-outline"
               size={18}
-              color={ACCENT}
+              color={COLORS.accent}
             />
 
             <Text style={styles.noteText}>
@@ -707,13 +700,13 @@ export default function BreathControlFreeModeScreen() {
             accessibilityRole="button"
           >
             {isStopping ? (
-              <ActivityIndicator color={WHITE} />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
               <>
                 <Ionicons
                   name="stop"
                   size={18}
-                  color={WHITE}
+                  color={COLORS.white}
                 />
 
                 <Text style={styles.startButtonText}>
@@ -733,7 +726,7 @@ export default function BreathControlFreeModeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   header: {
     height: 56,
@@ -745,7 +738,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -760,7 +753,7 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 28,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -769,28 +762,28 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   pageDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
   },
   infoCard: {
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 18,
     marginTop: 24,
   },
   infoTitle: {
     fontFamily: 'FredokaBold',
-    color: BROWN,
+    color: COLORS.brown,
     fontSize: 11,
     letterSpacing: 1.4,
     marginBottom: 12,
@@ -803,7 +796,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -814,22 +807,22 @@ const styles = StyleSheet.create({
   infoName: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   infoDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
     lineHeight: 18,
   },
   noTargetCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 14,
     marginTop: 18,
   },
@@ -839,7 +832,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
   },
   bottomAction: {
     paddingTop: 12,
@@ -848,7 +841,7 @@ const styles = StyleSheet.create({
     marginBottom: 50,
     height: 52,
     borderRadius: 16,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -860,7 +853,7 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: WHITE,
+    color: COLORS.white,
   },
   exerciseContent: {
     flex: 1,
@@ -877,13 +870,13 @@ const styles = StyleSheet.create({
   modeLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
-    color: ACCENT,
+    color: COLORS.accent,
     letterSpacing: 1.4,
   },
   exerciseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
   },
   timeBadge: {
@@ -893,33 +886,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   timeText: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
   },
   liveCard: {
     marginTop: -80,
-    backgroundColor: LIGHT,
+    backgroundColor: COLORS.background,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 18,
   },
   cardLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
-    color: BROWN,
+    color: COLORS.brown,
     letterSpacing: 1.3,
   },
   valueText: {
     fontFamily: 'FredokaBold',
     fontSize: 32,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 8,
   },
   barRow: {
@@ -932,18 +925,18 @@ const styles = StyleSheet.create({
   bar: {
     width: 10,
     borderRadius: 8,
-    backgroundColor: ACCENT,
+    backgroundColor: COLORS.accent,
     minHeight: 12,
   },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 50,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   noteText: {
     flex: 1,
@@ -951,14 +944,14 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: DARK,
+    color: COLORS.dark,
   },
   stopButton: {
     height: 52,
     marginTop: -55,
     marginBottom: 50,
     borderRadius: 16,
-    backgroundColor: DARK,
+    backgroundColor: COLORS.dark,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -974,16 +967,16 @@ const styles = StyleSheet.create({
   confirmationCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 26,
     paddingHorizontal: 24,
     paddingTop: 28,
     paddingBottom: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     elevation: 10,
-    shadowColor: BROWN,
+    shadowColor: COLORS.brown,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 14,
@@ -992,9 +985,9 @@ const styles = StyleSheet.create({
     width: 74,
     height: 74,
     borderRadius: 37,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1003,7 +996,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 24,
     lineHeight: 31,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -1011,14 +1004,14 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 24,
@@ -1032,9 +1025,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 48,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1.5,
-    borderColor: BROWN,
+    borderColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
@@ -1042,14 +1035,14 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   quitButton: {
     flex: 1,
     minHeight: 48,
     borderRadius: 24,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
@@ -1057,7 +1050,7 @@ const styles = StyleSheet.create({
   quitButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
     textAlign: 'center',
   },
   buttonPressed: {

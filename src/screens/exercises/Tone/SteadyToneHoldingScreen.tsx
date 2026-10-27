@@ -51,14 +51,7 @@ import {
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const BORDER = '#F2DDE5';
-const GUIDE_GREEN = '#4F9B67';
-const GUIDE_RED = '#D64F5A';
+import { COLORS } from '@/constants/appConstants';
 
 const FFT_SIZE = 1024;
 const FFT_HOP_SIZE = 512;
@@ -104,7 +97,7 @@ function LiveWaveform({
   const pitch = frame?.pitch ?? 0;
   const volume = frame?.volume ?? -60;
   const hasPitch = Number.isFinite(pitch) && pitch > 0;
-  const waveformColor = hasPitch ? GUIDE_GREEN : GUIDE_RED;
+  const waveformColor = hasPitch ? COLORS.guideGreen : COLORS.guideRed;
   const volumeLevel = Number.isFinite(volume)
     ? clamp((volume + 60) / 60, 0, 1)
     : 0;
@@ -229,7 +222,7 @@ function RecordingScreen({
           <Ionicons
             name="repeat-outline"
             size={16}
-            color={BROWN}
+            color={COLORS.brown}
           />
           <Text style={styles.repPillText}>
             STEADY TONE · SINGLE ATTEMPT
@@ -242,7 +235,7 @@ function RecordingScreen({
               <Ionicons
                 name="mic"
                 size={21}
-                color={GUIDE_GREEN}
+                color={COLORS.guideGreen}
               />
             </View>
 
@@ -1105,7 +1098,7 @@ export default function SteadyToneHoldingScreen({
             <Ionicons
               name="exit-outline"
               size={30}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -1141,7 +1134,7 @@ export default function SteadyToneHoldingScreen({
             ]}
           >
             {isQuitting ? (
-              <ActivityIndicator color={BROWN} />
+              <ActivityIndicator color={COLORS.brown} />
             ) : (
               <Text style={styles.quitButtonText}>
                 Quit Exercise
@@ -1161,7 +1154,7 @@ export default function SteadyToneHoldingScreen({
             <Ionicons
               name="options-outline"
               size={44}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -1176,7 +1169,7 @@ export default function SteadyToneHoldingScreen({
 
           <ActivityIndicator
             size="large"
-            color={BROWN}
+            color={COLORS.brown}
             style={styles.spinner}
           />
         </View>
@@ -1361,7 +1354,7 @@ export default function SteadyToneHoldingScreen({
 const styles = StyleSheet.create({
   preparingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
@@ -1370,7 +1363,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -1378,13 +1371,13 @@ const styles = StyleSheet.create({
   preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -1393,7 +1386,7 @@ const styles = StyleSheet.create({
   },
   recordingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     paddingHorizontal: 22,
     paddingTop: 100,
     paddingBottom: 20,
@@ -1402,7 +1395,7 @@ const styles = StyleSheet.create({
     marginTop: 42,
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     paddingHorizontal: 12,
   },
@@ -1414,7 +1407,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     alignSelf: 'center',
   },
@@ -1430,13 +1423,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   repPillText: {
     fontFamily: 'FredokaBold',
     fontSize: 11,
     letterSpacing: 0.5,
-    color: BROWN,
+    color: COLORS.brown,
   },
   recordingProgressSection: {
     width: '100%',
@@ -1453,30 +1446,30 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 11,
     letterSpacing: 0.8,
-    color: MUTED,
+    color: COLORS.muted,
   },
   progressTime: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressTrack: {
     width: '100%',
     height: 8,
     overflow: 'hidden',
     borderRadius: 8,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
   },
   progressFill: {
     height: '100%',
     borderRadius: 8,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   remainingText: {
     marginTop: 7,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'right',
   },
 
@@ -1486,9 +1479,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 18,
     borderRadius: 22,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   liveCardHeader: {
     flexDirection: 'row',
@@ -1501,7 +1494,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 21,
-    backgroundColor: '#E5F2E8',
+    backgroundColor: COLORS.lightGreen,
   },
   liveCardHeading: {
     flex: 1,
@@ -1510,13 +1503,13 @@ const styles = StyleSheet.create({
   liveCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   liveCardSubtitle: {
     marginTop: 2,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   liveIndicatorPill: {
     flexDirection: 'row',
@@ -1525,25 +1518,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: '#FCE9EC',
+    backgroundColor: COLORS.background,
   },
   recordingDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: GUIDE_RED,
+    backgroundColor: COLORS.guideRed,
   },
   recordingDotInactive: {
-    backgroundColor: '#D7B6C0',
+    backgroundColor: COLORS.background,
   },
   liveIndicatorText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.7,
-    color: GUIDE_RED,
+    color: COLORS.guideRed,
   },
   liveIndicatorTextInactive: {
-    color: MUTED,
+    color: COLORS.muted,
   },
   waveformContainer: {
     width: '100%',
@@ -1552,7 +1545,7 @@ const styles = StyleSheet.create({
     paddingBottom: 15,
     marginBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: COLORS.border,
   },
   waveformBars: {
     width: '100%',
@@ -1599,26 +1592,26 @@ const styles = StyleSheet.create({
   liveDivider: {
     width: 1,
     height: 52,
-    backgroundColor: BORDER,
+    backgroundColor: COLORS.border,
   },
   liveLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.5,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: 5,
     textAlign: 'center',
   },
   liveValue: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
   },
   metricHint: {
     marginTop: 3,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   recordingTip: {
@@ -1633,21 +1626,21 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
   },
 
   resultCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 20,
   },
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 10,
   },
   resultRow: {
@@ -1660,17 +1653,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   resultRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 12,
   },
   resultTip: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 15,
     padding: 14,
     marginTop: 14,
@@ -1679,7 +1672,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
 
   modalOverlay: {
@@ -1687,7 +1680,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: COLORS.transparentbrown,
   },
   modalCard: {
     width: '100%',
@@ -1696,7 +1689,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   modalIcon: {
     width: 60,
@@ -1704,13 +1697,13 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalMessage: {
@@ -1719,7 +1712,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   continueButton: {
@@ -1729,12 +1722,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   quitButton: {
     width: '100%',
@@ -1745,13 +1738,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
   },
   buttonPressed: {
     opacity: 0.75,
