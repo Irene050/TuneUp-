@@ -19,11 +19,7 @@ import {
 
 import { registerUser } from '@/services/firebase/authService';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const WHITE = '#FFFFFF';
-const RED = '#FF5A5F';
-const MUTED = '#8E7770';
+import { COLORS } from '@/constants/appConstants';
 
 type AlertType = 'success' | 'error' | 'info';
 
@@ -360,7 +356,7 @@ export default function RegisterScreen() {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color={BROWN} />
+                <ActivityIndicator color={COLORS.brown} />
               ) : (
                 <Text style={styles.buttonText}>Create Account</Text>
               )}
@@ -416,7 +412,7 @@ function TuneUpAlertModal({
             <Ionicons
               name={iconName}
               size={38}
-              color={BROWN}
+              color={COLORS.brown}
               style={alertStyles.standaloneIcon}
             />
           ) : (
@@ -430,7 +426,7 @@ function TuneUpAlertModal({
               <Ionicons
                 name={iconName}
                 size={38}
-                color={type === 'error' ? RED : BROWN}
+                color={type === 'error' ? COLORS.error : COLORS.brown}
               />
             </View>
           )}
@@ -457,7 +453,7 @@ function TuneUpAlertModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   scrollContent: {
     flexGrow: 1,
@@ -473,13 +469,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: COLORS.border,
     marginHorizontal: -26,
     paddingHorizontal: 26,
   },
   title: {
     fontSize: 14,
-    color: '#3F2B2A',
+    color: COLORS.brown,
   },
   headerSpacer: {
     width: 20,
@@ -504,26 +500,26 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    color: '#4A302F',
+    color: COLORS.dark,
     marginBottom: 6,
   },
   input: {
     height: 42,
-    backgroundColor: '#F5F3F3',
+    backgroundColor: COLORS.background,
     borderRadius: 3,
     paddingHorizontal: 12,
     fontSize: 13,
-    color: '#3F2B2A',
+    color: COLORS.text,
     marginBottom: 14,
     justifyContent: 'center',
   },
   selectedText: {
     fontSize: 13,
-    color: '#3F2B2A',
+    color: COLORS.text,
   },
   placeholderText: {
     fontSize: 13,
-    color: '#A9A0A0',
+    color: COLORS.gray,
   },
   genderRow: {
     flexDirection: 'row',
@@ -533,17 +529,17 @@ const styles = StyleSheet.create({
   },
   dropdownArrow: {
     fontSize: 10,
-    color: '#4A302F',
+    color: COLORS.text,
   },
   dropdown: {
     position: 'absolute',
     top: 48,
     left: 0,
     right: 0,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: COLORS.border,
     zIndex: 100,
     elevation: 5,
   },
@@ -551,11 +547,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
+    borderBottomColor: COLORS.white,
   },
   dropdownText: {
     fontSize: 12,
-    color: '#3F2B2A',
+    color: COLORS.text,
   },
   passwordContainer: {
     position: 'relative',
@@ -563,21 +559,21 @@ const styles = StyleSheet.create({
   },
   passwordInput: {
     height: 42,
-    backgroundColor: '#F5F3F3',
+    backgroundColor: COLORS.background,
     borderRadius: 3,
     paddingHorizontal: 12,
     paddingRight: 42,
     fontSize: 13,
-    color: '#3F2B2A',
+    color: COLORS.text,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: 'transparent',
   },
   passwordInputError: {
-    borderColor: '#D93025',
+    borderColor: COLORS.error,
   },
   passwordErrorText: {
-    color: '#D93025',
+    color: COLORS.error,
     fontSize: 11,
     marginTop: -8,
     marginBottom: 10,
@@ -593,13 +589,13 @@ const styles = StyleSheet.create({
   },
   eyeText: {
     fontSize: 16,
-    color: '#8B7C7B',
+    color: COLORS.muted,
   },
   registerButton: {
     width: 105,
     height: 34,
     borderRadius: 18,
-    backgroundColor: '#F8CBD4',
+    backgroundColor: COLORS.pink,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
@@ -611,14 +607,14 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 10,
     fontFamily: 'FredokaBold',
-    color: '#4A302F',
+    color: COLORS.dark,
   },
 });
 
 const alertStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(45, 29, 25, 0.4)',
+    backgroundColor: COLORS.transparentbrown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 28,
@@ -626,14 +622,14 @@ const alertStyles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 24,
     paddingHorizontal: 26,
     paddingTop: 30,
     paddingBottom: 24,
     alignItems: 'center',
     elevation: 10,
-    shadowColor: BROWN,
+    shadowColor: COLORS.brown,
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
@@ -642,16 +638,16 @@ const alertStyles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
   },
   errorIconCircle: {
-    backgroundColor: '#FFF0F0',
+    backgroundColor: COLORS.background,
   },
   successIconCircle: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   standaloneIcon: {
     marginBottom: 18,
@@ -659,7 +655,7 @@ const alertStyles = StyleSheet.create({
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -667,7 +663,7 @@ const alertStyles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginBottom: 24,
   },
@@ -675,7 +671,7 @@ const alertStyles = StyleSheet.create({
     width: '100%',
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
@@ -686,6 +682,6 @@ const alertStyles = StyleSheet.create({
   buttonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
   },
 });

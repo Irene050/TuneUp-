@@ -20,14 +20,7 @@ import {
   sendPasswordResetCode,
 } from '@/services/firebase/authService';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF0F3';
-const WHITE = '#FFFFFF';
-const RED = '#FF5A5F';
-const MUTED = '#8E7770';
-const BORDER = '#F0E8E5';
-const LIGHT_GRAY = '#F7F7F7';
+import { COLORS } from '@/constants/appConstants';
 
 type AlertType = 'success' | 'error' | 'info';
 
@@ -74,7 +67,7 @@ function TuneUpAlertModal({
             <Ionicons
               name={iconName}
               size={30}
-              color={type === 'error' ? RED : BROWN}
+              color={type === 'error' ? COLORS.error : COLORS.brown}
             />
           </View>
 
@@ -211,7 +204,7 @@ export function LoginScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={BROWN} />
+              <ActivityIndicator color={COLORS.brown} />
             ) : (
               <Text style={loginStyles.buttonText}>Log in</Text>
             )}
@@ -228,36 +221,36 @@ export function LoginScreen() {
 }
 
 const loginStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
+  container: { flex: 1, backgroundColor: COLORS.white },
   content: { flex: 1, paddingHorizontal: 26, justifyContent: 'center' },
   logo: { width: 125, height: 125, alignSelf: 'center', marginBottom: 72 },
   form: { width: '100%' },
-  label: { fontSize: 10, color: '#4A302F', marginBottom: 6 },
+  label: { fontSize: 10, color: COLORS.brown, marginBottom: 6 },
   input: {
-    height: 42, backgroundColor: '#F5F3F3', borderRadius: 3,
-    paddingHorizontal: 12, fontSize: 13, color: '#3F2B2A', marginBottom: 14,
+    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
+    paddingHorizontal: 12, fontSize: 13, color: COLORS.text, marginBottom: 14,
   },
   passwordContainer: { position: 'relative', width: '100%' },
   passwordInput: {
-    height: 42, backgroundColor: '#F5F3F3', borderRadius: 3,
+    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
     paddingHorizontal: 12, paddingRight: 42, fontSize: 13,
-    color: '#3F2B2A', marginBottom: 14,
+    color: 'COLORS.text', marginBottom: 14,
   },
   eyeButton: {
     position: 'absolute', right: 8, top: 0, width: 34, height: 42,
     alignItems: 'center', justifyContent: 'center',
   },
-  eyeText: { fontSize: 16, color: '#8B7C7B' },
+  eyeText: { fontSize: 16, color: COLORS.muted },
   forgotButton: { alignSelf: 'flex-end', marginTop: -5, marginBottom: 38 },
-  forgotText: { fontSize: 8, color: '#8B7C7B', textDecorationLine: 'underline' },
+  forgotText: { fontSize: 8, color: COLORS.muted, textDecorationLine: 'underline' },
   loginButton: {
-    width: 68, height: 34, borderRadius: 18, backgroundColor: '#F8CBD4',
+    width: 68, height: 34, borderRadius: 18, backgroundColor: COLORS.pink,
     alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
   disabledButton: { opacity: 0.6 },
   buttonText: { fontSize: 11, fontFamily: 'FredokaBold', color: '#4A302F' },
   signupText: {
-    textAlign: 'center', fontSize: 8, color: '#7D6D6B', textDecorationLine: 'underline',
+    textAlign: 'center', fontSize: 8, color: COLORS.muted, textDecorationLine: 'underline',
   },
 });
 
@@ -344,7 +337,7 @@ export function ForgotPasswordScreen() {
           autoCorrect={false}
           editable={!loading}
           placeholder="Enter your email"
-          placeholderTextColor="#A99C9A"
+          placeholderTextColor={COLORS.muted}
         />
 
         <Pressable
@@ -353,7 +346,7 @@ export function ForgotPasswordScreen() {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={BROWN} />
+            <ActivityIndicator color={COLORS.brown} />
           ) : (
             <Text style={forgotPasswordStyles.buttonText}>Send</Text>
           )}
@@ -365,7 +358,7 @@ export function ForgotPasswordScreen() {
 }
 
 const forgotPasswordStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
+  container: { flex: 1, backgroundColor: COLORS.white },
   content: { flex: 1, paddingHorizontal: 26, justifyContent: 'center' },
   backButton: {
     position: 'absolute', top: 45, left: 20, width: 40, height: 40,
@@ -375,14 +368,14 @@ const forgotPasswordStyles = StyleSheet.create({
   title: {
     textAlign: 'center', fontSize: 22, fontFamily: 'FredokaBold', color: '#4A302F', marginBottom: 12,
   },
-  description: { textAlign: 'center', fontSize: 11, lineHeight: 17, color: '#7D6D6B', marginBottom: 35 },
+  description: { textAlign: 'center', fontSize: 11, lineHeight: 17, color: COLORS.muted, marginBottom: 35 },
   label: { fontSize: 10, color: '#4A302F', marginBottom: 6 },
   input: {
-    height: 42, backgroundColor: '#F5F3F3', borderRadius: 3,
-    paddingHorizontal: 12, fontSize: 13, color: '#3F2B2A', marginBottom: 28,
+    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
+    paddingHorizontal: 12, fontSize: 13, color: 'COLORS.text', marginBottom: 28,
   },
   sendButton: {
-    width: 80, height: 36, borderRadius: 18, backgroundColor: '#F8CBD4',
+    width: 80, height: 36, borderRadius: 18, backgroundColor: COLORS.pink,
     alignSelf: 'center', alignItems: 'center', justifyContent: 'center',
   },
   disabledButton: { opacity: 0.6 },
@@ -543,7 +536,7 @@ export function ResetPasswordScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={BROWN} />
+              <ActivityIndicator color={COLORS.brown} />
             ) : (
               <Text style={resetPasswordStyles.buttonText}>Reset Password</Text>
             )}
@@ -556,33 +549,33 @@ export function ResetPasswordScreen() {
 }
 
 const resetPasswordStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
+  container: { flex: 1, backgroundColor: COLORS.white },
   content: { flex: 1, paddingHorizontal: 22, justifyContent: 'center' },
   logo: { width: 125, height: 125, alignSelf: 'center', marginBottom: 70 },
   form: { width: '100%' },
-  label: { fontSize: 9, color: '#4A302F', marginBottom: 6 },
+  label: { fontSize: 9, color: COLORS.brown, marginBottom: 6 },
   passwordContainer: { position: 'relative', width: '100%', marginBottom: 12 },
   input: {
-    width: '100%', height: 42, backgroundColor: '#F5F3F3', borderRadius: 3,
-    paddingHorizontal: 12, paddingRight: 42, fontSize: 12, color: '#3F2B2A',
+    width: '100%', height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
+    paddingHorizontal: 12, paddingRight: 42, fontSize: 12, color: 'COLORS.text',
   },
   eyeButton: {
     position: 'absolute', right: 8, top: 0, width: 34, height: 42,
     alignItems: 'center', justifyContent: 'center',
   },
-  eyeText: { fontSize: 15, color: '#8B7C7B' },
+  eyeText: { fontSize: 15, color: COLORS.muted },
   resetButton: {
-    width: 110, height: 34, borderRadius: 18, backgroundColor: '#F8CBD4',
+    width: 110, height: 34, borderRadius: 18, backgroundColor: COLORS.pink,
     alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginTop: 20,
   },
   disabledButton: { opacity: 0.6 },
-  buttonText: { fontSize: 9, fontFamily: 'FredokaBold', color: '#4A302F' },
+  buttonText: { fontSize: 9, fontFamily: 'FredokaBold', color: COLORS.brown },
 });
 
 const alertStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(220, 220, 220, 0.65)',
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -590,35 +583,35 @@ const alertStyles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   iconCircle: {
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
-  errorIconCircle: { backgroundColor: '#FFF0F0' },
-  successIconCircle: { backgroundColor: PINK },
+  errorIconCircle: { backgroundColor: COLORS.background },
+  successIconCircle: { backgroundColor: COLORS.pink },
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginBottom: 10,
   },
   message: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     lineHeight: 21,
     textAlign: 'center',
     marginBottom: 24,
@@ -627,14 +620,14 @@ const alertStyles = StyleSheet.create({
     width: '100%',
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  errorButton: { backgroundColor: RED },
+  errorButton: { backgroundColor: COLORS.error },
   buttonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
 });

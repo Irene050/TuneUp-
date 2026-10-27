@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { COLORS } from '@/constants/appConstants';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgress } from '@/hooks/useProgress';
 import {
@@ -17,14 +18,6 @@ import {
   type SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
 import { frequencyToNoteName } from '@/utils/music/notes';
-
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const CARD_PINK = '#FFF2F5';
-const BORDER = '#F2DDE5';
 
 const VOCAL_COMPONENTS = [
   {
@@ -159,7 +152,7 @@ export default function DashboardScreen() {
 
         <View style={styles.assessmentCard}>
           <View style={styles.assessmentIcon}>
-            <Ionicons name="mic" size={25} color={BROWN} />
+            <Ionicons name="mic" size={25} color={COLORS.brown} />
           </View>
 
           <View style={styles.assessmentContent}>
@@ -211,7 +204,7 @@ export default function DashboardScreen() {
             <Ionicons
               name="musical-notes"
               size={24}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -273,7 +266,7 @@ export default function DashboardScreen() {
                 <Ionicons
                   name={component.icon}
                   size={76}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
               </View>
 
@@ -292,7 +285,7 @@ export default function DashboardScreen() {
                   <Ionicons
                     name="play"
                     size={20}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
                 </View>
               </View>
@@ -320,7 +313,7 @@ export default function DashboardScreen() {
             <Ionicons
               name="chevron-forward"
               size={15}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </Pressable>
         </View>
@@ -331,7 +324,7 @@ export default function DashboardScreen() {
               <Ionicons
                 name="trending-up"
                 size={30}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -410,7 +403,7 @@ export default function DashboardScreen() {
                       <Ionicons
                         name={component.icon}
                         size={17}
-                        color={BROWN}
+                        color={COLORS.brown}
                       />
 
                       <Text style={styles.dashboardComponentName}>
@@ -442,7 +435,7 @@ export default function DashboardScreen() {
             <Ionicons
               name="arrow-forward"
               size={17}
-              color={WHITE}
+              color={COLORS.white}
             />
           </Pressable>
         </View>
@@ -454,7 +447,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   scrollView: {
     flex: 1,
@@ -473,7 +466,7 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -481,22 +474,22 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
   },
   userName: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color: COLORS.brown,
   },
   userLevel: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: -2,
   },
   assessmentCard: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 20,
     padding: 20,
     flexDirection: 'row',
@@ -508,7 +501,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -519,14 +512,14 @@ const styles = StyleSheet.create({
   assessmentTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 5,
   },
   assessmentDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 15,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 14,
   },
   assessmentActions: {
@@ -539,47 +532,47 @@ const styles = StyleSheet.create({
     minHeight: 34,
     paddingHorizontal: 14,
     borderRadius: 17,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
   },
   assessmentButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: WHITE,
+    color: COLORS.white,
   },
   singingAssessmentButton: {
     minHeight: 34,
     paddingHorizontal: 14,
     borderRadius: 17,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: WHITE,
+    borderColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
   singingAssessmentButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   rangeCard: {
     width: '100%',
     minHeight: 86,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 16,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: LIGHT_PINK,
+    borderColor: COLORS.border,
   },
   rangeIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -590,25 +583,25 @@ const styles = StyleSheet.create({
   rangeLabel: {
     fontFamily: 'FredokaMedium',
     fontSize: 13,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: 1,
   },
   rangeText: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
   },
   rangeSubtext: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 1,
   },
   rangeEmptyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -619,12 +612,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
   },
   viewMore: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   exerciseScroll: {
     paddingBottom: 35,
@@ -632,11 +625,11 @@ const styles = StyleSheet.create({
   exerciseCard: {
     width: 320,
     height: 300,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 20,
     padding: 14,
     marginRight: 18,
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.14,
     shadowRadius: 8,
     shadowOffset: {
@@ -647,7 +640,7 @@ const styles = StyleSheet.create({
   },
   exerciseImage: {
     height: 195,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 18,
     marginBottom: 14,
     alignItems: 'center',
@@ -663,23 +656,23 @@ const styles = StyleSheet.create({
   exerciseName: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 4,
   },
   exerciseDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: BROWN,
+    color: COLORS.brown,
   },
   playButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.12,
     shadowRadius: 4,
     shadowOffset: {
@@ -697,7 +690,7 @@ const styles = StyleSheet.create({
   progressSectionSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
   },
   viewProgressButton: {
@@ -710,14 +703,14 @@ const styles = StyleSheet.create({
   viewProgressText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressCard: {
-    backgroundColor: CARD_PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 22,
     padding: 18,
     borderWidth: 1,
-    borderColor: CARD_PINK,
+    borderColor: COLORS.pink,
     marginBottom: 20,
   },
   progressIntro: {
@@ -738,13 +731,13 @@ const styles = StyleSheet.create({
   progressTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
   },
   progressSummaryRow: {
@@ -752,7 +745,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
     paddingVertical: 16,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 15,
   },
   progressSummaryItem: {
@@ -763,19 +756,19 @@ const styles = StyleSheet.create({
   progressSummaryValue: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressSummaryLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 3,
   },
   progressSummaryDivider: {
     width: 1,
     height: 34,
-    backgroundColor: BORDER,
+    backgroundColor: COLORS.border,
   },
   progressComponents: {
     marginTop: 20,
@@ -783,7 +776,7 @@ const styles = StyleSheet.create({
   progressComponentsTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 15,
   },
   dashboardComponent: {
@@ -804,15 +797,15 @@ const styles = StyleSheet.create({
   dashboardComponentName: {
     fontFamily: 'FredokaMedium',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   dashboardComponentCount: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
   },
   progressAction: {
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     minHeight: 45,
     borderRadius: 23,
     paddingHorizontal: 18,
@@ -825,6 +818,6 @@ const styles = StyleSheet.create({
   progressActionText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: WHITE,
+    color: COLORS.white,
   },
 });

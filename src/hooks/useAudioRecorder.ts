@@ -34,7 +34,12 @@ function centsBetween(
   frequencyA: number,
   frequencyB: number,
 ): number {
-  if (frequencyA <= 0 || frequencyB <= 0) {
+  if (
+    !Number.isFinite(frequencyA) ||
+    !Number.isFinite(frequencyB) ||
+    frequencyA <= 0 ||
+    frequencyB <= 0
+  ) {
     return Infinity;
   }
 
@@ -47,6 +52,15 @@ interface UseAudioRecorderOptions {
     samples: Float32Array,
     sampleRate: number,
   ) => void;
+}
+
+export interface LiveAudioFrame {
+  pitch: number;
+  note: string;
+  clarity: number;
+  volume: number;
+  samples: Float32Array;
+  sampleRate: number;
 }
 
 function calculatePeak(samples: Float32Array): number {
@@ -81,6 +95,31 @@ function calculateDCOffset(samples: Float32Array): number {
   return count > 0 ? sum / count : 0;
 }
 
+interface LiveSignalMetrics {
+  rms: number;
+  db: number;
+  peak: number;
+}
+
+/**
+ * Calculates only the signal metrics needed during live recording.
+ * More expensive diagnostics are calculated after recording stops.
+ */
+function analyzeLiveSignal(
+  samples: Float32Array,
+): LiveSignalMetrics {
+  const rms = calcRMS(samples);
+
+  return {
+    rms,
+    db: rmsToDb(rms),
+    peak: calculatePeak(samples),
+  };
+}
+
+/**
+ * Calculates the complete signal diagnostics used in the recording summary.
+ */
 function analyzeAudioSignal(
   samples: Float32Array,
   sampleRate: number,
@@ -95,7 +134,9 @@ function analyzeAudioSignal(
 
     finiteSamples++;
 
-    if (value === 0) zeroSamples++;
+    if (value === 0) {
+      zeroSamples++;
+    }
   }
 
   const rms = calcRMS(samples);
@@ -115,13 +156,50 @@ function analyzeAudioSignal(
   };
 }
 
-export interface LiveAudioFrame {
-  pitch: number;
-  note: string;
-  clarity: number;
-  volume: number;
-  samples: Float32Array;
-  sampleRate: number;
+/**
+ * Appends incoming samples to a rolling buffer and retains
+ * only the most recent maxLength samples.
+ */
+function appendToRollingBuffer(
+  previousSamples: Float32Array,
+  incomingSamples: Float32Array,
+  maxLength: number,
+): Float32Array {
+  if (incomingSamples.length >= maxLength) {
+    return incomingSamples.slice(
+      incomingSamples.length - maxLength,
+    );
+  }
+
+  const combinedLength =
+    previousSamples.length + incomingSamples.length;
+
+  if (combinedLength <= maxLength) {
+    const combined = new Float32Array(combinedLength);
+
+    combined.set(previousSamples);
+    combined.set(incomingSamples, previousSamples.length);
+
+    return combined;
+  }
+
+  const previousSamplesToKeep =
+    maxLength - incomingSamples.length;
+
+  const combined = new Float32Array(maxLength);
+
+  combined.set(
+    previousSamples.subarray(
+      previousSamples.length - previousSamplesToKeep,
+    ),
+  );
+
+  combined.set(
+    incomingSamples,
+    previousSamplesToKeep,
+  );
+
+  return combined;
 }
 
 export function useAudioRecorder(
@@ -153,6 +231,12 @@ export function useAudioRecorder(
   const lastLiveAnalysisRef = useRef(0);
   const sessionActiveRef = useRef(false);
 
+  // Keeps enough recent audio for pitch analysis even when
+  // an individual audio callback contains fewer than 2048 samples.
+  const pitchBufferRef = useRef<Float32Array>(
+    new Float32Array(0),
+  );
+
   const pendingOctavePitchRef = useRef<number | null>(null);
   const pendingOctaveCountRef = useRef(0);
 
@@ -176,6 +260,8 @@ export function useAudioRecorder(
 
     pendingOctavePitchRef.current = null;
     pendingOctaveCountRef.current = 0;
+
+    pitchBufferRef.current = new Float32Array(0);
   }, []);
 
   const emitLiveFrame = useCallback(
@@ -251,6 +337,7 @@ export function useAudioRecorder(
         chunksRef.current = [];
         sampleCountRef.current = 0;
         lastLiveAnalysisRef.current = 0;
+
         resetLiveDetection();
 
         recorder = new AudioRecorder({
@@ -290,19 +377,27 @@ export function useAudioRecorder(
 
               if (frameLength === 0) return;
 
+              // Copy the current callback samples so they remain
+              // independent of the audio API's reusable buffer.
               const samples = new Float32Array(frameLength);
 
               samples.set(
                 channelData.subarray(0, frameLength),
               );
 
+              // Preserve every received chunk for final analysis.
               chunksRef.current.push(samples);
               sampleCountRef.current += samples.length;
 
-              const signal = analyzeAudioSignal(
+              // Update the rolling pitch buffer on every callback,
+              // not only when live analysis is due.
+              pitchBufferRef.current = appendToRollingBuffer(
+                pitchBufferRef.current,
                 samples,
-                DEFAULT_SAMPLE_RATE,
+                BUFFER_LENGTH,
               );
+
+              const signal = analyzeLiveSignal(samples);
 
               const now = Date.now();
 
@@ -354,15 +449,32 @@ export function useAudioRecorder(
                 signal.peak <= 0;
 
               if (signalIsQuiet) {
+                pendingOctavePitchRef.current = null;
+                pendingOctaveCountRef.current = 0;
+
                 emitInvalidFrame();
                 return;
               }
 
-              let pitchResult;
+              // Pitch analysis requires a complete 2048-sample frame.
+              // If there is not enough audio yet, wait for more samples.
+              if (
+                pitchBufferRef.current.length < BUFFER_LENGTH
+              ) {
+                pendingOctavePitchRef.current = null;
+                pendingOctaveCountRef.current = 0;
+
+                emitInvalidFrame();
+                return;
+              }
+
+              let pitchResult: ReturnType<
+                typeof analyzePitchFrame
+              >;
 
               try {
                 pitchResult = analyzePitchFrame(
-                  samples,
+                  pitchBufferRef.current,
                   DEFAULT_SAMPLE_RATE,
                 );
               } catch (error) {
@@ -418,7 +530,10 @@ export function useAudioRecorder(
 
               if (previousPitch > 0) {
                 const pitchDifferenceCents = Math.abs(
-                  centsBetween(detectedPitch, previousPitch),
+                  centsBetween(
+                    detectedPitch,
+                    previousPitch,
+                  ),
                 );
 
                 const isOctaveJump =
@@ -427,28 +542,43 @@ export function useAudioRecorder(
                   ) <= OCTAVE_TOLERANCE_CENTS;
 
                 if (isOctaveJump) {
-                  const pendingPitch = pendingOctavePitchRef.current;
+                  const pendingPitch =
+                    pendingOctavePitchRef.current;
 
                   const matchesPendingPitch =
                     pendingPitch !== null &&
-                    Math.abs(centsBetween(detectedPitch, pendingPitch)) <=
-                      OCTAVE_TOLERANCE_CENTS;
+                    Math.abs(
+                      centsBetween(
+                        detectedPitch,
+                        pendingPitch,
+                      ),
+                    ) <= OCTAVE_TOLERANCE_CENTS;
 
                   if (matchesPendingPitch) {
                     pendingOctaveCountRef.current += 1;
                   } else {
-                    pendingOctavePitchRef.current = detectedPitch;
+                    pendingOctavePitchRef.current =
+                      detectedPitch;
+
                     pendingOctaveCountRef.current = 1;
                   }
 
-                  console.warn('[Pitch Tracking] Possible octave jump', {
-                    previousPitchHz: Number(previousPitch.toFixed(2)),
-                    detectedPitchHz: Number(detectedPitch.toFixed(2)),
-                    differenceCents: Number(
-                      pitchDifferenceCents.toFixed(1),
-                    ),
-                    confirmationCount: pendingOctaveCountRef.current,
-                  });
+                  console.warn(
+                    '[Pitch Tracking] Possible octave jump',
+                    {
+                      previousPitchHz: Number(
+                        previousPitch.toFixed(2),
+                      ),
+                      detectedPitchHz: Number(
+                        detectedPitch.toFixed(2),
+                      ),
+                      differenceCents: Number(
+                        pitchDifferenceCents.toFixed(1),
+                      ),
+                      confirmationCount:
+                        pendingOctaveCountRef.current,
+                    },
+                  );
 
                   if (
                     pendingOctaveCountRef.current <
@@ -462,6 +592,7 @@ export function useAudioRecorder(
 
               pendingOctavePitchRef.current = null;
               pendingOctaveCountRef.current = 0;
+
               lastValidPitchRef.current = detectedPitch;
               lastValidNoteRef.current = detectedNote;
               lastValidClarityRef.current = detectedClarity;
@@ -475,8 +606,6 @@ export function useAudioRecorder(
                 samples,
                 sampleRate: DEFAULT_SAMPLE_RATE,
               });
-
-              
             } catch (error) {
               console.error(
                 'Audio callback error:',
@@ -591,7 +720,7 @@ export function useAudioRecorder(
     if (stopTaskRef.current) {
       return stopTaskRef.current;
     }
-    
+
     console.log(
       '[AudioRecorder] ⏹️ RECORDER STOPPING',
       new Date().toISOString(),
@@ -692,21 +821,24 @@ export function useAudioRecorder(
         const durationSeconds =
           fullBuffer.length / DEFAULT_SAMPLE_RATE;
 
-        console.log('[AudioRecorder] Recording summary', {
-          sampleRate: DEFAULT_SAMPLE_RATE,
-          durationSeconds: Number(
-            durationSeconds.toFixed(2),
-          ),
-          sampleCount: fullBuffer.length,
-          rms: Number(finalSignal.rms.toFixed(4)),
-          volumeDb: Number.isFinite(finalSignal.db)
-            ? Number(finalSignal.db.toFixed(2))
-            : finalSignal.db,
-          peak: Number(finalSignal.peak.toFixed(4)),
-          dcOffset: Number(
-            finalSignal.dcOffset.toFixed(4),
-          ),
-        });
+        console.log(
+          '[AudioRecorder] Recording summary',
+          {
+            sampleRate: DEFAULT_SAMPLE_RATE,
+            durationSeconds: Number(
+              durationSeconds.toFixed(2),
+            ),
+            sampleCount: fullBuffer.length,
+            rms: Number(finalSignal.rms.toFixed(4)),
+            volumeDb: Number.isFinite(finalSignal.db)
+              ? Number(finalSignal.db.toFixed(2))
+              : finalSignal.db,
+            peak: Number(finalSignal.peak.toFixed(4)),
+            dcOffset: Number(
+              finalSignal.dcOffset.toFixed(4),
+            ),
+          },
+        );
 
         try {
           onStopRef.current?.(

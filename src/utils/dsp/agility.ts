@@ -1,5 +1,13 @@
+import { fftComplex } from '@/utils/dsp/fft';
 import { frequencyToMidi } from '@/utils/music/notes';
-import type { PitchFrame } from './pitch';
+
+import {
+  filterByClarity,
+} from './pitch';
+
+import type {
+  PitchFrame,
+} from './pitch';
 
 export interface PitchTransition {
   fromFreq: number;
@@ -30,89 +38,6 @@ const DEFAULT_MAX_FREQUENCY = 1000;
 const DEFAULT_MIN_RMS = 0.008;
 const DEFAULT_MIN_CORRELATION = 0.3;
 
-function fft(
-  real: Float64Array,
-  imag: Float64Array,
-  inverse = false,
-): void {
-  const n = real.length;
-
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-
-    while (j & bit) {
-      j ^= bit;
-      bit >>= 1;
-    }
-
-    j ^= bit;
-
-    if (i < j) {
-      const realTemp = real[i];
-      real[i] = real[j];
-      real[j] = realTemp;
-
-      const imagTemp = imag[i];
-      imag[i] = imag[j];
-      imag[j] = imagTemp;
-    }
-  }
-
-  for (let size = 2; size <= n; size <<= 1) {
-    const halfSize = size >> 1;
-    const angle =
-      (inverse ? 2 : -2) * Math.PI / size;
-
-    const stepReal = Math.cos(angle);
-    const stepImag = Math.sin(angle);
-
-    for (let start = 0; start < n; start += size) {
-      let twiddleReal = 1;
-      let twiddleImag = 0;
-
-      for (let j = 0; j < halfSize; j++) {
-        const evenIndex = start + j;
-        const oddIndex = evenIndex + halfSize;
-
-        const oddReal =
-          real[oddIndex] * twiddleReal -
-          imag[oddIndex] * twiddleImag;
-
-        const oddImag =
-          real[oddIndex] * twiddleImag +
-          imag[oddIndex] * twiddleReal;
-
-        const evenReal = real[evenIndex];
-        const evenImag = imag[evenIndex];
-
-        real[evenIndex] = evenReal + oddReal;
-        imag[evenIndex] = evenImag + oddImag;
-
-        real[oddIndex] = evenReal - oddReal;
-        imag[oddIndex] = evenImag - oddImag;
-
-        const nextTwiddleReal =
-          twiddleReal * stepReal -
-          twiddleImag * stepImag;
-
-        twiddleImag =
-          twiddleReal * stepImag +
-          twiddleImag * stepReal;
-
-        twiddleReal = nextTwiddleReal;
-      }
-    }
-  }
-
-  if (inverse) {
-    for (let i = 0; i < n; i++) {
-      real[i] /= n;
-      imag[i] /= n;
-    }
-  }
-}
-
-
 export function detectPitchAutocorrelation(
   frame: Float32Array,
   sampleRate: number,
@@ -120,9 +45,13 @@ export function detectPitchAutocorrelation(
 ): number | null {
   const minFrequency =
     options.minFrequency ?? DEFAULT_MIN_FREQUENCY;
+
   const maxFrequency =
     options.maxFrequency ?? DEFAULT_MAX_FREQUENCY;
-  const minRms = options.minRms ?? DEFAULT_MIN_RMS;
+
+  const minRms =
+    options.minRms ?? DEFAULT_MIN_RMS;
+
   const minCorrelation =
     options.minCorrelation ?? DEFAULT_MIN_CORRELATION;
 
@@ -132,8 +61,11 @@ export function detectPitchAutocorrelation(
     frame.length < 3 ||
     !Number.isFinite(minFrequency) ||
     !Number.isFinite(maxFrequency) ||
+    !Number.isFinite(minRms) ||
+    !Number.isFinite(minCorrelation) ||
     minFrequency <= 0 ||
-    maxFrequency <= minFrequency
+    maxFrequency <= minFrequency ||
+    minRms < 0
   ) {
     return null;
   }
@@ -144,14 +76,19 @@ export function detectPitchAutocorrelation(
   let rawEnergy = 0;
 
   for (let i = 0; i < length; i++) {
-    const value = frame[i] ?? 0;
+    const value = frame[i];
+
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
     mean += value;
     rawEnergy += value * value;
   }
 
   const rms = Math.sqrt(rawEnergy / length);
 
-  if (rms < minRms) {
+  if (!Number.isFinite(rms) || rms < minRms) {
     return null;
   }
 
@@ -159,12 +96,19 @@ export function detectPitchAutocorrelation(
 
   const processed = new Float64Array(length);
   const prefixEnergy = new Float64Array(length + 1);
+
   let totalEnergy = 0;
 
   for (let i = 0; i < length; i++) {
-    const centered = (frame[i] ?? 0) - mean;
+    const centered = frame[i] - mean;
+
     const window =
-      0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1));
+      0.5 -
+      0.5 *
+        Math.cos(
+          (2 * Math.PI * i) / (length - 1),
+        );
+
     const value = centered * window;
 
     processed[i] = value;
@@ -172,7 +116,10 @@ export function detectPitchAutocorrelation(
     prefixEnergy[i + 1] = totalEnergy;
   }
 
-  if (totalEnergy <= 0) {
+  if (
+    !Number.isFinite(totalEnergy) ||
+    totalEnergy <= 0
+  ) {
     return null;
   }
 
@@ -180,6 +127,7 @@ export function detectPitchAutocorrelation(
     2,
     Math.floor(sampleRate / maxFrequency),
   );
+
   const maxLag = Math.min(
     length - 2,
     Math.ceil(sampleRate / minFrequency),
@@ -190,6 +138,7 @@ export function detectPitchAutocorrelation(
   }
 
   let fftSize = 1;
+
   while (fftSize < length * 2 - 1) {
     fftSize <<= 1;
   }
@@ -199,7 +148,7 @@ export function detectPitchAutocorrelation(
 
   real.set(processed);
 
-  fft(real, imag);
+  fftComplex(real, imag);
 
   for (let i = 0; i < fftSize; i++) {
     const re = real[i];
@@ -209,23 +158,36 @@ export function detectPitchAutocorrelation(
     imag[i] = 0;
   }
 
-  fft(real, imag, true);
+  fftComplex(real, imag, true);
 
   const correlations = new Float64Array(maxLag + 2);
+
   let bestLag = -1;
   let bestCorrelation = -Infinity;
 
   for (let lag = minLag; lag <= maxLag; lag++) {
     const overlapLength = length - lag;
+
     const energyA = prefixEnergy[overlapLength];
     const energyB = totalEnergy - prefixEnergy[lag];
-    const denominator = Math.sqrt(energyA * energyB);
 
-    if (denominator <= 0) {
+    const denominator = Math.sqrt(
+      energyA * energyB,
+    );
+
+    if (
+      !Number.isFinite(denominator) ||
+      denominator <= 0
+    ) {
       continue;
     }
 
     const correlation = real[lag] / denominator;
+
+    if (!Number.isFinite(correlation)) {
+      continue;
+    }
+
     correlations[lag] = correlation;
 
     if (correlation > bestCorrelation) {
@@ -264,7 +226,9 @@ export function detectPitchAutocorrelation(
   const left = correlations[selectedLag - 1];
   const center = correlations[selectedLag];
   const right = correlations[selectedLag + 1];
-  const curvature = left - 2 * center + right;
+
+  const curvature =
+    left - 2 * center + right;
 
   let refinedLag = selectedLag;
 
@@ -272,14 +236,21 @@ export function detectPitchAutocorrelation(
     Number.isFinite(curvature) &&
     Math.abs(curvature) > 1e-12
   ) {
-    const offset = 0.5 * (left - right) / curvature;
+    const offset =
+      0.5 * (left - right) / curvature;
 
-    if (Number.isFinite(offset) && Math.abs(offset) <= 1) {
+    if (
+      Number.isFinite(offset) &&
+      Math.abs(offset) <= 1
+    ) {
       refinedLag += offset;
     }
   }
 
-  if (refinedLag <= 0) {
+  if (
+    !Number.isFinite(refinedLag) ||
+    refinedLag <= 0
+  ) {
     return null;
   }
 
@@ -381,7 +352,9 @@ export function extractAgilityNotes(
 
     previousTimestampMs = frame.timestamp;
 
-    const midiFloat = frequencyToMidi(frame.frequency);
+    const midiFloat = frequencyToMidi(
+      frame.frequency,
+    );
 
     if (!Number.isFinite(midiFloat)) {
       candidateMidi = null;
@@ -411,7 +384,9 @@ export function extractAgilityNotes(
 
     const isOctaveJump =
       currentMidi !== null &&
-      Math.abs(Math.abs(midi - currentMidi) - 12) <= 1;
+      Math.abs(
+        Math.abs(midi - currentMidi) - 12,
+      ) <= 1;
 
     const confirmationRequired = isOctaveJump
       ? Math.max(requiredFrames, 5)
@@ -437,17 +412,29 @@ export function detectPitchChanges(
   pitchFrames: PitchFrame[],
   changeThresholdHz = 15,
 ): PitchTransition[] {
+  if (
+    !Number.isFinite(changeThresholdHz) ||
+    changeThresholdHz < 0
+  ) {
+    return [];
+  }
+
+  const validFrames = filterByClarity(
+    pitchFrames,
+    0.70,
+  );
+
   const transitions: PitchTransition[] = [];
 
-  for (let i = 1; i < pitchFrames.length; i++) {
-    const previous = pitchFrames[i - 1];
-    const current = pitchFrames[i];
+  for (let i = 1; i < validFrames.length; i++) {
+    const previous = validFrames[i - 1];
+    const current = validFrames[i];
 
-    const diff = Math.abs(
+    const difference = Math.abs(
       current.frequency - previous.frequency,
     );
 
-    if (diff > changeThresholdHz) {
+    if (difference > changeThresholdHz) {
       transitions.push({
         fromFreq: previous.frequency,
         toFreq: current.frequency,
@@ -484,8 +471,9 @@ export function calcTrillAccuracy(
   if (
     alternations.length === 0 ||
     targetNotes.some(
-      (frequency) =>
-        !Number.isFinite(frequency) || frequency <= 0,
+      frequency =>
+        !Number.isFinite(frequency) ||
+        frequency <= 0,
     )
   ) {
     return 0;
@@ -495,16 +483,20 @@ export function calcTrillAccuracy(
 
   for (const transition of alternations) {
     const matchesFrom =
-      Math.abs(transition.fromFreq - targetNotes[0]) /
-        targetNotes[0] < 0.05 ||
-      Math.abs(transition.fromFreq - targetNotes[1]) /
-        targetNotes[1] < 0.05;
+      Math.abs(
+        transition.fromFreq - targetNotes[0],
+      ) / targetNotes[0] < 0.05 ||
+      Math.abs(
+        transition.fromFreq - targetNotes[1],
+      ) / targetNotes[1] < 0.05;
 
     const matchesTo =
-      Math.abs(transition.toFreq - targetNotes[0]) /
-        targetNotes[0] < 0.05 ||
-      Math.abs(transition.toFreq - targetNotes[1]) /
-        targetNotes[1] < 0.05;
+      Math.abs(
+        transition.toFreq - targetNotes[0],
+      ) / targetNotes[0] < 0.05 ||
+      Math.abs(
+        transition.toFreq - targetNotes[1],
+      ) / targetNotes[1] < 0.05;
 
     if (matchesFrom && matchesTo) {
       correct++;

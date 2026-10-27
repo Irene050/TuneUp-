@@ -52,12 +52,11 @@ const GUIDE_RED = '#A05D6C';
 
 const DEFAULT_TIER: Tier = 'beginner';
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
-const PREPARATION_COUNTDOWN_SECONDS = 3;
+const COUNTDOWN_SECONDS = 3;
 const HISTORY_LIMIT = 60;
 const WINDOW_MS = 50;
 const REP_DURATION_EXTENSION_SEC = 2;
 const MIN_VOICED_FRAMES = 8;
-const MIN_LIVE_INPUT_DBFS = -60;
 const LIVE_LEVEL_OFFSET = 70;
 const LIVE_SMOOTHING_ALPHA = 0.25;
 const MAX_QUIET_FRAMES = 2;
@@ -464,7 +463,7 @@ export default function VolumeBandTargeting({
   const [parametersReady, setParametersReady] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [countdown, setCountdown] = useState(
-    PREPARATION_COUNTDOWN_SECONDS,
+    COUNTDOWN_SECONDS,
   );
   const [currentRep, setCurrentRep] = useState(1);
   const currentRepRef = useRef(1);
@@ -917,7 +916,7 @@ export default function VolumeBandTargeting({
 
         resetLiveLevel();
 
-        setCountdown(PREPARATION_COUNTDOWN_SECONDS);
+        setCountdown(COUNTDOWN_SECONDS);
         setPhase('countdown');
         return;
       }
@@ -1109,7 +1108,7 @@ export default function VolumeBandTargeting({
 
       setCurrentRep(1);
       setElapsedMs(0);
-      setCountdown(PREPARATION_COUNTDOWN_SECONDS);
+      setCountdown(COUNTDOWN_SECONDS);
 
       resetLiveLevel();
 
@@ -1340,7 +1339,7 @@ export default function VolumeBandTargeting({
     setReferencePlaybackError(null);
     setNoVoiceDetected(false);
 
-    setCountdown(PREPARATION_COUNTDOWN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
 
     setScore(0);
     setAverageDb(0);

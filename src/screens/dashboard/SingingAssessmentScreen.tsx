@@ -40,19 +40,12 @@ import {
   midiToNoteName,
 } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const MUTED = '#8E7770';
-const BORDER = '#F2DDE5';
-const WHITE = '#FFFFFF';
-const DEEP_PINK = '#D94F78';
-const COMPLETED_PINK = '#F5E8EC';
+import { COLORS } from '@/constants/appConstants';
 
 const COUNTDOWN_SECONDS = 3;
 const BEAT_MS = 60_000 / SINGING_ASSESSMENT_BPM;
 const BEAT_SECONDS = BEAT_MS / 1000;
-const GUIDE_SAMPLE_RATE = 44100;
+const SAMPLE_RATE = 44100;
 const GUIDE_START_DELAY_SECONDS = 0.12;
 const RECORDING_START_DELAY_SECONDS = 0.08;
 const RECORDING_END_PADDING_MS = 500;
@@ -107,7 +100,7 @@ function formatMelodyLyric(lyric: string): string {
 
 async function playMelodyGuide(): Promise<void> {
   const context = new AudioContext({
-    sampleRate: GUIDE_SAMPLE_RATE,
+    sampleRate: SAMPLE_RATE,
   });
 
   try {
@@ -435,7 +428,7 @@ export default function SingingAssessmentScreen() {
     if (quitRequestedRef.current) return;
 
     const context = new AudioContext({
-      sampleRate: GUIDE_SAMPLE_RATE,
+      sampleRate: SAMPLE_RATE,
     });
 
     beatContextRef.current = context;
@@ -874,12 +867,12 @@ export default function SingingAssessmentScreen() {
           disabled={isCancelling}
           onPress={requestQuitAssessment}
         >
-          <Ionicons name="chevron-back" size={25} color={BROWN} />
+          <Ionicons name="chevron-back" size={25} color={COLORS.brown} />
         </Pressable>
 
         <View style={styles.recordingHeader}>
           <View style={styles.recordingIconCircle}>
-            <Ionicons name="musical-notes" size={28} color={BROWN} />
+            <Ionicons name="musical-notes" size={28} color={COLORS.brown} />
           </View>
 
           <Text style={styles.recordingTitle}>Your Turn to Sing!</Text>
@@ -909,7 +902,7 @@ export default function SingingAssessmentScreen() {
           <View style={styles.activeLyricDivider} />
 
           <View style={styles.targetNoteRow}>
-            <Ionicons name="musical-note" size={21} color={BROWN} />
+            <Ionicons name="musical-note" size={21} color={COLORS.brown} />
 
             <View style={styles.targetNoteTextWrap}>
               <Text style={styles.targetNoteCaption}>TARGET NOTE</Text>
@@ -949,7 +942,7 @@ export default function SingingAssessmentScreen() {
                       <Ionicons
                         name="arrow-up"
                         size={12}
-                        color={WHITE}
+                        color={COLORS.white}
                         style={styles.currentChipIcon}
                       />
                     ) : null}
@@ -1099,7 +1092,7 @@ export default function SingingAssessmentScreen() {
                 <Ionicons
                   name="checkmark-circle-outline"
                   size={19}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
                 <Text style={styles.feedbackText}>{item}</Text>
               </View>
@@ -1142,12 +1135,12 @@ export default function SingingAssessmentScreen() {
           disabled={isCancelling}
           onPress={requestQuitAssessment}
         >
-          <Ionicons name="chevron-back" size={25} color={BROWN} />
+          <Ionicons name="chevron-back" size={25} color={COLORS.brown} />
         </Pressable>
 
         <View style={styles.hero}>
           <View style={styles.iconCircle}>
-            <Ionicons name="musical-notes" size={38} color={BROWN} />
+            <Ionicons name="musical-notes" size={38} color={COLORS.brown} />
           </View>
 
           <Text style={styles.title}>Singing Assessment</Text>
@@ -1174,14 +1167,14 @@ export default function SingingAssessmentScreen() {
           </View>
 
           <View style={styles.infoRow}>
-            <Ionicons name="headset-outline" size={19} color={BROWN} />
+            <Ionicons name="headset-outline" size={19} color={COLORS.brown} />
             <Text style={styles.infoText}>
               Listen to the reference melody before starting.
             </Text>
           </View>
 
           <View style={styles.infoRow}>
-            <Ionicons name="musical-notes" size={19} color={BROWN} />
+            <Ionicons name="musical-notes" size={19} color={COLORS.brown} />
             <Text style={styles.infoText}>
               A steady {SINGING_ASSESSMENT_BPM} BPM beat will play while
               you sing.
@@ -1189,7 +1182,7 @@ export default function SingingAssessmentScreen() {
           </View>
 
           <View style={styles.infoRow}>
-            <Ionicons name="analytics-outline" size={19} color={BROWN} />
+            <Ionicons name="analytics-outline" size={19} color={COLORS.brown} />
             <Text style={styles.infoText}>
               Your score uses pitch accuracy, pitch stability, and vocal
               consistency.
@@ -1197,7 +1190,7 @@ export default function SingingAssessmentScreen() {
           </View>
 
           <View style={styles.tipCard}>
-            <Ionicons name="bulb-outline" size={21} color={BROWN} />
+            <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
             <Text style={styles.tipText}>
               Keep your phone a comfortable, consistent distance away.
               Sing naturally; you do not need to know music theory.
@@ -1228,7 +1221,7 @@ export default function SingingAssessmentScreen() {
           <Ionicons
             name={guidePlaying ? 'volume-high' : 'play-circle-outline'}
             size={21}
-            color={BROWN}
+            color={COLORS.brown}
           />
           <Text style={styles.secondaryButtonText}>
             {guidePlaying
@@ -1246,7 +1239,7 @@ export default function SingingAssessmentScreen() {
           ]}
           onPress={handleStart}
         >
-          <Ionicons name="mic" size={20} color={WHITE} />
+          <Ionicons name="mic" size={20} color={COLORS.white} />
           <Text style={styles.startButtonText}>Start Assessment</Text>
         </Pressable>
       </ScrollView>
@@ -1286,7 +1279,7 @@ function QuitAssessmentModal({
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
           <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={BROWN} />
+            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
           </View>
 
           <Text style={styles.modalTitle}>Quit assessment?</Text>
@@ -1368,7 +1361,7 @@ function ScoreRow({
 const styles = StyleSheet.create({
   introScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   introContent: {
     paddingHorizontal: 24,
@@ -1390,7 +1383,7 @@ const styles = StyleSheet.create({
     width: 78,
     height: 78,
     borderRadius: 39,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 15,
@@ -1398,39 +1391,39 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 5,
   },
   instructionCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     padding: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 9,
   },
   bodyText: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
   },
   lyricsCard: {
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     borderRadius: 16,
     padding: 15,
     marginTop: 16,
@@ -1439,7 +1432,7 @@ const styles = StyleSheet.create({
   lyricsLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.8,
     marginBottom: 8,
   },
@@ -1447,7 +1440,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   infoRow: {
@@ -1461,14 +1454,14 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: BROWN,
+    color: COLORS.brown,
   },
   tipCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     borderRadius: 15,
     padding: 13,
     marginTop: 17,
@@ -1479,13 +1472,13 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
   },
   secondaryButton: {
     minHeight: 52,
     borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: BROWN,
+    borderColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1496,7 +1489,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   disabledButton: {
     opacity: 0.6,
@@ -1504,7 +1497,7 @@ const styles = StyleSheet.create({
   startButton: {
     height: 54,
     borderRadius: 27,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1514,12 +1507,12 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
-    color: WHITE,
+    color: COLORS.white,
   },
   errorCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF1F1',
+    backgroundColor: COLORS.background,
     borderRadius: 14,
     padding: 13,
     marginTop: 17,
@@ -1530,11 +1523,11 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: '#A33A3A',
+    color: COLORS.error,
   },
   recordingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     paddingHorizontal: 20,
     paddingTop: 42,
     paddingBottom: 18,
@@ -1549,9 +1542,9 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 7,
@@ -1560,20 +1553,20 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 23,
     lineHeight: 29,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   recordingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 3,
   },
   activeLyricCard: {
     width: '100%',
     backgroundColor: '#FFF0F4',
-    borderColor: DEEP_PINK,
+    borderColor: COLORS.waveform,
     borderWidth: 2,
     borderRadius: 23,
     paddingHorizontal: 14,
@@ -1581,7 +1574,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: DEEP_PINK,
+    shadowColor: COLORS.waveform,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.16,
     shadowRadius: 6,
@@ -1591,7 +1584,7 @@ const styles = StyleSheet.create({
     minHeight: 27,
     paddingHorizontal: 12,
     borderRadius: 15,
-    backgroundColor: DEEP_PINK,
+    backgroundColor: COLORS.waveform,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1601,19 +1594,19 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   activeLyricBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.8,
-    color: WHITE,
+    color: COLORS.white,
   },
   activeLyric: {
     fontFamily: 'FredokaBold',
     fontSize: 38,
     lineHeight: 46,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 5,
@@ -1622,7 +1615,7 @@ const styles = StyleSheet.create({
   activeLyricDivider: {
     width: '72%',
     height: 1,
-    backgroundColor: '#EBC0CC',
+    backgroundColor: COLORS.pink,
     marginTop: 2,
     marginBottom: 7,
   },
@@ -1639,27 +1632,27 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 9,
     letterSpacing: 0.9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   targetNoteName: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
     lineHeight: 25,
-    color: BROWN,
+    color: COLORS.brown,
   },
   activeLyricProgress: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 9,
     letterSpacing: 0.8,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 6,
   },
   lyricStripCard: {
     width: '100%',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 7,
@@ -1676,12 +1669,12 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.6,
-    color: BROWN,
+    color: COLORS.brown,
   },
   lyricStripHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
   },
   lyricStripContent: {
     paddingHorizontal: 2,
@@ -1701,8 +1694,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: LIGHT_PINK,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1710,19 +1703,19 @@ const styles = StyleSheet.create({
     minHeight: 34,
     minWidth: 40,
     paddingHorizontal: 9,
-    backgroundColor: DEEP_PINK,
-    borderColor: DEEP_PINK,
+    backgroundColor: COLORS.waveform,
+    borderColor: COLORS.waveform,
     borderWidth: 2,
     borderRadius: 10,
     transform: [{ scale: 1.04 }],
-    shadowColor: DEEP_PINK,
+    shadowColor: COLORS.waveform,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 2,
   },
   lyricChipPast: {
-    backgroundColor: COMPLETED_PINK,
+    backgroundColor: COLORS.completedPink,
     borderColor: '#F0E2E6',
     opacity: 0.62,
   },
@@ -1732,22 +1725,22 @@ const styles = StyleSheet.create({
   lyricChipText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   lyricChipTextActive: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: WHITE,
+    color: COLORS.white,
   },
   lyricChipTextPast: {
-    color: MUTED,
+    color: COLORS.muted,
   },
   liveCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     paddingVertical: 9,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -1762,25 +1755,25 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#D86C89',
+    backgroundColor: COLORS.waveform,
   },
   liveLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.9,
   },
   liveNote: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
     lineHeight: 32,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 1,
   },
   liveHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 1,
     textAlign: 'center',
   },
@@ -1795,24 +1788,24 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: '#E7DDE0',
+    backgroundColor: COLORS.background,
   },
   firstBeatDot: {
     borderWidth: 1,
-    borderColor: '#D8B6C0',
+    borderColor: COLORS.pink,
   },
   beatDotActive: {
-    backgroundColor: DEEP_PINK,
+    backgroundColor: COLORS.waveform,
     transform: [{ scale: 1.4 }],
   },
   firstBeatDotActive: {
-    backgroundColor: BROWN,
-    borderColor: BROWN,
+    backgroundColor: COLORS.brown,
+    borderColor: COLORS.brown,
   },
   beatLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 6,
   },
 
@@ -1823,32 +1816,32 @@ const styles = StyleSheet.create({
   timer: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 6,
   },
   progressTrack: {
     height: 7,
     width: '100%',
     borderRadius: 4,
-    backgroundColor: '#F2F2F2',
+    backgroundColor: COLORS.border,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: DEEP_PINK,
+    backgroundColor: COLORS.waveform,
     borderRadius: 4,
   },
   footerHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 5,
   },
   stopButton: {
     minHeight: 47,
     borderRadius: 24,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1858,19 +1851,19 @@ const styles = StyleSheet.create({
   stopButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
 
   processingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     justifyContent: 'center',
   },
   resultList: {
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 16,
     gap: 18,
     marginBottom: 16,
@@ -1890,31 +1883,31 @@ const styles = StyleSheet.create({
   scoreRowLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   scoreRowWeight: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   scoreRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
   },
   feedbackCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 16,
     marginBottom: 12,
   },
   feedbackTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 10,
   },
   feedbackRow: {
@@ -1928,20 +1921,20 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: MUTED,
+    color: COLORS.muted,
   },
   disclaimer: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 14,
   },
   saveMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginVertical: 10,
   },
@@ -1950,7 +1943,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: COLORS.transparentbrown,
   },
   modalCard: {
     width: '100%',
@@ -1959,7 +1952,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   modalIcon: {
     width: 60,
@@ -1967,13 +1960,13 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalMessage: {
@@ -1982,7 +1975,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   continueButton: {
@@ -1992,12 +1985,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   quitButton: {
     width: '100%',
@@ -2008,13 +2001,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
   },
   buttonPressed: {
     opacity: 0.75,

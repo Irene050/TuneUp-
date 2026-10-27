@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { COLORS } from '@/constants/appConstants';
 import type { Tier } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 
 export type ExercisePreparationStep = {
@@ -73,14 +74,6 @@ type Props = {
   children?: ReactNode;
 };
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
-
 const tiers: Tier[] = [
   'beginner',
   'intermediate',
@@ -142,7 +135,7 @@ export default function ExerciseScreen({
         <Ionicons
           name="chevron-back"
           size={25}
-          color={BROWN}
+          color={COLORS.brown}
         />
       </Pressable>
 
@@ -151,7 +144,7 @@ export default function ExerciseScreen({
           <Ionicons
             name={icon}
             size={36}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </View>
 
@@ -184,7 +177,7 @@ export default function ExerciseScreen({
                 <Ionicons
                   name={step.icon}
                   size={18}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
 
                 <Text style={styles.instructionRowText}>
@@ -225,7 +218,7 @@ export default function ExerciseScreen({
             <Ionicons
               name="bulb-outline"
               size={21}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.tipText}>
@@ -288,7 +281,7 @@ export default function ExerciseScreen({
         <Ionicons
           name="play"
           size={20}
-          color={WHITE}
+          color={COLORS.white}
         />
 
         <Text style={styles.startButtonText}>
@@ -315,7 +308,7 @@ export function ExerciseCountdownScreen({
           <Ionicons
             name={icon}
             size={44}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </View>
 
@@ -394,7 +387,7 @@ export function ExerciseListeningScreen({
           <Ionicons
             name="chevron-back"
             size={25}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </Pressable>
       ) : null}
@@ -418,7 +411,7 @@ export function ExerciseListeningScreen({
             <Ionicons
               name={icon}
               size={38}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </View>
 
@@ -489,7 +482,7 @@ export function ExerciseProcessingScreen({
           <Ionicons
             name={icon}
             size={44}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </View>
 
@@ -503,7 +496,7 @@ export function ExerciseProcessingScreen({
 
         <ActivityIndicator
           size="large"
-          color={BROWN}
+          color={COLORS.brown}
           style={styles.phaseSpinner}
         />
       </View>
@@ -554,7 +547,7 @@ export function ExerciseResultsScreen({
           <Ionicons
             name="chevron-back"
             size={25}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </Pressable>
       ) : null}
@@ -564,7 +557,7 @@ export function ExerciseResultsScreen({
           <Ionicons
             name={resultIcon}
             size={42}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </View>
 
@@ -610,7 +603,7 @@ export function ExerciseResultsScreen({
         <Ionicons
           name="refresh"
           size={20}
-          color={BROWN}
+          color={COLORS.brown}
         />
 
         <Text style={styles.resultsRetryText}>
@@ -634,15 +627,13 @@ export function ExerciseResultsScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
-
   content: {
     paddingHorizontal: 24,
     paddingTop: 64,
     paddingBottom: 40,
   },
-
   backButton: {
     width: 44,
     height: 44,
@@ -651,148 +642,129 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   hero: {
     alignItems: 'center',
     marginBottom: 24,
   },
-
   iconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
-
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 16,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 4,
   },
-
   instructionCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     padding: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
-
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 12,
   },
-
   instructionText: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 23,
-    color: MUTED,
+    color: COLORS.muted,
   },
-
   beforeCard: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     padding: 16,
     marginTop: 18,
   },
-
   beforeTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 12,
   },
-
   instructionRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 11,
   },
-
   instructionRowText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 10,
   },
-
   targetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 16,
   },
-
   targetItem: {
     flex: 1,
     minWidth: '45%',
     alignItems: 'center',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
-
   targetLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.5,
   },
-
   targetValue: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 3,
     textAlign: 'center',
   },
-
   targetHint: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
     textAlign: 'center',
   },
-
   tipCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 16,
     padding: 14,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
-
   tipText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: MUTED,
+    color: COLORS.muted,
     marginLeft: 10,
   },
-
   difficultyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -800,154 +772,133 @@ const styles = StyleSheet.create({
     marginTop: 22,
     paddingHorizontal: 4,
   },
-
   difficultyLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.5,
   },
-
   difficultyValue: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 2,
   },
-
   difficultyDots: {
     flexDirection: 'row',
     gap: 7,
   },
-
   difficultyDot: {
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
   },
-
   difficultyDotActive: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderWidth: 2,
-    borderColor: BROWN,
+    borderColor: COLORS.brown,
   },
-
   errorCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF1F1',
+    backgroundColor: COLORS.background,
     borderRadius: 14,
     padding: 13,
     marginTop: 18,
   },
-
   errorText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 19,
-    color: '#A33A3A',
+    color: COLORS.error,
     marginLeft: 9,
   },
-
   startButton: {
     marginTop: 24,
     height: 54,
     borderRadius: 27,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
   },
-
   startButtonDisabled: {
     opacity: 0.55,
   },
-
   startButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 16,
-    color: WHITE,
+    color: COLORS.white,
   },
-
   phaseScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  
   phaseContent: {
     width: '100%',
     alignItems: 'center',
   },
-
   phaseIconCircle: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 26,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
-
   phaseSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 16,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 5,
   },
-
   countdownNumber: {
     fontFamily: 'FredokaBold',
     fontSize: 86,
-    color: BROWN,
+    color: COLORS.brown,
     lineHeight: 100,
     marginTop: 20,
   },
-
   phasePromptTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 8,
   },
-
   phasePrompt: {
     maxWidth: 320,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 21,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 7,
   },
-
   phaseSpinner: {
     marginTop: 26,
   },
-
   listeningScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     paddingHorizontal: 24,
     paddingTop: 58,
     paddingBottom: 30,
   },
-
   listeningBackButton: {
     position: 'absolute',
     top: 14,
@@ -958,229 +909,198 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 10,
   },
-
   listeningHeader: {
     alignItems: 'center',
     marginTop: 10,
   },
-
   listeningExerciseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
-
   listeningRep: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
   },
-
   listeningMain: {
     flex: 1,
     justifyContent: 'center',
     width: '100%',
   },
-
   listeningCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     padding: 22,
     alignItems: 'center',
   },
-
   listeningIconCircle: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
   },
-
   listeningCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
-
   listeningCardText: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 21,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 7,
     maxWidth: 300,
   },
-
   listeningLiveContent: {
     width: '100%',
     marginTop: 20,
   },
-
   listeningTimeRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
     marginTop: 18,
   },
-
   listeningTime: {
     fontFamily: 'FredokaBold',
     fontSize: 24,
-    color: BROWN,
+    color: COLORS.brown,
   },
-
   listeningTimeTarget: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     marginLeft: 4,
   },
-
   listeningFooter: {
     width: '100%',
     marginTop: 10,
   },
-
   listeningProgressTrack: {
     width: '100%',
     height: 7,
     borderRadius: 4,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
   },
-
   listeningProgressFill: {
     height: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 4,
   },
-
   listeningProgressLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
   },
-
   resultsPhase: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
-
   resultsContent: {
     paddingHorizontal: 24,
     paddingTop: 64,
     paddingBottom: 40,
   },
-
   resultsHeader: {
     alignItems: 'center',
     marginBottom: 22,
   },
-
   resultsIconCircle: {
     width: 82,
     height: 82,
     borderRadius: 41,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-
   resultsTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
-
   resultsSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 4,
   },
-
   resultsScoreCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     padding: 22,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     marginBottom: 18,
   },
-
   resultsScoreLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     letterSpacing: 0.8,
   },
-
   resultsScoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 3,
   },
-
   resultsScoreSuffix: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 20,
   },
-
   resultsScoreMessage: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 10,
   },
-
   resultsRetryButton: {
     minHeight: 52,
     borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: BROWN,
+    borderColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     marginTop: 18,
   },
-
   resultsRetryText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
-
   resultsExitButton: {
     minHeight: 52,
     borderRadius: 26,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
   },
-
   resultsExitText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: WHITE,
+    color: COLORS.white,
   },
 });

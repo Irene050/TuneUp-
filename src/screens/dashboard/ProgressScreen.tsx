@@ -36,15 +36,7 @@ import {
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const LIGHT_GRAY = '#F2F2F2';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const GREEN = '#3E8E5A';
-const RED = '#B24A4A';
-const BORDER = '#F2DDE5';
+import { COLORS } from '@/constants/appConstants';
 
 type ComponentInfo = {
   id: ComponentId;
@@ -167,7 +159,7 @@ function DeltaBadge({
   }
 
   const rounded = Math.round(delta);
-  const color = rounded > 0 ? GREEN : rounded < 0 ? RED : MUTED;
+  const color = rounded > 0 ? COLORS.success : rounded < 0 ? COLORS.error : COLORS.muted;
 
   const icon =
     rounded > 0
@@ -407,7 +399,7 @@ export default function ProgressScreen() {
         accessibilityRole="button"
         accessibilityLabel="Go back"
       >
-        <Ionicons name="arrow-back" size={22} color={BROWN} />
+        <Ionicons name="arrow-back" size={22} color={COLORS.brown} />
       </Pressable>
 
       <ScrollView
@@ -503,7 +495,7 @@ export default function ProgressScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={28}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.emptyTitle}>
@@ -538,13 +530,13 @@ export default function ProgressScreen() {
 
                 {previousAssessment && (
                   <Text style={styles.comparisonHint}>
-                    Compared with your previous assessment
+                    CompaCOLORS.error with your previous assessment
                   </Text>
                 )}
               </View>
 
               <View style={styles.assessmentIconCircle}>
-                <Ionicons name="mic" size={25} color={BROWN} />
+                <Ionicons name="mic" size={25} color={COLORS.brown} />
               </View>
             </View>
 
@@ -579,7 +571,7 @@ export default function ProgressScreen() {
                         <Ionicons
                           name={component.icon}
                           size={18}
-                          color={BROWN}
+                          color={COLORS.brown}
                         />
 
                         <Text style={styles.componentName}>
@@ -627,7 +619,7 @@ export default function ProgressScreen() {
               <Ionicons
                 name="arrow-forward"
                 size={17}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </Pressable>
           </>
@@ -637,7 +629,7 @@ export default function ProgressScreen() {
               <Ionicons
                 name="mic-outline"
                 size={25}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -666,7 +658,7 @@ export default function ProgressScreen() {
               <Ionicons
                 name="arrow-forward"
                 size={17}
-                color={WHITE}
+                color={COLORS.white}
               />
             </Pressable>
           </View>
@@ -691,7 +683,7 @@ export default function ProgressScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={28}
-              color={BROWN}
+              color={COLORS.brown}
             />
 
             <Text style={styles.emptyTitle}>
@@ -738,7 +730,7 @@ export default function ProgressScreen() {
                 <Ionicons
                   name="musical-notes"
                   size={25}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
               </View>
             </View>
@@ -798,7 +790,7 @@ export default function ProgressScreen() {
               <Ionicons
                 name="musical-notes-outline"
                 size={25}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -841,7 +833,7 @@ export default function ProgressScreen() {
                   <Ionicons
                     name={component.icon}
                     size={18}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
 
                   <Text style={styles.componentName}>
@@ -887,7 +879,7 @@ export default function ProgressScreen() {
               <Ionicons
                 name="bar-chart-outline"
                 size={28}
-                color={BROWN}
+                color={COLORS.brown}
               />
 
               <Text style={styles.emptyTitle}>
@@ -916,7 +908,7 @@ export default function ProgressScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   content: {
     paddingHorizontal: 24,
@@ -934,21 +926,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 30,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 30,
   },
   subtitle: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 20,
   },
   periodSelector: {
     flexDirection: 'row',
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 14,
     padding: 4,
     marginBottom: 20,
@@ -961,32 +953,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   periodButtonActive: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   periodText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   periodTextActive: {
-    fontFamily: 'FredokaBold',
-    color: BROWN,
+    fontFamily: 'FCOLORS.errorokaBold',
+    color: COLORS.brown,
   },
   summaryCard: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 20,
     padding: 20,
     marginBottom: 30,
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
   summaryTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 15,
   },
   summaryRow: {
@@ -998,31 +990,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryValue: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 30,
-    color: BROWN,
+    color: COLORS.brown,
   },
   summaryLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
     textAlign: 'center',
   },
   divider: {
     width: 1,
     height: 42,
-    backgroundColor: '#E8C7D0',
+    backgroundColor: COLORS.background,
   },
   loadingText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
   },
   warningText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 11,
-    color: RED,
+    color: COLORS.error,
     marginTop: 12,
   },
   sectionHeader: {
@@ -1030,27 +1022,27 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
   },
   sectionSubtitle: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 14,
   },
   assessmentSummaryCard: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 20,
     padding: 20,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
@@ -1060,56 +1052,56 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   assessmentSummaryLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: 2,
   },
   assessmentAverage: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 34,
-    color: BROWN,
+    color: COLORS.brown,
   },
   assessmentDate: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
   assessmentIconCircle: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 12,
   },
   assessmentScoresCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     paddingHorizontal: 17,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     marginBottom: 12,
   },
   assessmentScoreItem: {
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: COLORS.border,
   },
   assessmentScoreItemLast: {
     borderBottomWidth: 0,
   },
   componentCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: '#000',
+    borderColor: COLORS.border,
+    shadowColor: COLORS.black,
     shadowOpacity: 0.04,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
@@ -1123,9 +1115,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   componentName: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
     flexShrink: 1,
   },
   componentNameRow: {
@@ -1135,20 +1127,20 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   componentScore: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressBackground: {
     height: 9,
     width: '100%',
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     borderRadius: 10,
   },
   componentMeta: {
@@ -1158,16 +1150,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   componentMetaText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     textTransform: 'capitalize',
   },
   comparisonHint: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 10,
     lineHeight: 15,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
   },
   deltaRow: {
@@ -1182,18 +1174,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   deltaText: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 11,
   },
   outlineButton: {
     height: 44,
     borderRadius: 22,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1201,14 +1193,14 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   outlineButtonText: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
   },
   primaryButton: {
     height: 44,
     borderRadius: 22,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1216,40 +1208,40 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   primaryButtonText: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 13,
-    color: WHITE,
+    color: COLORS.white,
   },
   emptyCard: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     padding: 22,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     marginBottom: 30,
   },
   emptyIconCircle: {
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   emptyTitle: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FCOLORS.errorokaBold',
     fontSize: 18,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 10,
     marginBottom: 6,
   },
   emptyText: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FCOLORS.errorokaRegular',
     fontSize: 11,
     lineHeight: 17,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 15,

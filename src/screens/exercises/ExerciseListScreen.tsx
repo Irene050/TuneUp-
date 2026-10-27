@@ -9,11 +9,7 @@ import {
   View,
 } from 'react-native';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#A58F84';
+import { COLORS } from '@/constants/appConstants';
 
 type ExerciseComponent =
   | 'breath-control'
@@ -304,7 +300,7 @@ export default function ExerciseListScreen({ component }: Props) {
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={19} color={BROWN} />
+          <Ionicons name="arrow-back" size={19} color={COLORS.brown} />
         </TouchableOpacity>
 
         <Image
@@ -349,7 +345,7 @@ export default function ExerciseListScreen({ component }: Props) {
               </Text>
 
               <View style={styles.listPlayButton}>
-                <Ionicons name="play" size={16} color={BROWN} />
+                <Ionicons name="play" size={16} color={COLORS.brown} />
               </View>
             </TouchableOpacity>
           ))}
@@ -366,7 +362,7 @@ export default function ExerciseListScreen({ component }: Props) {
               <Ionicons
                 name="musical-notes"
                 size={20}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
 
@@ -380,7 +376,7 @@ export default function ExerciseListScreen({ component }: Props) {
             <Ionicons
               name="chevron-forward"
               size={18}
-              color={BROWN}
+              color={COLORS.brown}
             />
           </TouchableOpacity>
         )}
@@ -394,7 +390,7 @@ export default function ExerciseListScreen({ component }: Props) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   header: {
     height: 72,
@@ -417,7 +413,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
   headerSpacer: {
     width: 34,
@@ -439,14 +435,14 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 32,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 16,
   },
   pageSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
     marginBottom: 16,
   },
@@ -458,7 +454,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 64,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 9,
     paddingVertical: 9,
     paddingHorizontal: 14,
@@ -471,11 +467,11 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
   levelBadge: {
     width: 61,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 10,
     paddingVertical: 3,
     alignItems: 'center',
@@ -485,20 +481,20 @@ const styles = StyleSheet.create({
   levelText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
-    color: BROWN,
+    color: COLORS.brown,
   },
   exerciseCategory: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   listPlayButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -514,7 +510,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -522,7 +518,7 @@ const styles = StyleSheet.create({
   numberText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   iconCircle: {
     width: 38,
@@ -540,20 +536,20 @@ const styles = StyleSheet.create({
   exerciseTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 3,
   },
   exerciseDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 15,
-    color: MUTED,
+    color: COLORS.muted,
   },
   playButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -561,10 +557,10 @@ const styles = StyleSheet.create({
     marginTop: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF4F6',
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#F2C9D5',
+    borderColor: COLORS.pink,
     padding: 14,
   },
   freeModePressed: {
@@ -574,7 +570,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -585,12 +581,12 @@ const styles = StyleSheet.create({
   freeModeTitle: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   freeModeDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 2,
   },
 });

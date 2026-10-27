@@ -1,4 +1,5 @@
 import AppHeader from '@/components/appheader';
+import { COLORS } from '@/constants/appConstants';
 import { auth } from '@/services/firebase/config';
 import type {
   ComponentId,
@@ -16,13 +17,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const BORDER = '#D8C9C2';
-const MUTED = '#A58F84';
 
 const categories = [
   'All',
@@ -449,13 +443,13 @@ export default function ExercisesScreen() {
             <Ionicons
               name="search-outline"
               size={21}
-              color={MUTED}
+              color={COLORS.muted}
             />
 
             <TextInput
               style={styles.searchInput}
               placeholder="Search exercises..."
-              placeholderTextColor={MUTED}
+              placeholderTextColor={COLORS.muted}
               value={search}
               onChangeText={setSearch}
             />
@@ -502,7 +496,7 @@ export default function ExercisesScreen() {
                             : 'flash-outline'
                   }
                   size={56}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
 
                 <View style={styles.recommendedDifficulty}>
@@ -531,7 +525,7 @@ export default function ExercisesScreen() {
                   <Ionicons
                     name="play"
                     size={16}
-                    color={BROWN}
+                    color={COLORS.brown}
                   />
                 </Pressable>
               </View>
@@ -556,7 +550,7 @@ export default function ExercisesScreen() {
               <Ionicons
                 name={filterOpen ? 'chevron-up' : 'chevron-down'}
                 size={15}
-                color={MUTED}
+                color={COLORS.muted}
               />
             </Pressable>
 
@@ -637,7 +631,7 @@ export default function ExercisesScreen() {
                 <Ionicons
                   name="play"
                   size={16}
-                  color={BROWN}
+                  color={COLORS.brown}
                 />
               </View>
             </Pressable>
@@ -648,7 +642,7 @@ export default function ExercisesScreen() {
               <Ionicons
                 name="search-outline"
                 size={32}
-                color={MUTED}
+                color={COLORS.muted}
               />
 
               <Text style={styles.noResultsTitle}>
@@ -669,7 +663,7 @@ export default function ExercisesScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   scrollView: {
     flex: 1,
@@ -689,9 +683,9 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     borderRadius: 10,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -701,13 +695,13 @@ const styles = StyleSheet.create({
     marginLeft: 9,
     fontFamily: 'FredokaRegular',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     padding: 0,
   },
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 34,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 20,
   },
   recommendedHeader: {
@@ -719,12 +713,12 @@ const styles = StyleSheet.create({
   recommendedTitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
   },
   recommendedSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 2,
   },
   recommendedScroll: {
@@ -733,11 +727,11 @@ const styles = StyleSheet.create({
   recommendedCard: {
     width: 180,
     height: 193,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 10,
     padding: 14,
     marginRight: 14,
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.12,
     shadowRadius: 5,
     shadowOffset: {
@@ -748,7 +742,7 @@ const styles = StyleSheet.create({
   },
   recommendedImage: {
     height: 111,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 7,
     position: 'relative',
     marginBottom: 10,
@@ -759,7 +753,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 7,
     bottom: 7,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -767,7 +761,7 @@ const styles = StyleSheet.create({
   difficultyText: {
     fontFamily: 'FredokaBold',
     fontSize: 9,
-    color: BROWN,
+    color: COLORS.brown,
   },
   recommendedBottom: {
     flexDirection: 'row',
@@ -782,16 +776,16 @@ const styles = StyleSheet.create({
   categoryText: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   smallPlayButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.12,
     shadowRadius: 4,
     shadowOffset: {
@@ -809,7 +803,7 @@ const styles = StyleSheet.create({
   exerciseTitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 31,
-    color: BROWN,
+    color: COLORS.brown,
   },
   dropdownWrapper: {
     position: 'relative',
@@ -818,7 +812,7 @@ const styles = StyleSheet.create({
   dropdown: {
     width: 125,
     height: 32,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 8,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -828,7 +822,7 @@ const styles = StyleSheet.create({
   dropdownText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: BROWN,
+    color: COLORS.brown,
     maxWidth: 90,
   },
   dropdownMenu: {
@@ -836,12 +830,12 @@ const styles = StyleSheet.create({
     top: 37,
     right: 0,
     width: 145,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     paddingVertical: 5,
     zIndex: 100,
     elevation: 8,
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.15,
     shadowRadius: 8,
     shadowOffset: {
@@ -854,12 +848,12 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   selectedDropdownItem: {
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
   },
   dropdownItemText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: BROWN,
+    color: COLORS.brown,
   },
   selectedDropdownText: {
     fontFamily: 'FredokaBold',
@@ -867,7 +861,7 @@ const styles = StyleSheet.create({
   resultCount: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: 8,
   },
   exerciseList: {
@@ -875,7 +869,7 @@ const styles = StyleSheet.create({
   },
   exerciseCard: {
     minHeight: 64,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 9,
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -892,11 +886,11 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 17,
-    color: BROWN,
+    color: COLORS.brown,
   },
   levelBadge: {
     width: 61,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 10,
     paddingVertical: 4,
     alignItems: 'center',
@@ -906,23 +900,23 @@ const styles = StyleSheet.create({
   levelText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
-    color: BROWN,
+    color: COLORS.brown,
   },
   exerciseCategory: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   listPlayButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: COLORS.black,
     shadowOpacity: 0.1,
     shadowRadius: 3,
     shadowOffset: {
@@ -939,13 +933,13 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 10,
   },
   noResultsText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 4,
   },
 });

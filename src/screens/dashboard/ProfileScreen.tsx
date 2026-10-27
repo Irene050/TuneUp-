@@ -25,13 +25,7 @@ import {
   View,
 } from 'react-native';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_GRAY = '#F7F7F7';
-const WHITE = '#FFFFFF';
-const RED = '#FF5A5F';
-const MUTED = '#8E7770';
-const BORDER = '#F0E8E5';
+import { COLORS } from '@/constants/appConstants';
 
 function ModalHeader({
   title,
@@ -49,7 +43,7 @@ function ModalHeader({
         accessibilityLabel={`Back from ${title}`}
         hitSlop={8}
       >
-        <Ionicons name="arrow-back" size={22} color={BROWN} />
+        <Ionicons name="arrow-back" size={22} color={COLORS.brown} />
       </Pressable>
 
       <Text style={styles.modalTitle}>{title}</Text>
@@ -319,7 +313,7 @@ export default function ProfileScreen() {
               <Ionicons
                 name="settings"
                 size={28}
-                color="#A5A5A5"
+                color={COLORS.gray}
               />
             </View>
 
@@ -328,7 +322,7 @@ export default function ProfileScreen() {
             <Ionicons
               name="chevron-forward"
               size={22}
-              color="#A5A5A5"
+              color={COLORS.gray}
             />
           </Pressable>
 
@@ -345,7 +339,7 @@ export default function ProfileScreen() {
               <Ionicons
                 name="bar-chart"
                 size={28}
-                color="#52B788"
+                color={COLORS.guideGreen}
               />
             </View>
 
@@ -354,7 +348,7 @@ export default function ProfileScreen() {
             <Ionicons
               name="chevron-forward"
               size={22}
-              color="#A5A5A5"
+              color={COLORS.gray}
             />
           </Pressable>
         </View>
@@ -413,7 +407,7 @@ export default function ProfileScreen() {
               value={nameDraft}
               onChangeText={setNameDraft}
               placeholder="Your name"
-              placeholderTextColor="#A5A5A5"
+              placeholderTextColor={COLORS.gray}
               autoCapitalize="words"
               editable={!saving}
             />
@@ -437,7 +431,7 @@ export default function ProfileScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color={WHITE} />
+                  <ActivityIndicator color={COLORS.white} />
                 ) : (
                   <Text style={styles.saveProfileButtonText}>
                     Save
@@ -472,7 +466,7 @@ export default function ProfileScreen() {
               value={currentPassword}
               onChangeText={setCurrentPassword}
               placeholder="Current password"
-              placeholderTextColor="#A5A5A5"
+              placeholderTextColor={COLORS.gray}
               secureTextEntry
               autoCapitalize="none"
               editable={!saving}
@@ -483,7 +477,7 @@ export default function ProfileScreen() {
               value={newPassword}
               onChangeText={setNewPassword}
               placeholder="New password"
-              placeholderTextColor="#A5A5A5"
+              placeholderTextColor={COLORS.gray}
               secureTextEntry
               autoCapitalize="none"
               editable={!saving}
@@ -499,7 +493,7 @@ export default function ProfileScreen() {
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.primaryModalText}>
                   Update password
@@ -546,7 +540,7 @@ export default function ProfileScreen() {
               <Ionicons
                 name="warning-outline"
                 size={30}
-                color={RED}
+                color={COLORS.error}
               />
             </View>
 
@@ -567,7 +561,7 @@ export default function ProfileScreen() {
                 setError(null);
               }}
               placeholder="Enter your current password"
-              placeholderTextColor="#A5A5A5"
+              placeholderTextColor={COLORS.gray}
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
@@ -597,7 +591,7 @@ export default function ProfileScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color={WHITE} />
+                  <ActivityIndicator color={COLORS.white} />
                 ) : (
                   <Text style={styles.deleteConfirmButtonText}>
                     Delete
@@ -615,7 +609,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   content: {
     flex: 1,
@@ -632,7 +626,7 @@ const styles = StyleSheet.create({
     width: 94,
     height: 94,
     borderRadius: 47,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -640,18 +634,18 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: 'FredokaBold',
     fontSize: 36,
-    color: BROWN,
+    color: COLORS.brown,
   },
   name: {
     fontFamily: 'FredokaBold',
     fontSize: 21,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 8,
   },
   tier: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: 8,
   },
   editButton: {
@@ -659,16 +653,16 @@ const styles = StyleSheet.create({
     height: 22,
     paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   editText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
-    color: BROWN,
+    color: COLORS.brown,
   },
   optionsContainer: {
     width: '100%',
@@ -678,14 +672,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 75,
     marginBottom: -6,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 17,
     paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: '#3f3e3e',
+    borderColor: COLORS.border,
+    shadowColor: COLORS.gray,
     shadowOpacity: 0.2,
     shadowRadius: 4,
     shadowOffset: {
@@ -710,37 +704,37 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: BROWN,
+    color: COLORS.brown,
   },
   logoutButton: {
     width: 107,
     height: 38,
     borderRadius: 20,
-    backgroundColor: RED,
+    backgroundColor: COLORS.error,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 70,
     borderWidth: 1,
-    borderColor: '#F2D5D5',
+    borderColor: COLORS.border,
   },
   logoutText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(220, 220, 220, 0.55)',
+    backgroundColor: COLORS.gray,
   },
   modalCard: {
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 34,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -751,9 +745,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -762,7 +756,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
   },
   photoPicker: {
     alignItems: 'center',
@@ -772,7 +766,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 7,
@@ -780,48 +774,48 @@ const styles = StyleSheet.create({
   changePhotoAvatarText: {
     fontFamily: 'FredokaBold',
     fontSize: 28,
-    color: BROWN,
+    color: COLORS.brown,
   },
   photoPickerText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   fieldLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 8,
   },
   input: {
     height: 46,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5D8D3',
+    borderColor: COLORS.border,
     paddingHorizontal: 14,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 8,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   deleteInput: {
     height: 46,
     width: 300,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5D8D3',
+    borderColor: COLORS.border,
     paddingHorizontal: 14,
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 20,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   errorText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: '#B84A4A',
+    color: COLORS.error,
     marginBottom: 10,
   },
   modalActions: {
@@ -835,34 +829,34 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: 22,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   saveProfileButton: {
     flex: 1,
     height: 44,
     borderRadius: 22,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveProfileButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
   primaryModalButton: {
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -871,24 +865,24 @@ const styles = StyleSheet.create({
   primaryModalText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
     textAlign: 'center',
   },
   closeButton: {
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteButton: {
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFF0F0',
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: '#F2D5D5',
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -896,11 +890,11 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: RED,
+    color: COLORS.error,
   },
   deleteBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(220, 220, 220, 0.65)',
+    backgroundColor: COLORS.gray,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -908,18 +902,18 @@ const styles = StyleSheet.create({
   deleteConfirmCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   deleteIconCircle: {
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: '#FFF0F0',
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
@@ -927,14 +921,14 @@ const styles = StyleSheet.create({
   deleteConfirmTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginBottom: 10,
   },
   deleteConfirmMessage: {
     fontFamily: 'FredokaRegular',
     fontSize: 14,
-    color: MUTED,
+    color: COLORS.muted,
     lineHeight: 21,
     textAlign: 'center',
     marginBottom: 24,
@@ -949,28 +943,28 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteCancelText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   deleteConfirmButton: {
     flex: 1,
     minHeight: 46,
     borderRadius: 23,
-    backgroundColor: RED,
+    backgroundColor: COLORS.error,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteConfirmButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
 });
