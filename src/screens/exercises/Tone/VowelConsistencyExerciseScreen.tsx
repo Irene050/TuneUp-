@@ -1314,37 +1314,6 @@ export default function VowelConsistencyExerciseScreen({
             </Text>
           </View>
 
-          <View style={styles.recordingProgressSection}>
-            <View style={styles.recordingProgressLabels}>
-              <Text style={styles.progressLabel}>RECORDING</Text>
-              <Text style={styles.progressTime}>
-                {formatNumber(elapsedSeconds)}s /{' '}
-                {formatNumber(targetDuration)}s
-              </Text>
-            </View>
-
-            <View
-              style={styles.progressTrack}
-              accessibilityRole="progressbar"
-              accessibilityValue={{
-                min: 0,
-                max: 100,
-                now: Math.round(recordingProgress * 100),
-              }}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${recordingProgress * 100}%` },
-                ]}
-              />
-            </View>
-
-            <Text style={styles.remainingText}>
-              {formatNumber(remainingSeconds)} seconds remaining
-            </Text>
-          </View>
-
           <View style={styles.liveCard}>
             <View style={styles.liveCardHeader}>
               <View style={styles.liveMicCircle}>
@@ -1397,15 +1366,34 @@ export default function VowelConsistencyExerciseScreen({
             </View>
           </View>
 
-          <View style={styles.recordingTip}>
-            <Ionicons
-              name="information-circle-outline"
-              size={19}
-              color={MUTED}
-            />
-            <Text style={styles.recordingTipText}>
-              Keep your mouth shape steady and hold the vowel gently
-              until the timer finishes.
+          <View style={styles.recordingProgressSection}>
+            <View style={styles.recordingProgressLabels}>
+              <Text style={styles.progressLabel}>RECORDING</Text>
+              <Text style={styles.progressTime}>
+                {formatNumber(elapsedSeconds)}s /{' '}
+                {formatNumber(targetDuration)}s
+              </Text>
+            </View>
+
+            <View
+              style={styles.progressTrack}
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: Math.round(recordingProgress * 100),
+              }}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${recordingProgress * 100}%` },
+                ]}
+              />
+            </View>
+
+            <Text style={styles.remainingText}>
+              {formatNumber(remainingSeconds)} seconds remaining
             </Text>
           </View>
         </ScrollView>
@@ -1526,11 +1514,6 @@ export default function VowelConsistencyExerciseScreen({
                 <View style={styles.practiceTipText}>
                   <Text style={styles.practiceTipTitle}>
                     What to focus on next
-                  </Text>
-
-                  <Text style={styles.practiceTipMessage}>
-                    Keep your mouth shape steady and aim for one
-                    consistent vowel sound throughout each repetition.
                   </Text>
                 </View>
               </View>
@@ -2150,7 +2133,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 22,
-    paddingTop: 60,
+    paddingTop: 120,
     paddingBottom: 20,
   },
   recordingBody: {
@@ -2217,7 +2200,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   liveCard: {
-    width: '100%',
+    marginTop: 30,
+    width: '110%',
     paddingHorizontal: 16,
     paddingVertical: 18,
     borderRadius: 22,

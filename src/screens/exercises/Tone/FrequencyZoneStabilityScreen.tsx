@@ -1338,11 +1338,6 @@ export default function FrequencyZoneStabilityScreen({
               Hold Your Frequency
             </Text>
 
-            <Text style={styles.recordingSubtitle}>
-              Maintain a steady tone and keep your voice within the target
-              frequency zone.
-            </Text>
-
             <View style={styles.repPill}>
               <Ionicons
                 name="repeat-outline"
@@ -1352,38 +1347,6 @@ export default function FrequencyZoneStabilityScreen({
 
               <Text style={styles.repPillText}>
                 REPETITION {repetition} OF {params.repetitions}
-              </Text>
-            </View>
-
-            <View style={styles.recordingProgressSection}>
-              <View style={styles.recordingProgressLabels}>
-                <Text style={styles.progressLabel}>RECORDING</Text>
-
-                <Text style={styles.progressTime}>
-                  {formatNumber(elapsedSeconds)}s / {params.durationSec}s
-                </Text>
-              </View>
-
-              <View
-                style={styles.progressTrack}
-                accessibilityRole="progressbar"
-                accessibilityLabel="Recording progress"
-                accessibilityValue={{
-                  min: 0,
-                  max: 100,
-                  now: Math.round(recordingProgress),
-                }}
-              >
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${recordingProgress}%` },
-                  ]}
-                />
-              </View>
-
-              <Text style={styles.remainingText}>
-                {formatNumber(remainingSeconds)} seconds remaining
               </Text>
             </View>
 
@@ -1400,10 +1363,6 @@ export default function FrequencyZoneStabilityScreen({
                 <View style={styles.liveCardHeading}>
                   <Text style={styles.liveCardTitle}>
                     Live Frequency Monitor
-                  </Text>
-
-                  <Text style={styles.liveCardSubtitle}>
-                    Real-time microphone feedback
                   </Text>
                 </View>
 
@@ -1461,18 +1420,38 @@ export default function FrequencyZoneStabilityScreen({
               </View>
             </View>
 
-            <View style={styles.recordingTip}>
-              <Ionicons
-                name="information-circle-outline"
-                size={19}
-                color={MUTED}
-              />
+            <View style={styles.recordingProgressSection}>
+              <View style={styles.recordingProgressLabels}>
+                <Text style={styles.progressLabel}>RECORDING</Text>
 
-              <Text style={styles.recordingTipText}>
-                Keep your voice steady until the timer finishes. Aim to
-                remain in the target frequency zone without sudden shifts.
+                <Text style={styles.progressTime}>
+                  {formatNumber(elapsedSeconds)}s / {params.durationSec}s
+                </Text>
+              </View>
+
+              <View
+                style={styles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Recording progress"
+                accessibilityValue={{
+                  min: 0,
+                  max: 100,
+                  now: Math.round(recordingProgress),
+                }}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${recordingProgress}%` },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.remainingText}>
+                {formatNumber(remainingSeconds)} seconds remaining
               </Text>
             </View>
+
           </ScrollView>
         </View>
 
@@ -1624,7 +1603,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 22,
-    paddingTop: 60,
+    paddingTop: 160,
     paddingBottom: 20,
   },
   recordingScroll: {
@@ -1659,7 +1638,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    marginTop: 22,
+    marginTop: 10,
     paddingHorizontal: 13,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1672,7 +1651,7 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
   recordingProgressSection: {
-    width: '100%',
+    width: '110%',
     marginTop: 24,
     marginBottom: 18,
   },
@@ -1713,7 +1692,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   liveCard: {
-    width: '100%',
+    marginTop: 20,
+    width: '110%',
     paddingHorizontal: 16,
     paddingVertical: 18,
     borderRadius: 22,

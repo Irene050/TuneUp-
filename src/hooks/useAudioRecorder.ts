@@ -254,7 +254,7 @@ export function useAudioRecorder(
         resetLiveDetection();
 
         recorder = new AudioRecorder({
-          androidInputPreset: 'voiceCommunication',
+          androidInputPreset: 'voiceRecognition',
         });
 
         recorder.onError((error) => {

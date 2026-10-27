@@ -1525,18 +1525,6 @@ export default function RapidScaleTrillScreen() {
 
   const renderReference = () => (
     <View style={styles.content}>
-      <Pressable
-        style={styles.backButton}
-        onPress={pauseForExitPrompt}
-        accessibilityRole="button"
-        accessibilityLabel="Open exit options"
-      >
-        <Ionicons
-          name="chevron-back"
-          size={25}
-          color={BROWN}
-        />
-      </Pressable>
 
       <View style={styles.iconCircle}>
         <Ionicons
@@ -2166,7 +2154,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 130,
+    paddingTop: 140,
     paddingBottom: 48,
     backgroundColor: WHITE,
   },
@@ -2188,6 +2176,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    paddingTop: 80,
     backgroundColor: WHITE,
   },
   backButton: {

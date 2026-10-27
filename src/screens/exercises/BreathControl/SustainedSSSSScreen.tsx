@@ -1086,25 +1086,11 @@ export default function SustainedSSSSScreen({
                 Repetition {currentRep} of {params.repetitions}
               </Text>
             </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Pause exercise"
-              hitSlop={10}
-              style={styles.pauseButton}
-              onPress={openQuitModal}
-            >
-              <Ionicons
-                name="pause"
-                size={21}
-                color={BROWN}
-              />
-            </Pressable>
           </View>
 
           <View style={styles.sssssCard}>
             <Text style={styles.sssssText}>
-              SSSSSSSSSS
+              SSSSSSS
             </Text>
 
             <Text style={styles.sssssHint}>
@@ -1167,22 +1153,6 @@ export default function SustainedSSSSScreen({
               </Text>
             </View>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            style={styles.primaryButton}
-            onPress={finishRecording}
-          >
-            <Ionicons
-              name="stop"
-              size={20}
-              color={WHITE}
-            />
-
-            <Text style={styles.primaryButtonText}>
-              Finish Rep
-            </Text>
-          </Pressable>
         </ScrollView>
       </View>
     );
@@ -1380,6 +1350,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: WHITE,
+    paddingTop: 60,
   },
   primaryButton: {
     height: 54,

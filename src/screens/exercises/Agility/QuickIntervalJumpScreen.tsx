@@ -1267,15 +1267,6 @@ export default function QuickIntervalJumpScreen() {
 
   const renderReference = () => (
     <View style={styles.content}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Quit exercise"
-        hitSlop={10}
-        style={styles.quitButtonTop}
-        onPress={pauseForExitPrompt}
-      >
-        <Ionicons name="close" size={22} color={BROWN} />
-      </Pressable>
 
       <View style={styles.iconCircle}>
         <Ionicons name="swap-horizontal-outline" size={34} color={BROWN} />
@@ -1329,10 +1320,6 @@ export default function QuickIntervalJumpScreen() {
             );
           })}
         </View>
-
-        <Text style={styles.referenceHint}>
-          The pitches are selected to fit your assessed vocal range.
-        </Text>
       </View>
 
       <Pressable
@@ -1369,15 +1356,6 @@ export default function QuickIntervalJumpScreen() {
 
   const renderCountdown = () => (
     <View style={styles.centerScreen}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Quit exercise"
-        hitSlop={10}
-        style={styles.quitButtonTop}
-        onPress={pauseForExitPrompt}
-      >
-        <Ionicons name="close" size={22} color={BROWN} />
-      </Pressable>
 
       <View style={styles.iconCircle}>
         <Ionicons name="flash-outline" size={34} color={BROWN} />
@@ -1431,15 +1409,6 @@ export default function QuickIntervalJumpScreen() {
 
     return (
       <View style={styles.content}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open quit exercise confirmation"
-          hitSlop={10}
-          style={styles.quitButtonTop}
-          onPress={pauseForExitPrompt}
-        >
-          <Ionicons name="close" size={22} color={BROWN} />
-        </Pressable>
 
         <View style={styles.recordingIcon}>
           <Ionicons name="mic" size={34} color={BROWN} />
@@ -2007,7 +1976,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 52,
+    paddingTop: 120,
     paddingBottom: 60,
     alignItems: 'center',
   },
@@ -2030,6 +1999,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingTop: 60,
   },
   iconCircle: {
     width: 76,

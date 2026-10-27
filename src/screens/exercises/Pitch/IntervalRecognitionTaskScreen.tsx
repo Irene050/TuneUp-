@@ -1787,10 +1787,6 @@ export default function IntervalRecognitionTaskScreen({
                       LIVE PITCH GUIDE
                     </Text>
                   </View>
-
-                  <Text style={styles.pitchGuideSubtitle}>
-                    Follow the marker to match the current note
-                  </Text>
                 </View>
 
                 <View
@@ -2145,10 +2141,6 @@ export default function IntervalRecognitionTaskScreen({
                 ]}
               />
             </View>
-
-            <Text style={styles.recordingProgressLabel}>
-              {Math.round(recordingProgress * 100)}% complete
-            </Text>
           </ScrollView>
         </View>
 
@@ -2469,6 +2461,7 @@ export default function IntervalRecognitionTaskScreen({
 
 const styles = StyleSheet.create({
   screen: {
+    paddingTop: 40,
     flex: 1,
     backgroundColor: WHITE,
   },

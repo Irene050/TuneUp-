@@ -211,8 +211,6 @@ function LivePitchIndicator({
   let status = 'LISTENING';
   let statusColor = MUTED;
   let statusBackground = LIGHT_PINK;
-  let guidance =
-    'Sing the highlighted target note to see your pitch accuracy.';
   let centsLabel = '-- cents';
   let markerPosition = 50;
 
@@ -221,24 +219,14 @@ function LivePitchIndicator({
       status = 'IN TUNE';
       statusColor = GREEN;
       statusBackground = LIGHT_GREEN;
-      guidance =
-        'Great pitch match. Keep your voice steady on this note.';
     } else if (absoluteCents <= 60) {
       status = cents < 0 ? 'SLIGHTLY FLAT' : 'SLIGHTLY SHARP';
       statusColor = YELLOW;
       statusBackground = '#FFF3D2';
-      guidance =
-        cents < 0
-          ? 'Your pitch is a little low. Gently raise it.'
-          : 'Your pitch is a little high. Gently lower it.';
     } else {
       status = cents < 0 ? 'TOO LOW' : 'TOO HIGH';
       statusColor = RED;
       statusBackground = '#FCE5E5';
-      guidance =
-        cents < 0
-          ? 'Your pitch is below the target. Try singing slightly higher.'
-          : 'Your pitch is above the target. Try singing slightly lower.';
     }
 
     centsLabel = `${cents > 0 ? '+' : ''}${Math.round(cents)} cents`;
@@ -250,9 +238,6 @@ function LivePitchIndicator({
       <View style={styles.pitchIndicatorHeader}>
         <View style={styles.indicatorHeading}>
           <Text style={styles.indicatorTitle}>Pitch Accuracy</Text>
-          <Text style={styles.indicatorSubtitle}>
-            Match the center marker
-          </Text>
         </View>
 
         <View
@@ -313,8 +298,6 @@ function LivePitchIndicator({
           {centsLabel}
         </Text>
       </View>
-
-      <Text style={styles.pitchGuidance}>{guidance}</Text>
     </View>
   );
 }
@@ -1605,18 +1588,6 @@ export default function MelodicPatternMatchingScreen({
     screenContent = (
       <View style={styles.recordingScreen}>
         <View style={styles.recordingHeader}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            onPress={handleBack}
-            style={styles.recordingQuitButton}
-          >
-            <Ionicons name="exit-outline" size={22} color={BROWN} />
-          </Pressable>
-
-          <Text style={styles.recordingEyebrow}>
-            PITCH EXERCISE
-          </Text>
 
           <Text style={styles.recordingTitle}>
             Your Turn to Sing
@@ -1627,11 +1598,6 @@ export default function MelodicPatternMatchingScreen({
           </Text>
 
           <View style={styles.repBadge}>
-            <Ionicons
-              name="repeat-outline"
-              size={15}
-              color={BROWN}
-            />
             <Text style={styles.repBadgeText}>
               Repetition {currentRep} of {repetitionCount}
             </Text>
@@ -1643,40 +1609,12 @@ export default function MelodicPatternMatchingScreen({
           contentContainerStyle={styles.recordingScrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.recordingTimerCard}>
-            <View style={styles.recordingTimerTopRow}>
-              <View style={styles.recordingStatus}>
-                <View style={styles.liveRecordingDot} />
-                <Text style={styles.recordingStatusText}>
-                  RECORDING
-                </Text>
-              </View>
-
-              <Text style={styles.recordingTime}>
-                {Math.min(elapsed, targetDuration).toFixed(1)}s
-                {' / '}
-                {targetDuration.toFixed(1)}s
-              </Text>
-            </View>
-
-            <View style={styles.recordingProgressTrack}>
-              <View
-                style={[
-                  styles.recordingProgressFill,
-                  { width: `${recordingProgress}%` },
-                ]}
-              />
-            </View>
-          </View>
 
           <View style={styles.liveCard}>
             <View style={styles.liveCardHeader}>
               <View style={styles.liveHeaderText}>
                 <Text style={styles.liveCardTitle}>
                   Live Pitch Monitor
-                </Text>
-                <Text style={styles.liveCardSubtitle}>
-                  Match the target and keep your voice steady
                 </Text>
               </View>
 
@@ -1753,8 +1691,6 @@ export default function MelodicPatternMatchingScreen({
               }
             />
 
-            <View style={styles.liveSectionDivider} />
-
             <View style={styles.liveStats}>
               <View style={styles.liveStatSummary}>
                 <View style={styles.liveStatHeading}>
@@ -1786,6 +1722,31 @@ export default function MelodicPatternMatchingScreen({
                   {params.noteCount} notes
                 </Text>
               </View>
+            </View>
+          </View>
+          <View style={styles.recordingTimerCard}>
+            <View style={styles.recordingTimerTopRow}>
+              <View style={styles.recordingStatus}>
+                <View style={styles.liveRecordingDot} />
+                <Text style={styles.recordingStatusText}>
+                  RECORDING
+                </Text>
+              </View>
+
+              <Text style={styles.recordingTime}>
+                {Math.min(elapsed, targetDuration).toFixed(1)}s
+                {' / '}
+                {targetDuration.toFixed(1)}s
+              </Text>
+            </View>
+
+            <View style={styles.recordingProgressTrack}>
+              <View
+                style={[
+                  styles.recordingProgressFill,
+                  { width: `${recordingProgress}%` },
+                ]}
+              />
             </View>
           </View>
         </ScrollView>
@@ -2018,6 +1979,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
   },
   recordingScreen: {
+    paddingTop: 40,
     flex: 1,
     backgroundColor: WHITE,
   },
@@ -2359,13 +2321,6 @@ const styles = StyleSheet.create({
   centsValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-  },
-  pitchGuidance: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: MUTED,
-    marginTop: 8,
   },
   liveSectionDivider: {
     width: '100%',

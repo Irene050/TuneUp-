@@ -236,37 +236,6 @@ function RecordingScreen({
           </Text>
         </View>
 
-        <View style={styles.recordingProgressSection}>
-          <View style={styles.recordingProgressLabels}>
-            <Text style={styles.progressLabel}>RECORDING</Text>
-            <Text style={styles.progressTime}>
-              {formatNumber(elapsedSeconds)}s / {durationSeconds}s
-            </Text>
-          </View>
-
-          <View
-            style={styles.progressTrack}
-            accessibilityRole="progressbar"
-            accessibilityLabel="Recording progress"
-            accessibilityValue={{
-              min: 0,
-              max: 100,
-              now: Math.round(progress * 100),
-            }}
-          >
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-
-          <Text style={styles.remainingText}>
-            {Math.ceil(remainingSeconds)} seconds remaining
-          </Text>
-        </View>
-
         <View style={styles.liveCard}>
           <View style={styles.liveCardHeader}>
             <View style={styles.liveMicCircle}>
@@ -336,17 +305,35 @@ function RecordingScreen({
             </View>
           </View>
         </View>
+        
+        <View style={styles.recordingProgressSection}>
+          <View style={styles.recordingProgressLabels}>
+            <Text style={styles.progressLabel}>RECORDING</Text>
+            <Text style={styles.progressTime}>
+              {formatNumber(elapsedSeconds)}s / {durationSeconds}s
+            </Text>
+          </View>
 
-        <View style={styles.recordingTip}>
-          <Ionicons
-            name="information-circle-outline"
-            size={19}
-            color={MUTED}
-          />
-          <Text style={styles.recordingTipText}>
-            Keep your volume and pitch steady until the timer finishes.
-            Relax your throat and breathe naturally instead of forcing
-            your voice to stay perfectly still.
+          <View
+            style={styles.progressTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Recording progress"
+            accessibilityValue={{
+              min: 0,
+              max: 100,
+              now: Math.round(progress * 100),
+            }}
+          >
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
+
+          <Text style={styles.remainingText}>
+            {Math.ceil(remainingSeconds)} seconds remaining
           </Text>
         </View>
       </View>
@@ -1408,7 +1395,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 22,
-    paddingTop: 60,
+    paddingTop: 100,
     paddingBottom: 20,
   },
   recordingTitle: {
@@ -1494,6 +1481,7 @@ const styles = StyleSheet.create({
   },
 
   liveCard: {
+    marginTop: 20,
     width: '100%',
     paddingHorizontal: 16,
     paddingVertical: 18,

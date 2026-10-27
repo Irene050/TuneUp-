@@ -1388,7 +1388,6 @@ export default function ToneConsistencyExerciseScreen({
             </View>
           }
           progress={listenProgress}
-          onBack={goBack}
         />
 
         {quitModal}
@@ -1449,10 +1448,6 @@ export default function ToneConsistencyExerciseScreen({
                   <Text style={styles.targetNoteLabel}>
                     YOUR TARGET NOTE
                   </Text>
-
-                  <Text style={styles.targetNoteHint}>
-                    Keep matching this note
-                  </Text>
                 </View>
               </View>
 
@@ -1465,40 +1460,6 @@ export default function ToneConsistencyExerciseScreen({
                   {formatFrequency(targetFrequency)}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.recordingProgressSection}>
-              <View style={styles.recordingProgressLabels}>
-                <Text style={styles.progressLabel}>
-                  RECORDING PROGRESS
-                </Text>
-
-                <Text style={styles.progressTime}>
-                  {elapsed.toFixed(1)}s / {params.intervalSec.toFixed(1)}s
-                </Text>
-              </View>
-
-              <View
-                style={styles.progressTrack}
-                accessibilityRole="progressbar"
-                accessibilityLabel="Repetition recording progress"
-                accessibilityValue={{
-                  min: 0,
-                  max: 100,
-                  now: Math.round(recordingProgress * 100),
-                }}
-              >
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${recordingProgress * 100}%` },
-                  ]}
-                />
-              </View>
-
-              <Text style={styles.remainingText}>
-                {remaining.toFixed(1)} seconds remaining
-              </Text>
             </View>
 
             <View style={styles.liveCard}>
@@ -1596,17 +1557,40 @@ export default function ToneConsistencyExerciseScreen({
               </View>
             </View>
 
-            <View style={styles.recordingTip}>
-              <Ionicons
-                name="bulb-outline"
-                size={19}
-                color={MUTED}
-              />
+            <View style={styles.recordingProgressSection}>
+              <View style={styles.recordingProgressLabels}>
+                <Text style={styles.progressLabel}>
+                  RECORDING PROGRESS
+                </Text>
 
-              <Text style={styles.recordingTipText}>
-                Sing comfortably without forcing your voice. Aim for the same tone on every repetition.
+                <Text style={styles.progressTime}>
+                  {elapsed.toFixed(1)}s / {params.intervalSec.toFixed(1)}s
+                </Text>
+              </View>
+
+              <View
+                style={styles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Repetition recording progress"
+                accessibilityValue={{
+                  min: 0,
+                  max: 100,
+                  now: Math.round(recordingProgress * 100),
+                }}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${recordingProgress * 100}%` },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.remainingText}>
+                {remaining.toFixed(1)} seconds remaining
               </Text>
             </View>
+
           </ScrollView>
         </View>
 
@@ -1803,7 +1787,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 22,
-    paddingTop: 60,
+    paddingTop: 80,
     paddingBottom: 20,
   },
   recordingContent: {
@@ -1845,7 +1829,7 @@ const styles = StyleSheet.create({
     color: BROWN,
   },
   targetNoteCard: {
-    width: '100%',
+    width: '110%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1878,7 +1862,7 @@ const styles = StyleSheet.create({
   },
   targetNoteLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.5,
     color: MUTED,
   },
@@ -1904,7 +1888,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   recordingProgressSection: {
-    width: '100%',
+    width: '110%',
     marginTop: 19,
   },
   recordingProgressLabels: {
@@ -1943,7 +1927,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   liveCard: {
-    width: '100%',
+    width: '110%',
     backgroundColor: LIGHT_PINK,
     borderRadius: 23,
     borderWidth: 1,

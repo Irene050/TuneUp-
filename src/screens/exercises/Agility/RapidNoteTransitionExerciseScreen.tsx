@@ -1256,14 +1256,6 @@ export default function RapidNoteTransitionExerciseScreen({
         </View>
       ) : null}
 
-      <View style={styles.tipCard}>
-        <Ionicons name="bulb-outline" size={19} color={BROWN} />
-        <Text style={styles.tipText}>
-          Coach tip: sing each note clearly, then connect them smoothly.
-          Accuracy comes first; speed will follow!
-        </Text>
-      </View>
-
       <Pressable
         style={styles.startButton}
         onPress={startExercise}
@@ -1301,10 +1293,6 @@ export default function RapidNoteTransitionExerciseScreen({
       </View>
       <Text style={styles.phaseTitle}>Listen to the Sequence</Text>
       {renderRepetitionProgress()}
-      <Text style={styles.phaseSubtitle}>
-        Listen for the pitch and order. After the reference finishes, a
-        3-second countdown gives you time to prepare.
-      </Text>
       <StaffSequenceGuide
         names={exerciseConfig.sequence.names}
         activeIndex={currentGuideNoteIndex}
@@ -1315,9 +1303,6 @@ export default function RapidNoteTransitionExerciseScreen({
         color={BROWN}
         style={{ marginTop: 20 }}
       />
-      <Text style={styles.phaseSubtitle}>
-        Listen carefully; the countdown starts after all reference notes finish.
-      </Text>
     </View>
   );
 
@@ -1474,11 +1459,6 @@ export default function RapidNoteTransitionExerciseScreen({
             value={`${result.averageTransitionTimeMs.toFixed(0)} ms`}
             last
           />
-        </View>
-
-        <View style={styles.tipCard}>
-          <Ionicons name="bulb-outline" size={20} color={BROWN} />
-          <Text style={styles.tipText}>{result.feedback}</Text>
         </View>
 
         <Pressable style={styles.startButton} onPress={() => setConfirmation('tryAgain')}>
@@ -2250,6 +2230,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 22,
+    paddingTop: 100,
   },
   analyzingScreen: {
     flexGrow: 1,
@@ -2550,25 +2531,6 @@ const styles = StyleSheet.create({
     color: BROWN,
     textAlign: 'right',
     marginLeft: 12,
-  },
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: PINK,
-    borderRadius: 20,
-    padding: 16,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: BROWN,
-    marginLeft: 9,
   },
   doneButton: {
     width: '100%',

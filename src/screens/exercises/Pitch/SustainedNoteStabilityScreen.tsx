@@ -87,7 +87,7 @@ type Phase =
   | 'instructions'
   | 'preparing'
   | 'countdown'
-  | 'playing'
+  | 'listening'
   | 'recording'
   | 'processing'
   | 'results';
@@ -586,7 +586,7 @@ export default function SustainedNoteStabilityScreen({
       }
 
       try {
-        changePhase('playing');
+        changePhase('listening');
 
         await playSingleNote(note.frequency, 1.5);
 
@@ -1321,7 +1321,7 @@ export default function SustainedNoteStabilityScreen({
     );
   }
 
-  if (phase === 'playing') {
+  if (phase === 'listening') {
     return (
       <>
         <ExerciseListeningScreen
@@ -1340,7 +1340,6 @@ export default function SustainedNoteStabilityScreen({
               </Text>
             </View>
           }
-          onBack={requestPause}
         />
         {quitModal}
       </>
@@ -1376,14 +1375,6 @@ export default function SustainedNoteStabilityScreen({
             <View style={styles.liveCardHeader}>
               <View style={styles.liveHeaderText}>
                 <Text style={styles.liveCardTitle}>Live Pitch Monitor</Text>
-                <Text style={styles.liveCardSubtitle}>
-                  Match the target and keep your voice steady
-                </Text>
-              </View>
-
-              <View style={styles.liveRecordingBadge}>
-                <View style={styles.liveRecordingDot} />
-                <Text style={styles.liveRecordingBadgeText}>LIVE</Text>
               </View>
             </View>
 
@@ -1680,15 +1671,6 @@ function LivePitchIndicator({
       ? 50
       : Math.max(3, Math.min(97, 50 + (cents / 100) * 47));
 
-  const guidance =
-    cents === null
-      ? 'Sing the target note to see your live pitch.'
-      : absoluteCents! <= 25
-        ? 'Great! Your pitch is close to the target.'
-        : cents < 0
-          ? 'Your pitch is low. Gently raise it.'
-          : 'Your pitch is high. Gently lower it.';
-
   return (
     <View style={styles.pitchIndicator}>
       <View style={styles.pitchIndicatorHeader}>
@@ -1769,8 +1751,6 @@ function LivePitchIndicator({
               : `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents`}
         </Text>
       </View>
-
-      <Text style={styles.pitchGuidance}>{guidance}</Text>
     </View>
   );
 }
@@ -1802,42 +1782,14 @@ function LiveStabilityIndicator({
         ? YELLOW
         : RED;
 
-  const guidance = !hasPitch
-    ? 'Hold a note to measure pitch consistency.'
-    : safeStability >= 80
-      ? 'Your pitch is staying consistent. Keep it going!'
-      : safeStability >= 60
-        ? 'Try to reduce small pitch fluctuations.'
-        : 'Focus on a relaxed voice and steady airflow.';
-
   return (
     <View style={styles.stabilityIndicator}>
       <View style={styles.stabilityHeader}>
-        <View style={styles.stabilityIcon}>
-          <Ionicons
-            name="pulse-outline"
-            size={20}
-            color={BROWN}
-          />
-        </View>
-
         <View style={styles.stabilityHeadingText}>
           <Text style={styles.indicatorTitle}>
             Pitch Stability
           </Text>
-          <Text style={styles.indicatorSubtitle}>
-            Consistency of your recent pitch
-          </Text>
         </View>
-
-        <Text
-          style={[
-            styles.stabilityPercentage,
-            { color: statusColor },
-          ]}
-        >
-          {hasPitch ? `${Math.round(safeStability)}%` : '--'}
-        </Text>
       </View>
 
       <View style={styles.stabilityTrack}>
@@ -1868,8 +1820,6 @@ function LiveStabilityIndicator({
           More steady
         </Text>
       </View>
-
-      <Text style={styles.pitchGuidance}>{guidance}</Text>
     </View>
   );
 }
@@ -2235,7 +2185,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     padding: 20,
-    marginTop: 25,
+    marginTop: 12,
     alignItems: 'center',
   },
   liveLabel: {
@@ -2699,13 +2649,6 @@ const styles = StyleSheet.create({
   centsValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-  },
-  pitchGuidance: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: MUTED,
-    marginTop: 8,
   },
   liveSectionDivider: {
     width: '100%',

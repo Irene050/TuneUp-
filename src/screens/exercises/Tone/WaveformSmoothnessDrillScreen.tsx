@@ -257,28 +257,6 @@ function RecordingScreen({
             </Text>
         </View>
 
-        <View style={styles.recordingProgressSection}>
-          <View style={styles.recordingProgressLabels}>
-            <Text style={styles.progressLabel}>RECORDING</Text>
-            <Text style={styles.progressTime}>
-              {formatNumber(elapsedSeconds)}s / {durationSeconds}s
-            </Text>
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-
-          <Text style={styles.remainingText}>
-            {formatNumber(remainingSeconds)} seconds remaining
-          </Text>
-        </View>
-
         <View style={styles.liveCard}>
           <View style={styles.liveCardHeader}>
             <View style={styles.liveMicCircle}>
@@ -324,14 +302,25 @@ function RecordingScreen({
           </View>
         </View>
 
-        <View style={styles.recordingTip}>
-          <Ionicons
-            name="information-circle-outline"
-            size={19}
-            color={MUTED}
-          />
-          <Text style={styles.recordingTipText}>
-            Keep your volume and pitch steady until the timer finishes.
+        <View style={styles.recordingProgressSection}>
+          <View style={styles.recordingProgressLabels}>
+            <Text style={styles.progressLabel}>RECORDING</Text>
+            <Text style={styles.progressTime}>
+              {formatNumber(elapsedSeconds)}s / {durationSeconds}s
+            </Text>
+          </View>
+
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
+
+          <Text style={styles.remainingText}>
+            {formatNumber(remainingSeconds)} seconds remaining
           </Text>
         </View>
       </View>
@@ -1618,7 +1607,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: WHITE,
     paddingHorizontal: 22,
-    paddingTop: 60,
+    paddingTop: 150,
     paddingBottom: 20,
   },
   recordingHeader: {
@@ -1739,7 +1728,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   liveCard: {
-    width: '100%',
+    marginTop: 20,
+    width: '110%',
     paddingHorizontal: 16,
     paddingVertical: 18,
     borderRadius: 22,

@@ -1239,12 +1239,12 @@ export default function ControlledBreathReleaseScreen({
           >
 
             <View style={styles.recordingHeader}>
-              <Text style={styles.repLabel}>
-                Repetition {currentRep} of {params.repetitions}
-              </Text>
-
               <Text style={styles.recordingTitle}>
                 Release Gently
+              </Text>
+
+              <Text style={styles.repLabel}>
+                Repetition {currentRep} of {params.repetitions}
               </Text>
 
               <Text style={styles.recordingSubtitle}>
@@ -1277,29 +1277,6 @@ export default function ControlledBreathReleaseScreen({
               <View style={styles.recordingDot} />
               <Text style={styles.recordingBadgeText}>
                 RECORDING
-              </Text>
-            </View>
-
-            <Text style={styles.timerText}>
-              {elapsed.toFixed(1)}s
-            </Text>
-
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${durationProgress * 100}%` },
-                ]}
-              />
-            </View>
-
-            <View style={styles.rangeRow}>
-              <Text style={styles.rangeText}>0s</Text>
-              <Text style={styles.rangeTarget}>
-                Guide: {targetRecordingDuration.toFixed(1)}s
-              </Text>
-              <Text style={styles.rangeText}>
-                {targetRecordingDuration.toFixed(1)}s
               </Text>
             </View>
 
@@ -1376,23 +1353,29 @@ export default function ControlledBreathReleaseScreen({
                     : 'Listening...'}
                 </Text>
               </View>
-
-              <View style={styles.airflowIndicator}>
-                <View
-                  style={[
-                    styles.airflowFill,
-                    { width: `${(volume ?? 0) * 100}%` },
-                  ]}
-                />
-              </View>
             </View>
 
-            <View style={styles.pacingCard}>
-              <Ionicons
-                name="leaf-outline"
-                size={22}
-                color={BROWN}
+            <Text style={styles.timerText}>
+              {elapsed.toFixed(1)}s
+            </Text>
+
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${durationProgress * 100}%` },
+                ]}
               />
+            </View>
+
+            <View style={styles.rangeRow}>
+              <Text style={styles.rangeText}>0s</Text>
+              <Text style={styles.rangeTarget}>
+                Guide: {targetRecordingDuration.toFixed(1)}s
+              </Text>
+              <Text style={styles.rangeText}>
+                {targetRecordingDuration.toFixed(1)}s
+              </Text>
             </View>
           </ScrollView>
         </View>
@@ -1579,6 +1562,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: WHITE,
+    paddingTop: 20,
   },
   preparingScreen: {
     flex: 1,
@@ -1644,7 +1628,7 @@ const styles = StyleSheet.create({
   recordingVisual: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 32,
+    marginTop: 20,
   },
   recordingOuterCircle: {
     width: 164,

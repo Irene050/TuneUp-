@@ -1707,7 +1707,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             </View>
           }
           progress={100}
-          onBack={goBack}
         />
 
         {quitModal}
