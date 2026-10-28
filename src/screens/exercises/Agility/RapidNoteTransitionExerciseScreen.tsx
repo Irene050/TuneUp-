@@ -40,17 +40,8 @@ import {
 } from '@/utils/music/notePlayer';
 import { createMusicalNote } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const ACTIVE_REFERENCE_PINK = '#D76587';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
-const GUIDE_GREEN = '#4F9B67';
-const GUIDE_YELLOW = '#D9A72E';
-const GUIDE_RED = '#D64F5A';
+import { COLORS } from '@/constants/appConstants';
+
 
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
@@ -169,14 +160,14 @@ function getGuideFeedbackColor(
   const difference = Math.abs(targetMidi - liveMidi);
 
   if (difference === 0) {
-    return GUIDE_GREEN;
+    return COLORS.guideGreen;
   }
 
   if (difference === 1) {
-    return GUIDE_YELLOW;
+    return COLORS.guideYellow;
   }
 
-  return GUIDE_RED;
+  return COLORS.guideRed;
 }
 
 function average(values: number[]): number {
@@ -1156,11 +1147,11 @@ export default function RapidNoteTransitionExerciseScreen({
         onPress={() => setConfirmation('quit')}
         hitSlop={10}
       >
-        <Ionicons name="arrow-back" size={24} color={BROWN} />
+        <Ionicons name="arrow-back" size={24} color={COLORS.brown} />
       </Pressable>
 
       <View style={styles.iconCircle}>
-        <Ionicons name="flash-outline" size={34} color={BROWN} />
+        <Ionicons name="flash-outline" size={34} color={COLORS.brown} />
       </View>
 
       <Text style={styles.title}>Rapid Note Transition</Text>
@@ -1187,7 +1178,7 @@ export default function RapidNoteTransitionExerciseScreen({
             <Ionicons
               name="information-circle-outline"
               size={21}
-              color={BROWN}
+              color={COLORS.brown}
             />
             <Text style={styles.prepareTitle}>Before You Begin</Text>
           </View>
@@ -1207,7 +1198,7 @@ export default function RapidNoteTransitionExerciseScreen({
             },
           ].map(item => (
             <View key={item.text} style={styles.prepareItem}>
-              <Ionicons name={item.icon} size={17} color={BROWN} />
+              <Ionicons name={item.icon} size={17} color={COLORS.brown} />
               <Text style={styles.prepareText}>{item.text}</Text>
             </View>
           ))}
@@ -1250,7 +1241,7 @@ export default function RapidNoteTransitionExerciseScreen({
           <Ionicons
             name="alert-circle-outline"
             size={18}
-            color={BROWN}
+            color={COLORS.brown}
           />
           <Text style={styles.errorText}>{errorMessage}</Text>
         </View>
@@ -1262,9 +1253,9 @@ export default function RapidNoteTransitionExerciseScreen({
         disabled={isLoadingAdaptiveParams}
       >
         {isLoadingAdaptiveParams ? (
-          <ActivityIndicator size="small" color={WHITE} />
+          <ActivityIndicator size="small" color={COLORS.white} />
         ) : (
-          <Ionicons name="play" size={18} color={WHITE} />
+          <Ionicons name="play" size={18} color={COLORS.white} />
         )}
         <Text style={styles.startButtonText}>
           {isLoadingAdaptiveParams ? 'Preparing Exercise...' : 'Start Exercise'}
@@ -1276,7 +1267,7 @@ export default function RapidNoteTransitionExerciseScreen({
   const renderCountdown = () => (
     <View style={styles.countdownScreen}>
       <View style={styles.countdownIconCircle}>
-        <Ionicons name="flash-outline" size={34} color={BROWN} />
+        <Ionicons name="flash-outline" size={34} color={COLORS.brown} />
       </View>
       <Text style={styles.countdownTitle}>Get Ready</Text>
       <Text style={styles.countdownNumber}>{countdown}</Text>
@@ -1289,7 +1280,7 @@ export default function RapidNoteTransitionExerciseScreen({
   const renderListening = () => (
     <View style={styles.centerScreen}>
       <View style={styles.iconCircle}>
-        <Ionicons name="musical-notes-outline" size={34} color={BROWN} />
+        <Ionicons name="musical-notes-outline" size={34} color={COLORS.brown} />
       </View>
       <Text style={styles.phaseTitle}>Listen to the Sequence</Text>
       {renderRepetitionProgress()}
@@ -1300,7 +1291,7 @@ export default function RapidNoteTransitionExerciseScreen({
       />
       <ActivityIndicator
         size="small"
-        color={BROWN}
+        color={COLORS.brown}
         style={{ marginTop: 20 }}
       />
     </View>
@@ -1312,7 +1303,7 @@ export default function RapidNoteTransitionExerciseScreen({
     return (
       <View style={styles.recordingContent}>
         <View style={styles.recordingIcon}>
-          <Ionicons name="mic" size={34} color={BROWN} />
+          <Ionicons name="mic" size={34} color={COLORS.brown} />
         </View>
         <Text style={styles.recordingTitle}>Sing the Sequence</Text>
         {renderRepetitionProgress()}
@@ -1353,7 +1344,7 @@ export default function RapidNoteTransitionExerciseScreen({
   const renderProcessing = () => (
     <View style={styles.analyzingScreen}>
       <View style={styles.analyzingIconCircle}>
-        <ActivityIndicator size="large" color={BROWN} />
+        <ActivityIndicator size="large" color={COLORS.brown} />
       </View>
       <Text style={styles.analyzingTitle}>Analyzing Your Singing</Text>
       <Text style={styles.analyzingSubtitle}>
@@ -1381,7 +1372,7 @@ export default function RapidNoteTransitionExerciseScreen({
           <Ionicons
             name={result.passed ? 'checkmark' : 'refresh'}
             size={40}
-            color={BROWN}
+            color={COLORS.brown}
           />
         </View>
 
@@ -1462,7 +1453,7 @@ export default function RapidNoteTransitionExerciseScreen({
         </View>
 
         <Pressable style={styles.startButton} onPress={() => setConfirmation('tryAgain')}>
-          <Ionicons name="refresh" size={18} color={WHITE} />
+          <Ionicons name="refresh" size={18} color={COLORS.white} />
           <Text style={styles.startButtonText}>Try Again</Text>
         </Pressable>
 
@@ -1480,7 +1471,7 @@ export default function RapidNoteTransitionExerciseScreen({
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="options-outline" size={44} color={BROWN} />
+          <Ionicons name="options-outline" size={44} color={COLORS.brown} />
         </View>
         <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
         <Text style={styles.preparingSubtitle}>
@@ -1489,7 +1480,7 @@ export default function RapidNoteTransitionExerciseScreen({
         </Text>
         <ActivityIndicator
           size="large"
-          color={BROWN}
+          color={COLORS.brown}
           style={styles.spinner}
         />
       </View>
@@ -1500,7 +1491,7 @@ export default function RapidNoteTransitionExerciseScreen({
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="musical-notes-outline" size={44} color={BROWN} />
+          <Ionicons name="musical-notes-outline" size={44} color={COLORS.brown} />
         </View>
         <Text style={styles.preparingTitle}>Preparing Your Repetition</Text>
         <Text style={styles.preparingSubtitle}>
@@ -1508,7 +1499,7 @@ export default function RapidNoteTransitionExerciseScreen({
         </Text>
         <ActivityIndicator
           size="large"
-          color={BROWN}
+          color={COLORS.brown}
           style={styles.spinner}
         />
       </View>
@@ -1544,7 +1535,7 @@ export default function RapidNoteTransitionExerciseScreen({
               <Ionicons
                 name={confirmation === 'tryAgain' ? 'refresh' : 'log-out-outline'}
                 size={24}
-                color={BROWN}
+                color={COLORS.brown}
               />
             </View>
             <Text style={styles.confirmationTitle}>
@@ -1636,7 +1627,7 @@ function StaffSequenceGuide({
         <Ionicons
           name="musical-notes-outline"
           size={18}
-          color={BROWN}
+          color={COLORS.brown}
         />
         <Text style={styles.staffGuideTitle}>Your note path</Text>
       </View>
@@ -1671,7 +1662,7 @@ function StaffSequenceGuide({
             const isReferenceActive = isActive && !showFeedback;
             const noteColor =
               feedbackColor ??
-              (isReferenceActive ? ACTIVE_REFERENCE_PINK : BROWN);
+              (isReferenceActive ? COLORS.waveform : COLORS.brown);
 
             return (
               <View key={`${name}-${index}`}>
@@ -1680,10 +1671,10 @@ function StaffSequenceGuide({
                     styles.staffNoteHalo,
                     isActive
                       ? {
-                          backgroundColor: isReferenceActive ? '#FFE1E9' : PINK,
+                          backgroundColor: isReferenceActive ? COLORS.pink : COLORS.pink,
                           borderColor: isReferenceActive
-                            ? ACTIVE_REFERENCE_PINK
-                            : feedbackColor ?? '#D68DA0',
+                            ? COLORS.waveform
+                            : feedbackColor ?? COLORS.otherpink,
                           borderWidth: 2,
                         }
                       : styles.staffNoteHaloInactive,
@@ -1716,7 +1707,7 @@ function StaffSequenceGuide({
                     styles.staffNoteNumber,
                     {
                       left: left - 5,
-                      color: isActive ? noteColor : MUTED,
+                      color: isActive ? noteColor : COLORS.muted,
                     },
                   ]}
                 >
@@ -1727,7 +1718,7 @@ function StaffSequenceGuide({
                     styles.staffNoteName,
                     {
                       left: left - 10,
-                      color: isActive ? noteColor : BROWN,
+                      color: isActive ? noteColor : COLORS.brown,
                     },
                   ]}
                 >
@@ -1741,10 +1732,10 @@ function StaffSequenceGuide({
 
       <View style={styles.staffLegend}>
         {[
-          { color: PINK, label: 'Highlighted note = sing this now', border: true },
-          { color: GUIDE_GREEN, label: 'Correct' },
-          { color: GUIDE_YELLOW, label: 'Close' },
-          { color: GUIDE_RED, label: 'Off pitch' },
+          { color: COLORS.pink, label: 'Highlighted note = sing this now', border: true },
+          { color: COLORS.guideGreen, label: 'Correct' },
+          { color: COLORS.guideYellow, label: 'Close' },
+          { color: COLORS.guideRed, label: 'Off pitch' },
         ].map(item => (
           <View key={item.label} style={styles.staffLegendItem}>
             <View
@@ -1752,7 +1743,7 @@ function StaffSequenceGuide({
                 styles.staffLegendDot,
                 {
                   backgroundColor: item.color,
-                  borderColor: item.border ? '#D68DA0' : item.color,
+                  borderColor: item.border ? COLORS.otherpink : item.color,
                   borderWidth: item.border ? 1 : 0,
                 },
               ]}
@@ -1829,7 +1820,7 @@ function MetricRow({
 const styles = StyleSheet.create({
   preparingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
@@ -1838,7 +1829,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
@@ -1846,13 +1837,13 @@ const styles = StyleSheet.create({
   preparingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   preparingSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 6,
   },
@@ -1861,7 +1852,7 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   content: {
     flexGrow: 1,
@@ -1892,13 +1883,13 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
   },
   iconCircle: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
@@ -1906,32 +1897,32 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 30,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 13,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 18,
   },
   instructionCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 26,
     padding: 18,
     borderWidth: 1.2,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   prepareCard: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 20,
     padding: 15,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   prepareHeader: {
     flexDirection: 'row',
@@ -1941,7 +1932,7 @@ const styles = StyleSheet.create({
   prepareTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 9,
   },
   prepareItem: {
@@ -1954,13 +1945,13 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 19,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 9,
   },
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 10,
     marginBottom: 12,
   },
@@ -1973,13 +1964,13 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   detailValue: {
     flex: 1,
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'right',
     marginLeft: 16,
   },
@@ -1987,27 +1978,27 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 15,
     padding: 14,
     marginTop: 14,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   errorText: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: BROWN,
+    color: COLORS.brown,
     marginLeft: 9,
   },
   startButton: {
     width: '100%',
     height: 58,
     borderRadius: 29,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2017,14 +2008,14 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: WHITE,
+    color: COLORS.white,
   },
   staffGuideCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     paddingVertical: 10,
     paddingHorizontal: 11,
     marginTop: 10,
@@ -2037,13 +2028,13 @@ const styles = StyleSheet.create({
   staffGuideTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   staffGuideCaption: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 4,
   },
   staffScrollContent: {
@@ -2064,7 +2055,7 @@ const styles = StyleSheet.create({
     left: 8,
     right: 8,
     height: 1,
-    backgroundColor: '#F3C5D2',
+    backgroundColor: COLORS.pink,
   },
   staffTreble: {
     position: 'absolute',
@@ -2079,7 +2070,7 @@ const styles = StyleSheet.create({
   trebleClef: {
     fontSize: 32,
     lineHeight: 38,
-    color: BROWN,
+    color: COLORS.brown,
     fontFamily: 'serif',
     includeFontPadding: false,
   },
@@ -2118,7 +2109,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   staffNoteName: {
     position: 'absolute',
@@ -2127,7 +2118,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'FredokaBold',
     fontSize: 10,
-    color: BROWN,
+    color: COLORS.brown,
   },
   staffLegend: {
     flexDirection: 'row',
@@ -2146,12 +2137,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
   },
   staffLegendText: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   repetitionProgressCard: {
     width: '100%',
@@ -2162,8 +2153,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: LIGHT_PINK,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
   },
   repetitionProgressHeader: {
     flexDirection: 'row',
@@ -2175,19 +2166,19 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 11,
     letterSpacing: 0.7,
-    color: MUTED,
+    color: COLORS.muted,
     marginBottom: -10,
   },
   repetitionProgressCount: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: -10,
   },
   countdownScreen: {
     flexGrow: 1,
     minHeight: 700,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -2196,7 +2187,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -2204,7 +2195,7 @@ const styles = StyleSheet.create({
   countdownTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 20,
   },
@@ -2212,7 +2203,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     maxWidth: 320,
@@ -2220,13 +2211,13 @@ const styles = StyleSheet.create({
   countdownNumber: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 20,
   },
   centerScreen: {
     flexGrow: 1,
     minHeight: 620,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 22,
@@ -2235,7 +2226,7 @@ const styles = StyleSheet.create({
   analyzingScreen: {
     flexGrow: 1,
     minHeight: 700,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -2244,7 +2235,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -2252,7 +2243,7 @@ const styles = StyleSheet.create({
   analyzingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 20,
   },
@@ -2260,7 +2251,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 13,
     lineHeight: 20,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     maxWidth: 320,
@@ -2268,7 +2259,7 @@ const styles = StyleSheet.create({
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 16,
   },
@@ -2276,7 +2267,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
     maxWidth: 320,
@@ -2293,7 +2284,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -2301,37 +2292,37 @@ const styles = StyleSheet.create({
   recordingTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   recordingBadge: {
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     paddingHorizontal: 15,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   recordingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     marginRight: 7,
   },
   recordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.6,
-    color: BROWN,
+    color: COLORS.brown,
   },
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 12,
     marginBottom: 6,
@@ -2339,40 +2330,40 @@ const styles = StyleSheet.create({
   timerTrack: {
     width: '100%',
     height: 8,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 5,
     overflow: 'hidden',
   },
   timerFill: {
     height: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   liveCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 16,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
   },
   liveLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
     letterSpacing: 0.8,
-    color: MUTED,
+    color: COLORS.muted,
   },
   liveCurrentNote: {
     fontFamily: 'FredokaBold',
     fontSize: 42,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 2,
   },
   liveFrequency: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   resultIcon: {
     width: 82,
@@ -2383,27 +2374,27 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   resultIconPassed: {
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   resultIconFailed: {
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
   },
   resultTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   resultSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 3,
     marginBottom: 22,
   },
   scoreCard: {
     width: '100%',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     borderRadius: 26,
     padding: 24,
     alignItems: 'center',
@@ -2411,35 +2402,35 @@ const styles = StyleSheet.create({
   scoreLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   scoreValue: {
     fontFamily: 'FredokaBold',
     fontSize: 52,
-    color: BROWN,
+    color: COLORS.brown,
     marginVertical: 3,
   },
   scoreDescription: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   resultCard: {
     width: '100%',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 18,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
   },
   resultCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 17,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 14,
   },
   attemptRow: {
@@ -2448,7 +2439,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: COLORS.border,
   },
   attemptRowLast: {
     borderBottomWidth: 0,
@@ -2461,19 +2452,19 @@ const styles = StyleSheet.create({
   attemptTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-    color: BROWN,
+    color: COLORS.brown,
   },
   attemptSubtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 4,
     lineHeight: 15,
   },
   attemptScore: {
     fontFamily: 'FredokaBold',
     fontSize: 22,
-    color: BROWN,
+    color: COLORS.brown,
   },
   scoreRow: {
     marginBottom: 14,
@@ -2489,24 +2480,24 @@ const styles = StyleSheet.create({
   scoreRowLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
   },
   scoreRowValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
   },
   progressBackground: {
     width: '100%',
     height: 8,
     borderRadius: 4,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   metricRow: {
     flexDirection: 'row',
@@ -2514,7 +2505,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: COLORS.border,
   },
   metricRowLast: {
     borderBottomWidth: 0,
@@ -2522,13 +2513,13 @@ const styles = StyleSheet.create({
   metricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     flex: 1,
   },
   metricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'right',
     marginLeft: 12,
   },
@@ -2536,7 +2527,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 54,
     borderRadius: 27,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
@@ -2544,14 +2535,14 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   confirmationOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: COLORS.transparentbrown,
   },
   confirmationCard: {
     width: '100%',
@@ -2560,7 +2551,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   confirmationIconCircle: {
     width: 60,
@@ -2568,13 +2559,13 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     marginBottom: 15,
   },
   confirmationTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   confirmationMessage: {
@@ -2583,7 +2574,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   confirmationActions: {
@@ -2598,12 +2589,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   confirmationPrimaryText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   confirmationSecondaryButton: {
     width: '100%',
@@ -2614,12 +2605,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   confirmationSecondaryText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
 });

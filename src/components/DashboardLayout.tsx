@@ -1,3 +1,4 @@
+import { COLORS } from '@/constants/appConstants';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
@@ -124,14 +125,10 @@ export default function DashboardLayout({
   );
 }
 
-const PINK = '#FCD6DD';
-const LIGHT_GRAY = '#F0F0F0';
-const WHITE = '#FFFFFF';
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   screen: {
     flex: 1,
@@ -140,7 +137,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,
     flexDirection: 'row',
@@ -175,7 +172,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   activeCircle: {
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 999,
   },
   icon: {
@@ -186,7 +183,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 999,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
@@ -205,7 +202,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 999,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
   },

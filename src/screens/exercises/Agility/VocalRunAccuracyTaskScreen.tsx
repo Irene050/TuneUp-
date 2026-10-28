@@ -31,17 +31,8 @@ import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccura
 import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-const BROWN = '#4E2F1F';
-const PINK = '#FCD6DD';
-const LIGHT_PINK = '#FFF8FA';
-const WHITE = '#FFFFFF';
-const MUTED = '#8E7770';
-const LIGHT_GRAY = '#F2F2F2';
-const BORDER = '#F2DDE5';
-const GREEN = '#39734A';
-const RED = '#A04444';
-const YELLOW = '#F9A825';
-const GRAY = '#9E9E9E';
+import { COLORS } from '@/constants/appConstants';
+
 
 const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
@@ -563,12 +554,12 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const pitchStatusColor =
     pitchStatus === 'inTune'
-      ? GREEN
+      ? COLORS.guideGreen
       : pitchStatus === 'close'
-        ? YELLOW
+        ? COLORS.guideYellow
         : pitchStatus === 'notInTune'
-          ? RED
-          : GRAY;
+          ? COLORS.guideRed
+          : COLORS.gray;
 
   const pitchStatusLabel =
     pitchStatus === 'inTune'
@@ -1520,11 +1511,11 @@ export default function VocalRunAccuracyTaskScreen() {
         style={styles.backButton}
         onPress={handleBack}
       >
-        <Ionicons name="arrow-back" size={24} color={BROWN} />
+        <Ionicons name="arrow-back" size={24} color={COLORS.brown} />
       </Pressable>
 
       <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={34} color={BROWN} />
+        <Ionicons name={icon} size={34} color={COLORS.brown} />
       </View>
 
       <Text style={styles.title}>{title}</Text>
@@ -1588,7 +1579,7 @@ export default function VocalRunAccuracyTaskScreen() {
         disabled={!hasValidGeneratedSequence}
         onPress={() => void beginExercise()}
       >
-        <Ionicons name="play" size={18} color={WHITE} />
+        <Ionicons name="play" size={18} color={COLORS.white} />
         <Text style={styles.buttonText}>Start Exercise</Text>
       </Pressable>
     </View>
@@ -1621,9 +1612,9 @@ export default function VocalRunAccuracyTaskScreen() {
         onPress={() => void playReference()}
       >
         {isPlayingReference ? (
-          <ActivityIndicator color={WHITE} />
+          <ActivityIndicator color={COLORS.white} />
         ) : (
-          <Ionicons name="play" size={18} color={WHITE} />
+          <Ionicons name="play" size={18} color={COLORS.white} />
         )}
 
         <Text style={styles.buttonText}>
@@ -1737,9 +1728,9 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <View style={styles.pitchLegend}>
           {[
-            [GREEN, 'In tune'],
-            [YELLOW, 'Close'],
-            [RED, 'Not in tune'],
+            [COLORS.guideGreen, 'In tune'],
+            [COLORS.guideYellow, 'Close'],
+            [COLORS.guideRed, 'Not in tune'],
           ].map(([color, label]) => (
             <View key={label} style={styles.legendItem}>
               <View
@@ -1788,7 +1779,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const renderProcessing = () => (
     <View style={styles.centerScreen}>
-      <ActivityIndicator size="large" color={BROWN} />
+      <ActivityIndicator size="large" color={COLORS.brown} />
 
       <Text style={styles.title}>Analyzing Your Singing</Text>
 
@@ -1802,7 +1793,7 @@ export default function VocalRunAccuracyTaskScreen() {
     if (!result) {
       return (
         <View style={styles.centerScreen}>
-          <ActivityIndicator size="large" color={BROWN} />
+          <ActivityIndicator size="large" color={COLORS.brown} />
           <Text style={styles.hint}>Preparing your results...</Text>
         </View>
       );
@@ -1851,7 +1842,7 @@ export default function VocalRunAccuracyTaskScreen() {
           <Text
             style={[
               styles.status,
-              { color: result.passed ? GREEN : RED },
+              { color: result.passed ? COLORS.guideGreen : COLORS.guideRed },
             ]}
           >
             {result.passed ? 'PASSED' : 'KEEP PRACTICING'}
@@ -1909,7 +1900,7 @@ export default function VocalRunAccuracyTaskScreen() {
         </View>
 
         <Pressable style={styles.button} onPress={resetExercise}>
-          <Ionicons name="refresh" size={18} color={WHITE} />
+          <Ionicons name="refresh" size={18} color={COLORS.white} />
           <Text style={styles.buttonText}>Try Again</Text>
         </Pressable>
 
@@ -1933,7 +1924,7 @@ export default function VocalRunAccuracyTaskScreen() {
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
           <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={BROWN} />
+            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
           </View>
 
           <Text style={styles.modalTitle}>Quit exercise?</Text>
@@ -1978,7 +1969,7 @@ export default function VocalRunAccuracyTaskScreen() {
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.iconCircle}>
-          <Ionicons name="options-outline" size={38} color={BROWN} />
+          <Ionicons name="options-outline" size={38} color={COLORS.brown} />
         </View>
 
         <Text style={styles.title}>Preparing Your Exercise</Text>
@@ -1989,7 +1980,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
         <ActivityIndicator
           size="large"
-          color={BROWN}
+          color={COLORS.brown}
           style={styles.spinner}
         />
       </View>
@@ -2021,18 +2012,18 @@ export default function VocalRunAccuracyTaskScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   screen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   scrollContent: {
     flexGrow: 1,
   },
   preparingScreen: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 28,
@@ -2073,7 +2064,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 22,
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
   },
   iconCircle: {
     width: 68,
@@ -2081,19 +2072,19 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     marginBottom: 14,
   },
   title: {
     fontFamily: 'FredokaBold',
     fontSize: 27,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
-    color: MUTED,
+    color: COLORS.muted,
     marginTop: 5,
     marginBottom: 18,
     textAlign: 'center',
@@ -2102,8 +2093,8 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     borderRadius: 20,
-    backgroundColor: LIGHT_PINK,
-    borderColor: BORDER,
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
     borderWidth: 1,
     padding: 18,
     marginBottom: 14,
@@ -2111,8 +2102,8 @@ const styles = StyleSheet.create({
   recordingCard: {
     width: '100%',
     borderRadius: 20,
-    backgroundColor: LIGHT_PINK,
-    borderColor: BORDER,
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 14,
@@ -2121,7 +2112,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 10,
     marginTop: 6,
     textAlign: 'center',
@@ -2130,7 +2121,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 14,
     lineHeight: 20,
-    color: BROWN,
+    color: COLORS.brown,
     marginBottom: 6,
   },
   detailRow: {
@@ -2142,13 +2133,13 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     flex: 1,
   },
   detailValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'right',
     marginLeft: 12,
   },
@@ -2164,27 +2155,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
   },
   noteNumber: {
     fontFamily: 'FredokaRegular',
     fontSize: 9,
-    color: MUTED,
+    color: COLORS.muted,
   },
   noteText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
     marginTop: 2,
   },
   activeNote: {
-    backgroundColor: '#E85D83',
+    backgroundColor: COLORS.accent,
     borderWidth: 1,
-    borderColor: '#C93E68',
+    borderColor: COLORS.waveform,
   },
   activeText: {
-    color: WHITE,
+    color: COLORS.white,
   },
   liveNote: {
     minWidth: 44,
@@ -2193,7 +2184,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 17,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -2201,7 +2192,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 12,
     lineHeight: 18,
-    color: RED,
+    color: COLORS.guideRed,
     textAlign: 'center',
     marginVertical: 10,
   },
@@ -2209,7 +2200,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 52,
     borderRadius: 26,
-    backgroundColor: BROWN,
+    backgroundColor: COLORS.brown,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2220,13 +2211,13 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: WHITE,
+    color: COLORS.white,
   },
   secondaryButton: {
     width: '100%',
     minHeight: 50,
     borderRadius: 25,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2237,7 +2228,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontFamily: 'FredokaBold',
     fontSize: 14,
-    color: BROWN,
+    color: COLORS.brown,
   },
   disabled: {
     opacity: 0.5,
@@ -2245,7 +2236,7 @@ const styles = StyleSheet.create({
   countdown: {
     fontFamily: 'FredokaBold',
     fontSize: 72,
-    color: BROWN,
+    color: COLORS.brown,
     marginVertical: 16,
   },
   pitchStatusBadge: {
@@ -2279,7 +2270,7 @@ const styles = StyleSheet.create({
   pitchDeviation: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 5,
   },
@@ -2303,11 +2294,11 @@ const styles = StyleSheet.create({
   legendText: {
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    color: MUTED,
+    color: COLORS.muted,
   },
   divider: {
     height: 1,
-    backgroundColor: BORDER,
+    backgroundColor: COLORS.border,
     marginVertical: 10,
   },
   timerContainer: {
@@ -2318,13 +2309,13 @@ const styles = StyleSheet.create({
   timerLabel: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   timerText: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -2332,19 +2323,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 8,
     borderRadius: 4,
-    backgroundColor: LIGHT_GRAY,
+    backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
     marginTop: 8,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#E85D83',
+    backgroundColor: COLORS.waveform,
     borderRadius: 4,
   },
   scoreCard: {
     width: '100%',
     alignItems: 'center',
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
     padding: 22,
     borderRadius: 22,
     marginBottom: 14,
@@ -2352,7 +2343,7 @@ const styles = StyleSheet.create({
   score: {
     fontFamily: 'FredokaBold',
     fontSize: 54,
-    color: BROWN,
+    color: COLORS.brown,
   },
   scoreOutOf: {
     fontSize: 18,
@@ -2370,7 +2361,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: COLORS.transparentbrown,
   },
   modalCard: {
     width: '100%',
@@ -2379,7 +2370,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 26,
     borderRadius: 24,
-    backgroundColor: WHITE,
+    backgroundColor: COLORS.white,
   },
   modalIcon: {
     width: 60,
@@ -2387,13 +2378,13 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: LIGHT_PINK,
+    backgroundColor: COLORS.background,
     marginBottom: 15,
   },
   modalTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 23,
-    color: BROWN,
+    color: COLORS.brown,
     textAlign: 'center',
   },
   modalMessage: {
@@ -2402,7 +2393,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 15,
     lineHeight: 22,
-    color: MUTED,
+    color: COLORS.muted,
     textAlign: 'center',
   },
   continueButton: {
@@ -2412,12 +2403,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: PINK,
+    backgroundColor: COLORS.pink,
   },
   continueButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: BROWN,
+    color: COLORS.brown,
   },
   quitButton: {
     width: '100%',
@@ -2428,12 +2419,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   quitButtonText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: MUTED,
+    color: COLORS.muted,
   },
 });
