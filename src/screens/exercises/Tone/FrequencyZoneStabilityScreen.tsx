@@ -1,39 +1,39 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  FREQUENCY_ZONE_STABILITY_PARAMS,
-  type FrequencyZoneStabilityParams,
-  type Tier,
-} from '@/constants/tone';
+    FREQUENCY_ZONE_STABILITY_PARAMS,
+    type FrequencyZoneStabilityParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  type ExercisePreparationStep,
-  type ExerciseSummaryItem,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    type ExercisePreparationStep,
+    type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateFrequencyZoneStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -41,13 +41,13 @@ import { auth } from '@/services/firebase/config';
 import { measureFrequencyZoneStability } from '@/services/measurement/tone/frequencyZoneStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreFrequencyZoneStability } from '@/services/scoring/tone/frequencyZoneStability';
 import {
-  classifyFrequencyZone,
-  type FrequencyZone,
+    classifyFrequencyZone,
+    type FrequencyZone,
 } from '@/utils/dsp/spectral';
 
 import { COLORS } from '@/constants/appConstants';

@@ -1,49 +1,49 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  CONTROLLED_BREATH_RELEASE_PARAMS,
-  type ControlledBreathReleaseParams,
-  type Tier,
-} from '@/constants/breathControl';
+    CONTROLLED_BREATH_RELEASE_PARAMS,
+    type ControlledBreathReleaseParams,
+    type Tier,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureControlledBreathRelease,
-  type ControlledBreathReleaseMeasurement,
+    measureControlledBreathRelease,
+    type ControlledBreathReleaseMeasurement,
 } from '@/services/measurement/breathControl/controlledBreathRelease';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreControlledBreathRelease,
-  type ControlledBreathReleaseScoreResult,
+    scoreControlledBreathRelease,
+    type ControlledBreathReleaseScoreResult,
 } from '@/services/scoring/breathControl/controlledBreathRelease';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '../ExerciseScreen';
 
 import { COLORS } from '@/constants/appConstants';

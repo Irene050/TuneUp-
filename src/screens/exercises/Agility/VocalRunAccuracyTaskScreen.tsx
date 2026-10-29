@@ -17,7 +17,13 @@ import {
   AudioRecorder,
 } from 'react-native-audio-api';
 
-import { type Tier } from '@/constants/agility';
+import { COLORS } from '@/constants/appConstants';
+import { type Tier } from '@/constants/params';
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -30,9 +36,6 @@ import {
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
 import { frequencyToNoteName } from '@/utils/music/notes';
-
-import { COLORS } from '@/constants/appConstants';
-
 
 const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
@@ -1524,65 +1527,62 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderInstructions = () => (
-    <View style={styles.content}>
-      {renderHeader(
-        'flash-outline',
-        'Vocal Run Accuracy',
-        'VOCAL AGILITY',
-      )}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          Exercise Instructions
-        </Text>
-
-        {[
-          'Listen carefully to the reference vocal run.',
-          'Sing every note in the same order.',
-          'Keep your pitch accurate and move smoothly between notes.',
-          `Complete all ${config!.repetitions} repetitions.`,
-        ].map((line, index) => (
-          <Text key={index} style={styles.bodyText}>
-            {index + 1}. {line}
-          </Text>
-        ))}
-
-        <Text style={styles.cardTitle}>Exercise Details</Text>
-
-        {[
-          ['Difficulty', config!.label],
-          ['Speed', config!.speedLabel],
-          ['Notes', String(config!.frequencies.length)],
-          ['Repetitions', String(config!.repetitions)],
-          ['Accuracy Target', `${config!.accuracyThreshold}%`],
-          [
-            'Note Duration',
-            `${config!.noteDurationSec.toFixed(2)} sec`,
-          ],
-        ].map(([label, value]) => (
-          <View key={label} style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{label}</Text>
-            <Text style={styles.detailValue}>{value}</Text>
-          </View>
-        ))}
-      </View>
-
-      {errorMessage ? (
-        <Text style={styles.errorText}>{errorMessage}</Text>
-      ) : null}
-
-      <Pressable
-        style={[
-          styles.button,
-          !hasValidGeneratedSequence && styles.disabled,
-        ]}
-        disabled={!hasValidGeneratedSequence}
-        onPress={() => void beginExercise()}
-      >
-        <Ionicons name="play" size={18} color={COLORS.white} />
-        <Text style={styles.buttonText}>Start Exercise</Text>
-      </Pressable>
-    </View>
+    <ExerciseScreen
+      title="Vocal Run Accuracy"
+      category="VOCAL AGILITY"
+      icon="flash-outline"
+      tier={tier}
+      instructions="Listen carefully to the reference vocal run, then sing every note in the same order. Keep your pitch accurate and move smoothly between notes."
+      preparationSteps={[
+        {
+          icon: 'ear-outline',
+          text: 'Listen carefully to the reference vocal run.',
+        },
+        {
+          icon: 'musical-notes-outline',
+          text: 'Sing every note in the same order.',
+        },
+        {
+          icon: 'trending-up-outline',
+          text: 'Maintain accurate pitch and smooth transitions.',
+        },
+        {
+          icon: 'repeat-outline',
+          text: `Complete all ${config!.repetitions} repetitions.`,
+        },
+      ]}
+      summary={[
+        {
+          label: 'DIFFICULTY',
+          value: config!.label,
+        },
+        {
+          label: 'SPEED',
+          value: config!.speedLabel,
+        },
+        {
+          label: 'NOTES',
+          value: String(config!.frequencies.length),
+        },
+        {
+          label: 'REPETITIONS',
+          value: String(config!.repetitions),
+        },
+        {
+          label: 'ACCURACY TARGET',
+          value: `${config!.accuracyThreshold}%`,
+        },
+        {
+          label: 'NOTE DURATION',
+          value: `${config!.noteDurationSec.toFixed(2)} sec`,
+        },
+      ]}
+      error={errorMessage || null}
+      startDisabled={!hasValidGeneratedSequence}
+      startLabel="Start Exercise"
+      onBack={handleBack}
+      onStart={() => void beginExercise()}
+    />
   );
 
   const renderReference = () => (
@@ -1640,21 +1640,15 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderCountdown = () => (
-    <View style={styles.centerScreen}>
-      {renderHeader(
-        'flash-outline',
-        'Get Ready',
-        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
-      )}
-
-      <Text style={styles.countdown}>
-        {countdown === 0 ? 'READY' : countdown}
-      </Text>
-
-      <Text style={styles.hint}>
-        Prepare to sing the vocal run.
-      </Text>
-    </View>
+    <ExerciseCountdownScreen
+      icon="flash-outline"
+      title="Get Ready"
+      currentRep={currentRepetition}
+      repetitions={config!.repetitions}
+      countdown={countdown}
+      promptTitle="Prepare to sing"
+      prompt="Get ready to sing each note in the displayed order."
+    />
   );
 
   const renderRecording = () => (
@@ -1778,24 +1772,21 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderProcessing = () => (
-    <View style={styles.centerScreen}>
-      <ActivityIndicator size="large" color={COLORS.brown} />
-
-      <Text style={styles.title}>Analyzing Your Singing</Text>
-
-      <Text style={styles.hint}>
-        Measuring pitch, sequence, and transition accuracy.
-      </Text>
-    </View>
+    <ExerciseProcessingScreen
+      icon="analytics-outline"
+      title="Analyzing Your Singing"
+      message="Measuring pitch, sequence, and transition accuracy."
+    />
   );
 
   const renderResults = () => {
     if (!result) {
       return (
-        <View style={styles.centerScreen}>
-          <ActivityIndicator size="large" color={COLORS.brown} />
-          <Text style={styles.hint}>Preparing your results...</Text>
-        </View>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Preparing Your Results"
+          message="Please wait while your results are prepared."
+        />
       );
     }
 
@@ -1822,38 +1813,27 @@ export default function VocalRunAccuracyTaskScreen() {
     ];
 
     return (
-      <View style={styles.content}>
-        {renderHeader(
+      <ExerciseResultsScreen
+        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
+        subtitle="VOCAL RUN ACCURACY RESULT"
+        score={Math.round(result.overall)}
+        scoreSuffix=" / 100"
+        resultIcon={
           result.passed
             ? 'checkmark-circle-outline'
-            : 'refresh-outline',
-          result.passed ? 'Great Job!' : 'Keep Practicing!',
-          'VOCAL RUN ACCURACY RESULT',
-        )}
-
-        <View style={styles.scoreCard}>
-          <Text style={styles.cardTitle}>OVERALL SCORE</Text>
-
-          <Text style={styles.score}>
-            {Math.round(result.overall)}
-            <Text style={styles.scoreOutOf}> / 100</Text>
-          </Text>
-
-          <Text
-            style={[
-              styles.status,
-              { color: result.passed ? COLORS.guideGreen : COLORS.guideRed },
-            ]}
-          >
-            {result.passed ? 'PASSED' : 'KEEP PRACTICING'}
-          </Text>
-
+            : 'refresh-outline'
+        }
+        scoreMessage={result.feedback}
+        scoreDetails={
           <Text style={styles.hint}>
             {result.repetitionsCompleted} of {config!.repetitions}{' '}
             repetitions completed
           </Text>
-        </View>
-
+        }
+        onBack={handleBack}
+        onRetry={resetExercise}
+        onExit={handleBack}
+      >
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Accuracy Breakdown</Text>
 
@@ -1861,6 +1841,7 @@ export default function VocalRunAccuracyTaskScreen() {
             <View key={label} style={styles.metricBlock}>
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>{label}</Text>
+
                 <Text style={styles.detailValue}>
                   {Math.round(value)}%
                 </Text>
@@ -1871,7 +1852,10 @@ export default function VocalRunAccuracyTaskScreen() {
                   style={[
                     styles.progressFill,
                     {
-                      width: `${Math.max(0, Math.min(100, value))}%`,
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, value),
+                      )}%`,
                     },
                   ]}
                 />
@@ -1894,22 +1878,7 @@ export default function VocalRunAccuracyTaskScreen() {
             </View>
           ))}
         </View>
-
-        <View style={styles.card}>
-          <Text style={styles.bodyText}>{result.feedback}</Text>
-        </View>
-
-        <Pressable style={styles.button} onPress={resetExercise}>
-          <Ionicons name="refresh" size={18} color={COLORS.white} />
-          <Text style={styles.buttonText}>Try Again</Text>
-        </Pressable>
-
-        <Pressable style={styles.secondaryButton} onPress={handleBack}>
-          <Text style={styles.secondaryButtonText}>
-            Back to Exercises
-          </Text>
-        </Pressable>
-      </View>
+      </ExerciseResultsScreen>
     );
   };
 
@@ -1989,20 +1958,26 @@ export default function VocalRunAccuracyTaskScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView
-        key={phase}
-        style={styles.screen}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {phase === 'instructions' && renderInstructions()}
-        {phase === 'reference' && renderReference()}
-        {phase === 'countdown' && renderCountdown()}
-        {phase === 'recording' && renderRecording()}
-        {phase === 'processing' && renderProcessing()}
-        {phase === 'results' && renderResults()}
-      </ScrollView>
+      {phase === 'instructions' ? (
+        renderInstructions()
+      ) : phase === 'countdown' ? (
+        renderCountdown()
+      ) : phase === 'processing' ? (
+        renderProcessing()
+      ) : phase === 'results' ? (
+        renderResults()
+      ) : (
+        <ScrollView
+          key={phase}
+          style={styles.screen}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {phase === 'reference' && renderReference()}
+          {phase === 'recording' && renderRecording()}
+        </ScrollView>
+      )}
 
       {quitModal}
     </View>
@@ -2044,15 +2019,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 80,
     paddingBottom: 28,
-  },
-  centerScreen: {
-    flexGrow: 1,
-    minHeight: 450,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 32,
   },
   backButton: {
     position: 'absolute',
@@ -2116,13 +2082,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 6,
     textAlign: 'center',
-  },
-  bodyText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.brown,
-    marginBottom: 6,
   },
   detailRow: {
     flexDirection: 'row',
@@ -2233,12 +2192,6 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-  countdown: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: COLORS.brown,
-    marginVertical: 16,
-  },
   pitchStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2331,27 +2284,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: COLORS.waveform,
     borderRadius: 4,
-  },
-  scoreCard: {
-    width: '100%',
-    alignItems: 'center',
-    backgroundColor: COLORS.pink,
-    padding: 22,
-    borderRadius: 22,
-    marginBottom: 14,
-  },
-  score: {
-    fontFamily: 'FredokaBold',
-    fontSize: 54,
-    color: COLORS.brown,
-  },
-  scoreOutOf: {
-    fontSize: 18,
-  },
-  status: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    marginTop: 4,
   },
   metricBlock: {
     marginBottom: 12,

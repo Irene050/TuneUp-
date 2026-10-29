@@ -1,5 +1,5 @@
 
-import type { IntervalRecognitionParams } from '@/constants/pitch';
+import type { IntervalRecognitionParams } from '@/constants/params';
 import type { IntervalRecognitionMeasurement } from '@/services/measurement/pitch/intervalRecognitionTask';
 
 export interface IntervalRecognitionScoreResult {

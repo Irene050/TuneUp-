@@ -1,6 +1,6 @@
 import type {
     SteadyToneHoldingParams,
-} from '@/constants/tone';
+} from '@/constants/params';
 
 import type {
     SteadyToneHoldingMeasurement,

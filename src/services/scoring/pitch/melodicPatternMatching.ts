@@ -1,10 +1,10 @@
 
 import type {
-  MelodicPatternMatchingParams,
-} from '@/constants/pitch';
+    MelodicPatternMatchingParams,
+} from '@/constants/params';
 
 import type {
-  MelodicPatternMeasurement,
+    MelodicPatternMeasurement,
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
 export interface MelodicPatternScoreResult {

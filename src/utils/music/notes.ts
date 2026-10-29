@@ -54,6 +54,38 @@ export function createMusicalNote(midi: number): MusicalNote {
   };
 }
 
+export function noteNameToMidi(
+  noteName: string | undefined,
+): number | null {
+  if (!noteName) {
+    return null;
+  }
+
+  const match = noteName.trim().match(/^([A-G])([#b]?)(-?\d+)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const semitones: Record<string, number> = {
+    C: 0,
+    D: 2,
+    E: 4,
+    F: 5,
+    G: 7,
+    A: 9,
+    B: 11,
+  };
+
+  const letter = match[1].toUpperCase();
+  const accidental = match[2];
+  const octave = Number(match[3]);
+  const offset =
+    accidental === '#' ? 1 : accidental === 'b' ? -1 : 0;
+
+  return (octave + 1) * 12 + semitones[letter] + offset;
+}
+
 export function getVocalRangeMidiBounds(
   vocalRange?: VocalRange | null,
 ): { lowMidi: number; highMidi: number } | null {

@@ -1,46 +1,46 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 import {
-  DYNAMIC_RANGE_PARAMS,
-  type DynamicRangeParams,
-  type Tier,
-} from '@/constants/volume';
+    DYNAMIC_RANGE_PARAMS,
+    type DynamicRangeParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseResultsScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureDynamicRange,
-  type RepetitionInterval,
+    measureDynamicRange,
+    type RepetitionInterval,
 } from '@/services/measurement/volume/dynamicRangeExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { playSingleNote } from '@/utils/music/notePlayer';

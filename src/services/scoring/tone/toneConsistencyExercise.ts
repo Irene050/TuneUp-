@@ -1,6 +1,6 @@
 import type {
     ToneConsistencyParams,
-} from '@/constants/tone';
+} from '@/constants/params';
 
 import type {
     ToneConsistencyMeasurement,

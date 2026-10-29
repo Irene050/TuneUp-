@@ -1,58 +1,58 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  type Tier,
-  VOWEL_CONSISTENCY_PARAMS,
-  type VowelConsistencyParams,
-} from '@/constants/tone';
+    type Tier,
+    VOWEL_CONSISTENCY_PARAMS,
+    type VowelConsistencyParams,
+} from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  type ExercisePreparationStep,
-  ExerciseProcessingScreen,
-  type ExerciseSummaryItem,
+    ExerciseCountdownScreen,
+    type ExercisePreparationStep,
+    ExerciseProcessingScreen,
+    type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-  generateVowelConsistencyParams,
+    generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureVowelConsistency,
+    measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 import {
-  saveCompletedExercise,
+    saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreVowelConsistencyExercise,
-  type VowelConsistencyScoreResult,
+    scoreVowelConsistencyExercise,
+    type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 

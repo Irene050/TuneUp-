@@ -1,9 +1,9 @@
 import type {
-  SustainedNoteStabilityParams,
-} from '@/constants/pitch';
+    SustainedNoteStabilityParams,
+} from '@/constants/params';
 
 import type {
-  SustainedNoteStabilityMeasurement,
+    SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 
 export interface SustainedNoteStabilityScoreResult {

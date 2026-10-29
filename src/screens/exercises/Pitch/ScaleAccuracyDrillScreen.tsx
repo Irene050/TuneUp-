@@ -1,30 +1,30 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Modal,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  SCALE_ACCURACY_PARAMS,
-  type ScaleAccuracyParams,
-  type Tier,
-} from '@/constants/pitch';
+    SCALE_ACCURACY_PARAMS,
+    type ScaleAccuracyParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { generateScaleAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -32,33 +32,33 @@ import { auth } from '@/services/firebase/config';
 import { measureScaleAccuracyDrill } from '@/services/measurement/pitch/scaleAccuracyDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreScaleAccuracyDrill,
-  type ScaleAccuracyScoreResult,
+    scoreScaleAccuracyDrill,
+    type ScaleAccuracyScoreResult,
 } from '@/services/scoring/pitch/scaleAccuracyDrill';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
-  segmentIntoNotes,
+    calcLiveStability,
+    calcPitchAccuracy,
+    segmentIntoNotes,
 } from '@/utils/dsp/pitch';
 import {
-  disposeNotePlayer,
-  playNoteSequence,
+    disposeNotePlayer,
+    playNoteSequence,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomScale,
-  type VocalRange,
+    frequencyToNoteName,
+    getRandomScale,
+    type VocalRange,
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '../ExerciseScreen';
 
 import { COLORS } from '@/constants/appConstants';

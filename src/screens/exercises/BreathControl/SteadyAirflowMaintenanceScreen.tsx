@@ -1,30 +1,30 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    StyleSheet,
+    Text,
+    View
 } from 'react-native';
 
 import type {
-  SteadyAirflowParams,
-  Tier,
-} from '@/constants/breathControl';
+    SteadyAirflowParams,
+    Tier,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyAirflowParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -33,8 +33,8 @@ import type { SteadyAirflowMeasurement } from '@/services/measurement/breathCont
 import { measureSteadyAirflow } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import type { SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
 import { scoreSteadyAirflow } from '@/services/scoring/breathControl/steadyAirflowMaintenance';

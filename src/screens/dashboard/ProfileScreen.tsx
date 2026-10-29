@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import type { Tier } from '@/constants/params';
 
 function ModalHeader({
   title,
@@ -86,18 +87,21 @@ export default function ProfileScreen() {
     .charAt(0)
     .toUpperCase();
 
-  const tierRank = {
-    beginner: 0,
-    intermediate: 1,
-    advanced: 2,
-  } as const;
+  const TIER_RANK: Record<Tier, number> = {
+      beginner: 0,
+      intermediate: 1,
+      advanced: 2,
+   };
 
-  const overallTier = progressSummaries.reduce(
-    (highestTier, summary) =>
-      tierRank[summary.currentTier] > tierRank[highestTier]
-        ? summary.currentTier
-        : highestTier,
-    'beginner' as keyof typeof tierRank,
+  const overallTier = progressSummaries.reduce<Tier>(
+    (highestTier, summary) => {
+      const currentTier: Tier = summary.currentTier;
+
+      return TIER_RANK[currentTier] > TIER_RANK[highestTier]
+        ? currentTier
+        : highestTier;
+    },
+    'beginner',
   );
 
   const formattedTier =
@@ -678,7 +682,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.lightGray,
     shadowColor: COLORS.gray,
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -686,7 +690,7 @@ const styles = StyleSheet.create({
       width: 0,
       height: 3,
     },
-    elevation: 3,
+    elevation: 4,
   },
   optionIcon: {
     width: 38,

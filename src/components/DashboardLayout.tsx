@@ -54,69 +54,71 @@ export default function DashboardLayout({
   return (
     <View style={styles.container}>
       <View
-  style={[
-    styles.screen,
-    { paddingBottom: showTabBar ? 95 + bottomInset : 0 },
-  ]}
->
-  {children}
-</View>
+      style={[
+        styles.screen,
+        { paddingBottom: showTabBar ? 95 + bottomInset : 0 },
+      ]}
+    >
+      {children}
+    </View>
 
-      {showTabBar && (
-                    <View
+  {showTabBar && (
+    <View
+        style={[
+          styles.tabBar,
+            {
+              bottom: bottomInset,
+              height: 95,
+            },
+          ]}
+        >
+    
+      {tabs.map((tabItem) => {
+        const focused = activeTab === tabItem.name;
+        const centerTab = tabItem.name === 'exercises';
+
+        return (
+          <Pressable
+            key={tabItem.name}
+            accessibilityLabel={tabItem.label}
+            accessibilityRole="button"
+            accessibilityState={{ selected: focused }}
               style={[
-                styles.tabBar,
-                {
-                  bottom: bottomInset,
-                  height: 95,
-                },
+                styles.tabButton,
+                centerTab && styles.centerTabButton,
               ]}
+              onPress={() => router.setParams({ tab: tabItem.name })}
             >
-          {tabs.map((tabItem) => {
-            const focused = activeTab === tabItem.name;
-            const centerTab = tabItem.name === 'exercises';
-
-            return (
-              <Pressable
-                key={tabItem.name}
-                accessibilityLabel={tabItem.label}
-                accessibilityRole="button"
-                accessibilityState={{ selected: focused }}
-                style={[
-                  styles.tabButton,
-                  centerTab && styles.centerTabButton,
-                ]}
-                onPress={() => router.setParams({ tab: tabItem.name })}
-              >
-                {centerTab ? (
-                  <View style={styles.centerCircle}>
-                    <View
-                      style={
-                        focused ? styles.centerActiveCircle : undefined
-                      }
-                    >
-                      <Image
-                        source={tabItem.icon}
-                        style={styles.centerIcon}
-                        resizeMode="contain"
-                      />
-                    </View>
-                  </View>
-                ) : (
-                  <View
-                    style={[
-                      styles.iconContainer,
-                      focused && styles.activeCircle,
-                    ]}
+            
+            {centerTab ? (
+              <View style={styles.centerCircle}>
+                <View
+                  style={
+                    focused ? styles.centerActiveCircle : undefined
+                  }
                   >
-                    <Image
-                      source={tabItem.icon}
-                      style={styles.icon}
-                      resizeMode="contain"
-                    />
-                  </View>
-                )}
-              </Pressable>
+                  <Image
+                    source={tabItem.icon}
+                    style={styles.centerIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+              ) : (
+              <View
+                style={[
+                  styles.iconContainer,
+                  focused && styles.activeCircle,
+                ]}
+                >
+                <Image
+                  source={tabItem.icon}
+                  style={styles.icon}
+                  resizeMode="contain"
+                  />
+              </View>
+            )}
+          </Pressable>
             );
           })}
         </View>

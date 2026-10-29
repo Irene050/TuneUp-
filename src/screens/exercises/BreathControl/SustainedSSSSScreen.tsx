@@ -1,47 +1,47 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import type {
-  SustainedExhaleParams,
-  Tier,
-} from '@/constants/breathControl';
+    SustainedExhaleParams,
+    Tier,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureSustainedSSSS,
-  type SustainedSSSSMeasurement,
+    measureSustainedSSSS,
+    type SustainedSSSSMeasurement,
 } from '@/services/measurement/breathControl/sustainedSSSS';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreSustainedSSSS,
-  type SustainedSSSSScoreResult,
+    scoreSustainedSSSS,
+    type SustainedSSSSScoreResult,
 } from '@/services/scoring/breathControl/sustainedSSSS';
 
 import { COLORS } from '@/constants/appConstants';

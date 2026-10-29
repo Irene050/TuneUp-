@@ -18,14 +18,21 @@ import {
   View,
 } from 'react-native';
 
+import { COLORS } from '@/constants/appConstants';
 import {
   RAPID_NOTE_TRANSITION_PARAMS,
   type Tier,
-} from '@/constants/agility';
+} from '@/constants/params';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -38,16 +45,17 @@ import {
   playNoteSequence,
   type NoteToPlay,
 } from '@/utils/music/notePlayer';
-import { createMusicalNote } from '@/utils/music/notes';
-
-import { COLORS } from '@/constants/appConstants';
-
+import {
+  createMusicalNote,
+  frequencyToMidi,
+  noteNameToMidi,
+} from '@/utils/music/notes';
 
 const COUNTDOWN_SECONDS = 3;
 const MAX_RECORDING_SECONDS = 10;
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
 
-type Screen =
+type Phase =
   | 'instructions'
   | 'countdown'
   | 'listening'
@@ -107,39 +115,6 @@ function clampScore(value: number): number {
   }
 
   return Math.min(100, Math.max(0, value));
-}
-
-function frequencyToMidi(frequencyHz: number): number {
-  return 69 + 12 * Math.log2(frequencyHz / 440);
-}
-
-function noteNameToMidi(noteName: string | undefined): number | null {
-  if (!noteName) {
-    return null;
-  }
-
-  const match = noteName.trim().match(/^([A-G])([#b]?)(-?\d+)$/i);
-
-  if (!match) {
-    return null;
-  }
-
-  const semitones: Record<string, number> = {
-    C: 0,
-    D: 2,
-    E: 4,
-    F: 5,
-    G: 7,
-    A: 9,
-    B: 11,
-  };
-
-  const letter = match[1].toUpperCase();
-  const accidental = match[2];
-  const octave = Number(match[3]);
-  const offset = accidental === '#' ? 1 : accidental === 'b' ? -1 : 0;
-
-  return (octave + 1) * 12 + semitones[letter] + offset;
 }
 
 function getGuideFeedbackColor(
@@ -310,7 +285,10 @@ export default function RapidNoteTransitionExerciseScreen({
           return;
         }
 
-        const exerciseRecords = await fetchExerciseRecords(user.uid, 'agility');
+        const exerciseRecords = await fetchExerciseRecords(
+          user.uid,
+          'agility',
+        );
 
         if (cancelled) {
           return;
@@ -416,32 +394,39 @@ export default function RapidNoteTransitionExerciseScreen({
         Math.max(baseParams.minNotes, Math.ceil(adaptiveParams.minNotes)),
       ),
     );
+
     const maxNotes = Math.max(
       minNotes,
       Math.min(baseParams.maxNotes, Math.floor(adaptiveParams.maxNotes)),
     );
+
     const noteCount = getRandomInteger(minNotes, maxNotes);
 
     const minSpeed = Math.max(
       baseParams.minSpeed,
       Math.min(baseParams.maxSpeed, adaptiveParams.minSpeed),
     );
+
     const maxSpeed = Math.max(
       minSpeed,
       Math.min(baseParams.maxSpeed, adaptiveParams.maxSpeed),
     );
+
     const shortestAllowedDuration = Math.max(
       0.05,
       1 / maxSpeed - REFERENCE_NOTE_GAP_SECONDS,
     );
+
     const longestAllowedDuration = Math.max(
       shortestAllowedDuration,
       1 / minSpeed - REFERENCE_NOTE_GAP_SECONDS,
     );
+
     const noteDurationSec = Math.min(
       longestAllowedDuration,
       Math.max(shortestAllowedDuration, adaptiveParams.noteDurationSec),
     );
+
     const targetSpeed =
       1 / (noteDurationSec + REFERENCE_NOTE_GAP_SECONDS);
 
@@ -451,17 +436,20 @@ export default function RapidNoteTransitionExerciseScreen({
           Math.ceil(frequencyToMidi(assessedVocalRangeHz.lowHz)),
         )
       : adaptiveParams.minMidi;
+
     const assessedMaxMidi = assessedVocalRangeHz
       ? Math.min(
           adaptiveParams.maxMidi,
           Math.floor(frequencyToMidi(assessedVocalRangeHz.highHz)),
         )
       : adaptiveParams.maxMidi;
+
     const hasUsableRange = assessedMaxMidi - assessedMinMidi >= 2;
 
     const minMidi = hasUsableRange
       ? assessedMinMidi
       : adaptiveParams.minMidi;
+
     const maxMidi = hasUsableRange
       ? assessedMaxMidi
       : adaptiveParams.maxMidi;
@@ -471,7 +459,10 @@ export default function RapidNoteTransitionExerciseScreen({
       targetSpeed,
       repetitions: Math.max(
         1,
-        Math.min(baseParams.repetitions, Math.round(adaptiveParams.repetitions)),
+        Math.min(
+          baseParams.repetitions,
+          Math.round(adaptiveParams.repetitions),
+        ),
       ),
       accuracyThreshold: baseParams.accuracyThreshold,
       noteDurationSec,
@@ -489,14 +480,17 @@ export default function RapidNoteTransitionExerciseScreen({
     exerciseConfigVersion,
   ]);
 
-  const [screenState, setScreenState] = useState<Screen>('instructions');
-  const [confirmation, setConfirmation] = useState<'tryAgain' | 'quit' | null>(null);
+  const [screenState, setScreenState] = useState<Phase>('instructions');
+  const [confirmation, setConfirmation] = useState<'tryAgain' | 'quit' | null>(
+    null,
+  );
   const [isPreparingResume, setIsPreparingResume] = useState(false);
-  const pausedRepetitionRef = useRef(1);
-  const pausedScreenRef = useRef<Screen>('instructions');
-  const screenRef = useRef<Screen>('instructions');
 
-  const setScreen = useCallback((nextScreen: Screen) => {
+  const pausedRepetitionRef = useRef(1);
+  const pausedScreenRef = useRef<Phase>('instructions');
+  const screenRef = useRef<Phase>('instructions');
+
+  const setScreen = useCallback((nextScreen: Phase) => {
     screenRef.current = nextScreen;
     setScreenState(nextScreen);
   }, []);
@@ -522,19 +516,24 @@ export default function RapidNoteTransitionExerciseScreen({
     useState(false);
   const [activeGuideNoteIndex, setActiveGuideNoteIndex] =
     useState<number | null>(null);
+
   const guideNoteDurationSeconds = Math.max(
     0.05,
     exerciseConfig.sequence.notes[0]?.durationSec ??
       exerciseConfig.noteDurationSec,
   );
+
   const guideBeatDurationSeconds =
     guideNoteDurationSeconds + REFERENCE_NOTE_GAP_SECONDS;
+
   const recordingBeatPosition =
     guideBeatDurationSeconds > 0
       ? elapsedSeconds % guideBeatDurationSeconds
       : 0;
+
   const recordingSequenceDurationSeconds =
     exerciseConfig.sequence.names.length * guideBeatDurationSeconds;
+
   const currentGuideNoteIndex =
     screen === 'recording' &&
     exerciseConfig.sequence.names.length > 0 &&
@@ -592,6 +591,7 @@ export default function RapidNoteTransitionExerciseScreen({
     transitionCountRef.current = 0;
     recordingStartRef.current = null;
     finishingRef.current = false;
+
     setLiveTransitionCount(0);
     setLiveTransitionSpeed(0);
     setElapsedSeconds(0);
@@ -702,10 +702,12 @@ export default function RapidNoteTransitionExerciseScreen({
           'Rapid Note Transition attempt could not be scored:',
           error instanceof Error ? error.message : String(error),
         );
+
         attempt = createFailedAttempt(currentRepetition);
       }
 
       const updatedAttempts = [...attemptResultsRef.current, attempt];
+
       attemptResultsRef.current = updatedAttempts;
       setAttemptResults(updatedAttempts);
 
@@ -723,9 +725,11 @@ export default function RapidNoteTransitionExerciseScreen({
         return;
       }
 
+      const failedAttemptFeedback = createFailedAttempt(1).feedback;
       const hasFailedAttempt = updatedAttempts.some(
-        item => item.feedback === createFailedAttempt(item.repetition).feedback,
+        item => item.feedback === failedAttemptFeedback,
       );
+
       const finalResult = buildExerciseResult(
         updatedAttempts,
         exerciseConfig.accuracyThreshold,
@@ -762,11 +766,7 @@ export default function RapidNoteTransitionExerciseScreen({
     ],
   );
 
-  const {
-    startRecording,
-    stopRecording,
-    isRecording,
-  } = useAudioRecorder({
+  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });
@@ -775,12 +775,16 @@ export default function RapidNoteTransitionExerciseScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (confirmation !== null || screenRef.current === 'processing') {
+        if (
+          confirmation !== null ||
+          screenRef.current === 'processing'
+        ) {
           return true;
         }
 
         pausedRepetitionRef.current = currentRepetition;
         pausedScreenRef.current = screenRef.current;
+
         clearTimers();
         referenceStartedRef.current = false;
         playingSequenceRef.current = false;
@@ -822,10 +826,7 @@ export default function RapidNoteTransitionExerciseScreen({
     }
 
     for (let index = 0; index < noteCount; index += 1) {
-      if (
-        !mountedRef.current ||
-        screenRef.current !== 'listening'
-      ) {
+      if (!mountedRef.current || screenRef.current !== 'listening') {
         setActiveGuideNoteIndex(null);
         return;
       }
@@ -836,10 +837,7 @@ export default function RapidNoteTransitionExerciseScreen({
         setTimeout(resolve, guideNoteDurationSeconds * 1000),
       );
 
-      if (
-        !mountedRef.current ||
-        screenRef.current !== 'listening'
-      ) {
+      if (!mountedRef.current || screenRef.current !== 'listening') {
         setActiveGuideNoteIndex(null);
         return;
       }
@@ -923,6 +921,7 @@ export default function RapidNoteTransitionExerciseScreen({
 
       recordingStopHandledRef.current = false;
       setScreen('recording');
+
       await startRecording();
 
       if (!mountedRef.current) {
@@ -1141,160 +1140,100 @@ export default function RapidNoteTransitionExerciseScreen({
   };
 
   const renderInstructions = () => (
-    <View style={styles.content}>
-      <Pressable
-        style={styles.backButton}
-        onPress={() => setConfirmation('quit')}
-        hitSlop={10}
-      >
-        <Ionicons name="arrow-back" size={24} color={COLORS.brown} />
-      </Pressable>
-
-      <View style={styles.iconCircle}>
-        <Ionicons name="flash-outline" size={34} color={COLORS.brown} />
-      </View>
-
-      <Text style={styles.title}>Rapid Note Transition</Text>
-      <Text style={styles.subtitle}>VOCAL AGILITY</Text>
-
-      <View style={styles.instructionCard}>
-        <Text style={[styles.cardTitle, { marginTop: 14 }]}>
-          Exercise Instructions
-        </Text>
-
-        {[
-          'Listen carefully to the reference sequence.',
-          'Sing the same notes in the same order.',
-          'Move quickly and smoothly between each note.',
-          'Focus on maintaining accurate pitch throughout the sequence.',
-        ].map(item => (
-          <View key={item} style={styles.prepareItem}>
-            <Text style={styles.prepareText}>{item}</Text>
-          </View>
-        ))}
-
-        <View style={styles.prepareCard}>
-          <View style={styles.prepareHeader}>
-            <Ionicons
-              name="information-circle-outline"
-              size={21}
-              color={COLORS.brown}
-            />
-            <Text style={styles.prepareTitle}>Before You Begin</Text>
-          </View>
-
-          {[
-            {
-              icon: 'volume-mute-outline' as const,
-              text: 'Find a quiet area with minimal background noise.',
-            },
-            {
-              icon: 'body-outline' as const,
-              text: 'Stand or sit upright with your shoulders relaxed.',
-            },
-            {
-              icon: 'mic-outline' as const,
-              text: 'Keep a comfortable distance from the microphone while singing.',
-            },
-          ].map(item => (
-            <View key={item.text} style={styles.prepareItem}>
-              <Ionicons name={item.icon} size={17} color={COLORS.brown} />
-              <Text style={styles.prepareText}>{item.text}</Text>
-            </View>
-          ))}
-        </View>
-
-        <Text style={styles.cardTitle}>Exercise Details</Text>
-
-        <DetailRow
-          label="Difficulty"
-          value={tier.charAt(0).toUpperCase() + tier.slice(1)}
-        />
-        <DetailRow
-          label="Notes"
-          value={String(exerciseConfig.noteCount)}
-        />
-        <DetailRow
-          label="Pitch Range"
-          value={
-            assessedVocalRangeHz
-              ? `${assessedVocalRangeHz.lowHz.toFixed(0)} → ${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
-              : 'Tier pitch range (assessment unavailable)'
-          }
-        />
-        <DetailRow
-          label="Target Speed"
-          value={`${exerciseConfig.targetSpeed.toFixed(1)} notes/sec`}
-        />
-        <DetailRow
-          label="Repetitions"
-          value={String(exerciseConfig.repetitions)}
-        />
-        <DetailRow
-          label="Accuracy Goal"
-          value={`${exerciseConfig.accuracyThreshold}%`}
-        />
-      </View>
-
-      {errorMessage ? (
-        <View style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.brown}
-          />
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        </View>
-      ) : null}
-
-      <Pressable
-        style={styles.startButton}
-        onPress={startExercise}
-        disabled={isLoadingAdaptiveParams}
-      >
-        {isLoadingAdaptiveParams ? (
-          <ActivityIndicator size="small" color={COLORS.white} />
-        ) : (
-          <Ionicons name="play" size={18} color={COLORS.white} />
-        )}
-        <Text style={styles.startButtonText}>
-          {isLoadingAdaptiveParams ? 'Preparing Exercise...' : 'Start Exercise'}
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  const renderCountdown = () => (
-    <View style={styles.countdownScreen}>
-      <View style={styles.countdownIconCircle}>
-        <Ionicons name="flash-outline" size={34} color={COLORS.brown} />
-      </View>
-      <Text style={styles.countdownTitle}>Get Ready</Text>
-      <Text style={styles.countdownNumber}>{countdown}</Text>
-      <Text style={styles.countdownSubtitle}>
-        Prepare for repetition {currentRepetition} of {exerciseConfig.repetitions}.
-      </Text>
-    </View>
+    <ExerciseScreen
+      title="Rapid Note Transition"
+      category="VOCAL AGILITY"
+      icon="flash-outline"
+      instructions={
+        'Listen carefully to the reference sequence. ' +
+        'Sing the same notes in the same order. ' +
+        'Move quickly and smoothly between each note. ' +
+        'Focus on maintaining accurate pitch throughout the sequence.'
+      }
+      preparationSteps={[
+        {
+          icon: 'volume-mute-outline',
+          text: 'Find a quiet area with minimal background noise.',
+        },
+        {
+          icon: 'body-outline',
+          text: 'Stand or sit upright with your shoulders relaxed.',
+        },
+        {
+          icon: 'mic-outline',
+          text: 'Keep a comfortable distance from the microphone while singing.',
+        },
+      ]}
+      summary={[
+        {
+          label: 'Difficulty',
+          value: tier.charAt(0).toUpperCase() + tier.slice(1),
+        },
+        {
+          label: 'Notes',
+          value: String(exerciseConfig.noteCount),
+        },
+        {
+          label: 'Pitch Range',
+          value: assessedVocalRangeHz
+            ? `${assessedVocalRangeHz.lowHz.toFixed(0)} → ${assessedVocalRangeHz.highHz.toFixed(0)} Hz (assessment)`
+            : 'Tier pitch range (assessment unavailable)',
+        },
+        {
+          label: 'Target Speed',
+          value: `${exerciseConfig.targetSpeed.toFixed(1)} notes/sec`,
+        },
+        {
+          label: 'Repetitions',
+          value: String(exerciseConfig.repetitions),
+        },
+        {
+          label: 'Accuracy Goal',
+          value: `${exerciseConfig.accuracyThreshold}%`,
+        },
+      ]}
+      tip="Focus on accurate notes first. Increase your speed as your transitions become more consistent."
+      tier={tier}
+      error={errorMessage}
+      startDisabled={isLoadingAdaptiveParams}
+      startLabel={
+        isLoadingAdaptiveParams ? 'Preparing Exercise...' : 'Start Exercise'
+      }
+      onBack={() => setConfirmation('quit')}
+      onStart={startExercise}
+    />
   );
 
   const renderListening = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
-        <Ionicons name="musical-notes-outline" size={34} color={COLORS.brown} />
-      </View>
-      <Text style={styles.phaseTitle}>Listen to the Sequence</Text>
-      {renderRepetitionProgress()}
-      <StaffSequenceGuide
-        names={exerciseConfig.sequence.names}
-        activeIndex={currentGuideNoteIndex}
-        caption="Watch the pink highlight follow each sounding note. The countdown begins after the sequence ends."
-      />
-      <ActivityIndicator
-        size="small"
-        color={COLORS.brown}
-        style={{ marginTop: 20 }}
-      />
-    </View>
+    <ExerciseListeningScreen
+      icon="musical-notes-outline"
+      title="Listen to the Sequence"
+      currentRep={currentRepetition}
+      repetitions={exerciseConfig.repetitions}
+      promptTitle="Listen carefully"
+      prompt="Listen to the reference notes and remember their order. The countdown begins after the sequence ends."
+      liveContent={
+        <StaffSequenceGuide
+          names={exerciseConfig.sequence.names}
+          activeIndex={currentGuideNoteIndex}
+          caption="Watch the pink highlight follow each sounding note."
+        />
+      }
+      onBack={() => setConfirmation('quit')}
+    />
+  );
+
+  const renderCountdown = () => (
+    <ExerciseCountdownScreen
+      icon="flash-outline"
+      title="Get Ready"
+      currentRep={currentRepetition}
+      repetitions={exerciseConfig.repetitions}
+      countdown={countdown}
+      promptTitle="Prepare to sing"
+      prompt={`Sing the same ${exerciseConfig.sequence.names.length} notes in order, keeping your pitch accurate as you move between notes.`}
+      onBack={() => setConfirmation('quit')}
+    />
   );
 
   const renderRecording = () => {
@@ -1305,7 +1244,9 @@ export default function RapidNoteTransitionExerciseScreen({
         <View style={styles.recordingIcon}>
           <Ionicons name="mic" size={34} color={COLORS.brown} />
         </View>
+
         <Text style={styles.recordingTitle}>Sing the Sequence</Text>
+
         {renderRepetitionProgress()}
 
         <View style={styles.recordingBadge}>
@@ -1333,25 +1274,29 @@ export default function RapidNoteTransitionExerciseScreen({
           Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
           {recordingDurationSeconds.toFixed(1)}s
         </Text>
+
         <View style={styles.timerTrack}>
           <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
 
+        <Pressable
+          style={styles.stopButton}
+          onPress={finishRecording}
+          disabled={!isRecording}
+        >
+          <Ionicons name="stop-circle-outline" size={20} color={COLORS.white} />
+          <Text style={styles.stopButtonText}>Finish Recording</Text>
+        </Pressable>
       </View>
     );
   };
 
   const renderProcessing = () => (
-    <View style={styles.analyzingScreen}>
-      <View style={styles.analyzingIconCircle}>
-        <ActivityIndicator size="large" color={COLORS.brown} />
-      </View>
-      <Text style={styles.analyzingTitle}>Analyzing Your Singing</Text>
-      <Text style={styles.analyzingSubtitle}>
-        Measuring note transitions, speed, sequence accuracy, and pitch
-        accuracy.
-      </Text>
-    </View>
+    <ExerciseProcessingScreen
+      icon="analytics-outline"
+      title="Analyzing Your Singing"
+      message="Measuring note transitions, speed, sequence accuracy, and pitch accuracy."
+    />
   );
 
   const renderResults = () => {
@@ -1360,40 +1305,21 @@ export default function RapidNoteTransitionExerciseScreen({
     }
 
     return (
-      <View style={styles.resultsContent}>
-        <View
-          style={[
-            styles.resultIcon,
-            result.passed
-              ? styles.resultIconPassed
-              : styles.resultIconFailed,
-          ]}
-        >
-          <Ionicons
-            name={result.passed ? 'checkmark' : 'refresh'}
-            size={40}
-            color={COLORS.brown}
-          />
-        </View>
-
-        <Text style={styles.resultTitle}>
-          {result.passed ? 'Great Job!' : 'Keep Practicing!'}
-        </Text>
-        <Text style={styles.resultSubtitle}>
-          Rapid Note Transition Result
-        </Text>
-
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>AVERAGE OVERALL SCORE</Text>
-          <Text style={styles.scoreValue}>{result.overall}</Text>
-          <Text style={styles.scoreDescription}>
-            out of 100 · {result.attempts.length} of{' '}
-            {exerciseConfig.repetitions} repetitions completed
-          </Text>
-        </View>
-
+      <ExerciseResultsScreen
+        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
+        subtitle="Rapid Note Transition Result"
+        score={result.overall}
+        scoreSuffix="/ 100"
+        resultIcon={result.passed ? 'checkmark-circle-outline' : 'refresh-circle-outline'}
+        scoreMessage={result.feedback}
+        scoreDetails={`${result.attempts.length} of ${exerciseConfig.repetitions} repetitions completed`}
+        onRetry={() => setConfirmation('tryAgain')}
+        onExit={() => setConfirmation('quit')}
+        onBack={() => setConfirmation('quit')}
+      >
         <View style={styles.resultCard}>
           <Text style={styles.resultCardTitle}>Repetition Scores</Text>
+
           {result.attempts.map((attempt, index) => (
             <View
               key={`attempt-${attempt.repetition}`}
@@ -1407,12 +1333,14 @@ export default function RapidNoteTransitionExerciseScreen({
                 <Text style={styles.attemptTitle}>
                   Repetition {attempt.repetition}
                 </Text>
+
                 <Text style={styles.attemptSubtitle}>
                   Pitch {Math.round(attempt.pitchScore)}% · Sequence{' '}
                   {Math.round(attempt.sequenceScore)}% · Speed{' '}
                   {Math.round(attempt.speedScore)}%
                 </Text>
               </View>
+
               <Text style={styles.attemptScore}>
                 {Math.round(attempt.overall)}
               </Text>
@@ -1424,6 +1352,7 @@ export default function RapidNoteTransitionExerciseScreen({
           <Text style={styles.resultCardTitle}>
             Average Performance Breakdown
           </Text>
+
           <ScoreBar label="Pitch Accuracy" value={result.pitchScore} />
           <ScoreBar label="Sequence Accuracy" value={result.sequenceScore} />
           <ScoreBar
@@ -1437,33 +1366,24 @@ export default function RapidNoteTransitionExerciseScreen({
           <Text style={styles.resultCardTitle}>
             Average Performance Metrics
           </Text>
+
           <MetricRow
             label="Transitions per attempt"
             value={String(result.transitionCount)}
           />
+
           <MetricRow
             label="Transitions/sec"
             value={result.transitionsPerSecond.toFixed(1)}
           />
+
           <MetricRow
             label="Average Transition Time"
             value={`${result.averageTransitionTimeMs.toFixed(0)} ms`}
             last
           />
         </View>
-
-        <Pressable style={styles.startButton} onPress={() => setConfirmation('tryAgain')}>
-          <Ionicons name="refresh" size={18} color={COLORS.white} />
-          <Text style={styles.startButtonText}>Try Again</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.doneButton}
-          onPress={() => setConfirmation('quit')}
-        >
-          <Text style={styles.doneButtonText}>Back to Exercises</Text>
-        </Pressable>
-      </View>
+      </ExerciseResultsScreen>
     );
   };
 
@@ -1473,11 +1393,14 @@ export default function RapidNoteTransitionExerciseScreen({
         <View style={styles.preparingIconCircle}>
           <Ionicons name="options-outline" size={44} color={COLORS.brown} />
         </View>
+
         <Text style={styles.preparingTitle}>Preparing Your Exercise</Text>
+
         <Text style={styles.preparingSubtitle}>
           Adjusting the exercise to your current difficulty level and preparing
           your vocal range.
         </Text>
+
         <ActivityIndicator
           size="large"
           color={COLORS.brown}
@@ -1491,12 +1414,20 @@ export default function RapidNoteTransitionExerciseScreen({
     return (
       <View style={styles.preparingScreen}>
         <View style={styles.preparingIconCircle}>
-          <Ionicons name="musical-notes-outline" size={44} color={COLORS.brown} />
+          <Ionicons
+            name="musical-notes-outline"
+            size={44}
+            color={COLORS.brown}
+          />
         </View>
+
         <Text style={styles.preparingTitle}>Preparing Your Repetition</Text>
+
         <Text style={styles.preparingSubtitle}>
-          Getting your reference notes ready. Your completed repetitions are preserved.
+          Getting your reference notes ready. Your completed repetitions are
+          preserved.
         </Text>
+
         <ActivityIndicator
           size="large"
           color={COLORS.brown}
@@ -1508,19 +1439,24 @@ export default function RapidNoteTransitionExerciseScreen({
 
   return (
     <>
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.screen}
-        contentContainerStyle={screen === 'results' ? styles.resultsWrapper : undefined}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.screen}>
         {screen === 'instructions' && renderInstructions()}
         {screen === 'countdown' && renderCountdown()}
         {screen === 'listening' && renderListening()}
         {screen === 'recording' && renderRecording()}
         {screen === 'processing' && renderProcessing()}
-        {screen === 'results' && renderResults()}
-      </ScrollView>
+
+        {screen === 'results' && (
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.resultsScroll}
+            contentContainerStyle={styles.resultsWrapper}
+            showsVerticalScrollIndicator={false}
+          >
+            {renderResults()}
+          </ScrollView>
+        )}
+      </View>
 
       <Modal
         visible={confirmation !== null}
@@ -1533,32 +1469,43 @@ export default function RapidNoteTransitionExerciseScreen({
           <View style={styles.confirmationCard}>
             <View style={styles.confirmationIconCircle}>
               <Ionicons
-                name={confirmation === 'tryAgain' ? 'refresh' : 'log-out-outline'}
+                name={
+                  confirmation === 'tryAgain'
+                    ? 'refresh'
+                    : 'log-out-outline'
+                }
                 size={24}
                 color={COLORS.brown}
               />
             </View>
+
             <Text style={styles.confirmationTitle}>
               {confirmation === 'tryAgain' ? 'Try again?' : 'Quit exercise?'}
             </Text>
+
             <Text style={styles.confirmationMessage}>
               {confirmation === 'tryAgain'
                 ? 'Are you sure you want to repeat this exercise?'
                 : 'Are you sure you want to leave this exercise?'}
             </Text>
+
             <View style={styles.confirmationActions}>
               <Pressable
                 style={styles.confirmationPrimaryButton}
                 onPress={closeConfirmation}
                 accessibilityRole="button"
               >
-                <Text style={styles.confirmationPrimaryText}>Continue Exercise</Text>
+                <Text style={styles.confirmationPrimaryText}>
+                  Continue Exercise
+                </Text>
               </Pressable>
+
               <Pressable
                 style={styles.confirmationSecondaryButton}
                 onPress={() => {
                   const action = confirmation;
                   setConfirmation(null);
+
                   if (action === 'tryAgain') {
                     retryExercise();
                   } else if (action === 'quit') {
@@ -1601,6 +1548,7 @@ function StaffSequenceGuide({
 
     const letter = match[1].toUpperCase();
     const octave = Number(match[3]);
+
     const steps: Record<string, number> = {
       C: 0,
       D: 1,
@@ -1629,8 +1577,10 @@ function StaffSequenceGuide({
           size={18}
           color={COLORS.brown}
         />
+
         <Text style={styles.staffGuideTitle}>Your note path</Text>
       </View>
+
       <Text style={styles.staffGuideCaption}>{caption}</Text>
 
       <ScrollView
@@ -1655,10 +1605,12 @@ function StaffSequenceGuide({
             const top = 48 - normalized * 34;
             const left = 34 + index * itemWidth;
             const isActive = activeIndex === index;
+
             const feedbackColor =
               isActive && showFeedback
                 ? getGuideFeedbackColor(name, liveNote)
                 : null;
+
             const isReferenceActive = isActive && !showFeedback;
             const noteColor =
               feedbackColor ??
@@ -1671,7 +1623,7 @@ function StaffSequenceGuide({
                     styles.staffNoteHalo,
                     isActive
                       ? {
-                          backgroundColor: isReferenceActive ? COLORS.pink : COLORS.pink,
+                          backgroundColor: COLORS.pink,
                           borderColor: isReferenceActive
                             ? COLORS.waveform
                             : feedbackColor ?? COLORS.otherpink,
@@ -1681,6 +1633,7 @@ function StaffSequenceGuide({
                     { left: left - 5, top: top - 5 },
                   ]}
                 />
+
                 <View
                   style={[
                     styles.staffNoteHead,
@@ -1692,6 +1645,7 @@ function StaffSequenceGuide({
                     },
                   ]}
                 />
+
                 <View
                   style={[
                     styles.staffNoteStem,
@@ -1702,6 +1656,7 @@ function StaffSequenceGuide({
                     },
                   ]}
                 />
+
                 <Text
                   style={[
                     styles.staffNoteNumber,
@@ -1713,6 +1668,7 @@ function StaffSequenceGuide({
                 >
                   {index + 1}
                 </Text>
+
                 <Text
                   style={[
                     styles.staffNoteName,
@@ -1732,7 +1688,11 @@ function StaffSequenceGuide({
 
       <View style={styles.staffLegend}>
         {[
-          { color: COLORS.pink, label: 'Highlighted note = sing this now', border: true },
+          {
+            color: COLORS.pink,
+            label: 'Highlighted note = sing this now',
+            border: true,
+          },
           { color: COLORS.guideGreen, label: 'Correct' },
           { color: COLORS.guideYellow, label: 'Close' },
           { color: COLORS.guideRed, label: 'Off pitch' },
@@ -1748,25 +1708,11 @@ function StaffSequenceGuide({
                 },
               ]}
             />
+
             <Text style={styles.staffLegendText}>{item.label}</Text>
           </View>
         ))}
       </View>
-    </View>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
     </View>
   );
 }
@@ -1788,6 +1734,7 @@ function ScoreBar({
         <Text style={styles.scoreRowLabel}>{label}</Text>
         <Text style={styles.scoreRowValue}>{Math.round(safeValue)}%</Text>
       </View>
+
       <View style={styles.progressBackground}>
         <View
           style={[
@@ -1818,6 +1765,10 @@ function MetricRow({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
   preparingScreen: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1850,165 +1801,60 @@ const styles = StyleSheet.create({
   spinner: {
     marginTop: 28,
   },
-  screen: {
+  resultsScroll: {
     flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 78,
-    paddingBottom: 36,
-    alignItems: 'center',
-  },
-  resultsContent: {
-    flexGrow: 1,
-    width: '100%',
-    paddingHorizontal: 20,
-    paddingTop: 78,
-    paddingBottom: 32,
-    alignItems: 'center',
   },
   resultsWrapper: {
     flexGrow: 1,
     width: '100%',
+    paddingBottom: 24,
   },
-  backButton: {
-    position: 'absolute',
-    top: 42,
-    left: 20,
-    zIndex: 10,
-    width: 44,
-    height: 44,
-    borderRadius: 21,
+  recordingContent: {
+    flexGrow: 1,
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 120,
+    paddingBottom: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
   },
-  iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+  recordingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 10,
   },
-  title: {
+  recordingTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 30,
+    fontSize: 25,
     color: COLORS.brown,
     textAlign: 'center',
   },
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 18,
-  },
-  instructionCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 26,
-    padding: 18,
-    borderWidth: 1.2,
-    borderColor: COLORS.border,
-  },
-  prepareCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    padding: 15,
+  recordingBadge: {
     marginTop: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  prepareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 10,
-  },
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 19,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginTop: 10,
-    marginBottom: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    backgroundColor: COLORS.background,
+    borderRadius: 22,
+    paddingHorizontal: 15,
     paddingVertical: 7,
-  },
-  detailLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  detailValue: {
-    flex: 1,
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'right',
-    marginLeft: 16,
-  },
-  errorCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-    marginBottom: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  errorText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  startButton: {
-    width: '100%',
-    height: 58,
-    borderRadius: 29,
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
+    marginRight: 7,
   },
-  startButtonText: {
+  recordingBadgeText: {
     fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.white,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: COLORS.brown,
   },
   staffGuideCard: {
     width: '100%',
@@ -2175,150 +2021,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     marginBottom: -10,
   },
-  countdownScreen: {
-    flexGrow: 1,
-    minHeight: 700,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  countdownIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  countdownTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  countdownSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
-  },
-  countdownNumber: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: COLORS.brown,
-    marginTop: 20,
-  },
-  centerScreen: {
-    flexGrow: 1,
-    minHeight: 620,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 22,
-    paddingTop: 100,
-  },
-  analyzingScreen: {
-    flexGrow: 1,
-    minHeight: 700,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  analyzingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  analyzingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  analyzingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
-  },
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
-  },
-  recordingContent: {
-    flexGrow: 1,
-    width: '100%',
-    paddingHorizontal: 20,
-    paddingTop: 120,
-    paddingBottom: 24,
-    alignItems: 'center',
-  },
-  recordingIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  recordingBadge: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    paddingHorizontal: 15,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.brown,
-    marginRight: 7,
-  },
-  recordingBadgeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: COLORS.brown,
-  },
   timerText: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2365,58 +2067,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
   },
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
+  stopButton: {
+    width: '100%',
+    minHeight: 50,
+    marginTop: 16,
+    borderRadius: 25,
+    backgroundColor: COLORS.brown,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    gap: 8,
   },
-  resultIconPassed: {
-    backgroundColor: COLORS.pink,
-  },
-  resultIconFailed: {
-    backgroundColor: COLORS.lightGray,
-  },
-  resultTitle: {
+  stopButtonText: {
     fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 22,
-  },
-  scoreCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 26,
-    padding: 24,
-    alignItems: 'center',
-  },
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: COLORS.brown,
-    marginVertical: 3,
-  },
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    textAlign: 'center',
+    fontSize: 14,
+    color: COLORS.white,
   },
   resultCard: {
     width: '100%',
@@ -2522,20 +2187,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     textAlign: 'right',
     marginLeft: 12,
-  },
-  doneButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
   },
   confirmationOverlay: {
     flex: 1,

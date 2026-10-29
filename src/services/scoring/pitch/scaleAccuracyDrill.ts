@@ -1,10 +1,10 @@
 
 import type {
-  ScaleAccuracyParams,
-} from '@/constants/pitch';
+    ScaleAccuracyParams,
+} from '@/constants/params';
 
 import {
-  ScaleAccuracyMeasurement,
+    ScaleAccuracyMeasurement,
 } from '@/services/measurement/pitch/scaleAccuracyDrill';
 
 export interface ScaleAccuracyScoreResult {

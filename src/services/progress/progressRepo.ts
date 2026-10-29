@@ -23,9 +23,10 @@ import {
   summarizeProgress,
 } from '@/services/progress/progressModule';
 
+import type { Tier } from '@/constants/params';
+
 import {
   checkTierProgression,
-  type Tier,
 } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
 
 export async function saveComponentProgress(

@@ -26,14 +26,6 @@ export function identifyVowelBand(centroid: number, assignedVowel: VowelBand): b
   return centroid >= min && centroid <= max;
 }
 
-export function calcSmoothness(centroidOverTime: number[]): number {
-  if (centroidOverTime.length === 0) return 0;
-  const mean = centroidOverTime.reduce((a, b) => a + b, 0) / centroidOverTime.length;
-  const variance = centroidOverTime.reduce((sum, c) => sum + Math.abs(c - mean), 0) / centroidOverTime.length;
-  const relativeVar = mean === 0 ? 1 : variance / mean;
-  return Math.max(0, 100 - relativeVar * 100);
-}
-
 export function calcCentroidStdSmoothness(centroidArray: number[]): number {
   if (centroidArray.length === 0) return 0;
   const mean = centroidArray.reduce((a, b) => a + b, 0) / centroidArray.length;

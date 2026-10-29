@@ -1,49 +1,49 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  type SustainedExhaleParams,
-  type Tier,
-} from '@/constants/breathControl';
+    type SustainedExhaleParams,
+    type Tier,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateSustainedExhaleParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureSustainedExhale,
-  type SustainedExhaleMeasurement,
+    measureSustainedExhale,
+    type SustainedExhaleMeasurement,
 } from '@/services/measurement/breathControl/sustainedExhale';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreSustainedExhale,
-  type SustainedExhaleScoreResult,
+    scoreSustainedExhale,
+    type SustainedExhaleScoreResult,
 } from '@/services/scoring/breathControl/sustainedExhale';
 
 import { COLORS } from '@/constants/appConstants';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '../ExerciseScreen';
 
 const PREPARATION_COUNTDOWN = 3;

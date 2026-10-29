@@ -1,65 +1,65 @@
 import {
-  CONTROLLED_BREATH_RELEASE_PARAMS,
-  DIAPHRAGMATIC_BREATHING_PARAMS,
-  STEADY_AIRFLOW_PARAMS,
-  SUSTAINED_EXHALE_PARAMS,
-  SUSTAINED_SSSS_PARAMS,
-  type ControlledBreathReleaseParams,
-  type DiaphragmaticBreathingParams,
-  type SteadyAirflowParams,
-  type SustainedExhaleParams,
-  type Tier,
-} from '@/constants/breathControl';
+    CONTROLLED_BREATH_RELEASE_PARAMS,
+    DIAPHRAGMATIC_BREATHING_PARAMS,
+    STEADY_AIRFLOW_PARAMS,
+    SUSTAINED_EXHALE_PARAMS,
+    SUSTAINED_SSSS_PARAMS,
+    type ControlledBreathReleaseParams,
+    type DiaphragmaticBreathingParams,
+    type SteadyAirflowParams,
+    type SustainedExhaleParams,
+    type Tier,
+} from '@/constants/params';
 
 import {
-  INTERVAL_RECOGNITION_PARAMS,
-  MELODIC_PATTERN_MATCHING_PARAMS,
-  NOTE_MATCHING_PARAMS,
-  SCALE_ACCURACY_PARAMS,
-  SUSTAINED_NOTE_STABILITY_PARAMS,
-  type IntervalRecognitionParams,
-  type MelodicPatternMatchingParams,
-  type NoteMatchingParams,
-  type ScaleAccuracyParams,
-  type SustainedNoteStabilityParams,
-} from '@/constants/pitch';
+    INTERVAL_RECOGNITION_PARAMS,
+    MELODIC_PATTERN_MATCHING_PARAMS,
+    NOTE_MATCHING_PARAMS,
+    SCALE_ACCURACY_PARAMS,
+    SUSTAINED_NOTE_STABILITY_PARAMS,
+    type IntervalRecognitionParams,
+    type MelodicPatternMatchingParams,
+    type NoteMatchingParams,
+    type ScaleAccuracyParams,
+    type SustainedNoteStabilityParams,
+} from '@/constants/params';
 
 import {
-  FREQUENCY_ZONE_STABILITY_PARAMS,
-  STEADY_TONE_HOLDING_PARAMS,
-  TONE_CONSISTENCY_PARAMS,
-  VOWEL_CONSISTENCY_PARAMS,
-  WAVEFORM_SMOOTHNESS_PARAMS,
-  type FrequencyZoneStabilityParams,
-  type SteadyToneHoldingParams,
-  type ToneConsistencyParams,
-  type VowelConsistencyParams,
-  type WaveformSmoothnessParams,
-} from '@/constants/tone';
+    FREQUENCY_ZONE_STABILITY_PARAMS,
+    STEADY_TONE_HOLDING_PARAMS,
+    TONE_CONSISTENCY_PARAMS,
+    VOWEL_CONSISTENCY_PARAMS,
+    WAVEFORM_SMOOTHNESS_PARAMS,
+    type FrequencyZoneStabilityParams,
+    type SteadyToneHoldingParams,
+    type ToneConsistencyParams,
+    type VowelConsistencyParams,
+    type WaveformSmoothnessParams,
+} from '@/constants/params';
 
 import {
-  CONTROLLED_CRESCENDO_PARAMS,
-  CONTROLLED_DECRESCENDO_PARAMS,
-  DYNAMIC_RANGE_PARAMS,
-  VOLUME_BAND_TARGETING_PARAMS,
-  VOLUME_CONTROL_STABILITY_PARAMS,
-  type ControlledCrescendoParams,
-  type ControlledDecrescendoParams,
-  type DynamicRangeParams,
-  type VolumeBandTargetingParams,
-  type VolumeControlStabilityParams,
-} from '@/constants/volume';
+    CONTROLLED_CRESCENDO_PARAMS,
+    CONTROLLED_DECRESCENDO_PARAMS,
+    DYNAMIC_RANGE_PARAMS,
+    VOLUME_BAND_TARGETING_PARAMS,
+    VOLUME_CONTROL_STABILITY_PARAMS,
+    type ControlledCrescendoParams,
+    type ControlledDecrescendoParams,
+    type DynamicRangeParams,
+    type VolumeBandTargetingParams,
+    type VolumeControlStabilityParams,
+} from '@/constants/params';
 
 import {
-  ARPEGGIO_SPEED_DRILL_PARAMS,
-  QUICK_INTERVAL_JUMP_PARAMS,
-  RAPID_NOTE_TRANSITION_PARAMS,
-  RAPID_SCALE_TRILL_PARAMS,
-  VOCAL_RUN_ACCURACY_PARAMS,
-} from '@/constants/agility';
+    ARPEGGIO_SPEED_DRILL_PARAMS,
+    QUICK_INTERVAL_JUMP_PARAMS,
+    RAPID_NOTE_TRANSITION_PARAMS,
+    RAPID_SCALE_TRILL_PARAMS,
+    VOCAL_RUN_ACCURACY_PARAMS,
+} from '@/constants/params';
 
 import {
-  calculateAdjustedParameterBounds,
+    calculateAdjustedParameterBounds,
 } from './adaptiveDifficultyScaling';
 
 

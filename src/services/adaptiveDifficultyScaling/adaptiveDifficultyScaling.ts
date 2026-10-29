@@ -1,9 +1,9 @@
+import type { Tier } from '@/constants/params';
+
 export interface ParameterBounds {
   min: number;
   max: number;
 }
-
-export type Tier = 'beginner' | 'intermediate' | 'advanced';
 
 export type DifficultyDirection = 'higher' | 'lower';
 

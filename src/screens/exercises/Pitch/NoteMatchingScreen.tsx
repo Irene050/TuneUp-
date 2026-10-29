@@ -22,7 +22,7 @@ import {
 import {
   NOTE_MATCHING_PARAMS,
   type Tier,
-} from '@/constants/pitch';
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -64,7 +64,7 @@ const PITCH_HISTORY_LIMIT = 20;
 const GUIDE_MAX_CENTS = 100;
 const GUIDE_TRACE_LIMIT = 18;
 
-type Screen =
+type Phase =
   | 'instructions'
   | 'countdown'
   | 'listening'
@@ -207,7 +207,7 @@ function getFeedback(
 }
 
 export default function NoteMatchingScreen({ tier }: Props) {
-  const [screen, setScreen] = useState<Screen>('instructions');
+  const [screen, setScreen] = useState<Phase>('instructions');
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
   );
@@ -232,13 +232,13 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const [pitchTrace, setPitchTrace] = useState<number[]>([]);
 
   const mountedRef = useRef(true);
-  const screenRef = useRef<Screen>('instructions');
+  const screenRef = useRef<Phase>('instructions');
   const pausedRef = useRef(false);
   const quittingRef = useRef(false);
   const showQuitModalRef = useRef(false);
   const discardNextStopRef = useRef(false);
   const interruptedRepRef = useRef(1);
-  const interruptedScreenRef = useRef<Screen>('instructions');
+  const interruptedScreenRef = useRef<Phase>('instructions');
   const pitchHistoryRef = useRef<number[]>([]);
   const repResultsRef = useRef<ResultState[]>([]);
   const currentRepRef = useRef(1);
@@ -258,7 +258,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const beginCountdownRef = useRef<(() => void) | null>(null);
   const continueAfterProcessingRef = useRef<(() => void) | null>(null);
 
-  const changeScreen = useCallback((nextScreen: Screen) => {
+  const changeScreen = useCallback((nextScreen: Phase) => {
     screenRef.current = nextScreen;
     setScreen(nextScreen);
   }, []);

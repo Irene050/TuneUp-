@@ -1,9 +1,9 @@
 import type {
-  WaveformSmoothnessParams,
-} from '@/constants/tone';
+    WaveformSmoothnessParams,
+} from '@/constants/params';
 
 import type {
-  WaveformSmoothnessMeasurement,
+    WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 
 export interface WaveformSmoothnessScoreResult {

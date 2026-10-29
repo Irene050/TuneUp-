@@ -1,4 +1,3 @@
-
 import {
   extractAgilityNotes,
   extractAgilityPitchFrames,

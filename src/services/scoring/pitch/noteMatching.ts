@@ -1,9 +1,9 @@
-import type { NoteMatchingParams } from '@/constants/pitch';
+import type { NoteMatchingParams } from '@/constants/params';
 
 import type { NoteMatchingMeasurement } from '@/services/measurement/pitch/noteMatching';
 
 import {
-  calcPitchAccuracy,
+    calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 
 export interface NoteMatchingScoreResult {

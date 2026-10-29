@@ -4,13 +4,15 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   View,
+  ViewStyle
 } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
-import type { Tier } from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
+import type { Tier } from '@/constants/params';
 
 export type ExercisePreparationStep = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -35,6 +37,7 @@ type CountdownScreenProps = ExercisePhaseProps & {
   countdown: number;
   promptTitle: string;
   prompt: string;
+  contentStyle?: StyleProp<ViewStyle>;
 };
 
 type ListeningScreenProps = ExercisePhaseProps & {
@@ -300,40 +303,43 @@ export function ExerciseCountdownScreen({
   countdown,
   promptTitle,
   prompt,
+  contentStyle,
 }: CountdownScreenProps) {
   return (
-    <View style={styles.phaseScreen}>
-      <View style={styles.phaseContent}>
-        <View style={styles.phaseIconCircle}>
-          <Ionicons
-            name={icon}
-            size={44}
-            color={COLORS.brown}
-          />
-        </View>
+    <View style={[styles.phaseScreen, contentStyle]}>
+      <View style={styles.phaseScreen}>
+        <View style={styles.phaseContent}>
+          <View style={styles.phaseIconCircle}>
+            <Ionicons
+              name={icon}
+              size={44}
+              color={COLORS.brown}
+            />
+          </View>
 
-        <Text style={styles.phaseTitle}>
-          {title}
-        </Text>
-
-        {currentRep !== undefined &&
-        repetitions !== undefined ? (
-          <Text style={styles.phaseSubtitle}>
-            Repetition {currentRep} of {repetitions}
+          <Text style={styles.phaseTitle}>
+            {title}
           </Text>
-        ) : null}
 
-        <Text style={styles.countdownNumber}>
-          {countdown}
-        </Text>
+          {currentRep !== undefined &&
+          repetitions !== undefined ? (
+            <Text style={styles.phaseSubtitle}>
+              Repetition {currentRep} of {repetitions}
+            </Text>
+          ) : null}
 
-        <Text style={styles.phasePromptTitle}>
-          {promptTitle}
-        </Text>
+          <Text style={styles.countdownNumber}>
+            {countdown}
+          </Text>
 
-        <Text style={styles.phasePrompt}>
-          {prompt}
-        </Text>
+          <Text style={styles.phasePromptTitle}>
+            {promptTitle}
+          </Text>
+
+          <Text style={styles.phasePrompt}>
+            {prompt}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -584,7 +590,16 @@ export function ExerciseResultsScreen({
           ) : null}
         </Text>
 
-        {scoreDetails}
+        {scoreDetails != null ? (
+          typeof scoreDetails === 'string' ||
+          typeof scoreDetails === 'number' ? (
+            <Text style={styles.resultsScoreMessage}>
+              {scoreDetails}
+            </Text>
+          ) : (
+            scoreDetails
+          )
+        ) : null}
 
         {scoreMessage ? (
           <Text style={styles.resultsScoreMessage}>

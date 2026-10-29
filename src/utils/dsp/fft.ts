@@ -1,3 +1,5 @@
+import { calcRMS } from '@/utils/dsp/rms';
+
 export function fftComplex(
   real: Float64Array,
   imag: Float64Array,
@@ -173,34 +175,36 @@ export function samplesToFFTFrames(
 
     processedFrames++;
 
-    let sumSquares = 0;
     let isFiniteFrame = true;
 
-    for (let i = 0; i < fftSize; i++) {
-      const sample = rawFrame[i];
-
-      if (!Number.isFinite(sample)) {
+    for (let i = 0; i < rawFrame.length; i++) {
+      if (!Number.isFinite(rawFrame[i])) {
         isFiniteFrame = false;
         break;
       }
-
-      sumSquares += sample * sample;
     }
 
-    if (!isFiniteFrame || !Number.isFinite(sumSquares)) {
+    if (!isFiniteFrame) {
       skippedInvalidFrames++;
       continue;
     }
 
-    const frameRms = Math.sqrt(sumSquares / fftSize);
+    const frameRms = calcRMS(rawFrame);
 
     if (!Number.isFinite(frameRms)) {
       skippedInvalidFrames++;
       continue;
     }
 
-    minObservedRms = Math.min(minObservedRms, frameRms);
-    maxObservedRms = Math.max(maxObservedRms, frameRms);
+    minObservedRms = Math.min(
+      minObservedRms,
+      frameRms,
+    );
+
+    maxObservedRms = Math.max(
+      maxObservedRms,
+      frameRms,
+    );
 
     if (frameRms < minFrameRms) {
       skippedQuietFrames++;
@@ -220,7 +224,9 @@ export function samplesToFFTFrames(
       windowedFrame[i] = rawFrame[i] * window;
     }
 
-    const magnitudes = computeFFTMagnitudes(windowedFrame);
+    const magnitudes = computeFFTMagnitudes(
+      windowedFrame,
+    );
 
     let hasValidSpectrum = true;
 
@@ -241,19 +247,5 @@ export function samplesToFFTFrames(
 
     frames.push(magnitudes);
   }
-
-  console.log('🎤 FFT FRAME VALIDATION DEBUG:', {
-    processedFrames,
-    retainedFrames: frames.length,
-    skippedQuietFrames,
-    skippedInvalidFrames,
-    minFrameRms,
-    minObservedRms:
-      minObservedRms === Infinity
-        ? null
-        : minObservedRms,
-    maxObservedRms,
-  });
-
   return frames;
 }

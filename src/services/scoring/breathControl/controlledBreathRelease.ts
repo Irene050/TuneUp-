@@ -1,4 +1,4 @@
-import type { ControlledBreathReleaseParams } from '@/constants/breathControl';
+import type { ControlledBreathReleaseParams } from '@/constants/params';
 
 import type {
     ControlledBreathReleaseMeasurement,

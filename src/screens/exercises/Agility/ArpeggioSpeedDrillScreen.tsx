@@ -2,33 +2,33 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { AudioManager, AudioRecorder } from 'react-native-audio-api';
 
 import {
-  ARPEGGIO_SPEED_DRILL_PARAMS,
-  type Tier,
-} from '@/constants/agility';
+    ARPEGGIO_SPEED_DRILL_PARAMS,
+    type Tier,
+} from '@/constants/params';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateArpeggioSpeedDrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
-  getRecentAssessments,
+    getLatestAssessment,
+    getRecentAssessments,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureArpeggioSpeed } from '@/services/measurement/agility/arpeggioSpeedDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreArpeggioSpeed } from '@/services/scoring/agility/arpeggioSpeedDrill';
 import { playNoteSequence } from '@/utils/music/notePlayer';

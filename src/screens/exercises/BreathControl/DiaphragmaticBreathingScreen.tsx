@@ -1,47 +1,47 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  type DiaphragmaticBreathingParams,
-  type Tier,
-} from '@/constants/breathControl';
+    type DiaphragmaticBreathingParams,
+    type Tier,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureDiaphragmaticBreathing,
-  type DiaphragmaticBreathingMeasurement,
+    measureDiaphragmaticBreathing,
+    type DiaphragmaticBreathingMeasurement,
 } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreDiaphragmaticBreathing,
-  type DiaphragmaticBreathingScoreResult,
+    scoreDiaphragmaticBreathing,
+    type DiaphragmaticBreathingScoreResult,
 } from '@/services/scoring/breathControl/diaphragmaticBreathing';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '../ExerciseScreen';
 
 import { COLORS } from '@/constants/appConstants';

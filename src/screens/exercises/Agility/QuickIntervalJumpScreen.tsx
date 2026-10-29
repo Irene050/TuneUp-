@@ -2,25 +2,25 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
+    AudioContext,
+    AudioManager,
+    AudioRecorder,
 } from 'react-native-audio-api';
 
 import {
-  QUICK_INTERVAL_JUMP_PARAMS,
-  type Tier,
-} from '@/constants/agility';
+    QUICK_INTERVAL_JUMP_PARAMS,
+    type Tier,
+} from '@/constants/params';
 import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -28,8 +28,8 @@ import { auth } from '@/services/firebase/config';
 import { measureQuickIntervalJump } from '@/services/measurement/agility/quickIntervalJump';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
 import { frequencyToNoteName } from '@/utils/music/notes';

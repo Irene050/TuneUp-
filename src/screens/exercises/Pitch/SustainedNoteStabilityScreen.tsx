@@ -1,63 +1,63 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  SUSTAINED_NOTE_STABILITY_PARAMS,
-  type SustainedNoteStabilityParams,
-  type Tier,
-} from '@/constants/pitch';
+    SUSTAINED_NOTE_STABILITY_PARAMS,
+    type SustainedNoteStabilityParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseProcessingScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import {
-  measureSustainedNoteStability,
-  type SustainedNoteStabilityMeasurement,
+    measureSustainedNoteStability,
+    type SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreSustainedNoteStabilityRepetitions,
-  type SustainedNoteStabilityScoreResult,
+    scoreSustainedNoteStabilityRepetitions,
+    type SustainedNoteStabilityScoreResult,
 } from '@/services/scoring/pitch/sustainedNoteStability';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
+    calcLiveStability,
+    calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  getRandomPitchNote,
+    createMusicalNote,
+    getRandomPitchNote,
 } from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';

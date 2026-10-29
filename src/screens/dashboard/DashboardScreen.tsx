@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import type { Tier } from '@/constants/params';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgress } from '@/hooks/useProgress';
 import {
@@ -57,11 +58,11 @@ const VOCAL_COMPONENTS = [
   },
 ] as const;
 
-const TIER_RANK = {
+const TIER_RANK: Record<Tier, number> = {
   beginner: 0,
   intermediate: 1,
   advanced: 2,
-} as const;
+};
 
 export default function DashboardScreen() {
   const { userName } = useAuth();
@@ -80,12 +81,15 @@ export default function DashboardScreen() {
   const displayName = userName.trim() || 'Singer';
   const avatarInitial = displayName.charAt(0).toUpperCase();
 
-  const overallTier = progressSummaries.reduce(
-    (highestTier, summary) =>
-      TIER_RANK[summary.currentTier] > TIER_RANK[highestTier]
-        ? summary.currentTier
-        : highestTier,
-    'beginner' as keyof typeof TIER_RANK,
+  const overallTier = progressSummaries.reduce<Tier>(
+    (highestTier, summary) => {
+      const currentTier: Tier = summary.currentTier;
+
+      return TIER_RANK[currentTier] > TIER_RANK[highestTier]
+        ? currentTier
+        : highestTier;
+    },
+    'beginner',
   );
 
   const formattedTier =
@@ -561,18 +565,18 @@ const styles = StyleSheet.create({
     minHeight: 86,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.pink,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     padding: 16,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.background,
   },
   rangeIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: COLORS.border,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -706,11 +710,11 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
   },
   progressCard: {
-    backgroundColor: COLORS.pink,
+    backgroundColor: COLORS.background,
     borderRadius: 22,
     padding: 18,
     borderWidth: 1,
-    borderColor: COLORS.pink,
+    borderColor: COLORS.background,
     marginBottom: 20,
   },
   progressIntro: {

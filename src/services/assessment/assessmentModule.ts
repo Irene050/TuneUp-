@@ -12,7 +12,7 @@ import {
 import { computeFFTMagnitudes } from '@/utils/dsp/fft';
 
 import {
-  calcSmoothness,
+  calcCentroidStdSmoothness,
   computeSpectralCentroid,
 } from '@/utils/dsp/spectral';
 
@@ -486,7 +486,7 @@ function measureTone(
   let smoothness: number;
 
   try {
-    smoothness = calcSmoothness(centroids);
+    smoothness = calcCentroidStdSmoothness(centroids);
   } catch (error) {
     console.warn('⚠️ Tone smoothness calculation failed:', error);
     return 0;

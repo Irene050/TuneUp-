@@ -12,9 +12,7 @@ import {
   saveExerciseAndUpdateProgress,
 } from '@/services/progress/progressRepo';
 
-import type {
-  Tier,
-} from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
+import type { Tier } from '@/constants/params';
 
 export async function saveCompletedExercise(
   componentId: ComponentId,

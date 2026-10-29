@@ -2,29 +2,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  VOLUME_BAND_TARGETING_PARAMS,
-  type Tier,
-  type VolumeBandTargetingParams,
-} from '@/constants/volume';
+    VOLUME_BAND_TARGETING_PARAMS,
+    type Tier,
+    type VolumeBandTargetingParams,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -32,8 +32,8 @@ import { auth } from '@/services/firebase/config';
 import { measureVolumeBandTargeting } from '@/services/measurement/volume/volumeBandTargeting';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
 import { playSingleNote } from '@/utils/music/notePlayer';

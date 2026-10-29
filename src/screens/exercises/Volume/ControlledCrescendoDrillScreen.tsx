@@ -1,34 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 import {
-  CONTROLLED_CRESCENDO_PARAMS,
-  type Tier,
-} from '@/constants/volume';
+    CONTROLLED_CRESCENDO_PARAMS,
+    type Tier,
+} from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseListeningScreen,
-  ExerciseResultsScreen,
+    ExerciseListeningScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledCrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -36,8 +36,8 @@ import { auth } from '@/services/firebase/config';
 import { measureControlledCrescendo } from '@/services/measurement/volume/controlledCrescendoDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreControlledCrescendo } from '@/services/scoring/volume/controlledCrescendoDrill';
 import { playSingleNote } from '@/utils/music/notePlayer';

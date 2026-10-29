@@ -1,50 +1,50 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  INTERVAL_RECOGNITION_PARAMS,
-  type IntervalRecognitionParams,
-  type Tier,
-} from '@/constants/pitch';
+    INTERVAL_RECOGNITION_PARAMS,
+    type IntervalRecognitionParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureIntervalRecognition } from '@/services/measurement/pitch/intervalRecognitionTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreIntervalRecognitionTask,
-  type IntervalRecognitionScoreResult,
+    scoreIntervalRecognitionTask,
+    type IntervalRecognitionScoreResult,
 } from '@/services/scoring/pitch/intervalRecognitionTask';
 import {
-  calcPitchAccuracy
+    calcPitchAccuracy
 } from '@/utils/dsp/pitch';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
-  type VocalRange
+    createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
+    type VocalRange
 } from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';

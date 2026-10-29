@@ -2,56 +2,56 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    BackHandler,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import {
-  MELODIC_PATTERN_MATCHING_PARAMS,
-  type MelodicPatternMatchingParams,
-  type Tier,
-} from '@/constants/pitch';
+    MELODIC_PATTERN_MATCHING_PARAMS,
+    type MelodicPatternMatchingParams,
+    type Tier,
+} from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureMelodicPatternMatching } from '@/services/measurement/pitch/melodicPatternMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreMelodicPatternMatchingRepetitions,
-  type MelodicPatternScoreResult,
+    scoreMelodicPatternMatchingRepetitions,
+    type MelodicPatternScoreResult,
 } from '@/services/scoring/pitch/melodicPatternMatching';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  getRandomPitchNote,
-  type VocalRange,
+    createMusicalNote,
+    getRandomPitchNote,
+    type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  default as ExerciseScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    default as ExerciseScreen,
 } from '@/screens/exercises/ExerciseScreen';
 
 import { COLORS } from '@/constants/appConstants';

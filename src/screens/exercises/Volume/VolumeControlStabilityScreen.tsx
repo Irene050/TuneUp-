@@ -20,7 +20,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
-} from '@/constants/volume';
+  type VolumeControlStabilityParams,
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -44,11 +45,6 @@ import {
 } from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';
-
-const CURRENT_TIER: Tier = 'beginner';
-
-const DEFAULT_PARAMS =
-  VOLUME_CONTROL_STABILITY_PARAMS[CURRENT_TIER];
 
 const DEFAULT_REFERENCE_MIDI = 60;
 const REFERENCE_NOTE_DURATION_SEC = 1.5;
@@ -134,10 +130,7 @@ export default function VolumeControlStabilityScreen({
     useState(COUNTDOWN_SECONDS);
 
   const [remainingSeconds, setRemainingSeconds] =
-    useState(
-      DEFAULT_PARAMS.durationSec *
-        DEFAULT_PARAMS.repetitions,
-    );
+    useState(0);
 
   const [liveVolume, setLiveVolume] =
     useState(-60);
@@ -166,11 +159,15 @@ export default function VolumeControlStabilityScreen({
   const [isStarting, setIsStarting] =
     useState(false);
 
+  const initialTier: Tier = tier ?? 'beginner';
+
   const [resolvedTier, setResolvedTier] =
-    useState<Tier>(tier ?? CURRENT_TIER);
+    useState<Tier>(initialTier);
 
   const [exerciseParams, setExerciseParams] =
-    useState(DEFAULT_PARAMS);
+    useState<VolumeControlStabilityParams>(
+      VOLUME_CONTROL_STABILITY_PARAMS[initialTier],
+    );
 
   const [paramsReady, setParamsReady] =
     useState(false);
@@ -259,8 +256,7 @@ export default function VolumeControlStabilityScreen({
       try {
         const user = auth.currentUser;
 
-        let selectedTier: Tier =
-          tier ?? CURRENT_TIER;
+        let selectedTier: Tier = tier ?? 'beginner';
 
         let recentScores: number[] = [];
 
@@ -272,9 +268,15 @@ export default function VolumeControlStabilityScreen({
                 'volume',
               );
 
-            selectedTier =
-              progress?.currentTier ??
-              CURRENT_TIER;
+            const progressTier = progress?.currentTier;
+
+            if (
+              progressTier === 'beginner' ||
+              progressTier === 'intermediate' ||
+              progressTier === 'advanced'
+            ) {
+              selectedTier = progressTier;
+            }
           }
 
           const records =
@@ -292,7 +294,8 @@ export default function VolumeControlStabilityScreen({
             )
             .sort(
               (a, b) =>
-                a.timestamp - b.timestamp,
+                Number(a.timestamp ?? 0) -
+                Number(b.timestamp ?? 0),
             );
 
           recentScores = matchingRecords
@@ -330,6 +333,10 @@ export default function VolumeControlStabilityScreen({
 
         setResolvedTier(selectedTier);
         setExerciseParams(generatedParams);
+        setRemainingSeconds(
+          generatedParams.durationSec *
+            generatedParams.repetitions,
+        );
         setParamsReady(true);
       } catch (error) {
         console.error(
@@ -341,17 +348,21 @@ export default function VolumeControlStabilityScreen({
           return;
         }
 
-        const fallbackTier =
-          tier ?? CURRENT_TIER;
+        const fallbackTier: Tier = tier ?? 'beginner';
 
         setResolvedTier(fallbackTier);
 
-        setExerciseParams(
-          VOLUME_CONTROL_STABILITY_PARAMS[
-            fallbackTier
-          ],
-        );
+        const fallbackParams =
+          generateVolumeControlStabilityParams({
+            tier: fallbackTier,
+            recentScores: [],
+          });
 
+        setExerciseParams(fallbackParams);
+        setRemainingSeconds(
+          fallbackParams.durationSec *
+            fallbackParams.repetitions,
+        );
         setParamsReady(true);
       }
     };

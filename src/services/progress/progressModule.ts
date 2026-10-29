@@ -6,9 +6,7 @@ export type {
   ComponentId
 } from '@/services/assessment/assessmentModule';
 
-import type {
-  Tier,
-} from '@/services/adaptiveDifficultyScaling/adaptiveDifficultyScaling';
+import type { Tier } from '@/constants/params';
 
 export interface ExerciseRecord {
   componentId: ComponentId;

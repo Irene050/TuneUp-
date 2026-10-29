@@ -926,13 +926,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 30,
     color: COLORS.brown,
     marginTop: 30,
   },
   subtitle: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: COLORS.muted,
     marginTop: 3,
@@ -956,12 +956,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.pink,
   },
   periodText: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.muted,
   },
   periodTextActive: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     color: COLORS.brown,
   },
   summaryCard: {
@@ -976,7 +976,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   summaryTitle: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 18,
     color: COLORS.brown,
     marginBottom: 15,
@@ -990,12 +990,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryValue: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 30,
     color: COLORS.brown,
   },
   summaryLabel: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: COLORS.muted,
     marginTop: 2,
@@ -1007,12 +1007,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   loadingText: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: COLORS.muted,
   },
   warningText: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.error,
     marginTop: 12,
@@ -1022,12 +1022,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 22,
     color: COLORS.brown,
   },
   sectionSubtitle: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 16,
     color: COLORS.muted,
@@ -1052,18 +1052,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   assessmentSummaryLabel: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.muted,
     marginBottom: 2,
   },
   assessmentAverage: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 34,
     color: COLORS.brown,
   },
   assessmentDate: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: COLORS.muted,
     marginTop: 2,
@@ -1115,7 +1115,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   componentName: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 15,
     color: COLORS.brown,
     flexShrink: 1,
@@ -1127,7 +1127,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   componentScore: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 14,
     color: COLORS.brown,
   },
@@ -1150,13 +1150,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   componentMetaText: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 10,
     color: COLORS.muted,
     textTransform: 'capitalize',
   },
   comparisonHint: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 10,
     lineHeight: 15,
     color: COLORS.muted,
@@ -1177,7 +1177,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   deltaText: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 11,
   },
   outlineButton: {
@@ -1193,7 +1193,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   outlineButtonText: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 13,
     color: COLORS.brown,
   },
@@ -1208,7 +1208,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   primaryButtonText: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 13,
     color: COLORS.white,
   },
@@ -1231,14 +1231,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyTitle: {
-    fontFamily: 'FCOLORS.errorokaBold',
+    fontFamily: 'FredokaBold',
     fontSize: 18,
     color: COLORS.brown,
     marginTop: 10,
     marginBottom: 6,
   },
   emptyText: {
-    fontFamily: 'FCOLORS.errorokaRegular',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     lineHeight: 17,
     color: COLORS.muted,

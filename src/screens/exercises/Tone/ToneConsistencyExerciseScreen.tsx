@@ -18,11 +18,11 @@ import {
   View,
 } from 'react-native';
 
-import type { Tier } from '@/constants/pitch';
+import type { Tier } from '@/constants/params';
 import {
   TONE_CONSISTENCY_PARAMS,
   type ToneConsistencyParams,
-} from '@/constants/tone';
+} from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -59,7 +59,7 @@ const COUNTDOWN_SECONDS = 3;
 const TARGET_NOTE_DURATION_SECONDS = 1.5;
 const WAVEFORM_BAR_COUNT = 30;
 
-type Screen =
+type Phase =
   | 'instructions'
   | 'countdown'
   | 'listening'
@@ -201,7 +201,7 @@ function LiveToneWaveform({
 export default function ToneConsistencyExerciseScreen({
   tier,
 }: Props) {
-  const [screen, setScreen] = useState<Screen>('instructions');
+  const [screen, setScreen] = useState<Phase>('instructions');
 
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
@@ -247,7 +247,7 @@ export default function ToneConsistencyExerciseScreen({
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const currentRepRef = useRef(1);
-  const screenRef = useRef<Screen>('instructions');
+  const screenRef = useRef<Phase>('instructions');
 
   const pausedRef = useRef(false);
   const showQuitModalRef = useRef(false);
@@ -282,7 +282,7 @@ export default function ToneConsistencyExerciseScreen({
   const startRecordingAttemptRef =
     useRef<(() => Promise<void>) | null>(null);
 
-  const setCurrentScreen = useCallback((nextScreen: Screen) => {
+  const setCurrentScreen = useCallback((nextScreen: Phase) => {
     screenRef.current = nextScreen;
 
     if (mountedRef.current) {

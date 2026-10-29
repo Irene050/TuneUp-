@@ -1956,7 +1956,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
     width: '90%',
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.pink,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.pink,

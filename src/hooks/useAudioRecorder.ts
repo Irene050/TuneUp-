@@ -117,9 +117,6 @@ function analyzeLiveSignal(
   };
 }
 
-/**
- * Calculates the complete signal diagnostics used in the recording summary.
- */
 function analyzeAudioSignal(
   samples: Float32Array,
   sampleRate: number,

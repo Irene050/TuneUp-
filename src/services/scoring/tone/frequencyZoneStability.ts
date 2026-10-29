@@ -1,9 +1,9 @@
 import type {
-  FrequencyZoneStabilityParams,
-} from '@/constants/tone';
+    FrequencyZoneStabilityParams,
+} from '@/constants/params';
 
 import type {
-  FrequencyZoneStabilityMeasurement,
+    FrequencyZoneStabilityMeasurement,
 } from '@/services/measurement/tone/frequencyZoneStability';
 
 export interface FrequencyZoneStabilityScoreResult {

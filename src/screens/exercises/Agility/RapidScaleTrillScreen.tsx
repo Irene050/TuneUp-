@@ -18,11 +18,16 @@ import {
   AudioRecorder,
 } from 'react-native-audio-api';
 
+import { COLORS } from '@/constants/appConstants';
 import {
   RAPID_SCALE_TRILL_PARAMS,
   type Tier,
-} from '@/constants/agility';
-import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
+} from '@/constants/params';
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateRapidScaleTrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -34,8 +39,6 @@ import {
 } from '@/services/progress/progressRepo';
 import { scoreRapidScaleTrill } from '@/services/scoring/agility/rapidScaleTrill';
 import { frequencyToNoteName } from '@/utils/music/notes';
-
-import { COLORS } from '@/constants/appConstants';
 
 const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4410;
@@ -290,6 +293,7 @@ export default function RapidScaleTrillScreen() {
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(
     null,
   );
+
   const [vocalRangeError, setVocalRangeError] = useState<
     string | null
   >(null);
@@ -304,9 +308,11 @@ export default function RapidScaleTrillScreen() {
 
   const [confirmation, setConfirmation] =
     useState<Confirmation>(null);
+
   const [isQuitting, setIsQuitting] = useState(false);
 
   const [referencePlaying, setReferencePlaying] = useState(false);
+
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
 
@@ -316,6 +322,7 @@ export default function RapidScaleTrillScreen() {
   const [livePitchHz, setLivePitchHz] = useState<number | null>(
     null,
   );
+
   const [livePitchStatus, setLivePitchStatus] =
     useState<PitchStatus>(null);
 
@@ -361,10 +368,6 @@ export default function RapidScaleTrillScreen() {
   const repetitions =
     config?.repetitions ??
     RAPID_SCALE_TRILL_PARAMS.beginner.repetitions;
-
-  const accuracyThreshold =
-    config?.accuracyThreshold ??
-    RAPID_SCALE_TRILL_PARAMS.beginner.accuracyThreshold;
 
   const targetSequenceDurationSeconds =
     frequencies.length * noteDurationSec;
@@ -687,6 +690,7 @@ export default function RapidScaleTrillScreen() {
     noteDurationSec,
   ]);
 
+  // Recording phase: intentionally preserved.
   const startRecording = useCallback(async () => {
     if (
       !config ||
@@ -1231,7 +1235,6 @@ export default function RapidScaleTrillScreen() {
     hasUsableSequence,
     requestMicrophonePermission,
     setCurrentPhase,
-    setCurrentConfirmation,
     vocalRange,
     vocalRangeError,
   ]);
@@ -1313,10 +1316,7 @@ export default function RapidScaleTrillScreen() {
           void startCountdown();
         }
       }, 100);
-
-      return;
     }
-
   }, [
     hasUsableSequence,
     setCurrentConfirmation,
@@ -1515,7 +1515,6 @@ export default function RapidScaleTrillScreen() {
 
   const renderReference = () => (
     <View style={styles.content}>
-
       <View style={styles.iconCircle}>
         <Ionicons
           name="musical-notes-outline"
@@ -1614,27 +1613,20 @@ export default function RapidScaleTrillScreen() {
   );
 
   const renderCountdown = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={COLORS.brown}
-        />
-      </View>
-
-      <Text style={styles.phaseTitle}>Get Ready</Text>
-
-      <Text style={styles.countdownText}>
-        {countdown}
-      </Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Prepare for repetition {currentRepetition} of {repetitions}.
-      </Text>
-    </View>
+    <ExerciseCountdownScreen
+      icon="flash-outline"
+      title="Get Ready"
+      currentRep={currentRepetition}
+      repetitions={repetitions}
+      countdown={countdown}
+      promptTitle="Prepare to Sing"
+      prompt={`Get ready to sing repetition ${currentRepetition} of ${repetitions}.`}
+      onBack={pauseForExitPrompt}
+      contentStyle={styles.rapidScaleCountdown}
+    />
   );
 
+  // Recording UI intentionally remains unchanged.
   const renderRecording = () => {
     const progress =
       targetSequenceDurationSeconds > 0
@@ -1768,18 +1760,12 @@ export default function RapidScaleTrillScreen() {
   };
 
   const renderProcessing = () => (
-    <View style={styles.centerScreen}>
-      <ActivityIndicator size="large" color={COLORS.brown} />
-
-      <Text style={styles.phaseTitle}>
-        Analyzing Your Singing
-      </Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Measuring pitch accuracy, sequence accuracy, transitions,
-        and speed.
-      </Text>
-    </View>
+    <ExerciseProcessingScreen
+      icon="analytics-outline"
+      title="Analyzing Your Singing"
+      message="Measuring pitch accuracy, sequence accuracy, transitions, and speed."
+      onBack={pauseForExitPrompt}
+    />
   );
 
   const renderResults = () => {
@@ -1805,35 +1791,23 @@ export default function RapidScaleTrillScreen() {
     ];
 
     return (
-      <View style={styles.resultsContent}>
-        <View style={styles.iconCircle}>
-          <Ionicons
-            name={result.passed ? 'checkmark' : 'refresh'}
-            size={40}
-            color={COLORS.brown}
-          />
-        </View>
-
-        <Text style={styles.resultTitle}>
-          {result.passed ? 'Great Job!' : 'Keep Practicing!'}
-        </Text>
-
-        <Text style={styles.phaseSubtitle}>
-          Rapid Scale Trill Result
-        </Text>
-
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>OVERALL SCORE</Text>
-
-          <Text style={styles.scoreValue}>
-            {Math.round(result.overall)}
+      <ExerciseResultsScreen
+        title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
+        subtitle="Rapid Scale Trill Result"
+        score={Math.round(result.overall)}
+        scoreSuffix="/ 100"
+        resultIcon={result.passed ? 'checkmark' : 'refresh'}
+        scoreMessage={result.feedback}
+        scoreDetails={
+          <Text style={styles.scoreDetailsText}>
+            Correct notes: {result.correctNoteCount}/
+            {result.noteCount}
           </Text>
-
-          <Text style={styles.scoreDescription}>
-            out of 100
-          </Text>
-        </View>
-
+        }
+        onBack={pauseForExitPrompt}
+        onRetry={() => setCurrentConfirmation('tryAgain')}
+        onExit={pauseForExitPrompt}
+      >
         <View style={styles.referenceCard}>
           <Text style={styles.cardTitle}>
             Performance Breakdown
@@ -1895,37 +1869,7 @@ export default function RapidScaleTrillScreen() {
             value={`${(result.durationMs / 1000).toFixed(1)}s`}
           />
         </View>
-
-        <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={20}
-            color={COLORS.brown}
-          />
-
-          <Text style={styles.tipText}>{result.feedback}</Text>
-        </View>
-
-        <Pressable
-          style={styles.startButton}
-          onPress={() => setCurrentConfirmation('tryAgain')}
-        >
-          <Ionicons name="refresh" size={18} color={COLORS.white} />
-
-          <Text style={styles.startButtonText}>
-            Try Again
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.doneButton}
-          onPress={pauseForExitPrompt}
-        >
-          <Text style={styles.doneButtonText}>
-            Back to Exercises
-          </Text>
-        </Pressable>
-      </View>
+      </ExerciseResultsScreen>
     );
   };
 
@@ -1971,11 +1915,6 @@ export default function RapidScaleTrillScreen() {
       ) : (
         <ScrollView
           style={styles.screen}
-          contentContainerStyle={
-            phase === 'results'
-              ? styles.resultsWrapper
-              : undefined
-          }
           showsVerticalScrollIndicator={false}
         >
           {phase === 'instructions' && renderInstructions()}
@@ -2148,39 +2087,6 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     backgroundColor: COLORS.white,
   },
-  resultsContent: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 72,
-    paddingBottom: 48,
-    backgroundColor: COLORS.white,
-  },
-  resultsWrapper: {
-    flexGrow: 1,
-    width: '100%',
-  },
-  centerScreen: {
-    flexGrow: 1,
-    minHeight: 620,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    paddingTop: 80,
-    backgroundColor: COLORS.white,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 48,
-    left: 24,
-    zIndex: 2,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-  },
   iconCircle: {
     width: 76,
     height: 76,
@@ -2205,6 +2111,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     maxWidth: 330,
+  },
+  rapidScaleCountdown: {
+    paddingTop: 250,
   },
   referenceCard: {
     width: '100%',
@@ -2298,12 +2207,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
   },
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 76,
-    color: COLORS.brown,
-    marginTop: 20,
-  },
   recordingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2390,35 +2293,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.muted,
   },
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  scoreCard: {
-    width: '100%',
-    alignItems: 'center',
-    backgroundColor: COLORS.pink,
-    borderRadius: 22,
-    padding: 22,
-    marginTop: 20,
-  },
-  scoreLabel: {
+  scoreDetailsText: {
     fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: COLORS.brown,
-  },
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: COLORS.brown,
-    marginVertical: 3,
-  },
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
     color: COLORS.muted,
+    textAlign: 'center',
   },
   scoreRow: {
     marginBottom: 14,
@@ -2449,23 +2328,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     marginLeft: 12,
     textAlign: 'right',
-  },
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 9,
-    padding: 15,
-    borderRadius: 18,
-    backgroundColor: COLORS.pink,
-    marginTop: 14,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.brown,
   },
   modalOverlay: {
     flex: 1,

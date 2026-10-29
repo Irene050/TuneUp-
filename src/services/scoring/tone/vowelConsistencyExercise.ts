@@ -1,6 +1,6 @@
 import type {
     VowelConsistencyParams,
-} from '@/constants/tone';
+} from '@/constants/params';
 
 import type {
     VowelConsistencyMeasurement,
