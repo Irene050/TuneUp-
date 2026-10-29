@@ -101,10 +101,6 @@ interface LiveSignalMetrics {
   peak: number;
 }
 
-/**
- * Calculates only the signal metrics needed during live recording.
- * More expensive diagnostics are calculated after recording stops.
- */
 function analyzeLiveSignal(
   samples: Float32Array,
 ): LiveSignalMetrics {
@@ -153,10 +149,6 @@ function analyzeAudioSignal(
   };
 }
 
-/**
- * Appends incoming samples to a rolling buffer and retains
- * only the most recent maxLength samples.
- */
 function appendToRollingBuffer(
   previousSamples: Float32Array,
   incomingSamples: Float32Array,
@@ -227,9 +219,6 @@ export function useAudioRecorder(
   const sampleCountRef = useRef(0);
   const lastLiveAnalysisRef = useRef(0);
   const sessionActiveRef = useRef(false);
-
-  // Keeps enough recent audio for pitch analysis even when
-  // an individual audio callback contains fewer than 2048 samples.
   const pitchBufferRef = useRef<Float32Array>(
     new Float32Array(0),
   );
@@ -374,20 +363,15 @@ export function useAudioRecorder(
 
               if (frameLength === 0) return;
 
-              // Copy the current callback samples so they remain
-              // independent of the audio API's reusable buffer.
               const samples = new Float32Array(frameLength);
 
               samples.set(
                 channelData.subarray(0, frameLength),
               );
 
-              // Preserve every received chunk for final analysis.
               chunksRef.current.push(samples);
               sampleCountRef.current += samples.length;
 
-              // Update the rolling pitch buffer on every callback,
-              // not only when live analysis is due.
               pitchBufferRef.current = appendToRollingBuffer(
                 pitchBufferRef.current,
                 samples,
@@ -453,8 +437,6 @@ export function useAudioRecorder(
                 return;
               }
 
-              // Pitch analysis requires a complete 2048-sample frame.
-              // If there is not enough audio yet, wait for more samples.
               if (
                 pitchBufferRef.current.length < BUFFER_LENGTH
               ) {
