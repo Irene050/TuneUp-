@@ -1,48 +1,48 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type {
-    SustainedExhaleParams,
-    Tier,
+  SustainedExhaleParams,
+  Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureSustainedSSSS,
-    type SustainedSSSSMeasurement,
+  measureSustainedSSSS,
+  type SustainedSSSSMeasurement,
 } from '@/services/measurement/breathControl/sustainedSSSS';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreSustainedSSSS,
-    type SustainedSSSSScoreResult,
+  scoreSustainedSSSS,
+  type SustainedSSSSScoreResult,
 } from '@/services/scoring/breathControl/sustainedSSSS';
 
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 const PROCESSING_DELAY_MS = 1200;
 

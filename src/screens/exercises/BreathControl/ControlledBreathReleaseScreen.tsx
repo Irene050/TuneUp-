@@ -1,41 +1,41 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    CONTROLLED_BREATH_RELEASE_PARAMS,
-    type ControlledBreathReleaseParams,
-    type Tier,
+  CONTROLLED_BREATH_RELEASE_PARAMS,
+  type ControlledBreathReleaseParams,
+  type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureControlledBreathRelease,
-    type ControlledBreathReleaseMeasurement,
+  measureControlledBreathRelease,
+  type ControlledBreathReleaseMeasurement,
 } from '@/services/measurement/breathControl/controlledBreathRelease';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreControlledBreathRelease,
-    type ControlledBreathReleaseScoreResult,
+  scoreControlledBreathRelease,
+  type ControlledBreathReleaseScoreResult,
 } from '@/services/scoring/breathControl/controlledBreathRelease';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
   Metric,
   ResultStat,
@@ -45,7 +45,7 @@ import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 const EXTRA_RECORDING_TIME_SEC = 1;
 const GUIDE_TOLERANCE_SEC = 0.35;

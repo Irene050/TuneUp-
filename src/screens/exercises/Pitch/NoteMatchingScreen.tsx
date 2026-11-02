@@ -1,17 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 
 import {
-  NOTE_MATCHING_PARAMS,
-  type Tier,
+    NOTE_MATCHING_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -20,43 +20,43 @@ import { auth } from '@/services/firebase/config';
 import { measureNoteMatching } from '@/services/measurement/pitch/noteMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreNoteMatching } from '@/services/scoring/pitch/noteMatching';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
+    calcLiveStability,
+    calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomPitchNote,
-  type VocalRange
+    frequencyToNoteName,
+    getRandomPitchNote,
+    type VocalRange
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  MetricCard,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen,
+    MetricCard,
 } from '../ExerciseScreen';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
-import { formatFrequency } from '@/utils/numberFormatting';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
+import { formatFrequency } from '@/utils/numberFormatting';
 
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;

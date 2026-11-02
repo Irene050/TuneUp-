@@ -18,12 +18,12 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import {
-  ExercisePreparingScreen,
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -54,11 +54,11 @@ import {
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_RECORDING_INTERVAL_MS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_RECORDING_INTERVAL_MS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;

@@ -18,11 +18,11 @@ import {
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseResultsScreen
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -39,24 +39,24 @@ import {
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
-  VOLUME_DBFS_MAX,
-  VOLUME_DBFS_MIN,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    VOLUME_ANALYSIS_WINDOW_MS,
+    VOLUME_DBFS_MAX,
+    VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
-import {
-  concatenateRepetitions,
-  fixedDurationSamples,
-  hasSufficientRecordedSignal,
-} from '@/utils/dsp/audioSignal';
 import { sleep } from '@/utils/async';
+import {
+    concatenateRepetitions,
+    fixedDurationSamples,
+    hasSufficientRecordedSignal,
+} from '@/utils/audioSignal';
 
 const BAR_COUNT = 32;
 const PHASES_PER_REPETITION = 3;

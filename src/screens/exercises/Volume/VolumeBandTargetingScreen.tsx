@@ -14,11 +14,11 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseResultsScreen
+    ExerciseCountdownScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -30,18 +30,18 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    VOLUME_ANALYSIS_WINDOW_MS,
 } from '@/constants/appConstants';
 import { clamp } from '@/utils/math';
 

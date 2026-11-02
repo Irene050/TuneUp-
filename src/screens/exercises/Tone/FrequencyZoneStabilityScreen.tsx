@@ -1,29 +1,29 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { Alert, BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    FREQUENCY_ZONE_STABILITY_PARAMS,
-    type FrequencyZoneStabilityParams,
-    type Tier,
+  FREQUENCY_ZONE_STABILITY_PARAMS,
+  type FrequencyZoneStabilityParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
   type ExercisePreparationStep,
   type ExerciseSummaryItem
@@ -34,15 +34,15 @@ import { auth } from '@/services/firebase/config';
 import { measureFrequencyZoneStability } from '@/services/measurement/tone/frequencyZoneStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreFrequencyZoneStability } from '@/services/scoring/tone/frequencyZoneStability';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-    classifyFrequencyZone,
-    type FrequencyZone,
+  classifyFrequencyZone,
+  type FrequencyZone,
 } from '@/utils/dsp/spectral';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {

@@ -29,17 +29,17 @@ import {
   RAPID_SCALE_TRILL_PARAMS,
   type Tier,
 } from '@/constants/params';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseRecordingScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseRecordingScreen,
   ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateRapidScaleTrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -50,11 +50,11 @@ import {
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreRapidScaleTrill } from '@/services/scoring/agility/rapidScaleTrill';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
   frequencyToNoteName,
   getSemitoneDistance,
 } from '@/utils/music/notes';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 const MAX_RECORDING_BUFFER_SECONDS = 20;
 const MIN_RECORDING_SECONDS = 0.25;

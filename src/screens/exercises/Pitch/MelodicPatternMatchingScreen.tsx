@@ -39,21 +39,21 @@ import {
 } from '@/utils/music/notes';
 
 import {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  default as ExerciseScreen
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen,
+    default as ExerciseScreen
 } from '@/screens/exercises/ExerciseScreen';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 interface Props {
   tier?: Tier;

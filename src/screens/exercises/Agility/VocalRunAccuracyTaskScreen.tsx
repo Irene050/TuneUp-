@@ -1,7 +1,6 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   AudioContext,
   AudioManager,
@@ -15,17 +14,17 @@ import {
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import type { Tier } from '@/constants/params';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseRecordingScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseRecordingScreen,
   ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -36,11 +35,11 @@ import {
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
-import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
-import { frequencyToNoteName } from '@/utils/music/notes';
 import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
 import { average } from '@/utils/math';
+import { frequencyToNoteName } from '@/utils/music/notes';
 
 
 type Phase =

@@ -19,13 +19,13 @@ import {
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import {
     generateWaveformSmoothnessParams,
@@ -58,22 +58,22 @@ import {
 } from '@/utils/music/notePlayer';
 import {
     frequencyToNoteName,
-    getSemitoneDistance,
     getRandomPitchNote,
+    getSemitoneDistance,
     type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  TONE_WAVEFORM_BAR_COUNT,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
-import { formatNumber } from '@/utils/numberFormatting';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
+import { formatNumber } from '@/utils/numberFormatting';
 
 interface Props {
   tier?: Tier;

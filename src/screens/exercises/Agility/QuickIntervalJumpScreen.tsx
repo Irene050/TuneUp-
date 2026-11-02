@@ -2,48 +2,48 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  BackHandler,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import {
-    AudioContext,
-    AudioManager,
-    AudioRecorder,
+  AudioContext,
+  AudioManager,
+  AudioRecorder,
 } from 'react-native-audio-api';
 
 import {
-    QUICK_INTERVAL_JUMP_PARAMS,
-    type Tier,
+  QUICK_INTERVAL_JUMP_PARAMS,
+  type Tier,
 } from '@/constants/params';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseListeningScreen,
   ExerciseRecordingScreen,
 } from '@/screens/exercises/ExerciseScreen';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureQuickIntervalJump } from '@/services/measurement/agility/quickIntervalJump';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
+import { sleep } from '@/utils/async';
 import {
   frequencyToNoteName,
   getSemitoneDistance,
 } from '@/utils/music/notes';
-import { sleep } from '@/utils/async';
 
 import {
   AGILITY_CLOSE_NOTE_SEMITONES,
@@ -53,7 +53,7 @@ import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 const MAX_RECORDING_SECONDS = 15;
 const MAX_SAMPLE_COUNT = AUDIO_SAMPLE_RATE * MAX_RECORDING_SECONDS;

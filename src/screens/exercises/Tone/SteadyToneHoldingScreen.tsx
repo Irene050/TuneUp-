@@ -19,12 +19,12 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen
+    ExerciseCountdownScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -46,15 +46,15 @@ import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  TONE_WAVEFORM_BAR_COUNT,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
-import { formatNumber } from '@/utils/numberFormatting';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
+import { formatNumber } from '@/utils/numberFormatting';
 
 
 interface Props {

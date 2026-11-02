@@ -5,31 +5,32 @@ import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'reac
 import { AudioManager, AudioRecorder } from 'react-native-audio-api';
 
 import {
-    ARPEGGIO_SPEED_DRILL_PARAMS,
-    type Tier,
+  ARPEGGIO_SPEED_DRILL_PARAMS,
+  type Tier,
 } from '@/constants/params';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseListeningScreen,
   ExerciseRecordingScreen,
 } from '@/screens/exercises/ExerciseScreen';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateArpeggioSpeedDrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-    getLatestAssessment,
-    getRecentAssessments,
+  getLatestAssessment,
+  getRecentAssessments,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureArpeggioSpeed } from '@/services/measurement/agility/arpeggioSpeedDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreArpeggioSpeed } from '@/services/scoring/agility/arpeggioSpeedDrill';
+import { sleep } from '@/utils/async';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
   frequencyToMidi,
@@ -37,7 +38,6 @@ import {
   getSemitoneDistance,
   midiToFrequency,
 } from '@/utils/music/notes';
-import { sleep } from '@/utils/async';
 
 import {
   AUDIO_BUFFER_SIZE,
@@ -46,7 +46,7 @@ import {
   EXERCISE_COUNTDOWN_SECONDS,
   EXERCISE_MAX_RECORDING_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 
 const LIVE_BUFFER_SIZE = 4096;

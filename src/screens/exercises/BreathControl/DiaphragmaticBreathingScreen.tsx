@@ -1,40 +1,40 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
-    type DiaphragmaticBreathingParams,
-    type Tier,
+  type DiaphragmaticBreathingParams,
+  type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureDiaphragmaticBreathing,
-    type DiaphragmaticBreathingMeasurement,
+  measureDiaphragmaticBreathing,
+  type DiaphragmaticBreathingMeasurement,
 } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreDiaphragmaticBreathing,
-    type DiaphragmaticBreathingScoreResult,
+  scoreDiaphragmaticBreathing,
+  type DiaphragmaticBreathingScoreResult,
 } from '@/services/scoring/breathControl/diaphragmaticBreathing';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
   Metric,
   ResultStat,
@@ -44,7 +44,7 @@ import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 
 interface Props {

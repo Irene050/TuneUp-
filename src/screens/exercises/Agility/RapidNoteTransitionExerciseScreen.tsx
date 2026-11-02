@@ -22,17 +22,17 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseRecordingScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseRecordingScreen,
   ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -40,6 +40,7 @@ import { measureRapidNoteTransition } from '@/services/measurement/agility/rapid
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTransitionExercise';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clampScore } from '@/utils/math';
 import {
   disposeNotePlayer,
@@ -50,7 +51,6 @@ import {
   createMusicalNote,
   frequencyToMidi,
 } from '@/utils/music/notes';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
 

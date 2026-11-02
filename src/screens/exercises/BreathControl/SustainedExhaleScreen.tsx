@@ -1,49 +1,49 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    type SustainedExhaleParams,
-    type Tier,
+  type SustainedExhaleParams,
+  type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateSustainedExhaleParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureSustainedExhale,
-    type SustainedExhaleMeasurement,
+  measureSustainedExhale,
+  type SustainedExhaleMeasurement,
 } from '@/services/measurement/breathControl/sustainedExhale';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreSustainedExhale,
-    type SustainedExhaleScoreResult,
+  scoreSustainedExhale,
+  type SustainedExhaleScoreResult,
 } from '@/services/scoring/breathControl/sustainedExhale';
 
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
   MetricCard,
 } from '../ExerciseScreen';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 const PROCESSING_DELAY_MS = 1200;
 

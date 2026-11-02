@@ -18,13 +18,13 @@ import {
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  type ExercisePreparationStep,
-  ExerciseProcessingScreen,
-  type ExerciseSummaryItem
+    ExerciseCountdownScreen,
+    ExerciseNoAudioModal,
+    type ExercisePreparationStep,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    type ExerciseSummaryItem
 } from '@/screens/exercises/ExerciseScreen';
 import {
     generateVowelConsistencyParams,
@@ -50,14 +50,14 @@ import {
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
-import { formatNumber } from '@/utils/numberFormatting';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
+import { formatNumber } from '@/utils/numberFormatting';
 
 const REST_MS = 1200;
 

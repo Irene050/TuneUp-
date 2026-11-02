@@ -12,11 +12,11 @@ import {
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseListeningScreen,
-  ExerciseResultsScreen
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledDecrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -30,24 +30,24 @@ import {
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
-  VOLUME_DBFS_MAX,
-  VOLUME_DBFS_MIN,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    VOLUME_ANALYSIS_WINDOW_MS,
+    VOLUME_DBFS_MAX,
+    VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
-import { clamp } from '@/utils/math';
 import {
-  ResultItem,
-  VolumeVisualizer,
+    ResultItem,
+    VolumeVisualizer,
 } from '@/screens/exercises/Volume/SharedVolumeComponents';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { clamp } from '@/utils/math';
 
 const BAR_COUNT = 28;
 

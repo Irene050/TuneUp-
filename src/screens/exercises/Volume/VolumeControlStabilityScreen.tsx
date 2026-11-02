@@ -1,26 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  VOLUME_CONTROL_STABILITY_PARAMS,
-  type Tier,
-  type VolumeControlStabilityParams,
+    VOLUME_CONTROL_STABILITY_PARAMS,
+    type Tier,
+    type VolumeControlStabilityParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseResultsScreen
+    ExerciseCountdownScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -28,27 +28,27 @@ import { auth } from '@/services/firebase/config';
 import { measureVolumeControlStability } from '@/services/measurement/volume/volumeControlStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  getVocalRangeMidiBounds,
-  midiToNoteName,
+    createMusicalNote,
+    getVocalRangeMidiBounds,
+    midiToNoteName,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
 } from '@/constants/appConstants';
 import {
-  concatenateRepetitions,
-  fixedDurationSamples,
-  hasSufficientRecordedSignal,
-} from '@/utils/dsp/audioSignal';
+    concatenateRepetitions,
+    fixedDurationSamples,
+    hasSufficientRecordedSignal,
+} from '@/utils/audioSignal';
 
 const DEFAULT_REFERENCE_MIDI = 60;
 const MAX_LIVE_HISTORY = 40;

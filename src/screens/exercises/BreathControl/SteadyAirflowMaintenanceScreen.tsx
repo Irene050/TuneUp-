@@ -1,24 +1,24 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import type {
-    SteadyAirflowParams,
-    Tier,
+  SteadyAirflowParams,
+  Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
   Metric,
 } from '@/screens/exercises/ExerciseScreen';
@@ -29,8 +29,8 @@ import type { SteadyAirflowMeasurement } from '@/services/measurement/breathCont
 import { measureSteadyAirflow } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import type { SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
 import { scoreSteadyAirflow } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
@@ -39,7 +39,7 @@ import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;

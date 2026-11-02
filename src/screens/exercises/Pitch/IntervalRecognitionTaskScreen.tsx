@@ -28,25 +28,25 @@ import {
     scoreIntervalRecognitionTask,
     type IntervalRecognitionScoreResult,
 } from '@/services/scoring/pitch/intervalRecognitionTask';
+import { sleep } from '@/utils/async';
 import {
     calcPitchAccuracy
 } from '@/utils/dsp/pitch';
+import { clamp } from '@/utils/math';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
     createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
     type VocalRange
 } from '@/utils/music/notes';
-import { sleep } from '@/utils/async';
-import { clamp } from '@/utils/math';
 
 import { COLORS } from '@/constants/appConstants';
 import {
-  ExerciseProcessingScreen,
-  ExercisePreparingScreen,
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
 } from '@/screens/exercises/ExerciseScreen';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
 const GUIDE_MAX_CENTS = 100;
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;

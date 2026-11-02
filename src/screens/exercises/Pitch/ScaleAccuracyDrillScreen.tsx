@@ -35,6 +35,7 @@ import {
     calcPitchAccuracy,
     segmentIntoNotes,
 } from '@/utils/dsp/pitch';
+import { averageFinite } from '@/utils/math';
 import {
     disposeNotePlayer,
     playNoteSequence,
@@ -44,25 +45,24 @@ import {
     getRandomScale,
     type VocalRange,
 } from '@/utils/music/notes';
-import { averageFinite } from '@/utils/math';
 import { formatFrequency } from '@/utils/numberFormatting';
 
 import ExerciseScreen, {
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseNoAudioModal,
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '../ExerciseScreen';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_RECORDING_INTERVAL_MS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_RECORDING_INTERVAL_MS,
 } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
 
 const NOTE_DURATION_SECONDS = 0.8;
