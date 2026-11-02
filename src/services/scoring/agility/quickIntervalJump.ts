@@ -1,6 +1,7 @@
 import type {
   QuickIntervalJumpMeasurement,
 } from '@/services/measurement/agility/quickIntervalJump';
+import { clamp } from '@/utils/math';
 
 export type QuickIntervalJumpScore = {
   overall: number;
@@ -10,18 +11,6 @@ export type QuickIntervalJumpScore = {
   passed: boolean;
   feedback: string;
 };
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
-}
-
 
 function calculateSpeedScore(
   averageTransitionTimeMs: number,

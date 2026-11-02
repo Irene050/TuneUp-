@@ -9,7 +9,6 @@ import {
 } from 'react';
 import {
   BackHandler,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +24,7 @@ import {
 import {
   ExerciseCountdownScreen,
   ExerciseProcessingScreen,
+  ExerciseQuitModal,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
@@ -697,6 +697,21 @@ export default function SingingAssessmentScreen() {
     }
   }, [clearPendingProcessing, stopBeatGuide, cancelRecording]);
 
+  const quitAssessmentModal = (
+    <ExerciseQuitModal
+      visible={showQuitModal}
+      message="Are you sure you want to leave your Singing Assessment? Your current progress may not be saved."
+      isQuitting={isCancelling}
+      onContinue={dismissQuitModal}
+      onQuit={() => void confirmQuitAssessment()}
+      title="Quit assessment?"
+      continueLabel="Continue Assessment"
+      quitLabel="Quit Assessment"
+      quittingLabel="Leaving…"
+      variant="assessment"
+    />
+  );
+
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -827,13 +842,7 @@ export default function SingingAssessmentScreen() {
           onBack={requestQuitAssessment}
         />
 
-        <QuitAssessmentModal
-          visible={showQuitModal}
-          isQuitting={isCancelling}
-          onContinue={dismissQuitModal}
-          onConfirm={() => void confirmQuitAssessment()}
-          onRequestClose={dismissQuitModal}
-        />
+        {quitAssessmentModal}
       </>
     );
   }
@@ -1020,13 +1029,7 @@ export default function SingingAssessmentScreen() {
           </Text>
         </View>
 
-        <QuitAssessmentModal
-          visible={showQuitModal}
-          isQuitting={isCancelling}
-          onContinue={dismissQuitModal}
-          onConfirm={() => void confirmQuitAssessment()}
-          onRequestClose={dismissQuitModal}
-        />
+        {quitAssessmentModal}
       </View>
     );
   }
@@ -1040,13 +1043,7 @@ export default function SingingAssessmentScreen() {
           message="Checking your pitch accuracy, pitch stability, and vocal consistency…"
         />
 
-        <QuitAssessmentModal
-          visible={showQuitModal}
-          isQuitting={isCancelling}
-          onContinue={dismissQuitModal}
-          onConfirm={() => void confirmQuitAssessment()}
-          onRequestClose={dismissQuitModal}
-        />
+        {quitAssessmentModal}
       </View>
     );
   }
@@ -1110,13 +1107,7 @@ export default function SingingAssessmentScreen() {
           ) : null}
         </ExerciseResultsScreen>
 
-        <QuitAssessmentModal
-          visible={showQuitModal}
-          isQuitting={isCancelling}
-          onContinue={dismissQuitModal}
-          onConfirm={() => void confirmQuitAssessment()}
-          onRequestClose={dismissQuitModal}
-        />
+        {quitAssessmentModal}
       </>
     );
   }
@@ -1244,83 +1235,8 @@ export default function SingingAssessmentScreen() {
         </Pressable>
       </ScrollView>
 
-      <QuitAssessmentModal
-        visible={showQuitModal}
-        isQuitting={isCancelling}
-        onContinue={dismissQuitModal}
-        onConfirm={() => void confirmQuitAssessment()}
-        onRequestClose={dismissQuitModal}
-      />
+      {quitAssessmentModal}
     </>
-  );
-}
-
-function QuitAssessmentModal({
-  visible,
-  isQuitting,
-  onContinue,
-  onConfirm,
-  onRequestClose,
-}: {
-  visible: boolean;
-  isQuitting: boolean;
-  onContinue: () => void;
-  onConfirm: () => void;
-  onRequestClose: () => void;
-}) {
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onRequestClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit assessment?</Text>
-
-          <Text style={styles.modalMessage}>
-            Are you sure you want to leave your Singing Assessment?
-            Your current progress may not be saved.
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.disabledButton,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Assessment
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={onConfirm}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.disabledButton,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Leaving…' : 'Quit Assessment'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -1838,21 +1754,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
   },
-  stopButton: {
-    minHeight: 47,
-    borderRadius: 24,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    marginTop: 8,
-  },
-  stopButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
 
   processingScreen: {
     flex: 1,
@@ -1937,79 +1838,5 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
     marginVertical: 10,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
   },
 });

@@ -7,17 +7,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { Alert, BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
     FREQUENCY_ZONE_STABILITY_PARAMS,
@@ -29,11 +19,14 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
-    type ExercisePreparationStep,
-    type ExerciseSummaryItem,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  type ExercisePreparationStep,
+  type ExerciseSummaryItem
 } from '@/screens/exercises/ExerciseScreen';
 import { generateFrequencyZoneStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -49,13 +42,18 @@ import {
     classifyFrequencyZone,
     type FrequencyZone,
 } from '@/utils/dsp/spectral';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { formatNumber } from '@/utils/numberFormatting';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_RECORDING_INTERVAL_MS,
+  TONE_WAVEFORM_BAR_COUNT,
+} from '@/constants/appConstants';
+import { clamp } from '@/utils/math';
 
-const COUNTDOWN_SECONDS = 3;
 const REST_SECONDS = 2;
-const RECORDING_INTERVAL_MS = 100;
-const WAVEFORM_BAR_COUNT = 30;
 
 interface Props {
   tier?: Tier;
@@ -72,14 +70,6 @@ type Phase =
 interface RepetitionResult {
   measurement: ReturnType<typeof measureFrequencyZoneStability>;
   score: ReturnType<typeof scoreFrequencyZoneStability>;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatNumber(value: number, decimals = 1) {
-  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
 }
 
 function zoneLabel(zone: FrequencyZone) {
@@ -104,8 +94,8 @@ function FrequencyLiveWaveform({
 
   const bars = useMemo(
     () =>
-      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (WAVEFORM_BAR_COUNT - 1) / 2;
+      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
+        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
         const distance = Math.abs(index - center) / center;
         const envelope = 1 - distance * 0.65;
 
@@ -195,9 +185,9 @@ export default function FrequencyZoneStabilityScreen({
   const [loadingParams, setLoadingParams] = useState(true);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [restCountdown, setRestCountdown] = useState(REST_SECONDS);
-  const [repetition, setRepetition] = useState(1);
+  const [currentRep, setCurrentRep] = useState(1);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
@@ -215,6 +205,7 @@ export default function FrequencyZoneStabilityScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const phaseRef = useRef<Phase>('instructions');
 
@@ -238,7 +229,7 @@ export default function FrequencyZoneStabilityScreen({
   const stopRequestedRef = useRef(false);
 
   const elapsedRef = useRef(0);
-  const repetitionRef = useRef(1);
+  const currentRepRef = useRef(1);
   const resultsRef = useRef<RepetitionResult[]>([]);
   const pitchHistoryRef = useRef<number[]>([]);
 
@@ -484,7 +475,7 @@ export default function FrequencyZoneStabilityScreen({
     finishExerciseRef.current = finishExercise;
   }, [finishExercise]);
 
-  const handleRecordingStop = useCallback(() => {
+  const handleRecordingStop = useCallback((samples: Float32Array) => {
     recordingRef.current = false;
 
     if (recordingTimerRef.current) {
@@ -506,6 +497,13 @@ export default function FrequencyZoneStabilityScreen({
       phaseRef.current !== 'recording' ||
       processingRef.current
     ) {
+      return;
+    }
+
+    if (!hasSufficientRecordedSignal(samples)) {
+      processingRef.current = false;
+      setCurrentPhase('instructions');
+      setShowNoAudioModal(true);
       return;
     }
 
@@ -539,7 +537,7 @@ export default function FrequencyZoneStabilityScreen({
       setLiveZone(null);
       pitchHistoryRef.current = [];
 
-      if (repetitionRef.current < paramsRef.current.repetitions) {
+      if (currentRepRef.current < paramsRef.current.repetitions) {
         setRestCountdown(REST_SECONDS);
         setCurrentPhase('rest');
       } else {
@@ -625,7 +623,7 @@ export default function FrequencyZoneStabilityScreen({
           return;
         }
 
-        elapsedRef.current += RECORDING_INTERVAL_MS;
+        elapsedRef.current += EXERCISE_RECORDING_INTERVAL_MS;
         setElapsedMs(elapsedRef.current);
 
         if (
@@ -657,7 +655,7 @@ export default function FrequencyZoneStabilityScreen({
             }
           }
         }
-      }, RECORDING_INTERVAL_MS);
+      }, EXERCISE_RECORDING_INTERVAL_MS);
     } catch (error) {
       console.error('Failed to start recording:', error);
 
@@ -691,14 +689,14 @@ export default function FrequencyZoneStabilityScreen({
     clearTimers();
 
     setErrorMessage(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
     setLiveFrame(null);
     setLiveZone(null);
     setCurrentPhase('countdown');
 
-    let value = COUNTDOWN_SECONDS;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -768,8 +766,8 @@ export default function FrequencyZoneStabilityScreen({
           restTimerRef.current = null;
         }
 
-        repetitionRef.current += 1;
-        setRepetition(repetitionRef.current);
+        currentRepRef.current += 1;
+        setCurrentRep(currentRepRef.current);
 
         setElapsedMs(0);
         elapsedRef.current = 0;
@@ -839,7 +837,7 @@ export default function FrequencyZoneStabilityScreen({
         console.error('Failed to stop recording while pausing:', error);
       }
     } else if (currentPhase === 'countdown') {
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     } else if (currentPhase === 'rest') {
       setRestCountdown(REST_SECONDS);
     }
@@ -930,18 +928,18 @@ export default function FrequencyZoneStabilityScreen({
     progressSavedRef.current = false;
 
     resultsRef.current = [];
-    repetitionRef.current = 1;
+    currentRepRef.current = 1;
     pitchHistoryRef.current = [];
     elapsedRef.current = 0;
 
     setRepetitionResults([]);
     setResult(null);
-    setRepetition(1);
+    setCurrentRep(1);
     setElapsedMs(0);
     setLiveFrame(null);
     setLiveZone(null);
     setErrorMessage(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setRestCountdown(REST_SECONDS);
     setShowQuitModal(false);
     setIsQuitting(false);
@@ -975,19 +973,19 @@ export default function FrequencyZoneStabilityScreen({
     }
 
     resultsRef.current = [];
-    repetitionRef.current = 1;
+    currentRepRef.current = 1;
     pitchHistoryRef.current = [];
     elapsedRef.current = 0;
     progressSavedRef.current = false;
 
     setRepetitionResults([]);
     setResult(null);
-    setRepetition(1);
+    setCurrentRep(1);
     setElapsedMs(0);
     setLiveFrame(null);
     setLiveZone(null);
     setErrorMessage(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setRestCountdown(REST_SECONDS);
     setShowQuitModal(false);
     setIsQuitting(false);
@@ -1160,23 +1158,10 @@ export default function FrequencyZoneStabilityScreen({
   ];
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'instructions' ||
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Frequency Zone Stability?'
               : pausedPhaseRef.current === 'recording'
@@ -1186,73 +1171,43 @@ export default function FrequencyZoneStabilityScreen({
                   : pausedPhaseRef.current === 'rest'
                     ? 'Your exercise is paused. Your completed repetitions will be kept, and your rest period will resume when you continue.'
                     : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
-          </Text>
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => void quitExercise()}
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => void quitExercise()}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        setErrorMessage(null);
+        processingRef.current = false;
+        beginCountdownRef.current?.();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (loadingParams) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level and
-            preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          icon="options-outline"
+          iconSize={44}
+        />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1288,6 +1243,7 @@ export default function FrequencyZoneStabilityScreen({
         </ExerciseScreen>
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1298,7 +1254,7 @@ export default function FrequencyZoneStabilityScreen({
         <ExerciseCountdownScreen
           icon="pulse"
           title="Frequency Zone Stability"
-          currentRep={repetition}
+          currentRep={currentRep}
           repetitions={params.repetitions}
           countdown={countdown}
           promptTitle="Get Ready"
@@ -1307,6 +1263,7 @@ export default function FrequencyZoneStabilityScreen({
         />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1339,7 +1296,7 @@ export default function FrequencyZoneStabilityScreen({
               />
 
               <Text style={styles.repPillText}>
-                REPETITION {repetition} OF {params.repetitions}
+                REPETITION {currentRep} OF {params.repetitions}
               </Text>
             </View>
 
@@ -1449,6 +1406,7 @@ export default function FrequencyZoneStabilityScreen({
         </View>
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1459,7 +1417,7 @@ export default function FrequencyZoneStabilityScreen({
         <ExerciseCountdownScreen
           icon="pulse"
           title="Frequency Zone Stability"
-          currentRep={repetition}
+          currentRep={currentRep}
           repetitions={params.repetitions}
           countdown={restCountdown}
           promptTitle="Rest"
@@ -1468,6 +1426,7 @@ export default function FrequencyZoneStabilityScreen({
         />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1479,10 +1438,10 @@ export default function FrequencyZoneStabilityScreen({
           icon="pulse"
           title="Analyzing Your Performance"
           message="Analyzing your frequency stability..."
-          onBack={handleBack}
         />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1534,6 +1493,7 @@ export default function FrequencyZoneStabilityScreen({
         </ExerciseResultsScreen>
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1542,38 +1502,6 @@ export default function FrequencyZoneStabilityScreen({
 }
 
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   disclaimerCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1614,17 +1542,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 27,
     color: COLORS.brown,
-    textAlign: 'center',
-  },
-  recordingSubtitle: {
-    width: '100%',
-    maxWidth: 320,
-    marginTop: 6,
-    paddingHorizontal: 4,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.muted,
     textAlign: 'center',
   },
   repPill: {
@@ -1715,12 +1632,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: COLORS.brown,
-  },
-  liveCardSubtitle: {
-    marginTop: 2,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
   },
   liveIndicatorPill: {
     flexDirection: 'row',
@@ -1819,20 +1730,6 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
   },
-  recordingTip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: 18,
-    paddingHorizontal: 5,
-  },
-  recordingTipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
   resultDetailsCard: {
     backgroundColor: COLORS.background,
     borderRadius: 18,
@@ -1860,82 +1757,5 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: COLORS.border,
     marginVertical: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

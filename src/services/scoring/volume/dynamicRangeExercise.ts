@@ -1,4 +1,5 @@
 import type { DynamicRangeMeasurement } from '@/services/measurement/volume/dynamicRangeExercise';
+import { clampFinite } from '@/utils/math';
 
 export interface DynamicRangeScore {
   rangeAccuracy: number;
@@ -11,16 +12,6 @@ interface ScoreOptions {
   passingScore?: number;
 }
 
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  if (!Number.isFinite(value)) return min;
-
-  return Math.max(min, Math.min(max, value));
-}
-
 function round(value: number): number {
   return Math.round(value);
 }
@@ -29,25 +20,25 @@ export function scoreDynamicRange(
   measurement: DynamicRangeMeasurement,
   options: ScoreOptions = {},
 ): DynamicRangeScore {
-  const passingScore = clamp(
+  const passingScore = clampFinite(
     options.passingScore ?? 75,
     0,
     100,
   );
 
-  const rangeAccuracy = clamp(
+  const rangeAccuracy = clampFinite(
     measurement.rangeAccuracy,
     0,
     100,
   );
 
-  const rampConsistency = clamp(
+  const rampConsistency = clampFinite(
     measurement.rampConsistency,
     0,
     100,
   );
 
-  const overallScore = clamp(
+  const overallScore = clampFinite(
     rangeAccuracy * 0.4 +
       rampConsistency * 0.6,
     0,

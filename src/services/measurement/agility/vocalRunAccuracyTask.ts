@@ -4,6 +4,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi } from '@/utils/music/notes';
+import { clamp } from '@/utils/math';
 
 export type VocalRunAccuracyMeasurement = {
   detectedPitches: number[];
@@ -27,10 +28,6 @@ const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const CONFIRMATION_FRAMES = 3;
 const NOTE_TOLERANCE_SEMITONES = 1;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 type AlignmentResult = {
   correctNoteCount: number;

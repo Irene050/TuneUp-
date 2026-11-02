@@ -4,6 +4,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
+import { clampFinite } from '@/utils/math';
 
 export type ArpeggioSpeedMeasurement = {
   detectedPitches: number[];
@@ -27,11 +28,6 @@ const HOP_SIZE = 1024;
 const DEFAULT_PITCH_TOLERANCE_PERCENT = 7;
 const DEFAULT_EXPECTED_NOTE_INTERVAL_SEC = 0.73;
 const NOTE_CONFIRMATION_FRAMES = 2;
-
-function clamp(value: number, min = 0, max = 100): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
 
 type PitchAlignment = {
   accuracy: number;
@@ -86,7 +82,7 @@ function calculatePitchAccuracy(
             100
           : 100;
 
-      const matchCost = clamp(errorPercent / tolerance, 0, 1);
+      const matchCost = clampFinite(errorPercent / tolerance, 0, 1);
 
       const match = dp[i - 1][j - 1] + matchCost;
       const extra = dp[i - 1][j] + 1;
@@ -127,7 +123,7 @@ function calculatePitchAccuracy(
             targetFrequency) *
           100;
 
-        totalScore += clamp(
+        totalScore += clampFinite(
           100 - (errorPercent / tolerance) * 100,
         );
 
@@ -150,7 +146,7 @@ function calculatePitchAccuracy(
   const denominator = Math.max(detectedCount, targetCount);
 
   return {
-    accuracy: Math.round(clamp(totalScore / denominator)),
+    accuracy: Math.round(clampFinite(totalScore / denominator)),
     correctCount,
   };
 }
@@ -192,7 +188,7 @@ function calculateSequenceAccuracy(
 
   return {
     accuracy: Math.round(
-      clamp((correctCount / denominator) * 100),
+      clampFinite((correctCount / denominator) * 100),
     ),
     correctCount,
   };

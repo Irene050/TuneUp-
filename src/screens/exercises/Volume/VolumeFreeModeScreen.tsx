@@ -7,16 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -26,14 +17,18 @@ import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-import { measureVolumeFreeModeFrame } from '@/services/measurement/freemode/volume';
+import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
+import { VolumeVisualizer } from '@/screens/exercises/Volume/SharedVolumeComponents';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  VOLUME_DBFS_MAX,
+  VOLUME_DBFS_MIN,
+} from '@/constants/appConstants';
+import { ExerciseQuitModal } from '@/screens/exercises/ExerciseScreen';
 
 type Phase = 'ready' | 'exercise';
 
-const DBFS_MIN = -60;
-const DBFS_MAX = -10;
 const BAR_COUNT = 32;
 
 function normalizeVolume(value: number): number {
@@ -45,39 +40,8 @@ function normalizeVolume(value: number): number {
     0,
     Math.min(
       1,
-      (value - DBFS_MIN) / (DBFS_MAX - DBFS_MIN),
+      (value - VOLUME_DBFS_MIN) / (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
     ),
-  );
-}
-
-function VolumeVisualizer({
-  liveHistory,
-}: {
-  liveHistory: number[];
-}) {
-  const actualBars = Array.from(
-    { length: BAR_COUNT },
-    (_, index) => liveHistory[index] ?? 0,
-  );
-
-  return (
-    <View style={styles.waveRow}>
-      {actualBars.map((value, index) => (
-        <View
-          key={`volume-wave-${index}`}
-          style={[
-            styles.wave,
-            {
-              height:
-                value > 0
-                  ? `${Math.max(5, value * 100)}%`
-                  : '5%',
-              opacity: value === 0 ? 0.15 : 0.3 + value * 0.7,
-            },
-          ]}
-        />
-      ))}
-    </View>
   );
 }
 
@@ -101,7 +65,7 @@ export default function VolumeFreeModeScreen() {
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const leaveRequestedRef = useRef(false);
-  const quitModalOpenRef = useRef(false);
+  const showQuitModalRef = useRef(false);
   const startTaskRef = useRef<Promise<void> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -126,7 +90,7 @@ export default function VolumeFreeModeScreen() {
       return;
     }
 
-    const reading = measureVolumeFreeModeFrame(
+    const reading = measureFreeModeFrame(
       frame.samples,
       frame.sampleRate,
     );
@@ -182,22 +146,22 @@ export default function VolumeFreeModeScreen() {
   const handleBack = useCallback(() => {
     if (
       leaveRequestedRef.current ||
-      quitModalOpenRef.current ||
+      showQuitModalRef.current ||
       isQuitting
     ) {
       return;
     }
 
-    quitModalOpenRef.current = true;
+    showQuitModalRef.current = true;
     setShowQuitModal(true);
   }, [isQuitting]);
 
-  const dismissQuitModal = useCallback(() => {
+  const continueExercise = useCallback(() => {
     if (leaveRequestedRef.current || isQuitting) {
       return;
     }
 
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
     setShowQuitModal(false);
   }, [isQuitting]);
 
@@ -207,7 +171,7 @@ export default function VolumeFreeModeScreen() {
     }
 
     leaveRequestedRef.current = true;
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
     phaseRef.current = 'ready';
 
     setIsQuitting(true);
@@ -246,8 +210,8 @@ export default function VolumeFreeModeScreen() {
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
-          if (quitModalOpenRef.current) {
-            dismissQuitModal();
+          if (showQuitModalRef.current) {
+            continueExercise();
             return true;
           }
 
@@ -257,82 +221,23 @@ export default function VolumeFreeModeScreen() {
       );
 
       return () => subscription.remove();
-    }, [dismissQuitModal, handleBack]),
+    }, [continueExercise, handleBack]),
   );
 
   const quitConfirmationModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismissQuitModal}
-    >
-      <View style={styles.modalOverlay}>
-        <View
-          accessibilityRole="alert"
-          accessibilityLabel="Quit exercise confirmation"
-          style={styles.confirmationCard}
-        >
-          <View style={styles.modalIconCircle}>
-            <Ionicons
-              name="volume-high-outline"
-              size={34}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit Exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            Are you sure you want to leave Volume Free Mode?
-          </Text>
-
-          <Text style={styles.modalHint}>
-            Your current session will stop. Free Mode feedback is not saved
-            as a scored exercise.
-          </Text>
-
-          <View style={styles.modalButtons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="No, continue exercise"
-              disabled={isQuitting}
-              onPress={dismissQuitModal}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>
-                No, Continue
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Yes, quit exercise"
-              disabled={isQuitting}
-              onPress={() => {
+    (<ExerciseQuitModal
+    visible={showQuitModal}
+    icon="volume-high-outline"
+    message="Are you sure you want to leave Volume Free Mode?"
+    hint="Your current session will stop. Free Mode feedback is not saved as a scored exercise."
+    isQuitting={isQuitting}
+    onContinue={continueExercise}
+    onQuit={() => {
                 void confirmQuitExercise();
               }}
-              style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              {isQuitting ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Text style={styles.quitButtonText}>Yes, Quit</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    continueLabel="No, Continue"
+    quitLabel="Yes, Quit"
+  />)
   );
 
   const startFreeMode = useCallback(async () => {
@@ -453,11 +358,6 @@ export default function VolumeFreeModeScreen() {
 
   const safeAreaStyle = {
     paddingBottom: insets.bottom,
-  };
-
-  const bottomActionStyle = {
-    paddingHorizontal: horizontalPadding,
-    paddingBottom: Math.max(8, insets.bottom),
   };
 
   if (phase === 'ready') {
@@ -721,7 +621,11 @@ export default function VolumeFreeModeScreen() {
               </View>
             </View>
 
-            <VolumeVisualizer liveHistory={liveHistory} />
+            <VolumeVisualizer
+              liveHistory={liveHistory}
+              barCount={BAR_COUNT}
+              variant="freeMode"
+            />
 
             <View style={styles.visualizerLabels}>
               <Text style={styles.visualizerLabel}>QUIET</Text>
@@ -1056,20 +960,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  waveRow: {
-    height: 86,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 2,
-  },
-  wave: {
-    width: 5,
-    borderRadius: 999,
-    backgroundColor: COLORS.accent,
-    minHeight: 5,
-  },
   visualizerLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1123,102 +1013,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: COLORS.dark,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  confirmationCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 24,
-    alignItems: 'center',
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  modalIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.dark,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  modalHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 10,
-    marginTop: 24,
-  },
-  continueButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 999,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.78,
   },
   buttonDisabled: {
     opacity: 0.55,

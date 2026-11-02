@@ -1,5 +1,6 @@
 import AppHeader from '@/components/appheader';
 import { COLORS } from '@/constants/appConstants';
+import { clampPercentage } from '@/utils/math';
 import { auth } from '@/services/firebase/config';
 import type {
   ComponentId,
@@ -196,14 +197,6 @@ const fallbackRecommendations: Exercise[] = [
   exercises[15],
   exercises[20],
 ].filter((exercise): exercise is Exercise => Boolean(exercise));
-
-function clampPercentage(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  return Math.round(Math.max(0, Math.min(100, value)));
-}
 
 function getExerciseDifficulty(_exercise: Exercise): string {
   return 'Beginner';

@@ -1,6 +1,7 @@
 import type {
   VolumeControlStabilityMeasurement,
 } from '@/services/measurement/volume/volumeControlStability';
+import { clampFinite } from '@/utils/math';
 
 export interface VolumeControlStabilityScore {
   overallScore: number;
@@ -18,38 +19,23 @@ export interface VolumeControlStabilityScoreOptions {
   passingScore?: number;
 }
 
-function clamp(
-  value: number,
-  min = 0,
-  max = 100,
-): number {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
-}
-
 export function scoreVolumeControlStability(
   measurement: VolumeControlStabilityMeasurement,
   options: VolumeControlStabilityScoreOptions = {},
 ): VolumeControlStabilityScore {
-  const targetStability = clamp(
+  const targetStability = clampFinite(
     options.passingScore ?? DEFAULT_TARGET_STABILITY,
   );
 
-  const stabilityScore = clamp(
+  const stabilityScore = clampFinite(
     measurement.stability,
   );
 
-  const durationScore = clamp(
+  const durationScore = clampFinite(
     measurement.durationScore,
   );
 
-  const voicedCoverage = clamp(
+  const voicedCoverage = clampFinite(
     measurement.voicedCoveragePercent,
   );
 
@@ -61,7 +47,7 @@ export function scoreVolumeControlStability(
     averageDb <= 0 &&
     voicedCoverage > 0;
 
-  const overallScore = clamp(
+  const overallScore = clampFinite(
     stabilityScore * 0.7 +
     durationScore * 0.3,
   );

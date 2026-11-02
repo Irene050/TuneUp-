@@ -1,5 +1,6 @@
 
 import type { VocalRunAccuracyMeasurement } from '@/services/measurement/agility/vocalRunAccuracyTask';
+import { clamp } from '@/utils/math';
 
 export type VocalRunAccuracyScore = {
   overall: number;
@@ -9,14 +10,6 @@ export type VocalRunAccuracyScore = {
   passed: boolean;
   feedback: string;
 };
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 export function scoreVocalRunAccuracy(
   measurement: VocalRunAccuracyMeasurement,

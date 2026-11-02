@@ -2,6 +2,7 @@
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
 import { frequencyToMidi } from '@/utils/music/notes';
+import { average, clampFinite } from '@/utils/math';
 
 export const SINGING_ASSESSMENT_BPM = 100;
 export const SINGING_ASSESSMENT_SAMPLE_RATE = 44100;
@@ -90,15 +91,6 @@ const MAX_START_OFFSET_SECONDS = 2;
 const START_OFFSET_STEP_SECONDS = 0.05;
 const CENTS_FOR_ZERO_ACCURACY = 100;
 const MIN_FRAMES_PER_REFERENCE_NOTE = 2;
-
-function clamp(
-  value: number,
-  min = 0,
-  max = 100,
-): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
@@ -250,7 +242,7 @@ function segmentNotes(frames: PitchFrame[]): NoteEvent[] {
 
 function centsToAccuracy(errorCents: number): number {
   return round1(
-    clamp(
+    clampFinite(
       100 * (1 - errorCents / CENTS_FOR_ZERO_ACCURACY),
     ),
   );
@@ -372,7 +364,7 @@ function scoreEvaluations(
 function calculateMelodyAccuracy(
   evaluations: NoteEvaluation[],
 ): number {
-  return round1(clamp(scoreEvaluations(evaluations)));
+  return round1(clampFinite(scoreEvaluations(evaluations)));
 }
 
 function calculateStability(events: NoteEvent[]): number {
@@ -401,7 +393,7 @@ function calculateStability(events: NoteEvent[]): number {
   const averageVariation = totalVariation / totalFrames;
 
   return round1(
-    clamp(100 - averageVariation),
+    clampFinite(100 - averageVariation),
   );
 }
 
@@ -412,9 +404,7 @@ function calculateVocalConsistency(
 
   const levels = frames.map((frame) => frame.db);
 
-  const mean =
-    levels.reduce((sum, value) => sum + value, 0) /
-    levels.length;
+  const mean = average(levels);
 
   const variance =
     levels.reduce(
@@ -424,7 +414,7 @@ function calculateVocalConsistency(
 
   const standardDeviation = Math.sqrt(variance);
 
-  return round1(clamp(100 - standardDeviation * 5));
+  return round1(clampFinite(100 - standardDeviation * 5));
 }
 
 function createFeedback(
@@ -535,7 +525,7 @@ export function calculateSingingAssessmentScore(
     frames.length * (hopSize / sampleRate),
   );
 
-  const voicedCoverage = clamp(
+  const voicedCoverage = clampFinite(
     (voicedDurationEstimate / Math.max(durationSeconds, 0.001)) * 100,
     0,
     100,
@@ -565,7 +555,7 @@ export function calculateSingingAssessmentScore(
   const vocalConsistency = calculateVocalConsistency(frames);
 
   const overallScore = round1(
-    clamp(
+    clampFinite(
       pitchAccuracy * 0.8 +
       pitchStability * 0.2,
     ),

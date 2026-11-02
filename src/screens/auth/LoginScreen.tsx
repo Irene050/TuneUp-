@@ -21,16 +21,10 @@ import {
 } from '@/services/firebase/authService';
 
 import { COLORS } from '@/constants/appConstants';
-
-type AlertType = 'success' | 'error' | 'info';
-
-type AlertDetails = {
-  title: string;
-  message: string;
-  type: AlertType;
-  buttonLabel?: string;
-  onConfirm?: () => void;
-};
+import {
+  closeAlert,
+  type AlertDetails,
+} from '@/screens/auth/alertUtils';
 
 function TuneUpAlertModal({
   alert,
@@ -98,12 +92,6 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [alert, setAlert] = useState<AlertDetails | null>(null);
-
-  function closeAlert() {
-    const callback = alert?.onConfirm;
-    setAlert(null);
-    callback?.();
-  }
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -215,7 +203,10 @@ export function LoginScreen() {
           </Pressable>
         </View>
       </View>
-      <TuneUpAlertModal alert={alert} onClose={closeAlert} />
+      <TuneUpAlertModal
+        alert={alert}
+        onClose={() => closeAlert(alert, setAlert)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -258,12 +249,6 @@ export function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<AlertDetails | null>(null);
-
-  function closeAlert() {
-    const callback = alert?.onConfirm;
-    setAlert(null);
-    callback?.();
-  }
 
   async function handleSendCode() {
     const trimmedEmail = email.trim().toLowerCase();
@@ -352,7 +337,10 @@ export function ForgotPasswordScreen() {
           )}
         </Pressable>
       </View>
-      <TuneUpAlertModal alert={alert} onClose={closeAlert} />
+      <TuneUpAlertModal
+        alert={alert}
+        onClose={() => closeAlert(alert, setAlert)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -391,12 +379,6 @@ export function ResetPasswordScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [alert, setAlert] = useState<AlertDetails | null>(null);
-
-  function closeAlert() {
-    const callback = alert?.onConfirm;
-    setAlert(null);
-    callback?.();
-  }
 
   async function handleResetPassword() {
     if (!password || !confirmPassword) {
@@ -543,7 +525,10 @@ export function ResetPasswordScreen() {
           </Pressable>
         </View>
       </View>
-      <TuneUpAlertModal alert={alert} onClose={closeAlert} />
+      <TuneUpAlertModal
+        alert={alert}
+        onClose={() => closeAlert(alert, setAlert)}
+      />
     </KeyboardAvoidingView>
   );
 }

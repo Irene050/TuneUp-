@@ -8,17 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions
-} from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -28,7 +18,8 @@ import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-import { measureBreathControlFreeModeFrame } from '@/services/measurement/freemode/breathControl';
+import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
+import { ExerciseQuitModal } from '@/screens/exercises/ExerciseScreen';
 type Phase = 'ready' | 'exercise';
 
 const BAR_COUNT = 20;
@@ -54,7 +45,7 @@ export default function BreathControlFreeModeScreen() {
   const startInProgressRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const leaveRequestedRef = useRef(false);
-  const quitModalOpenRef = useRef(false);
+  const showQuitModalRef = useRef(false);
 
   const startTaskRef = useRef<Promise<void> | null>(null);
   const stopTaskRef = useRef<Promise<void> | null>(null);
@@ -68,7 +59,7 @@ export default function BreathControlFreeModeScreen() {
       return;
     }
 
-    const reading = measureBreathControlFreeModeFrame(
+    const reading = measureFreeModeFrame(
       frame.samples,
       frame.sampleRate,
     );
@@ -262,21 +253,21 @@ export default function BreathControlFreeModeScreen() {
   const handleBack = useCallback(() => {
     if (
       leaveRequestedRef.current ||
-      quitModalOpenRef.current
+      showQuitModalRef.current
     ) {
       return;
     }
 
-    quitModalOpenRef.current = true;
+    showQuitModalRef.current = true;
     setShowQuitModal(true);
   }, []);
 
-  const dismissQuitModal = useCallback(() => {
+  const continueExercise = useCallback(() => {
     if (leaveRequestedRef.current) {
       return;
     }
 
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
     setShowQuitModal(false);
   }, []);
 
@@ -287,7 +278,7 @@ export default function BreathControlFreeModeScreen() {
 
     leaveRequestedRef.current = true;
     stopRequestedRef.current = true;
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
 
     setIsQuitting(true);
     setIsStopping(true);
@@ -310,8 +301,8 @@ export default function BreathControlFreeModeScreen() {
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
-          if (quitModalOpenRef.current) {
-            dismissQuitModal();
+          if (showQuitModalRef.current) {
+            continueExercise();
             return true;
           }
 
@@ -321,7 +312,7 @@ export default function BreathControlFreeModeScreen() {
       );
 
       return () => subscription.remove();
-    }, [dismissQuitModal, handleBack]),
+    }, [continueExercise, handleBack]),
   );
 
   useEffect(() => {
@@ -395,85 +386,19 @@ export default function BreathControlFreeModeScreen() {
   );
 
   const quitConfirmationModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismissQuitModal}
-    >
-      <View style={styles.modalOverlay}>
-        <View
-          accessibilityRole="alert"
-          accessibilityLabel="Quit exercise confirmation"
-          style={styles.confirmationCard}
-        >
-          <View style={styles.modalIconCircle}>
-            <Ionicons
-              name="mic-off-outline"
-              size={34}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit Exercise?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            Are you sure you want to leave Breath Control Free Mode?
-          </Text>
-
-          <Text style={styles.modalHint}>
-            Your current session will stop. Free Mode feedback is
-            not saved as a scored exercise.
-          </Text>
-
-          <View style={styles.modalButtons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="No, continue exercise"
-              disabled={isQuitting}
-              onPress={dismissQuitModal}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>
-                No, Continue
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Yes, quit exercise"
-              disabled={isQuitting}
-              onPress={() => {
+    <ExerciseQuitModal
+    visible={showQuitModal}
+    icon="mic-off-outline"
+    message="Are you sure you want to leave Breath Control Free Mode?"
+    hint="Your current session will stop. Free Mode feedback is not saved as a scored exercise."
+    isQuitting={isQuitting}
+    onContinue={continueExercise}
+    onQuit={() => {
                 void confirmQuitExercise();
               }}
-              style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              {isQuitting ? (
-                <ActivityIndicator
-                  size="small"
-                  color={COLORS.white}
-                />
-              ) : (
-                <Text style={styles.quitButtonText}>
-                  Yes, Quit
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    continueLabel="No, Continue"
+    quitLabel="Yes, Quit"
+    />
   );
 
   if (phase === 'ready') {
@@ -956,108 +881,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(35, 22, 17, 0.48)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  confirmationCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 26,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    elevation: 10,
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-  },
-  modalIconCircle: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: COLORS.pink,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    lineHeight: 31,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  modalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  modalButtons: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: 10,
-  },
-  continueButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-    borderWidth: 1.5,
-    borderColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonDisabled: {
-    opacity: 0.65,
   },
 });

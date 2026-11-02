@@ -2,6 +2,7 @@
 import type {
   ArpeggioSpeedMeasurement,
 } from '@/services/measurement/agility/arpeggioSpeedDrill';
+import { clampFinite } from '@/utils/math';
 
 export type ArpeggioSpeedScore = {
   overall: number;
@@ -11,11 +12,6 @@ export type ArpeggioSpeedScore = {
   passed: boolean;
   feedback: string;
 };
-
-function clamp(value: number, min = 0, max = 100): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
 
 function calculateSpeedScore(
   notesPerSecond: number,
@@ -30,14 +26,14 @@ function calculateSpeedScore(
     return 0;
   }
 
-  return clamp((notesPerSecond / targetNotesPerSecond) * 100);
+  return clampFinite((notesPerSecond / targetNotesPerSecond) * 100);
 }
 
 export function scoreArpeggioSpeed(
   measurement: ArpeggioSpeedMeasurement,
 ): ArpeggioSpeedScore {
-  const pitchScore = clamp(measurement.pitchAccuracy);
-  const sequenceScore = clamp(measurement.sequenceAccuracy);
+  const pitchScore = clampFinite(measurement.pitchAccuracy);
+  const sequenceScore = clampFinite(measurement.sequenceAccuracy);
 
   const speedScore = calculateSpeedScore(
     measurement.notesPerSecond,

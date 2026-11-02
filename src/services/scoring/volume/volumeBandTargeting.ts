@@ -1,6 +1,7 @@
 import type {
   VolumeBandMeasurement,
 } from '@/services/measurement/volume/volumeBandTargeting';
+import { clamp } from '@/utils/math';
 
 const DEFAULT_PASSING_SCORE = 60;
 const MIN_MEASUREMENT_QUALITY = 50;
@@ -16,17 +17,6 @@ export interface VolumeBandScore {
 interface ScoreOptions {
   passingScore?: number;
   minimumMeasurementQuality?: number;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(
-    min,
-    Math.min(max, value),
-  );
 }
 
 function roundScore(

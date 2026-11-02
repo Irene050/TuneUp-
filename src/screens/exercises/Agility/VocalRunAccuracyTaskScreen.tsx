@@ -1,29 +1,31 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   AudioContext,
   AudioManager,
   AudioRecorder,
 } from 'react-native-audio-api';
 
-import { COLORS } from '@/constants/appConstants';
-import { type Tier } from '@/constants/params';
+import {
+  AUDIO_BUFFER_SIZE,
+  AUDIO_SAMPLE_RATE,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import type { Tier } from '@/constants/params';
 import ExerciseScreen, {
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseRecordingScreen,
   ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -36,10 +38,10 @@ import {
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
 import { frequencyToNoteName } from '@/utils/music/notes';
+import { sleep } from '@/utils/async';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { average } from '@/utils/math';
 
-const SAMPLE_RATE = 44100;
-const BUFFER_SIZE = 4410;
-const COUNTDOWN_SECONDS = 3;
 
 type Phase =
   | 'instructions'
@@ -78,17 +80,6 @@ type ExerciseResult = {
 };
 
 type PitchStatus = 'inTune' | 'close' | 'notInTune' | 'listening';
-
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => setTimeout(resolve, ms));
-
-function isValidTier(value: unknown): value is Tier {
-  return (
-    value === 'beginner' ||
-    value === 'intermediate' ||
-    value === 'advanced'
-  );
-}
 
 function isValidVocalRange(
   range: VocalRange | null | undefined,
@@ -213,9 +204,9 @@ export default function VocalRunAccuracyTaskScreen() {
     useState(true);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [currentRepetition, setCurrentRepetition] = useState(1);
+  const [currentRep, setCurrentRep] = useState(1);
   const [result, setResult] = useState<ExerciseResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [livePitch, setLivePitch] = useState<LivePitch | null>(null);
@@ -226,6 +217,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
   const phaseRef = useRef<Phase>('instructions');
@@ -376,11 +368,7 @@ export default function VocalRunAccuracyTaskScreen() {
         );
 
         if (!cancelled) {
-          setTier(
-            isValidTier(progress?.currentTier)
-              ? progress.currentTier
-              : 'beginner',
-          );
+          setTier(progress?.currentTier ?? 'beginner');
         }
       } catch (error) {
         console.warn('[VocalRun] Could not load tier:', error);
@@ -623,7 +611,7 @@ export default function VocalRunAccuracyTaskScreen() {
     try {
       const context =
         audioContextRef.current ??
-        new AudioContext({ sampleRate: SAMPLE_RATE });
+        new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE });
 
       audioContextRef.current = context;
 
@@ -641,8 +629,6 @@ export default function VocalRunAccuracyTaskScreen() {
           return;
         }
 
-        setActiveReferenceNoteIndex(index);
-
         const oscillator = context.createOscillator();
         const gain = context.createGain();
 
@@ -656,6 +642,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
         oscillator.start(startTime);
         oscillator.stop(startTime + config.noteDurationSec);
+        setActiveReferenceNoteIndex(index);
 
         await sleep(config.noteDurationSec * 1000);
 
@@ -727,8 +714,8 @@ export default function VocalRunAccuracyTaskScreen() {
     processingRef.current = false;
     recordingStartInProgressRef.current = false;
 
-    setCurrentRepetition(1);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCurrentRep(1);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setRecordingTime(0);
     setLivePitch(null);
     setResult(null);
@@ -791,13 +778,16 @@ export default function VocalRunAccuracyTaskScreen() {
 
       const samples = new Float32Array(samplesRef.current);
 
-      if (samples.length === 0) {
-        throw new Error('No audio samples were captured.');
+      if (!hasSufficientRecordedSignal(samples)) {
+        samplesRef.current = [];
+        setExercisePhase('reference');
+        setShowNoAudioModal(true);
+        return;
       }
 
       const measurement = measureVocalRunAccuracy(
         samples,
-        SAMPLE_RATE,
+        AUDIO_SAMPLE_RATE,
         config.frequencies,
       );
 
@@ -827,8 +817,8 @@ export default function VocalRunAccuracyTaskScreen() {
 
         samplesRef.current = [];
 
-        setCurrentRepetition(completedRepetitions + 1);
-        setCountdown(COUNTDOWN_SECONDS);
+        setCurrentRep(completedRepetitions + 1);
+        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
         setRecordingTime(0);
         setLivePitch(null);
 
@@ -838,12 +828,6 @@ export default function VocalRunAccuracyTaskScreen() {
       }
 
       const measurements = measurementsRef.current;
-
-      const average = (values: number[]) =>
-        values.length
-          ? values.reduce((sum, value) => sum + value, 0) /
-            values.length
-          : 0;
 
       const totalNoteCount = measurements.reduce(
         (sum, item) => sum + item.noteCount,
@@ -877,11 +861,6 @@ export default function VocalRunAccuracyTaskScreen() {
       const sequenceScore = average(
         measurements.map(item => item.sequenceAccuracy),
       );
-
-      const transitionScore =
-        totalTransitionCount > 0
-          ? (totalCorrectTransitionCount / totalTransitionCount) * 100
-          : sequenceScore;
 
       const notesPerSecond =
         totalDurationMs > 0
@@ -997,7 +976,7 @@ export default function VocalRunAccuracyTaskScreen() {
     const runId = exerciseRunIdRef.current;
 
     const maxSamples = Math.ceil(
-      recordingDurationSec * SAMPLE_RATE,
+      recordingDurationSec * AUDIO_SAMPLE_RATE,
     );
 
     try {
@@ -1012,8 +991,8 @@ export default function VocalRunAccuracyTaskScreen() {
 
       const callbackResult = recorder.onAudioReady(
         {
-          sampleRate: SAMPLE_RATE,
-          bufferLength: BUFFER_SIZE,
+          sampleRate: AUDIO_SAMPLE_RATE,
+          bufferLength: AUDIO_BUFFER_SIZE,
           channelCount: 1,
         },
         ({ buffer, numFrames }) => {
@@ -1058,7 +1037,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
             const detected = detectPitchAutocorrelation(
               liveFrame,
-              SAMPLE_RATE,
+              AUDIO_SAMPLE_RATE,
               {
                 minFrequency: 70,
                 maxFrequency: 1000,
@@ -1203,11 +1182,11 @@ export default function VocalRunAccuracyTaskScreen() {
     const runId = ++countdownRunIdRef.current;
 
     setErrorMessage('');
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setExercisePhase('countdown');
 
     for (
-      let value = COUNTDOWN_SECONDS;
+      let value = EXERCISE_COUNTDOWN_SECONDS;
       value >= 1;
       value--
     ) {
@@ -1294,9 +1273,9 @@ export default function VocalRunAccuracyTaskScreen() {
 
     setConfig(nextConfig);
     setResult(null);
-    setCurrentRepetition(1);
+    setCurrentRep(1);
     setRecordingTime(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setLivePitch(null);
     setErrorMessage('');
 
@@ -1335,7 +1314,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
       stopRecording();
     } else if (pausedPhaseRef.current === 'countdown') {
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     }
 
     setShowQuitModal(true);
@@ -1362,7 +1341,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
       setRecordingTime(0);
       setLivePitch(null);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       setExercisePhase('reference');
       return;
@@ -1462,70 +1441,6 @@ export default function VocalRunAccuracyTaskScreen() {
             ? 'Your completed repetitions will be kept. Continue to return to the reference sequence.'
             : 'Your completed repetitions will be kept. Continue to resume your exercise.';
 
-  const renderSequence = (
-    activeIndex: number | null,
-    live = false,
-  ) => (
-    <View style={styles.sequence}>
-      {config!.frequencies.map((frequency, index) => {
-        const active = activeIndex === index;
-
-        return (
-          <View
-            key={`${frequency}-${index}`}
-            style={[
-              styles.notePill,
-              active && styles.activeNote,
-              live && styles.liveNote,
-            ]}
-          >
-            <Text
-              style={[
-                styles.noteNumber,
-                active && styles.activeText,
-              ]}
-            >
-              {index + 1}
-            </Text>
-
-            <Text
-              style={[
-                styles.noteText,
-                active && styles.activeText,
-              ]}
-            >
-              {frequencyToNoteName(frequency)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-
-  const renderHeader = (
-    icon: React.ComponentProps<typeof Ionicons>['name'],
-    title: string,
-    subtitle: string,
-  ) => (
-    <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.backButton}
-        onPress={handleBack}
-      >
-        <Ionicons name="arrow-back" size={24} color={COLORS.brown} />
-      </Pressable>
-
-      <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={34} color={COLORS.brown} />
-      </View>
-
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
-    </>
-  );
-
   const renderInstructions = () => (
     <ExerciseScreen
       title="Vocal Run Accuracy"
@@ -1586,64 +1501,33 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderReference = () => (
-    <View style={styles.content}>
-      {renderHeader(
-        'musical-notes-outline',
-        `Vocal Run Accuracy`,
-        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
-      )}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Listen to the Sequence</Text>
-
-        {renderSequence(activeReferenceNoteIndex)}
-
-        <Text style={styles.hint}>
-          Listen to the full sequence before singing.
-        </Text>
-      </View>
-
-      <Pressable
-        style={[
-          styles.button,
-          isPlayingReference && styles.disabled,
-        ]}
-        disabled={isPlayingReference}
-        onPress={() => void playReference()}
-      >
-        {isPlayingReference ? (
-          <ActivityIndicator color={COLORS.white} />
-        ) : (
-          <Ionicons name="play" size={18} color={COLORS.white} />
-        )}
-
-        <Text style={styles.buttonText}>
-          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[
-          styles.secondaryButton,
-          isPlayingReference && styles.disabled,
-        ]}
-        disabled={isPlayingReference}
-        onPress={() => void startCountdown()}
-      >
-        <Text style={styles.secondaryButtonText}>Continue</Text>
-      </Pressable>
-
-      {errorMessage ? (
-        <Text style={styles.errorText}>{errorMessage}</Text>
-      ) : null}
-    </View>
+    <ExerciseListeningScreen
+      icon="musical-notes-outline"
+      title="Vocal Run Accuracy"
+      currentRep={currentRep}
+      repetitions={config!.repetitions}
+      promptTitle="Listen to the Sequence"
+      prompt="Listen to the full reference run, then sing the notes in the same order."
+      liveContent={
+        <AgilitySequenceGuide
+          names={config!.frequencies.map(frequencyToNoteName)}
+          activeIndex={activeReferenceNoteIndex}
+          caption="The pink highlight follows the note being played."
+        />
+      }
+      error={errorMessage || null}
+      isPlayingReference={isPlayingReference}
+      onPlayReference={() => void playReference()}
+      onContinue={() => void startCountdown()}
+      onBack={handleBack}
+    />
   );
 
   const renderCountdown = () => (
     <ExerciseCountdownScreen
       icon="flash-outline"
       title="Get Ready"
-      currentRep={currentRepetition}
+      currentRep={currentRep}
       repetitions={config!.repetitions}
       countdown={countdown}
       promptTitle="Prepare to sing"
@@ -1652,20 +1536,21 @@ export default function VocalRunAccuracyTaskScreen() {
   );
 
   const renderRecording = () => (
-    <View style={styles.recordingContent}>
-      {renderHeader(
-        'mic',
-        'Sing the Vocal Run',
-        `REPETITION ${currentRepetition} OF ${config!.repetitions}`,
-      )}
+    <ExerciseRecordingScreen
+      title="Sing the Vocal Run"
+      currentRep={currentRep}
+      repetitions={config!.repetitions}
+      onBack={handleBack}
+    >
+      <AgilitySequenceGuide
+        names={config!.frequencies.map(frequencyToNoteName)}
+        activeIndex={activeTargetNoteIndex}
+        liveNote={livePitch?.note}
+        showFeedback
+        caption="Follow the highlighted note. Green is in tune, yellow is close, and red is off pitch."
+      />
 
       <View style={styles.recordingCard}>
-        <Text style={styles.cardTitle}>Target Sequence</Text>
-
-        {renderSequence(activeTargetNoteIndex, true)}
-
-        <View style={styles.divider} />
-
         <Text style={styles.cardTitle}>Live Pitch Accuracy</Text>
 
         <View
@@ -1768,7 +1653,7 @@ export default function VocalRunAccuracyTaskScreen() {
       <Text style={styles.hint}>
         Sing each note in the displayed order.
       </Text>
-    </View>
+    </ExerciseRecordingScreen>
   );
 
   const renderProcessing = () => (
@@ -1883,76 +1768,42 @@ export default function VocalRunAccuracyTaskScreen() {
   };
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={quitModalMessage}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => void quitExercise()}
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
 
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {quitModalMessage}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={[
-              styles.continueButton,
-              isQuitting && styles.disabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={() => void quitExercise()}
-            style={[
-              styles.quitButton,
-              isQuitting && styles.disabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        setExercisePhase('reference');
+        void startCountdown();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (tierLoading || isLoadingAdaptiveParams || !config) {
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="options-outline" size={38} color={COLORS.brown} />
-        </View>
-
-        <Text style={styles.title}>Preparing Your Exercise</Text>
-
-        <Text style={styles.subtitle}>
-          Loading your difficulty level and assessed vocal range.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={COLORS.brown}
-          style={styles.spinner}
-        />
-      </View>
+      <ExercisePreparingScreen
+        title="Preparing Your Exercise"
+        message="Loading your difficulty level and assessed vocal range."
+        icon="options-outline"
+        iconSize={38}
+      />
     );
   }
 
@@ -1980,6 +1831,7 @@ export default function VocalRunAccuracyTaskScreen() {
       )}
 
       {quitModal}
+      {noAudioModal}
     </View>
   );
 }
@@ -1995,66 +1847,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  spinner: {
-    marginTop: 24,
-  },
-  content: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 130,
-    paddingBottom: 36,
-  },
-  recordingContent: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 80,
-    paddingBottom: 28,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 24,
-    left: 20,
-    zIndex: 2,
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
-  },
-  iconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.pink,
-    marginBottom: 14,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 5,
-    marginBottom: 18,
-    textAlign: 'center',
-    letterSpacing: 0.6,
   },
   card: {
     width: '100%',
@@ -2102,43 +1894,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginLeft: 12,
   },
-  sequence: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 7,
-    marginVertical: 8,
-  },
-  notePill: {
-    minWidth: 48,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-  },
-  noteNumber: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  noteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  activeNote: {
-    backgroundColor: COLORS.accent,
-    borderWidth: 1,
-    borderColor: COLORS.waveform,
-  },
-  activeText: {
-    color: COLORS.white,
-  },
-  liveNote: {
-    minWidth: 44,
-  },
   hint: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
@@ -2146,51 +1901,6 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
-  },
-  errorText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.guideRed,
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-  button: {
-    width: '100%',
-    minHeight: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginTop: 8,
-  },
-  buttonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  secondaryButton: {
-    width: '100%',
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.lightGray,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginTop: 10,
-  },
-  secondaryButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  disabled: {
-    opacity: 0.5,
   },
   pitchStatusBadge: {
     flexDirection: 'row',
@@ -2249,11 +1959,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.muted,
   },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 10,
-  },
   timerContainer: {
     width: '100%',
     paddingHorizontal: 4,
@@ -2287,76 +1992,5 @@ const styles = StyleSheet.create({
   },
   metricBlock: {
     marginBottom: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
   },
 });

@@ -6,17 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
     SUSTAINED_NOTE_STABILITY_PARAMS,
@@ -28,9 +18,12 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseProcessingScreen,
+  ExercisePreparingScreen,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -60,12 +53,15 @@ import {
     getRandomPitchNote,
 } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_RECORDING_INTERVAL_MS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
-const RECORDING_INTERVAL_MS = 100;
-const COUNTDOWN_SECONDS = 3;
 
 interface Props {
   tier?: Tier;
@@ -95,9 +91,10 @@ export default function SustainedNoteStabilityScreen({
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentRep, setCurrentRep] = useState(1);
-  const [isQuitModalVisible, setIsQuitModalVisible] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const [isStoppingForModal, setIsStoppingForModal] = useState(false);
   const [targetNote, setTargetNote] = useState<MusicalNote>(
     () => createMusicalNote(60),
@@ -121,11 +118,11 @@ export default function SustainedNoteStabilityScreen({
   const discardRecordingRef = useRef(false);
 
   const pausedRef = useRef(false);
-  const modalVisibleRef = useRef(false);
+  const showQuitModalRef = useRef(false);
   const navigatingAwayRef = useRef(false);
   const stopPendingForModalRef = useRef(false);
 
-  const interruptedPhaseRef = useRef<Phase>('instructions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
 
   const elapsedRef = useRef(0);
   const currentRepRef = useRef(1);
@@ -148,7 +145,7 @@ export default function SustainedNoteStabilityScreen({
 
   const playTargetAndRecordRef =
     useRef<((note: MusicalNote) => Promise<void>) | null>(null);
-  const resumeCurrentRepRef = useRef<(() => void) | null>(null);
+  const continueExerciseRef = useRef<(() => void) | null>(null);
 
   const changePhase = useCallback((nextPhase: Phase) => {
     phaseRef.current = nextPhase;
@@ -341,7 +338,7 @@ export default function SustainedNoteStabilityScreen({
     return () => {
       mountedRef.current = false;
       pausedRef.current = true;
-      modalVisibleRef.current = false;
+      showQuitModalRef.current = false;
       navigatingAwayRef.current = true;
       discardRecordingRef.current = true;
 
@@ -379,7 +376,7 @@ export default function SustainedNoteStabilityScreen({
     if (
       !mountedRef.current ||
       pausedRef.current ||
-      modalVisibleRef.current ||
+      showQuitModalRef.current ||
       navigatingAwayRef.current ||
       discardRecordingRef.current ||
       phaseRef.current !== 'recording'
@@ -404,7 +401,7 @@ export default function SustainedNoteStabilityScreen({
     if (
       !mountedRef.current ||
       pausedRef.current ||
-      modalVisibleRef.current ||
+      showQuitModalRef.current ||
       navigatingAwayRef.current ||
       recordingRef.current ||
       startingRecordingRef.current ||
@@ -448,7 +445,7 @@ export default function SustainedNoteStabilityScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        modalVisibleRef.current ||
+        showQuitModalRef.current ||
         navigatingAwayRef.current ||
         discardRecordingRef.current ||
         stopRequestedRef.current
@@ -468,7 +465,7 @@ export default function SustainedNoteStabilityScreen({
         if (
           !mountedRef.current ||
           pausedRef.current ||
-          modalVisibleRef.current ||
+          showQuitModalRef.current ||
           navigatingAwayRef.current ||
           !recordingRef.current ||
           stopRequestedRef.current
@@ -525,7 +522,7 @@ export default function SustainedNoteStabilityScreen({
             changePhase('instructions');
           }
         });
-      }, RECORDING_INTERVAL_MS);
+      }, EXERCISE_RECORDING_INTERVAL_MS);
     } catch (error) {
       startingRecordingRef.current = false;
       recordingRef.current = false;
@@ -567,7 +564,7 @@ export default function SustainedNoteStabilityScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        modalVisibleRef.current ||
+        showQuitModalRef.current ||
         navigatingAwayRef.current
       ) {
         return;
@@ -581,7 +578,7 @@ export default function SustainedNoteStabilityScreen({
         if (
           !mountedRef.current ||
           pausedRef.current ||
-          modalVisibleRef.current ||
+          showQuitModalRef.current ||
           navigatingAwayRef.current
         ) {
           return;
@@ -629,11 +626,11 @@ export default function SustainedNoteStabilityScreen({
 
         if (
           mountedRef.current &&
-          !modalVisibleRef.current &&
+          !showQuitModalRef.current &&
           !pausedRef.current &&
           !navigatingAwayRef.current
         ) {
-          resumeCurrentRepRef.current?.();
+          continueExerciseRef.current?.();
         }
 
         return;
@@ -642,11 +639,21 @@ export default function SustainedNoteStabilityScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        modalVisibleRef.current ||
+        showQuitModalRef.current ||
         navigatingAwayRef.current ||
         processingRef.current
       ) {
         stopRequestedRef.current = false;
+        return;
+      }
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        stopRequestedRef.current = false;
+        processingRef.current = false;
+        setErrorMessage(null);
+        pausedPhaseRef.current = 'recording';
+        changePhase('instructions');
+        setShowNoAudioModal(true);
         return;
       }
 
@@ -758,7 +765,7 @@ export default function SustainedNoteStabilityScreen({
     if (
       isLoadingAdaptiveParams ||
       pausedRef.current ||
-      modalVisibleRef.current ||
+      showQuitModalRef.current ||
       navigatingAwayRef.current ||
       startingRecordingRef.current ||
       recordingRef.current ||
@@ -788,7 +795,7 @@ export default function SustainedNoteStabilityScreen({
     discardRecordingRef.current = false;
     stopPendingForModalRef.current = false;
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     setCountdown(remaining);
     changePhase('countdown');
@@ -797,7 +804,7 @@ export default function SustainedNoteStabilityScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        modalVisibleRef.current ||
+        showQuitModalRef.current ||
         navigatingAwayRef.current
       ) {
         return;
@@ -826,7 +833,7 @@ export default function SustainedNoteStabilityScreen({
   const requestPause = useCallback(() => {
     if (
       pausedRef.current ||
-      modalVisibleRef.current ||
+      showQuitModalRef.current ||
       navigatingAwayRef.current ||
       phaseRef.current === 'processing' ||
       phaseRef.current === 'results'
@@ -834,13 +841,13 @@ export default function SustainedNoteStabilityScreen({
       return;
     }
 
-    interruptedPhaseRef.current = phaseRef.current;
+    pausedPhaseRef.current = phaseRef.current;
 
     pausedRef.current = true;
-    modalVisibleRef.current = true;
+    showQuitModalRef.current = true;
 
     clearTimers();
-    setIsQuitModalVisible(true);
+    setShowQuitModal(true);
 
     if (
       recordingRef.current ||
@@ -855,7 +862,7 @@ export default function SustainedNoteStabilityScreen({
     }
   }, [clearTimers, isRecording, stopAndDiscardRecording]);
 
-  const resumeCurrentRep = useCallback(() => {
+  const continueExercise = useCallback(() => {
     if (
       navigatingAwayRef.current ||
       stopPendingForModalRef.current ||
@@ -866,13 +873,13 @@ export default function SustainedNoteStabilityScreen({
       return;
     }
 
-    setIsQuitModalVisible(false);
-    modalVisibleRef.current = false;
+    setShowQuitModal(false);
+    showQuitModalRef.current = false;
     pausedRef.current = false;
     setIsStoppingForModal(false);
     setErrorMessage(null);
 
-    const interruptedPhase = interruptedPhaseRef.current;
+    const interruptedPhase = pausedPhaseRef.current;
 
     if (interruptedPhase === 'instructions') {
       changePhase('instructions');
@@ -891,7 +898,7 @@ export default function SustainedNoteStabilityScreen({
 
     resetLiveMeasurements();
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     setCountdown(remaining);
     changePhase('countdown');
@@ -901,7 +908,7 @@ export default function SustainedNoteStabilityScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        modalVisibleRef.current ||
+        showQuitModalRef.current ||
         navigatingAwayRef.current
       ) {
         return;
@@ -926,21 +933,21 @@ export default function SustainedNoteStabilityScreen({
   ]);
 
   useEffect(() => {
-    resumeCurrentRepRef.current = resumeCurrentRep;
-  }, [resumeCurrentRep]);
+    continueExerciseRef.current = continueExercise;
+  }, [continueExercise]);
 
   const quitExercise = useCallback(async () => {
     if (navigatingAwayRef.current) return;
 
     navigatingAwayRef.current = true;
     pausedRef.current = true;
-    modalVisibleRef.current = false;
+    showQuitModalRef.current = false;
     discardRecordingRef.current = true;
     stopRequestedRef.current = true;
     stopPendingForModalRef.current = false;
 
     clearTimers();
-    setIsQuitModalVisible(false);
+    setShowQuitModal(false);
 
     try {
       await recorderStartPromiseRef.current?.catch(error => {
@@ -985,7 +992,7 @@ export default function SustainedNoteStabilityScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (modalVisibleRef.current) return true;
+        if (showQuitModalRef.current) return true;
 
         if (
           phaseRef.current === 'processing' ||
@@ -1044,13 +1051,13 @@ export default function SustainedNoteStabilityScreen({
 
     processingRef.current = false;
     pausedRef.current = false;
-    modalVisibleRef.current = false;
+    showQuitModalRef.current = false;
     navigatingAwayRef.current = false;
     stopPendingForModalRef.current = false;
 
-    setIsQuitModalVisible(false);
+    setShowQuitModal(false);
     setIsStoppingForModal(false);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     changePhase('instructions');
   }, [
     changePhase,
@@ -1078,22 +1085,35 @@ export default function SustainedNoteStabilityScreen({
 
   const quitMessage = isStoppingForModal
     ? 'Your exercise is paused while the microphone stops safely. The interrupted recording will not be scored, and your completed repetitions will be kept.'
-    : interruptedPhaseRef.current === 'instructions'
+    : pausedPhaseRef.current === 'instructions'
       ? 'Are you sure you want to leave Sustained Note Stability?'
-      : interruptedPhaseRef.current === 'recording'
+      : pausedPhaseRef.current === 'recording'
         ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
         : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
 
   const quitModal = (
-    <QuitExerciseModal
-      visible={isQuitModalVisible}
-      isStopping={isStoppingForModal}
-      message={quitMessage}
-      onContinue={resumeCurrentRep}
-      onQuit={() => {
-        void quitExercise();
-      }}
-    />
+    <>
+      <QuitExerciseModal
+        visible={showQuitModal}
+        message={quitMessage}
+        onContinue={continueExercise}
+        onQuit={() => {
+          void quitExercise();
+        }}
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          setErrorMessage(null);
+          continueExerciseRef.current?.();
+        }}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        isQuitting={isStoppingForModal}
+      />
+    </>
   );
 
   if (
@@ -1102,27 +1122,13 @@ export default function SustainedNoteStabilityScreen({
   ) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.iconCircle}>
-            <Ionicons
-              name="musical-notes-outline"
-              size={34}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.title}>Preparing Your Exercise</Text>
-
-          <Text style={styles.phaseSubtitle}>
-            Setting up your personalized exercise...
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.loadingIndicator}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Setting up your personalized exercise..."
+          icon="musical-notes-outline"
+          iconSize={34}
+          containerStyle={styles.centerScreen}
+        />
         {quitModal}
       </>
     );
@@ -1487,7 +1493,6 @@ export default function SustainedNoteStabilityScreen({
           icon="analytics-outline"
           title="Analyzing Your Singing"
           message="Measuring your pitch stability across all repetitions."
-          onBack={requestPause}
         />
         {quitModal}
       </>
@@ -1814,75 +1819,26 @@ function LiveStabilityIndicator({
 
 function QuitExerciseModal({
   visible,
-  isStopping,
   message,
   onContinue,
   onQuit,
 }: {
   visible: boolean;
-  isStopping: boolean;
   message: string;
   onContinue: () => void;
   onQuit: () => void;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onContinue}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>{message}</Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isStopping}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isStopping && styles.buttonDisabled,
-            ]}
-          >
-            {isStopping ? (
-              <ActivityIndicator size="small" color={COLORS.brown} />
-            ) : (
-              <Text style={styles.continueButtonText}>
-                Continue Exercise
-              </Text>
-            )}
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            onPress={onQuit}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              Quit Exercise
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+    <ExerciseQuitModal
+        visible={visible}
+        title={"Quit exercise?"}
+        message={message}
+        isQuitting={false}
+        onContinue={onContinue}
+        onQuit={onQuit}
+        continueLabel={"Continue Exercise"}
+        quitLabel={"Quit Exercise"}
+      />
   );
 }
 
@@ -1939,14 +1895,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 55,
     left: 24,
-    zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  activeBackButton: {
-    position: 'absolute',
-    top: 12,
-    left: 4,
     zIndex: 10,
     paddingVertical: 8,
     paddingHorizontal: 4,
@@ -2112,9 +2060,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-  loadingIndicator: {
-    marginTop: 20,
-  },
   phaseTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 25,
@@ -2186,12 +2131,6 @@ const styles = StyleSheet.create({
     fontSize: 27,
     color: COLORS.brown,
     marginTop: 3,
-  },
-  liveDivider: {
-    width: '70%',
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 12,
   },
   liveNote: {
     fontFamily: 'FredokaBold',
@@ -2380,83 +2319,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.brown,
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
   
   liveCardHeader: {
     width: '100%',
@@ -2472,33 +2334,6 @@ const styles = StyleSheet.create({
   liveCardTitle: {
     fontFamily: 'FredokaBold',
     fontSize: 19,
-    color: COLORS.brown,
-  },
-  liveCardSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  liveRecordingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.pink,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  liveRecordingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.guideRed,
-    marginRight: 5,
-  },
-  liveRecordingBadgeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
     color: COLORS.brown,
   },
   pitchComparison: {
@@ -2651,22 +2486,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  stabilityIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
   stabilityHeadingText: {
     flex: 1,
-  },
-  stabilityPercentage: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    marginLeft: 8,
   },
   stabilityTrack: {
     height: 10,

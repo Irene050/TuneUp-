@@ -1,16 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -23,8 +14,11 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -36,16 +30,23 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 import { playSingleNote } from '@/utils/music/notePlayer';
-import { createMusicalNote } from '@/utils/music/notes';
+import {
+  createMusicalNote,
+  frequencyToMidi,
+} from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  VOLUME_ANALYSIS_WINDOW_MS,
+} from '@/constants/appConstants';
+import { clamp } from '@/utils/math';
 
 const DEFAULT_TIER: Tier = 'beginner';
-const REFERENCE_NOTE_DURATION_SEC = 1.5;
-const COUNTDOWN_SECONDS = 3;
 const HISTORY_LIMIT = 60;
-const WINDOW_MS = 50;
 const REP_DURATION_EXTENSION_SEC = 2;
 const MIN_VOICED_FRAMES = 8;
 const LIVE_LEVEL_OFFSET = 70;
@@ -55,10 +56,6 @@ const MAX_QUIET_FRAMES = 2;
 type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
 type VoiceStatus = 'low' | 'inside' | 'high' | 'none';
 type StopReason = 'none' | 'rep' | 'final' | 'cancel';
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function formatDb(value: number): string {
   return Number.isFinite(value) ? String(Math.round(value)) : '--';
@@ -142,33 +139,6 @@ function getLiveDisplayLevel(
   }
 
   return clamp(frame.volume + LIVE_LEVEL_OFFSET, 0, 70);
-}
-
-function hasSufficientRecordedSignal(samples: Float32Array): boolean {
-  if (!samples || samples.length === 0) {
-    return false;
-  }
-
-  let sumSquares = 0;
-  let peak = 0;
-  let activeSamples = 0;
-
-  for (let index = 0; index < samples.length; index += 1) {
-    const value = samples[index] ?? 0;
-    const absolute = Math.abs(value);
-
-    sumSquares += value * value;
-    peak = Math.max(peak, absolute);
-
-    if (absolute >= 0.005) {
-      activeSamples += 1;
-    }
-  }
-
-  const rms = Math.sqrt(sumSquares / samples.length);
-  const activeRatio = activeSamples / samples.length;
-
-  return rms >= 0.002 && peak >= 0.01 && activeRatio >= 0.01;
 }
 
 function combineRepSamples(
@@ -454,7 +424,7 @@ export default function VolumeBandTargeting({
   const [parametersReady, setParametersReady] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [countdown, setCountdown] = useState(
-    COUNTDOWN_SECONDS,
+    EXERCISE_COUNTDOWN_SECONDS,
   );
   const [currentRep, setCurrentRep] = useState(1);
   const currentRepRef = useRef(1);
@@ -472,7 +442,6 @@ export default function VolumeBandTargeting({
   );
   const [referenceNoteReady, setReferenceNoteReady] = useState(false);
 
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [liveDisplayDb, setLiveDisplayDb] = useState(0);
 
@@ -491,6 +460,7 @@ export default function VolumeBandTargeting({
     null,
   );
   const [noVoiceDetected, setNoVoiceDetected] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
@@ -527,7 +497,6 @@ export default function VolumeBandTargeting({
     quietFrameCountRef.current = 0;
 
     setLiveDisplayDb(0);
-    setLiveFrame(null);
     setLiveHistory([]);
   }, []);
 
@@ -656,18 +625,18 @@ export default function VolumeBandTargeting({
           highHz > lowHz
         ) {
           const lowMidi = Math.ceil(
-            69 + 12 * Math.log2(lowHz / 440),
+            frequencyToMidi(lowHz),
           );
 
           const highMidi = Math.floor(
-            69 + 12 * Math.log2(highHz / 440),
+            frequencyToMidi(highHz),
           );
 
           if (lowMidi <= highMidi) {
             const midpointHz = Math.sqrt(lowHz * highHz);
 
             const midpointMidi = Math.round(
-              69 + 12 * Math.log2(midpointHz / 440),
+              frequencyToMidi(midpointHz),
             );
 
             const selectedMidi = clamp(
@@ -729,7 +698,7 @@ export default function VolumeBandTargeting({
 
       await playSingleNote(
         frequency,
-        REFERENCE_NOTE_DURATION_SEC,
+        EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       );
 
       setHasPlayedReference(true);
@@ -783,7 +752,6 @@ export default function VolumeBandTargeting({
         if (quietFrameCountRef.current >= MAX_QUIET_FRAMES) {
           smoothedLevelRef.current = null;
           setLiveDisplayDb(0);
-          setLiveFrame(null);
         }
 
         return;
@@ -793,7 +761,6 @@ export default function VolumeBandTargeting({
       voicedFrameCountRef.current += 1;
       totalVoicedFrameCountRef.current += 1;
 
-      setLiveFrame(frame);
 
       const rawLevel = getLiveDisplayLevel(frame);
       const previousLevel = smoothedLevelRef.current;
@@ -818,7 +785,6 @@ export default function VolumeBandTargeting({
 
       recordingFinishedRef.current = true;
       recordingStartedAtRef.current = null;
-      setLiveFrame(null);
 
       if (
         cancelledRecordingRef.current ||
@@ -886,6 +852,26 @@ export default function VolumeBandTargeting({
       }
 
       repSampleRateRef.current = sampleRate;
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        totalVoicedFrameCountRef.current = Math.max(
+          0,
+          totalVoicedFrameCountRef.current - voicedFrameCountRef.current,
+        );
+        finishingRef.current = false;
+        stopRequestedRef.current = false;
+        recordingFinishedRef.current = false;
+        shouldProcessResultRef.current = false;
+        voicedFrameCountRef.current = 0;
+        recordingStartedAtRef.current = null;
+        stopReasonRef.current = 'none';
+        resetLiveLevel();
+        setRecordingNotice(null);
+        setPhase('directions');
+        setShowNoAudioModal(true);
+        return;
+      }
+
       repSamplesRef.current.push(samples);
 
       if (
@@ -907,7 +893,7 @@ export default function VolumeBandTargeting({
 
         resetLiveLevel();
 
-        setCountdown(COUNTDOWN_SECONDS);
+        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
         setPhase('countdown');
         return;
       }
@@ -969,7 +955,7 @@ export default function VolumeBandTargeting({
           combinedSamples,
           recordedSampleRate,
           {
-            windowMs: WINDOW_MS,
+            windowMs: VOLUME_ANALYSIS_WINDOW_MS,
             targetDbRange: currentParams.targetDbRange,
             durationSec: expectedRepDuration,
             repetitions: currentParams.repetitions,
@@ -1099,7 +1085,7 @@ export default function VolumeBandTargeting({
 
       setCurrentRep(1);
       setElapsedMs(0);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       resetLiveLevel();
 
@@ -1330,7 +1316,7 @@ export default function VolumeBandTargeting({
     setReferencePlaybackError(null);
     setNoVoiceDetected(false);
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
     setScore(0);
     setAverageDb(0);
@@ -1375,69 +1361,37 @@ export default function VolumeBandTargeting({
   const targetRangeText = formatTargetRange(params.targetDbRange);
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'exercise'
-              ? 'Your current repetition has been stopped. If you continue, the exercise will restart from Rep 1.'
-              : pausedPhaseRef.current === 'countdown'
-                ? 'Your exercise is paused. Continuing will restart from Rep 1.'
-                : 'Are you sure you want to leave Volume Band Targeting?'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting || isPausing}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              (isQuitting || isPausing) && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              {isPausing ? 'Pausing...' : 'Continue Exercise'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
-              void quitExercise();
-            }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+    <>
+      <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'exercise'
+          ? 'Your current repetition has been stopped. If you continue, the exercise will restart from Rep 1.'
+          : pausedPhaseRef.current === 'countdown'
+            ? 'Your exercise is paused. Continuing will restart from Rep 1.'
+            : 'Are you sure you want to leave Volume Band Targeting?'}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        continueLabel={isPausing ? 'Pausing...' : 'Continue Exercise'}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+          setPhase('countdown');
+        }}
+        onQuit={() => {
+          setShowNoAudioModal(false);
+          void quitExercise();
+        }}
+        isQuitting={isQuitting}
+      />
+    </>
   );
 
   if (!parametersReady || !referenceNoteReady) {
@@ -1445,30 +1399,13 @@ export default function VolumeBandTargeting({
       <>
         {quitModal}
 
-        <SafeAreaView style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level and
-            preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </SafeAreaView>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          icon="options-outline"
+          iconSize={44}
+          useSafeArea
+        />
       </>
     );
   }
@@ -1849,38 +1786,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
-  },
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
   },
   referenceCard: {
     marginTop: 12,
@@ -2279,82 +2184,5 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaSemiBold',
     fontSize: 12,
     textAlign: 'right',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor:  COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

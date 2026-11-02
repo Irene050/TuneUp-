@@ -1,4 +1,5 @@
 import type { ControlledDecrescendoMeasurement } from '@/services/measurement/volume/controlledDecrescendoDrill';
+import { clamp } from '@/utils/math';
 
 const DEFAULT_PASSING_SCORE = 75;
 const MIN_VALID_WINDOWS = 20;
@@ -15,14 +16,6 @@ export interface ControlledDecrescendoScore {
 
 interface ScoreOptions {
   passingScore?: number;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function roundScore(value: number): number {

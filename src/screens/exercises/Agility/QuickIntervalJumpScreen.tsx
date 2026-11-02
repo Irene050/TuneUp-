@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
     BackHandler,
     Modal,
     Pressable,
@@ -21,7 +20,15 @@ import {
     QUICK_INTERVAL_JUMP_PARAMS,
     type Tier,
 } from '@/constants/params';
-import ExerciseScreen from '@/screens/exercises/ExerciseScreen';
+import ExerciseScreen, {
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseListeningScreen,
+  ExerciseRecordingScreen,
+} from '@/screens/exercises/ExerciseScreen';
+import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -32,22 +39,29 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
-import { frequencyToNoteName } from '@/utils/music/notes';
+import {
+  frequencyToNoteName,
+  getSemitoneDistance,
+} from '@/utils/music/notes';
+import { sleep } from '@/utils/async';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  AGILITY_CLOSE_NOTE_SEMITONES,
+  AGILITY_GOOD_NOTE_SEMITONES,
+  AUDIO_BUFFER_SIZE,
+  AUDIO_SAMPLE_RATE,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
-const SAMPLE_RATE = 44100;
-const BUFFER_SIZE = 4410;
 const MAX_RECORDING_SECONDS = 15;
-const MAX_SAMPLE_COUNT = SAMPLE_RATE * MAX_RECORDING_SECONDS;
-const COUNTDOWN_SECONDS = 3;
+const MAX_SAMPLE_COUNT = AUDIO_SAMPLE_RATE * MAX_RECORDING_SECONDS;
 
 const MIN_PITCH_HZ = 60;
 const MAX_PITCH_HZ = 1000;
 const MIN_RMS = 0.008;
 const MIN_PITCH_CORRELATION = 0.7;
-const CLOSE_NOTE_SEMITONES = 1.5;
-const GOOD_NOTE_SEMITONES = 0.5;
 
 type Phase =
   | 'instructions'
@@ -78,9 +92,6 @@ type QuickIntervalJumpSettings = {
 };
 
 type AdaptiveConfig = ReturnType<typeof generateQuickIntervalJumpParams>;
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const getQuickIntervalJumpSettings = (
   tier: Tier,
@@ -207,24 +218,6 @@ const estimatePitch = (
   return frequency;
 };
 
-const getSemitoneDistance = (
-  detectedFrequency: number,
-  targetFrequency: number,
-): number => {
-  if (
-    detectedFrequency <= 0 ||
-    targetFrequency <= 0 ||
-    !Number.isFinite(detectedFrequency) ||
-    !Number.isFinite(targetFrequency)
-  ) {
-    return Infinity;
-  }
-
-  return Math.abs(
-    12 * Math.log2(detectedFrequency / targetFrequency),
-  );
-};
-
 export default function QuickIntervalJumpScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
   const [tierLoading, setTierLoading] = useState(true);
@@ -242,9 +235,9 @@ export default function QuickIntervalJumpScreen() {
   const [isPreparingResume, setIsPreparingResume] = useState(false);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [currentRepetition, setCurrentRepetition] = useState(1);
+  const [currentRep, setCurrentRep] = useState(1);
 
   const [isPlayingReference, setIsPlayingReference] = useState(false);
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
@@ -263,6 +256,7 @@ export default function QuickIntervalJumpScreen() {
   const [confirmation, setConfirmation] = useState<'tryAgain' | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<AudioRecorder | null>(null);
@@ -310,7 +304,7 @@ export default function QuickIntervalJumpScreen() {
 
   const updateLivePitch = useCallback(
     (audioSamples: Float32Array) => {
-      const pitchHz = estimatePitch(audioSamples, SAMPLE_RATE);
+      const pitchHz = estimatePitch(audioSamples, AUDIO_SAMPLE_RATE);
 
       if (pitchHz === null) {
         setLivePitchHz(null);
@@ -321,10 +315,9 @@ export default function QuickIntervalJumpScreen() {
 
       const detectedNote = frequencyToNoteName(pitchHz);
 
-      let closestIndex = -1;
       let closestDistance = Infinity;
 
-      adaptiveConfig.frequencies.forEach((targetFrequency, index) => {
+      adaptiveConfig.frequencies.forEach(targetFrequency => {
         const distance = getSemitoneDistance(
           pitchHz,
           targetFrequency,
@@ -332,16 +325,15 @@ export default function QuickIntervalJumpScreen() {
 
         if (distance < closestDistance) {
           closestDistance = distance;
-          closestIndex = index;
         }
       });
 
       setLivePitchHz(pitchHz);
       setLiveDetectedNote(detectedNote);
 
-      if (closestDistance <= GOOD_NOTE_SEMITONES) {
+      if (closestDistance <= AGILITY_GOOD_NOTE_SEMITONES) {
         setLiveStatus('Great! You are matching a target note.');
-      } else if (closestDistance <= CLOSE_NOTE_SEMITONES) {
+      } else if (closestDistance <= AGILITY_CLOSE_NOTE_SEMITONES) {
         setLiveStatus('Close! Adjust your pitch slightly.');
       } else {
         setLiveStatus('Try matching one of the target notes.');
@@ -624,7 +616,7 @@ export default function QuickIntervalJumpScreen() {
     try {
       const context =
         audioContextRef.current ??
-        new AudioContext({ sampleRate: SAMPLE_RATE });
+        new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE });
 
       audioContextRef.current = context;
 
@@ -712,7 +704,7 @@ export default function QuickIntervalJumpScreen() {
     }
 
     setResult(null);
-    setCurrentRepetition(1);
+    setCurrentRep(1);
     samplesRef.current = [];
     repetitionSampleStartRef.current = 0;
     resetLivePitch();
@@ -745,6 +737,12 @@ export default function QuickIntervalJumpScreen() {
     try {
       const samples = new Float32Array(samplesRef.current);
 
+      if (!hasSufficientRecordedSignal(samples)) {
+        setPhase('reference');
+        setShowNoAudioModal(true);
+        return;
+      }
+
       const targetFrequencies = Array.from(
         { length: repetitions },
         () => adaptiveConfig.frequencies,
@@ -752,7 +750,7 @@ export default function QuickIntervalJumpScreen() {
 
       const measurement = measureQuickIntervalJump(
         samples,
-        SAMPLE_RATE,
+        AUDIO_SAMPLE_RATE,
         targetFrequencies,
       );
 
@@ -836,8 +834,8 @@ export default function QuickIntervalJumpScreen() {
 
       const callbackResult = recorder.onAudioReady(
         {
-          sampleRate: SAMPLE_RATE,
-          bufferLength: BUFFER_SIZE,
+          sampleRate: AUDIO_SAMPLE_RATE,
+          bufferLength: AUDIO_BUFFER_SIZE,
           channelCount: 1,
         },
         ({ buffer, numFrames }) => {
@@ -948,8 +946,21 @@ export default function QuickIntervalJumpScreen() {
         if (elapsed >= repetitionDurationSec) {
           stopRecording();
 
-          if (currentRepetition < repetitions) {
-            setCurrentRepetition((previous) => previous + 1);
+          const repetitionSamples = new Float32Array(
+            samplesRef.current.slice(
+              repetitionSampleStartRef.current,
+            ),
+          );
+
+          if (!hasSufficientRecordedSignal(repetitionSamples)) {
+            setPhase('reference');
+            setShowNoAudioModal(true);
+            return;
+          }
+
+          if (currentRep < repetitions) {
+            repetitionSampleStartRef.current = samplesRef.current.length;
+            setCurrentRep((previous) => previous + 1);
             setRecordingTime(0);
             resetLivePitch();
             setPhase('reference');
@@ -986,12 +997,12 @@ export default function QuickIntervalJumpScreen() {
 
     playbackTokenRef.current += 1;
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setRecordingTime(0);
     setResult(null);
     resetLivePitch();
 
-    if (currentRepetition === 1) {
+    if (currentRep === 1) {
       samplesRef.current = [];
     }
 
@@ -1000,7 +1011,7 @@ export default function QuickIntervalJumpScreen() {
 
     setPhase('countdown');
 
-    for (let value = COUNTDOWN_SECONDS; value >= 1; value--) {
+    for (let value = EXERCISE_COUNTDOWN_SECONDS; value >= 1; value--) {
       if (
         !mountedRef.current ||
         countdownToken !== countdownTokenRef.current ||
@@ -1044,13 +1055,13 @@ export default function QuickIntervalJumpScreen() {
     samplesRef.current = [];
     setResult(null);
     setRecordingTime(0);
-    setCurrentRepetition(1);
+    setCurrentRep(1);
     resetLivePitch();
 
     repetitionSampleStartRef.current = 0;
     pausedRepetitionRef.current = 1;
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('instructions');
   };
 
@@ -1065,7 +1076,7 @@ export default function QuickIntervalJumpScreen() {
     }
 
     pausedPhaseRef.current = phase;
-    pausedRepetitionRef.current = currentRepetition;
+    pausedRepetitionRef.current = currentRep;
 
     updateQuitModalVisibility(true);
 
@@ -1089,14 +1100,14 @@ export default function QuickIntervalJumpScreen() {
       setPhase('reference');
     } else if (phase === 'countdown') {
       setRecordingTime(0);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
       setPhase('reference');
     } else if (phase === 'reference') {
       setPhase('reference');
     }
   }, [
     confirmation,
-    currentRepetition,
+    currentRep,
     phase,
     resetLivePitch,
     stopRecording,
@@ -1118,9 +1129,9 @@ export default function QuickIntervalJumpScreen() {
       previouslyPausedPhase === 'recording' ||
       previouslyPausedPhase === 'countdown'
     ) {
-      setCurrentRepetition(pausedRepetitionRef.current);
+      setCurrentRep(pausedRepetitionRef.current);
       setRecordingTime(0);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
       resetLivePitch();
       processingRef.current = false;
 
@@ -1255,92 +1266,25 @@ export default function QuickIntervalJumpScreen() {
   );
 
   const renderReference = () => (
-    <View style={styles.content}>
-
-      <View style={styles.iconCircle}>
-        <Ionicons name="swap-horizontal-outline" size={34} color={COLORS.brown} />
-      </View>
-
-      <Text style={styles.phaseTitle}>Listen to the Reference</Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Repetition {currentRepetition} of {repetitions}
-      </Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Listen to the note sequence, then sing the same notes.
-      </Text>
-
-      <View style={styles.referenceCard}>
-        <Text style={styles.referenceLabel}>
-          YOUR VOCAL-RANGE SEQUENCE
-        </Text>
-
-        <View style={styles.noteSequence}>
-          {adaptiveConfig.frequencies.map((frequency, index) => {
-            const active = activeReferenceNoteIndex === index;
-
-            return (
-              <View
-                key={`${frequency}-${index}`}
-                style={[
-                  styles.notePill,
-                  active && styles.referenceNotePlaying,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.noteNumber,
-                    active && styles.referenceNotePlayingText,
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.noteText,
-                    active && styles.referenceNotePlayingText,
-                  ]}
-                >
-                  {frequencyToNoteName(frequency)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-
-      <Pressable
-        style={[
-          styles.referenceButton,
-          isPlayingReference && styles.disabledButton,
-        ]}
-        disabled={isPlayingReference || !hasUsableVocalRange}
-        onPress={() => void playReference()}
-      >
-        {isPlayingReference ? (
-          <ActivityIndicator size="small" color={COLORS.brown} />
-        ) : (
-          <Ionicons name="play" size={18} color={COLORS.brown} />
-        )}
-
-        <Text style={styles.referenceButtonText}>
-          {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[
-          styles.startButton,
-          isPlayingReference && styles.disabledButton,
-        ]}
-        disabled={isPlayingReference || !hasUsableVocalRange}
-        onPress={() => void startCountdown()}
-      >
-        <Text style={styles.startButtonText}>I'm Ready</Text>
-      </Pressable>
-    </View>
+    <ExerciseListeningScreen
+      icon="swap-horizontal-outline"
+      title="Quick Interval Jump"
+      currentRep={currentRep}
+      repetitions={repetitions}
+      promptTitle="Listen to the Reference"
+      prompt="Listen to the note sequence, then sing the same notes in order."
+      liveContent={
+        <AgilitySequenceGuide
+          names={adaptiveConfig.frequencies.map(frequencyToNoteName)}
+          activeIndex={activeReferenceNoteIndex}
+          caption="The pink highlight follows the note being played."
+        />
+      }
+      isPlayingReference={isPlayingReference}
+      onPlayReference={() => void playReference()}
+      onContinue={() => void startCountdown()}
+      onBack={pauseForExitPrompt}
+    />
   );
 
   const renderCountdown = () => (
@@ -1355,7 +1299,7 @@ export default function QuickIntervalJumpScreen() {
       <Text style={styles.countdownText}>{countdown}</Text>
 
       <Text style={styles.phaseSubtitle}>
-        Prepare for repetition {currentRepetition} of {repetitions}.
+        Prepare for repetition {currentRep} of {repetitions}.
       </Text>
     </View>
   );
@@ -1390,134 +1334,26 @@ export default function QuickIntervalJumpScreen() {
     const liveStatusColor =
       livePitchHz === null || activeTargetFrequency === null
         ? COLORS.muted
-        : activeTargetDistance <= GOOD_NOTE_SEMITONES
+        : activeTargetDistance <= AGILITY_GOOD_NOTE_SEMITONES
           ? COLORS.guideGreen
-          : activeTargetDistance <= CLOSE_NOTE_SEMITONES
+          : activeTargetDistance <= AGILITY_CLOSE_NOTE_SEMITONES
             ? COLORS.guideYellow
             : COLORS.guideRed;
 
     return (
-      <View style={styles.content}>
-
-        <View style={styles.recordingIcon}>
-          <Ionicons name="mic" size={34} color={COLORS.brown} />
-        </View>
-
-        <Text style={styles.recordingTitle}>Jump Between Notes</Text>
-
-        <Text style={styles.recordingSubtitle}>
-          Repetition {currentRepetition} of {repetitions}
-        </Text>
-
-        <View style={styles.recordingBadge}>
-          <View style={styles.recordingDot} />
-          <Text style={styles.recordingBadgeText}>RECORDING</Text>
-        </View>
-
-        <View style={styles.referenceCard}>
-          <Text style={styles.cardTitle}>Sing This Sequence</Text>
-
-          <View style={styles.noteSequence}>
-            {adaptiveConfig.frequencies.map((frequency, index) => {
-              const isActive = activeRecordingNoteIndex === index;
-              const distance =
-                livePitchHz !== null
-                  ? getSemitoneDistance(livePitchHz, frequency)
-                  : Infinity;
-
-              let noteColor: string | undefined;
-
-              if (isActive && livePitchHz !== null) {
-                if (distance <= GOOD_NOTE_SEMITONES) {
-                  noteColor = COLORS.guideGreen;
-                } else if (distance <= CLOSE_NOTE_SEMITONES) {
-                  noteColor = COLORS.guideYellow;
-                } else {
-                  noteColor = COLORS.guideRed;
-                }
-              }
-
-              return (
-                <View
-                  key={`${frequency}-${index}`}
-                  style={[
-                    styles.notePill,
-                    isActive && styles.referenceNotePlaying,
-                    noteColor
-                      ? {
-                          backgroundColor: noteColor,
-                          borderWidth: 1,
-                          borderColor: noteColor,
-                        }
-                      : undefined,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.noteNumber,
-                      (isActive || noteColor) &&
-                        styles.referenceNotePlayingText,
-                    ]}
-                  >
-                    {index + 1}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.noteText,
-                      (isActive || noteColor) &&
-                        styles.referenceNotePlayingText,
-                    ]}
-                  >
-                    {frequencyToNoteName(frequency)}
-                  </Text>
-
-                  <View
-                    style={[
-                      styles.noteIndicator,
-                      {
-                        backgroundColor:
-                          noteColor ??
-                          (isActive ? COLORS.waveform : COLORS.border),
-                      },
-                    ]}
-                  />
-                </View>
-              );
-            })}
-          </View>
-          <View style={styles.legendRow}>
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: COLORS.guideGreen },
-              ]}
-            />
-            <Text style={styles.legendText}>Correct</Text>
-          </View>
-
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: COLORS.guideYellow },
-              ]}
-            />
-            <Text style={styles.legendText}>Close</Text>
-          </View>
-
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: COLORS.guideRed },
-              ]}
-            />
-            <Text style={styles.legendText}>Mismatch</Text>
-          </View>
-        </View>
-        </View>
+      <ExerciseRecordingScreen
+        title="Jump Between Notes"
+        currentRep={currentRep}
+        repetitions={repetitions}
+        onBack={pauseForExitPrompt}
+      >
+        <AgilitySequenceGuide
+          names={adaptiveConfig.frequencies.map(frequencyToNoteName)}
+          activeIndex={activeRecordingNoteIndex}
+          liveNote={livePitchHz === null ? undefined : frequencyToNoteName(livePitchHz)}
+          showFeedback
+          caption="Follow the highlighted note. Green is in tune, yellow is close, and red is off pitch."
+        />
 
         <View
           style={[
@@ -1575,22 +1411,16 @@ export default function QuickIntervalJumpScreen() {
             ]}
           />
         </View>
-      </View>
+      </ExerciseRecordingScreen>
     );
   };
 
   const renderProcessing = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
-        <ActivityIndicator size="large" color={COLORS.brown} />
-      </View>
-
-      <Text style={styles.phaseTitle}>Analyzing Your Singing</Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Measuring pitch accuracy, interval accuracy, and transition speed.
-      </Text>
-    </View>
+    <ExerciseProcessingScreen
+      icon="analytics-outline"
+      title="Analyzing Your Singing"
+      message="Measuring pitch accuracy, interval accuracy, and transition speed."
+    />
   );
 
   const renderScoreRow = (
@@ -1745,33 +1575,16 @@ export default function QuickIntervalJumpScreen() {
     isPreparingResume
   ) {
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons
-            name="musical-notes-outline"
-            size={44}
-            color={COLORS.brown}
-          />
-        </View>
-
-        <Text style={styles.preparingTitle}>
-          {isPreparingResume
-            ? 'Preparing Your Repetition'
-            : 'Preparing Your Exercise'}
-        </Text>
-
-        <Text style={styles.preparingSubtitle}>
-          {isPreparingResume
-            ? 'Getting your reference notes ready. Your completed repetitions are preserved.'
-            : 'Loading your saved vocal range and preparing notes for your difficulty level.'}
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={COLORS.brown}
-          style={styles.spinner}
-        />
-      </View>
+      <ExercisePreparingScreen
+        title={isPreparingResume
+    ? 'Preparing Your Repetition'
+    : 'Preparing Your Exercise'}
+        message={isPreparingResume
+    ? 'Getting your reference notes ready. Your completed repetitions are preserved.'
+    : 'Loading your saved vocal range and preparing notes for your difficulty level.'}
+        icon="musical-notes-outline"
+        iconSize={44}
+      />
     );
   }
 
@@ -1792,27 +1605,10 @@ export default function QuickIntervalJumpScreen() {
         {phase === 'results' && renderResults()}
       </ScrollView>
 
-      <Modal
+      <ExerciseQuitModal
         visible={showQuitModal}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={continueExercise}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIcon}>
-              <Ionicons
-                name="exit-outline"
-                size={30}
-                color={COLORS.brown}
-              />
-            </View>
-
-            <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-            <Text style={styles.modalMessage}>
-              {pausedPhaseRef.current === 'instructions' ||
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'instructions' ||
               pausedPhaseRef.current === 'results'
                 ? 'Are you sure you want to leave Quick Interval Jump?'
                 : pausedPhaseRef.current === 'recording'
@@ -1820,44 +1616,36 @@ export default function QuickIntervalJumpScreen() {
                   : pausedPhaseRef.current === 'countdown'
                     ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to restart the countdown for your current repetition.'
                     : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Continue exercise"
-              disabled={isQuitting}
-              onPress={continueExercise}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>
-                Continue Exercise
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Quit exercise"
-              disabled={isQuitting}
-              onPress={() => {
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
                 void quitExercise();
               }}
-              style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.quitButtonText}>
-                {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          samplesRef.current = samplesRef.current.slice(
+            0,
+            repetitionSampleStartRef.current,
+          );
+          processingRef.current = false;
+          setRecordingTime(0);
+          setResult(null);
+          resetLivePitch();
+          setPhase('reference');
+          void startCountdown();
+        }}
+        onQuit={() => {
+          setShowNoAudioModal(false);
+          void quitExercise();
+        }}
+        isQuitting={isQuitting}
+      />
 
       <Modal
         visible={confirmation === 'tryAgain'}
@@ -1914,38 +1702,6 @@ export default function QuickIntervalJumpScreen() {
 }
 
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   screen: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1961,13 +1717,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 8,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 120,
-    paddingBottom: 60,
-    alignItems: 'center',
   },
   resultsContent: {
     flexGrow: 1,
@@ -2015,78 +1764,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 320,
   },
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginTop: 10,
-    marginBottom: 14,
-    textAlign: 'center',
-  },
-  referenceCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 22,
-  },
-  referenceLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  referenceHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  noteSequence: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 9,
-    marginTop: 16,
-  },
-  notePill: {
-    minWidth: 60,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-  },
-  referenceNotePlaying: {
-    backgroundColor: COLORS.waveform,
-    borderWidth: 1,
-    borderColor: COLORS.completedPink,
-  },
-  referenceNotePlayingText: {
-    color: COLORS.white,
-  },
-  noteNumber: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.muted,
-    marginBottom: 2,
-  },
-  noteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  noteIndicator: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginTop: 6,
-  },
   tipCard: {
     width: '100%',
     flexDirection: 'row',
@@ -2106,22 +1783,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     marginLeft: 9,
   },
-  referenceButton: {
-    width: '100%',
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 22,
-  },
-  referenceButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
   startButton: {
     width: '100%',
     minHeight: 54,
@@ -2132,9 +1793,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginTop: 14,
-  },
-  disabledButton: {
-    opacity: 0.55,
   },
   startButtonText: {
     fontFamily: 'FredokaBold',
@@ -2162,53 +1820,6 @@ const styles = StyleSheet.create({
     fontSize: 72,
     color: COLORS.brown,
     marginTop: 20,
-  },
-  recordingIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 26,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 3,
-    maxWidth: 310,
-  },
-  recordingBadge: {
-    marginTop: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.guideRed,
-    marginRight: 7,
-  },
-  recordingBadgeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: COLORS.brown,
   },
   liveCard: {
     width: '100%',
@@ -2282,29 +1893,6 @@ const styles = StyleSheet.create({
   timerFill: {
     height: '100%',
     backgroundColor: COLORS.waveform,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginTop: 16,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
   },
   resultIcon: {
     width: 82,
@@ -2503,8 +2091,5 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.70,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

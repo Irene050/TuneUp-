@@ -2,6 +2,7 @@ import {
   calcRMSWindows,
   toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
+import { average, clamp } from '@/utils/math';
 
 const DEFAULT_WINDOW_MS = 50;
 
@@ -38,25 +39,6 @@ interface MeasureOptions {
   durationSec?: number;
   repetitions?: number;
   toleranceDb?: number;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return (
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length
-  );
 }
 
 function standardDeviation(values: number[]): number {

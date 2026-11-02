@@ -2,8 +2,12 @@ import {
   extractAgilityNotes,
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
+import { clampFinite } from '@/utils/math';
 
-import { midiToFrequency } from '@/utils/music/notes';
+import {
+  frequencyToMidi,
+  midiToFrequency,
+} from '@/utils/music/notes';
 
 export type RapidNoteTransitionMeasurement = {
   detectedPitches: number[];
@@ -39,14 +43,6 @@ const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const NOTE_CONFIRMATION_FRAMES = 2;
 
-function clamp(value: number, min = 0, max = 100): number {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-
-  return Math.min(max, Math.max(min, value));
-}
-
 function frequencyDeviationPercent(
   detectedMidi: number,
   targetFrequency: number,
@@ -73,7 +69,7 @@ function alignNotes(
   targetFrequencies: number[],
 ): AlignedNote[] {
   const targetMidi = targetFrequencies.map((frequency) =>
-    Math.round(69 + 12 * Math.log2(frequency / 440)),
+    Math.round(frequencyToMidi(frequency)),
   );
 
   const rows = detectedNotes.length + 1;
@@ -155,11 +151,11 @@ function calculatePitchAccuracy(
       const noteScore =
         1 - deviationPercent / PITCH_TOLERANCE_PERCENT;
 
-      totalPoints += clamp(noteScore, 0, 1);
+      totalPoints += clampFinite(noteScore, 0, 1);
     }
   }
 
-  return clamp((totalPoints / denominator) * 100);
+  return clampFinite((totalPoints / denominator) * 100);
 }
 
 function calculateSequenceAccuracy(
@@ -176,7 +172,7 @@ function calculateSequenceAccuracy(
     return 0;
   }
 
-  return clamp((alignedNotes.length / denominator) * 100);
+  return clampFinite((alignedNotes.length / denominator) * 100);
 }
 
 function calculateTransitions(noteEvents: NoteEvent[]): {

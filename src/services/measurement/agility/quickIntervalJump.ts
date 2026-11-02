@@ -3,6 +3,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi } from '@/utils/music/notes';
+import { average, clamp } from '@/utils/math';
 
 export type QuickIntervalJumpMeasurement = {
   detectedPitches: number[];
@@ -28,10 +29,6 @@ const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const CONFIRMATION_FRAMES = 3;
 const NOTE_TOLERANCE_SEMITONES = 1;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 type NoteEvent = {
   midi: number;
@@ -257,15 +254,6 @@ export function measureQuickIntervalJump(
 
   const alignment = alignNotes(detectedNotes, targetNotes);
 
-  const sequenceAccuracy = clamp(
-    100 *
-      (1 -
-        alignment.editDistance /
-          Math.max(detectedNotes.length, targetNotes.length)),
-    0,
-    100,
-  );
-
   let totalSemitoneError = 0;
 
   for (const pair of alignment.matchedPairs) {
@@ -338,11 +326,7 @@ export function measureQuickIntervalJump(
       ? (correctTransitionCount / transitionCount) * 100
       : 0;
 
-  const averageTransitionTimeMs =
-    transitionTimesMs.length > 0
-      ? transitionTimesMs.reduce((sum, value) => sum + value, 0) /
-        transitionTimesMs.length
-      : 0;
+  const averageTransitionTimeMs = average(transitionTimesMs);
 
   return {
     detectedPitches,

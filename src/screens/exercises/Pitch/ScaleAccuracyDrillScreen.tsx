@@ -6,16 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import {
     SCALE_ACCURACY_PARAMS,
@@ -53,21 +44,30 @@ import {
     getRandomScale,
     type VocalRange,
 } from '@/utils/music/notes';
+import { averageFinite } from '@/utils/math';
+import { formatFrequency } from '@/utils/numberFormatting';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen
 } from '../ExerciseScreen';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_RECORDING_INTERVAL_MS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { clamp } from '@/utils/math';
 
-const COUNTDOWN_SECONDS = 3;
 const NOTE_DURATION_SECONDS = 0.8;
 const RECORDING_MIN_DURATION_MS = 5000;
 const RECORDING_MS_PER_NOTE = 1250;
-const RECORDING_INTERVAL_MS = 100;
 
 interface Props {
   tier?: Tier;
@@ -129,35 +129,10 @@ function generateScale(
   return scale;
 }
 
-function average(values: number[]): number {
-  const validValues = values.filter(Number.isFinite);
-
-  if (validValues.length === 0) {
-    return 0;
-  }
-
-  return (
-    validValues.reduce((sum, value) => sum + value, 0) /
-    validValues.length
-  );
-}
-
 function averagePositive(values: number[]): number {
-  return average(
+  return averageFinite(
     values.filter(value => Number.isFinite(value) && value > 0),
   );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatFrequency(frequency: number | null): string {
-  return frequency !== null &&
-    Number.isFinite(frequency) &&
-    frequency > 0
-    ? `${Math.round(frequency)} Hz`
-    : '-- Hz';
 }
 
 function aggregateScaleResults(
@@ -182,10 +157,10 @@ function aggregateScaleResults(
   }
 
   return {
-    score: Math.round(average(results.map(item => item.score))),
+    score: Math.round(averageFinite(results.map(item => item.score))),
     passed: results.every(item => item.passed),
-    noteAccuracy: average(results.map(item => item.noteAccuracy)),
-    transitionSmoothness: average(
+    noteAccuracy: averageFinite(results.map(item => item.noteAccuracy)),
+    transitionSmoothness: averageFinite(
       results.map(item => item.transitionSmoothness),
     ),
     correctNotes: results.reduce(
@@ -203,7 +178,7 @@ function aggregateScaleResults(
     ),
     targetFreqs,
     noteScores: targetFreqs.map((_, index) =>
-      average(results.map(item => item.noteScores[index] ?? 0)),
+      averageFinite(results.map(item => item.noteScores[index] ?? 0)),
     ),
     noteDeviations: targetFreqs.map((_, index) => {
       const deviations = results
@@ -212,9 +187,9 @@ function aggregateScaleResults(
           (value): value is number => Number.isFinite(value),
         );
 
-      return deviations.length > 0 ? average(deviations) : 100;
+      return deviations.length > 0 ? averageFinite(deviations) : 100;
     }),
-    averageClarity: average(
+    averageClarity: averageFinite(
       results.map(item => item.averageClarity),
     ),
     voicedNotes: results.reduce(
@@ -333,7 +308,7 @@ function LivePitchIndicator({
             {targetNote}
           </Text>
           <Text style={styles.pitchGuideFrequency}>
-            {formatFrequency(targetFrequency)}
+            {formatFrequency(targetFrequency, 0, '-- Hz')}
           </Text>
         </View>
 
@@ -361,7 +336,7 @@ function LivePitchIndicator({
             {detectedNote ?? '--'}
           </Text>
           <Text style={styles.pitchGuideFrequency}>
-            {formatFrequency(detectedFrequency)}
+            {formatFrequency(detectedFrequency, 0, '-- Hz')}
           </Text>
         </View>
       </View>
@@ -493,57 +468,16 @@ function QuitExerciseModal({
   quitting,
 }: QuitExerciseModalProps) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onContinue}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.quitModalCard}>
-          <View style={styles.quitIconCircle}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.quitModalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.quitModalMessage}>{message}</Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={quitting}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.modalButtonPressed,
-              quitting && styles.modalButtonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={quitting}
-            onPress={onQuit}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.modalButtonPressed,
-              quitting && styles.modalButtonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {quitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+    <ExerciseQuitModal
+        visible={visible}
+        title={"Quit exercise?"}
+        message={message}
+        isQuitting={quitting}
+        onContinue={onContinue}
+        onQuit={onQuit}
+        continueLabel={"Continue Exercise"}
+        quitLabel={quitting ? 'Stopping...' : 'Quit Exercise'}
+      />
   );
 }
 
@@ -558,7 +492,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     useState(true);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
   const [currentRep, setCurrentRep] = useState(1);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
@@ -579,6 +513,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
 
   const mountedRef = useRef(false);
@@ -600,7 +535,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const discardNextStopRef = useRef(false);
   const stopPendingForQuitRef = useRef(false);
   const resumeAfterDiscardRef = useRef(false);
-  const interruptedPhaseRef = useRef<Phase>('instructions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -725,6 +660,16 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         isQuittingRef.current ||
         !stopRequestedRef.current
       ) {
+        return;
+      }
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        stopRequestedRef.current = false;
+        startingRecordingRef.current = false;
+        processingRef.current = false;
+        setErrorMessage(null);
+        updatePhase('instructions');
+        setShowNoAudioModal(true);
         return;
       }
 
@@ -954,7 +899,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           return;
         }
 
-        recordingElapsedRef.current += RECORDING_INTERVAL_MS;
+        recordingElapsedRef.current += EXERCISE_RECORDING_INTERVAL_MS;
 
         const elapsedMs = recordingElapsedRef.current;
         const nextNoteIndex = Math.min(
@@ -992,7 +937,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             updatePhase('instructions');
           }
         });
-      }, RECORDING_INTERVAL_MS);
+      }, EXERCISE_RECORDING_INTERVAL_MS);
     } catch (error) {
       console.error('Failed to start scale recording:', error);
 
@@ -1091,13 +1036,13 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       countdownTimerRef.current = null;
     }
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCurrentNoteIndex(-1);
     setLiveFrame(null);
     setLiveFrequencies([]);
     updatePhase('countdown');
 
-    let value = COUNTDOWN_SECONDS;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -1242,7 +1187,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     const interruptedPhase = phaseRef.current;
 
-    interruptedPhaseRef.current = interruptedPhase;
+    pausedPhaseRef.current = interruptedPhase;
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
@@ -1296,7 +1241,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       return;
     }
 
-    const interruptedPhase = interruptedPhaseRef.current;
+    const interruptedPhase = pausedPhaseRef.current;
 
     showQuitModalRef.current = false;
     setShowQuitModal(false);
@@ -1557,53 +1502,51 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const liveStability = calcLiveStability(liveFrequencies);
 
   const modalMessage =
-    interruptedPhaseRef.current === 'instructions' ||
-    interruptedPhaseRef.current === 'results'
+    pausedPhaseRef.current === 'instructions' ||
+    pausedPhaseRef.current === 'results'
       ? 'Are you sure you want to leave Scale Accuracy Drill?'
-      : interruptedPhaseRef.current === 'recording'
+      : pausedPhaseRef.current === 'recording'
         ? 'Your exercise is paused. Completed repetitions will be kept, and the current repetition will restart when you continue.'
-        : interruptedPhaseRef.current === 'processing'
+        : pausedPhaseRef.current === 'processing'
           ? 'Your exercise is paused while your recordings are being analyzed. Continue to return to your exercise.'
           : 'Your exercise is paused. Completed repetitions will be kept. Continue to resume your exercise.';
 
   const quitModal = (
-    <QuitExerciseModal
-      visible={showQuitModal}
-      message={modalMessage}
-      onContinue={continueExercise}
-      onQuit={() => {
-        void quitExercise();
-      }}
-      quitting={isQuitting}
-    />
+    <>
+      <QuitExerciseModal
+        visible={showQuitModal}
+        message={modalMessage}
+        onContinue={continueExercise}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        quitting={isQuitting}
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          setErrorMessage(null);
+          beginRepCountdownRef.current();
+        }}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        isQuitting={isQuitting}
+      />
+    </>
   );
 
   if (phase === 'instructions' && isLoadingAdaptiveParams) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.largeIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.processingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.processingSubtitle}>
-            Adjusting the exercise to your current difficulty level
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level"
+          icon="options-outline"
+          iconSize={44}
+          containerStyle={styles.centerScreen}
+        />
 
         {quitModal}
       </>
@@ -1852,7 +1795,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           icon="analytics-outline"
           title="Analyzing Your Singing"
           message={`Analyzing all ${params.repetitions} repetitions and calculating your final score...`}
-          onBack={goBack}
         />
 
         {quitModal}
@@ -1985,31 +1927,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-  },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
   },
   recordingScreen: {
     flex: 1,
@@ -2498,83 +2415,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: COLORS.brown,
     marginLeft: 10,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  quitModalCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 26,
-    paddingBottom: 26,
-    alignItems: 'center',
-  },
-  quitIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  quitModalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitModalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 23,
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  modalButtonPressed: {
-    opacity: 0.75,
-  },
-  modalButtonDisabled: {
-    opacity: 0.5,
   },
 });

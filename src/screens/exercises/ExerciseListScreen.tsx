@@ -321,7 +321,7 @@ export default function ExerciseListScreen({ component }: Props) {
         <Text style={styles.pageSubtitle}>{config.subtitle}</Text>
 
         <View style={styles.exerciseList}>
-          {config.exercises.map((exercise, index) => (
+          {config.exercises.map(exercise => (
             <TouchableOpacity
               key={exercise.id}
               style={styles.exerciseCard}
@@ -407,13 +407,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 72,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
   },
   headerSpacer: {
     width: 34,
@@ -503,56 +496,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  pressed: {
-    opacity: 0.9,
-  },
-  numberCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  numberText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  iconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FDEBF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  exerciseInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  exerciseTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-    marginBottom: 3,
-  },
-  exerciseDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 15,
-    color: COLORS.muted,
-  },
-  playButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   freeMode: {
     marginTop: 24,
     flexDirection: 'row',
@@ -562,9 +505,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.pink,
     padding: 14,
-  },
-  freeModePressed: {
-    opacity: 0.9,
   },
   freeModeIcon: {
     width: 36,

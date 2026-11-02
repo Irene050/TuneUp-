@@ -29,9 +29,14 @@ import {
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
 
-import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
+import {
+  frequencyToMidi,
+  getSemitoneDistance,
+  midiToFrequency,
+} from '@/utils/music/notes';
 
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
+import { average, clampPercentage } from '@/utils/math';
 
 export type ComponentId =
   | 'breathControl'
@@ -109,14 +114,6 @@ const MIN_AUTOCORRELATION_AGREEMENT_RATIO = 0.50;
 const MIN_RANGE_EVIDENCE_SCORE = 0.48;
 const PITCH_TOLERANCE_CENTS = 85;
 
-function clampScore(score: number): number {
-  if (!Number.isFinite(score)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
 function classifyBand(scorePct: number): RecommendationBand {
   if (scorePct < 60) {
     return 'needsSignificantImprovement';
@@ -187,7 +184,7 @@ function calculatePitchAccuracy(
   const accuracy =
     100 * (1 - deviationCents / PITCH_TOLERANCE_CENTS);
 
-  return clampScore(accuracy);
+  return clampPercentage(accuracy);
 }
 
 export function computeTargetNotes(
@@ -275,7 +272,7 @@ export function measureBreathControl(
     return 0;
   }
 
-  const durationScore = clampScore(
+  const durationScore = clampPercentage(
     Math.min(durationSeconds / targetDurationSec, 1) * 100,
   );
 
@@ -303,7 +300,7 @@ export function measureBreathControl(
     durationScore * 0.4 +
     strictConsistencyScore * 0.6;
 
-  const score = clampScore(finalScore);
+  const score = clampPercentage(finalScore);
 
   console.log('🌬️ BREATH CONTROL ASSESSMENT:', {
     durationSeconds: Number(durationSeconds.toFixed(2)),
@@ -367,26 +364,24 @@ function measurePitch(
     calculatePitchAccuracy(frame.frequency, targetFrequency),
   );
 
-  const accuracy =
-    accuracyValues.reduce((sum, value) => sum + value, 0) /
-    accuracyValues.length;
+  const accuracy = average(accuracyValues);
 
   const frequencies = validFrames.map(frame => frame.frequency);
 
-  const stability = clampScore(calcLiveStability(frequencies));
+  const stability = clampPercentage(calcLiveStability(frequencies));
 
   const clarity =
     validFrames.reduce((sum, frame) => sum + frame.clarity, 0) /
     validFrames.length;
 
-  const clarityScore = clampScore(clarity * 100);
+  const clarityScore = clampPercentage(clarity * 100);
 
   const finalScore =
     accuracy * 0.80 +
     stability * 0.12 +
     clarityScore * 0.08;
 
-  const score = clampScore(finalScore);
+  const score = clampPercentage(finalScore);
 
   console.log('🎵 PITCH ASSESSMENT BREAKDOWN:', {
     targetFrequency: Number(targetFrequency.toFixed(2)),
@@ -492,7 +487,7 @@ function measureTone(
     return 0;
   }
 
-  return clampScore(smoothness * 0.98);
+  return clampPercentage(smoothness * 0.98);
 }
 
 function measureVolume(
@@ -629,7 +624,7 @@ function measureVolume(
   const patternScore =
     (loudnessRise + loudnessFall + softLevelReturn) / 3;
 
-  const finalScore = clampScore(
+  const finalScore = clampPercentage(
     derivativeSmoothness * 0.35 +
       volumeConsistency * 0.35 +
       patternScore * 0.30,
@@ -706,7 +701,7 @@ function alignAgilityNotes(
 
       if (i < detectedCount && j < targetCount) {
         const detectedMidi = detectedNotes[i].midi;
-        const targetMidi = 69 + 12 * Math.log2(targetNotes[j] / 440);
+        const targetMidi = frequencyToMidi(targetNotes[j]);
 
         const centsError = Math.abs(
           (detectedMidi - targetMidi) * 100,
@@ -888,13 +883,9 @@ function measureAgility(
     noteStabilities.push(calcLiveStability(frequencies));
   }
 
-  const patternAccuracy =
-    noteAccuracies.reduce((sum, value) => sum + value, 0) /
-    targetNotes.length;
+  const patternAccuracy = average(noteAccuracies);
 
-  const withinNoteStability =
-    noteStabilities.reduce((sum, value) => sum + value, 0) /
-    targetNotes.length;
+  const withinNoteStability = average(noteStabilities);
 
   const durationSec = Math.max(
     samples.length / sampleRate,
@@ -923,11 +914,11 @@ function measureAgility(
       ? speed / expectedTransitionRate
       : 0;
 
-  const speedScore = clampScore(
+  const speedScore = clampPercentage(
     Math.min(speedRatio, 1) * 100,
   );
 
-  const finalScore = clampScore(
+  const finalScore = clampPercentage(
     patternAccuracy * 0.60 +
       withinNoteStability * 0.20 +
       speedScore * 0.20,
@@ -1647,11 +1638,7 @@ function detectComfortableNote(
     .map(frame => frame.clarity)
     .filter(value => Number.isFinite(value));
 
-  const pitchyClarity =
-    clarityValues.length > 0
-      ? clarityValues.reduce((sum, value) => sum + value, 0) /
-        clarityValues.length
-      : 0;
+  const pitchyClarity = average(clarityValues);
 
   if (pitchyClarity < PITCHY_MIN_CLARITY) {
     console.warn(
@@ -1664,7 +1651,7 @@ function detectComfortableNote(
     return null;
   }
 
-  const stabilityPct = clampScore(finalPitchySupport * 100);
+  const stabilityPct = clampPercentage(finalPitchySupport * 100);
 
   console.log('🎵 COMFORTABLE NOTE ANALYSIS:', {
     durationSec: Number(durationSec.toFixed(2)),
@@ -1741,8 +1728,10 @@ export function getVocalRange(
     );
   }
 
-  const semitoneSpan =
-    12 * Math.log2(high.frequency / low.frequency);
+  const semitoneSpan = getSemitoneDistance(
+    high.frequency,
+    low.frequency,
+  );
 
   console.log(
     '🎵 Vocal range semitone span:',
@@ -1796,7 +1785,7 @@ function safeMetric(
       return 0;
     }
 
-    return clampScore(score);
+    return clampPercentage(score);
   } catch (error) {
     console.error(`❌ ${name} assessment failed:`, error);
 

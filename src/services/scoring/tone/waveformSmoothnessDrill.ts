@@ -5,16 +5,11 @@ import type {
 import type {
     WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
+import { clampScore } from '@/utils/math';
 
 export interface WaveformSmoothnessScoreResult {
   score: number;
   passed: boolean;
-}
-
-function clampScore(value: number): number {
-  return Number.isFinite(value)
-    ? Math.max(0, Math.min(100, value))
-    : 0;
 }
 
 export function scoreWaveformSmoothnessDrill(

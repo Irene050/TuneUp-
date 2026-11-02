@@ -1,5 +1,6 @@
 
 import type { RapidScaleTrillMeasurement } from '@/services/measurement/agility/rapidScaleTrill';
+import { clamp } from '@/utils/math';
 
 export type RapidScaleTrillScore = {
   overall: number;
@@ -10,14 +11,6 @@ export type RapidScaleTrillScore = {
   passed: boolean;
   feedback: string;
 };
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function calculateSpeedScore(
   notesPerSecond: number,

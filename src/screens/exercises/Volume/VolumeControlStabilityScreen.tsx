@@ -6,15 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -24,8 +16,11 @@ import {
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
-  ExerciseResultsScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -44,11 +39,18 @@ import {
   midiToNoteName,
 } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+} from '@/constants/appConstants';
+import {
+  concatenateRepetitions,
+  fixedDurationSamples,
+  hasSufficientRecordedSignal,
+} from '@/utils/dsp/audioSignal';
 
 const DEFAULT_REFERENCE_MIDI = 60;
-const REFERENCE_NOTE_DURATION_SEC = 1.5;
-const COUNTDOWN_SECONDS = 3;
 const MAX_LIVE_HISTORY = 40;
 const MIN_VOICE_CLARITY = 0.45;
 
@@ -127,7 +129,7 @@ export default function VolumeControlStabilityScreen({
   const REFERENCE_NOTE = createMusicalNote(referenceMidi);
 
   const [countdown, setCountdown] =
-    useState(COUNTDOWN_SECONDS);
+    useState(EXERCISE_COUNTDOWN_SECONDS);
 
   const [remainingSeconds, setRemainingSeconds] =
     useState(0);
@@ -174,6 +176,10 @@ export default function VolumeControlStabilityScreen({
 
   const [showQuitModal, setShowQuitModal] =
     useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] =
+    useState(false);
+  const [noAudioRepetition, setNoAudioRepetition] =
+    useState(1);
 
   const [isQuitting, setIsQuitting] =
     useState(false);
@@ -186,6 +192,13 @@ export default function VolumeControlStabilityScreen({
 
   const exerciseStartedAtRef =
     useRef<number | null>(null);
+
+  const repetitionSamplesRef =
+    useRef<Array<Float32Array | null>>([]);
+  const retryingRepetitionRef =
+    useRef<number | null>(null);
+  const recordingDurationSecondsRef =
+    useRef(0);
 
   const recordingFinishedRef = useRef(false);
 
@@ -391,12 +404,12 @@ export default function VolumeControlStabilityScreen({
       await Promise.race([
         playSingleNote(
           REFERENCE_NOTE.frequency,
-          REFERENCE_NOTE_DURATION_SEC,
+          EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
         ),
         new Promise<void>((resolve) => {
           setTimeout(
             resolve,
-            REFERENCE_NOTE_DURATION_SEC * 1000 +
+            EXERCISE_REFERENCE_NOTE_DURATION_SECONDS * 1000 +
               300,
           );
         }),
@@ -422,6 +435,43 @@ export default function VolumeControlStabilityScreen({
     REFERENCE_NOTE.frequency,
     NOTE,
   ]);
+
+  const finishMeasurement = useCallback(
+    (segments: Array<Float32Array | null>, sampleRate: number) => {
+      const samples = concatenateRepetitions(segments);
+      const measured = measureVolumeControlStability(
+        samples,
+        sampleRate,
+        durationSeconds,
+        repetitions,
+      );
+      const scored = scoreVolumeControlStability(measured, {
+        passingScore: targetStability,
+      });
+
+      setMeasurement(measured);
+      setScore(scored);
+      setPhase('results');
+
+      void saveCompletedExercise(
+        'volume',
+        'volumeControlStability',
+        resolvedTier,
+        scored.overallScore,
+      ).catch((error) => {
+        console.error(
+          'Unable to save completed exercise:',
+          error,
+        );
+      });
+    },
+    [
+      durationSeconds,
+      repetitions,
+      targetStability,
+      resolvedTier,
+    ],
+  );
 
   const { startRecording, stopRecording } =
     useAudioRecorder({
@@ -537,37 +587,60 @@ export default function VolumeControlStabilityScreen({
 
         exerciseStartedAtRef.current = null;
 
-        const measured =
-          measureVolumeControlStability(
+        const retryingRepetition = retryingRepetitionRef.current;
+        let repetitionSamples = repetitionSamplesRef.current;
+
+        if (retryingRepetition !== null) {
+          if (!hasSufficientRecordedSignal(samples)) {
+            setNoAudioRepetition(retryingRepetition + 1);
+            setShowNoAudioModal(true);
+            setPhase('directions');
+            recordingDurationSecondsRef.current = totalExerciseSeconds;
+            return;
+          }
+
+          repetitionSamples = [...repetitionSamples];
+          repetitionSamples[retryingRepetition] = fixedDurationSamples(
             samples,
             sampleRate,
             durationSeconds,
-            repetitions,
           );
+          repetitionSamplesRef.current = repetitionSamples;
+          retryingRepetitionRef.current = null;
+        } else {
+          repetitionSamples = Array.from(
+            { length: repetitions },
+            (_, index) => {
+              const start = Math.round(
+                index * durationSeconds * sampleRate,
+              );
+              const end = Math.min(
+                samples.length,
+                Math.round((index + 1) * durationSeconds * sampleRate),
+              );
+              const repetition = samples.subarray(start, end);
 
-        const scored =
-          scoreVolumeControlStability(
-            measured,
-            {
-              passingScore: targetStability,
+              return hasSufficientRecordedSignal(repetition)
+                ? fixedDurationSamples(repetition, sampleRate, durationSeconds)
+                : null;
             },
           );
+          repetitionSamplesRef.current = repetitionSamples;
+        }
 
-        setMeasurement(measured);
-        setScore(scored);
-        setPhase('results');
+        recordingDurationSecondsRef.current = totalExerciseSeconds;
 
-        void saveCompletedExercise(
-          'volume',
-          'volumeControlStability',
-          resolvedTier,
-          scored.overallScore,
-        ).catch((error) => {
-          console.error(
-            'Unable to save completed exercise:',
-            error,
-          );
-        });
+        const missingRepetition = repetitionSamples.findIndex(
+          repetition => repetition === null,
+        );
+        if (missingRepetition !== -1) {
+          setNoAudioRepetition(missingRepetition + 1);
+          setShowNoAudioModal(true);
+          setPhase('directions');
+          return;
+        }
+
+        finishMeasurement(repetitionSamples, sampleRate);
       },
     });
 
@@ -617,7 +690,9 @@ export default function VolumeControlStabilityScreen({
       setLivePitch(null);
       setLiveNote('--');
 
-      setRemainingSeconds(totalExerciseSeconds);
+      setRemainingSeconds(
+        recordingDurationSecondsRef.current || totalExerciseSeconds,
+      );
       setPhase('exercise');
     } catch (error) {
       console.error(
@@ -654,7 +729,7 @@ export default function VolumeControlStabilityScreen({
       return;
     }
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
     const interval = setInterval(() => {
       if (
@@ -711,16 +786,18 @@ export default function VolumeControlStabilityScreen({
       const elapsed =
         (Date.now() - startedAt) / 1000;
 
+      const recordingDuration =
+        recordingDurationSecondsRef.current || totalExerciseSeconds;
       const remaining = Math.max(
         0,
         Math.ceil(
-          totalExerciseSeconds - elapsed,
+          recordingDuration - elapsed,
         ),
       );
 
       setRemainingSeconds(remaining);
 
-      if (elapsed >= totalExerciseSeconds) {
+      if (elapsed >= recordingDuration) {
         clearInterval(interval);
         void stopRecording();
       }
@@ -751,6 +828,9 @@ export default function VolumeControlStabilityScreen({
 
     setMeasurement(null);
     setScore(null);
+    repetitionSamplesRef.current = Array(repetitions).fill(null);
+    retryingRepetitionRef.current = null;
+    recordingDurationSecondsRef.current = totalExerciseSeconds;
 
     recordingFinishedRef.current = false;
     exerciseStartedAtRef.current = null;
@@ -763,7 +843,7 @@ export default function VolumeControlStabilityScreen({
     setLiveNote('--');
 
     setRemainingSeconds(totalExerciseSeconds);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setReferenceError(null);
 
     setPhase('countdown');
@@ -777,8 +857,34 @@ export default function VolumeControlStabilityScreen({
     paramsReady,
     isStarting,
     referencePlaying,
+    repetitions,
     totalExerciseSeconds,
   ]);
+
+  const redoExerciseRepetition = useCallback(() => {
+    if (
+      !paramsReady ||
+      pausedRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
+    retryingRepetitionRef.current = noAudioRepetition - 1;
+    recordingDurationSecondsRef.current = durationSeconds;
+    recordingFinishedRef.current = false;
+    exerciseStartedAtRef.current = null;
+    liveHistoryRef.current = [];
+    setLiveVolume(-60);
+    setLiveStability(0);
+    setLivePitch(null);
+    setLiveNote('--');
+    setRemainingSeconds(durationSeconds);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+    setShowNoAudioModal(false);
+    setPhase('countdown');
+  }, [durationSeconds, noAudioRepetition, paramsReady]);
 
   const resetExercise = useCallback(() => {
     setMeasurement(null);
@@ -792,7 +898,7 @@ export default function VolumeControlStabilityScreen({
     liveHistoryRef.current = [];
 
     setRemainingSeconds(totalExerciseSeconds);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setReferenceError(null);
 
     recordingFinishedRef.current = false;
@@ -868,7 +974,7 @@ export default function VolumeControlStabilityScreen({
       setLiveNote('--');
 
       setRemainingSeconds(totalExerciseSeconds);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
       setReferenceError(null);
 
       recordingFinishedRef.current = false;
@@ -944,107 +1050,47 @@ export default function VolumeControlStabilityScreen({
     liveNote !== '--';
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={ COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'exercise'
+    <>
+      <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'exercise'
               ? 'Your recording has been stopped. If you continue, this exercise will restart from the countdown.'
               : pausedPhaseRef.current === 'countdown'
                 ? 'Your exercise is paused. Continue when you are ready to start the countdown again.'
                 : 'Are you sure you want to leave this exercise?'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting || isPausing}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              (isQuitting || isPausing) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              {isPausing
-                ? 'Pausing...'
-                : 'Continue Exercise'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting || isPausing}
-            onPress={() => {
+        isQuitting={isQuitting || isPausing}
+        onContinue={continueExercise}
+        onQuit={() => {
               void quitExercise();
             }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              (isQuitting || isPausing) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting
+        continueLabel={isPausing
+                ? 'Pausing...'
+                : 'Continue Exercise'}
+        quitLabel={isQuitting
                 ? 'Stopping...'
                 : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={redoExerciseRepetition}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        isQuitting={isQuitting || isPausing}
+      />
+    </>
   );
 
   if (!paramsReady) {
     return (
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
-            color={ COLORS.brown}
-          />
-        </View>
-
-        <Text style={styles.preparingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current
-          difficulty level and preparing your vocal range.
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={ COLORS.brown}
-          style={styles.spinner}
-        />
-
-        {quitModal}
-      </View>
+      <ExercisePreparingScreen
+        title="Preparing Your Exercise"
+        message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+        icon="options-outline"
+        iconSize={44}
+        headerContent={quitModal}
+      />
     );
   }
 
@@ -1603,38 +1649,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color:  COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   exerciseScreen: {
     position: 'absolute',
     top: 90,
@@ -1707,83 +1721,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color:  COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color:  COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
   referenceCard: {
     marginTop: 12,
@@ -2041,12 +1978,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 5,
     backgroundColor: COLORS.accent,
-  },
-  progressHint: {
-    marginTop: 4,
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
   },
   resultCard: {
     width: '100%',

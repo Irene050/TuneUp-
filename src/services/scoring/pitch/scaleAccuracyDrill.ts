@@ -6,6 +6,7 @@ import type {
 import {
     ScaleAccuracyMeasurement,
 } from '@/services/measurement/pitch/scaleAccuracyDrill';
+import { average } from '@/utils/math';
 
 export interface ScaleAccuracyScoreResult {
   score: number;
@@ -83,9 +84,7 @@ export function scoreScaleAccuracyDrill(
     }
   }
 
-  const noteAccuracy =
-    noteScores.reduce((sum, value) => sum + value, 0) /
-    totalNotes;
+  const noteAccuracy = average(noteScores);
 
   const transitionSmoothness =
     Number.isFinite(measurement.transitionSmoothness)

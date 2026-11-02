@@ -4,6 +4,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi } from '@/utils/music/notes';
+import { clamp } from '@/utils/math';
 
 export type RapidScaleTrillMeasurement = {
   detectedPitches: number[];
@@ -30,14 +31,6 @@ const HOP_SIZE = 1024;
 const NOTE_CONFIRMATION_FRAMES = 2;
 const MIN_CORRELATION = 0.3;
 const NOTE_TOLERANCE_SEMITONES = 1;
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function createEmptyMeasurement(
   targetNotes: number[],

@@ -7,15 +7,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import {
     type Tier,
@@ -27,10 +19,13 @@ import {
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import {
     generateWaveformSmoothnessParams,
@@ -63,18 +58,22 @@ import {
 } from '@/utils/music/notePlayer';
 import {
     frequencyToNoteName,
+    getSemitoneDistance,
     getRandomPitchNote,
     type VocalRange,
 } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
-
-
-const FFT_SIZE = 1024;
-const FFT_HOP_SIZE = 512;
-const COUNTDOWN_SECONDS = 3;
-const REFERENCE_NOTE_DURATION_SECONDS = 1.5;
-const WAVEFORM_BAR_COUNT = 30;
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { formatNumber } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/math';
 
 interface Props {
   tier?: Tier;
@@ -94,14 +93,6 @@ interface RepetitionResult {
   score: WaveformSmoothnessScoreResult;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatNumber(value: number, decimals = 1): string {
-  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
-}
-
 function LiveWaveform({
   frame,
   targetFrequency,
@@ -117,7 +108,7 @@ function LiveWaveform({
     targetFrequency !== undefined &&
     Number.isFinite(targetFrequency) &&
     targetFrequency > 0 &&
-    Math.abs(12 * Math.log2(pitch / targetFrequency)) <= 1;
+    getSemitoneDistance(pitch, targetFrequency) <= 1;
 
   const waveformColor = !hasPitch
     ? COLORS.guideRed
@@ -127,8 +118,8 @@ function LiveWaveform({
 
   const bars = useMemo(
     () =>
-      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (WAVEFORM_BAR_COUNT - 1) / 2;
+      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
+        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
         const distance = Math.abs(index - center) / center;
         const envelope = 1 - distance * 0.65;
         const phaseOffset = index * 0.72;
@@ -207,7 +198,6 @@ function RecordingScreen({
   targetFrequency,
   detectedNote,
   liveFrame,
-  onBack,
 }: {
   currentRep: number;
   repetitions: number;
@@ -217,7 +207,6 @@ function RecordingScreen({
   targetFrequency?: number;
   detectedNote: string;
   liveFrame: LiveAudioFrame | null;
-  onBack: () => void;
 }) {
   const progress =
     durationSeconds > 0
@@ -332,7 +321,7 @@ export default function WaveformSmoothnessDrillScreen({
   const [loadingParams, setLoadingParams] = useState(true);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [countdownCycle, setCountdownCycle] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -350,6 +339,7 @@ export default function WaveformSmoothnessDrillScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
   const leavingRef = useRef(false);
@@ -546,15 +536,18 @@ export default function WaveformSmoothnessDrillScreen({
       setLiveFrame(null);
       setCurrentPhase('processing');
 
-      try {
-        if (samples.length === 0) {
-          throw new Error('No audio samples were recorded.');
-        }
+      if (!hasSufficientRecordedSignal(samples)) {
+        processingRef.current = false;
+        setCurrentPhase('instructions');
+        setShowNoAudioModal(true);
+        return;
+      }
 
+      try {
         const fftFrames = samplesToFFTFrames(
           samples,
-          FFT_SIZE,
-          FFT_HOP_SIZE,
+          EXERCISE_FFT_SIZE,
+          EXERCISE_FFT_HOP_SIZE,
         );
 
         if (fftFrames.length === 0) {
@@ -565,7 +558,7 @@ export default function WaveformSmoothnessDrillScreen({
           samples,
           fftFrames,
           sampleRate,
-          FFT_SIZE,
+          EXERCISE_FFT_SIZE,
         );
 
         const scored = scoreWaveformSmoothnessDrill(
@@ -671,7 +664,7 @@ export default function WaveformSmoothnessDrillScreen({
         currentRepRef.current = nextRep;
         setCurrentRep(nextRep);
         processingRef.current = false;
-        setCountdown(COUNTDOWN_SECONDS);
+        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
         setCurrentPhase('countdown');
       } catch (error) {
         console.error('Waveform smoothness processing error:', error);
@@ -835,7 +828,7 @@ export default function WaveformSmoothnessDrillScreen({
 
       await playSingleNote(
         target.frequency,
-        REFERENCE_NOTE_DURATION_SECONDS,
+        EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       );
 
       if (
@@ -873,7 +866,7 @@ export default function WaveformSmoothnessDrillScreen({
   useEffect(() => {
     if (phase !== 'countdown') return;
 
-    let value = COUNTDOWN_SECONDS;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
     setCountdown(value);
 
     if (countdownTimerRef.current) {
@@ -935,7 +928,7 @@ export default function WaveformSmoothnessDrillScreen({
 
     currentRepRef.current = 1;
     setCurrentRep(1);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
     setLiveFrame(null);
@@ -986,7 +979,7 @@ export default function WaveformSmoothnessDrillScreen({
 
     currentRepRef.current = 1;
     setCurrentRep(1);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
     setLiveFrame(null);
@@ -1038,7 +1031,7 @@ export default function WaveformSmoothnessDrillScreen({
         );
       }
     } else if (currentPhase === 'countdown') {
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     } else if (currentPhase === 'listening') {
       disposeNotePlayer();
     }
@@ -1067,7 +1060,7 @@ export default function WaveformSmoothnessDrillScreen({
       setElapsedMs(0);
       elapsedRef.current = 0;
       setLiveFrame(null);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       if (phaseRef.current === 'countdown') {
         setCountdownCycle(value => value + 1);
@@ -1173,23 +1166,10 @@ export default function WaveformSmoothnessDrillScreen({
   }, [clearTimers]);
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'instructions' ||
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Waveform Smoothness?'
               : pausedPhaseRef.current === 'recording' ||
@@ -1197,69 +1177,42 @@ export default function WaveformSmoothnessDrillScreen({
                   pausedPhaseRef.current === 'countdown'
                 ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
                 : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
               void quitExercise();
             }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
+
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        setErrorMessage(null);
+        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+        setCurrentPhase('countdown');
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (loadingParams) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons name="options-outline" size={44} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level and
-            preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          icon="options-outline"
+          iconSize={44}
+        />
         {quitModal}
       </>
     );
@@ -1319,7 +1272,9 @@ export default function WaveformSmoothnessDrillScreen({
           startLabel={loadingParams ? 'Loading...' : 'Start Exercise'}
           error={errorMessage}
         />
+
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1399,7 +1354,6 @@ export default function WaveformSmoothnessDrillScreen({
           targetFrequency={currentTarget?.frequency}
           detectedNote={detectedNote}
           liveFrame={liveFrame}
-          onBack={handleBack}
         />
         {quitModal}
       </>
@@ -1423,7 +1377,6 @@ export default function WaveformSmoothnessDrillScreen({
               ? 'Calculating your overall waveform smoothness score.'
               : `Processing repetition ${currentRep}.`
           }
-          onBack={handleBack}
         />
         {quitModal}
       </>
@@ -1534,38 +1487,6 @@ export default function WaveformSmoothnessDrillScreen({
 }
 
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   referenceCard: {
     width: '100%',
     alignItems: 'center',
@@ -1601,41 +1522,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 150,
     paddingBottom: 20,
-  },
-  recordingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingBottom: 18,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  headerEyebrow: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: COLORS.muted,
-  },
-  headerTitle: {
-    marginTop: 2,
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-  },
-  headerIconCircle: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 21,
-    backgroundColor: COLORS.pink,
-    marginLeft: 8,
   },
   recordingBody: {
     flex: 1,
@@ -1851,20 +1737,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.muted,
   },
-  recordingTip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: 18,
-    paddingHorizontal: 5,
-  },
-  recordingTipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
 
   scoreDetails: {
     width: '100%',
@@ -1946,81 +1818,4 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
 });

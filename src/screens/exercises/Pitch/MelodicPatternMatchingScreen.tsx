@@ -7,16 +7,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
     MELODIC_PATTERN_MATCHING_PARAMS,
@@ -39,6 +30,7 @@ import {
     type MelodicPatternScoreResult,
 } from '@/services/scoring/pitch/melodicPatternMatching';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
+import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
     createMusicalNote,
@@ -47,14 +39,21 @@ import {
 } from '@/utils/music/notes';
 
 import {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
-    default as ExerciseScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  default as ExerciseScreen
 } from '@/screens/exercises/ExerciseScreen';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 interface Props {
   tier?: Tier;
@@ -92,16 +91,7 @@ interface LivePitchIndicatorProps {
 const NOTE_DURATION_SEC = 0.7;
 const NOTE_GAP_SEC = 0.12;
 const RECORDING_BUFFER_SEC = 0.8;
-const COUNTDOWN_SECONDS = 3;
 const RECORDING_TIMER_INTERVAL_MS = 100;
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function getRepetitionCount(
   params: MelodicPatternMatchingParams,
@@ -309,7 +299,7 @@ export default function MelodicPatternMatchingScreen({
     useState<VocalRange | null>(null);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
 
   const [currentPattern, setCurrentPattern] =
     useState<GeneratedPattern | null>(null);
@@ -328,7 +318,9 @@ export default function MelodicPatternMatchingScreen({
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
 
-  const [isQuitModalVisible, setIsQuitModalVisible] =
+  const [showQuitModal, setShowQuitModal] =
+    useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] =
     useState(false);
 
   const [isStoppingForQuitModal, setIsStoppingForQuitModal] =
@@ -338,9 +330,9 @@ export default function MelodicPatternMatchingScreen({
   const pausedRef = useRef(false);
   const playbackRunIdRef = useRef(0);
 
-  const quitModalVisibleRef = useRef(false);
+  const showQuitModalRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
-  const quittingRef = useRef(false);
+  const quitInProgressRef = useRef(false);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -500,7 +492,7 @@ export default function MelodicPatternMatchingScreen({
       mountedRef.current = false;
       pausedRef.current = true;
       playbackRunIdRef.current += 1;
-      quitModalVisibleRef.current = false;
+      showQuitModalRef.current = false;
 
       clearCountdownTimer();
       clearRecordingTimer();
@@ -529,8 +521,8 @@ export default function MelodicPatternMatchingScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
         !recordingRef.current
       ) {
         return;
@@ -559,8 +551,8 @@ export default function MelodicPatternMatchingScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
         processingRef.current
       ) {
         return;
@@ -578,6 +570,15 @@ export default function MelodicPatternMatchingScreen({
           setPhase('instructions');
         }
 
+        return;
+      }
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        stopRequestedRef.current = false;
+        processingRef.current = false;
+        setErrorMessage(null);
+        setPhase('instructions');
+        setShowNoAudioModal(true);
         return;
       }
 
@@ -654,7 +655,7 @@ export default function MelodicPatternMatchingScreen({
           );
         }
 
-        if (!mountedRef.current || quittingRef.current) return;
+        if (!mountedRef.current || quitInProgressRef.current) return;
 
         setResult(score);
         setPhase('results');
@@ -699,8 +700,8 @@ export default function MelodicPatternMatchingScreen({
     if (
       !mountedRef.current ||
       pausedRef.current ||
-      quitModalVisibleRef.current ||
-      quittingRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
       recordingRef.current ||
       recordingStartInProgressRef.current ||
       processingRef.current
@@ -723,8 +724,8 @@ export default function MelodicPatternMatchingScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current
+        showQuitModalRef.current ||
+        quitInProgressRef.current
       ) {
         discardRecordingRef.current = true;
         stopRequestedRef.current = true;
@@ -741,7 +742,7 @@ export default function MelodicPatternMatchingScreen({
           recordingRef.current = false;
           stopRequestedRef.current = false;
 
-          if (mountedRef.current && quitModalVisibleRef.current) {
+          if (mountedRef.current && showQuitModalRef.current) {
             setIsStoppingForQuitModal(false);
           }
         }
@@ -762,8 +763,8 @@ export default function MelodicPatternMatchingScreen({
         if (
           !mountedRef.current ||
           pausedRef.current ||
-          quitModalVisibleRef.current ||
-          quittingRef.current ||
+          showQuitModalRef.current ||
+          quitInProgressRef.current ||
           !recordingRef.current ||
           stopRequestedRef.current
         ) {
@@ -801,7 +802,7 @@ export default function MelodicPatternMatchingScreen({
             if (
               mountedRef.current &&
               !pausedRef.current &&
-              !quittingRef.current
+              !quitInProgressRef.current
             ) {
               setErrorMessage(
                 'We could not finish the recording. Please try again.',
@@ -827,7 +828,7 @@ export default function MelodicPatternMatchingScreen({
 
       if (
         mountedRef.current &&
-        quitModalVisibleRef.current
+        showQuitModalRef.current
       ) {
         setIsStoppingForQuitModal(false);
       }
@@ -835,7 +836,7 @@ export default function MelodicPatternMatchingScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quittingRef.current
+        quitInProgressRef.current
       ) {
         return;
       }
@@ -857,8 +858,8 @@ export default function MelodicPatternMatchingScreen({
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current
+        showQuitModalRef.current ||
+        quitInProgressRef.current
       ) {
         return;
       }
@@ -868,8 +869,8 @@ export default function MelodicPatternMatchingScreen({
       const playbackWasInterrupted = () =>
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
         runId !== playbackRunIdRef.current;
 
       try {
@@ -928,8 +929,8 @@ export default function MelodicPatternMatchingScreen({
       !pattern ||
       !mountedRef.current ||
       pausedRef.current ||
-      quitModalVisibleRef.current ||
-      quittingRef.current
+      showQuitModalRef.current ||
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -969,8 +970,8 @@ export default function MelodicPatternMatchingScreen({
       isLoadingAdaptiveParams ||
       !mountedRef.current ||
       pausedRef.current ||
-      quitModalVisibleRef.current ||
-      quittingRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current ||
       recordingRef.current ||
       recordingStartInProgressRef.current ||
       processingRef.current
@@ -1002,17 +1003,17 @@ export default function MelodicPatternMatchingScreen({
     discardRecordingRef.current = false;
     processingRef.current = false;
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('countdown');
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current
+        showQuitModalRef.current ||
+        quitInProgressRef.current
       ) {
         clearCountdownTimer();
         return;
@@ -1036,14 +1037,14 @@ export default function MelodicPatternMatchingScreen({
     playPatternAndRecord,
   ]);
 
-  const resumeCurrentRepetition = useCallback(() => {
+  const restartCurrentRepetition = useCallback(() => {
     const pattern = currentExerciseRef.current;
 
     if (
       !pattern ||
       !mountedRef.current ||
       recordingStartInProgressRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -1059,17 +1060,17 @@ export default function MelodicPatternMatchingScreen({
     recordingElapsedRef.current = 0;
     setRecordingElapsedMs(0);
     setLiveFrame(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('countdown');
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
         !mountedRef.current ||
         pausedRef.current ||
-        quitModalVisibleRef.current ||
-        quittingRef.current
+        showQuitModalRef.current ||
+        quitInProgressRef.current
       ) {
         clearCountdownTimer();
         return;
@@ -1086,8 +1087,8 @@ export default function MelodicPatternMatchingScreen({
 
       if (
         !pausedRef.current &&
-        !quitModalVisibleRef.current &&
-        !quittingRef.current
+        !showQuitModalRef.current &&
+        !quitInProgressRef.current
       ) {
         void playPatternAndRecord(pattern);
       }
@@ -1101,8 +1102,8 @@ export default function MelodicPatternMatchingScreen({
   const openQuitModal = useCallback(async () => {
     if (
       !mountedRef.current ||
-      quittingRef.current ||
-      quitModalVisibleRef.current ||
+      quitInProgressRef.current ||
+      showQuitModalRef.current ||
       processingRef.current
     ) {
       return;
@@ -1111,12 +1112,12 @@ export default function MelodicPatternMatchingScreen({
     pausedPhaseRef.current = phase;
     pausedRef.current = true;
     playbackRunIdRef.current += 1;
-    quitModalVisibleRef.current = true;
+    showQuitModalRef.current = true;
 
     clearCountdownTimer();
     clearRecordingTimer();
 
-    setIsQuitModalVisible(true);
+    setShowQuitModal(true);
 
     const recorderIsStarting =
       recordingStartInProgressRef.current;
@@ -1158,17 +1159,17 @@ export default function MelodicPatternMatchingScreen({
   const continueExercise = useCallback(() => {
     if (
       isStoppingForQuitModal ||
-      !quitModalVisibleRef.current ||
+      !showQuitModalRef.current ||
       !mountedRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
 
     const interruptedPhase = pausedPhaseRef.current;
 
-    quitModalVisibleRef.current = false;
-    setIsQuitModalVisible(false);
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
     pausedRef.current = false;
 
     if (
@@ -1178,19 +1179,19 @@ export default function MelodicPatternMatchingScreen({
       return;
     }
 
-    resumeCurrentRepetition();
-  }, [isStoppingForQuitModal, resumeCurrentRepetition]);
+    restartCurrentRepetition();
+  }, [isStoppingForQuitModal, restartCurrentRepetition]);
 
   const quitExercise = useCallback(async () => {
-    if (quittingRef.current) return;
+    if (quitInProgressRef.current) return;
 
-    quittingRef.current = true;
+    quitInProgressRef.current = true;
     pausedRef.current = true;
     playbackRunIdRef.current += 1;
-    quitModalVisibleRef.current = false;
+    showQuitModalRef.current = false;
 
     setIsStoppingForQuitModal(true);
-    setIsQuitModalVisible(false);
+    setShowQuitModal(false);
 
     clearCountdownTimer();
     clearRecordingTimer();
@@ -1226,8 +1227,8 @@ export default function MelodicPatternMatchingScreen({
     pausedRef.current = true;
     playbackRunIdRef.current += 1;
 
-    quitModalVisibleRef.current = false;
-    setIsQuitModalVisible(false);
+    showQuitModalRef.current = false;
+    setShowQuitModal(false);
 
     clearCountdownTimer();
     clearRecordingTimer();
@@ -1269,12 +1270,12 @@ export default function MelodicPatternMatchingScreen({
     stopRequestedRef.current = false;
     discardRecordingRef.current = false;
     processingRef.current = false;
-    quittingRef.current = false;
+    quitInProgressRef.current = false;
     pausedRef.current = false;
 
     setIsStoppingForQuitModal(false);
     setErrorMessage(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('instructions');
   }, [clearCountdownTimer, clearRecordingTimer]);
 
@@ -1286,7 +1287,7 @@ export default function MelodicPatternMatchingScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (quitModalVisibleRef.current) return true;
+        if (showQuitModalRef.current) return true;
 
         void openQuitModal();
         return true;
@@ -1342,103 +1343,46 @@ export default function MelodicPatternMatchingScreen({
           : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
 
   const quitExerciseModal = (
-    <Modal
-      visible={isQuitModalVisible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {quitModalMessage}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isStoppingForQuitModal}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed &&
-                !isStoppingForQuitModal &&
-                styles.buttonPressed,
-              isStoppingForQuitModal && styles.buttonDisabled,
-            ]}
-          >
-            {isStoppingForQuitModal ? (
-              <ActivityIndicator size="small" color={COLORS.brown} />
-            ) : (
-              <Text style={styles.continueButtonText}>
-                Continue Exercise
-              </Text>
-            )}
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isStoppingForQuitModal}
-            onPress={() => void quitExercise()}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed &&
-                !isStoppingForQuitModal &&
-                styles.buttonPressed,
-              isStoppingForQuitModal && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>Quit Exercise</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+    <>
+      <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={quitModalMessage}
+        isQuitting={isStoppingForQuitModal}
+        onContinue={continueExercise}
+        onQuit={() => void quitExercise()}
+        continueLabel={"Continue Exercise"}
+        quitLabel={"Quit Exercise"}
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          setErrorMessage(null);
+          restartCurrentRepetition();
+        }}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        isQuitting={isStoppingForQuitModal}
+      />
+    </>
   );
 
   let screenContent: ReactNode;
 
   if (phase === 'instructions' && isLoadingAdaptiveParams) {
     screenContent = (
-      <View style={styles.centerScreen}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Quit exercise"
-          onPress={handleBack}
-          style={styles.quitButtonTop}
-        >
-          <Ionicons name="exit-outline" size={22} color={COLORS.brown} />
-        </Pressable>
-
-        <View style={styles.largeIconCircle}>
-          <Ionicons name="options-outline" size={44} color={COLORS.brown} />
-        </View>
-
-        <Text style={styles.processingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.processingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={COLORS.brown}
-          style={styles.spinner}
-        />
-      </View>
+      <ExercisePreparingScreen
+        title="Preparing Your Exercise"
+        message="Adjusting the exercise to your current difficulty level"
+        icon="options-outline"
+        iconSize={44}
+        containerStyle={styles.centerScreen}
+        headerContent={<Pressable accessibilityRole="button" accessibilityLabel="Quit exercise" onPress={handleBack} style={styles.quitButtonTop}>
+            <Ionicons name="exit-outline" size={22} color={COLORS.brown}/>
+          </Pressable>}
+      />
     );
   } else if (phase === 'instructions') {
     screenContent = (
@@ -1747,7 +1691,6 @@ export default function MelodicPatternMatchingScreen({
         icon="analytics-outline"
         title="Analyzing Your Singing"
         message="Checking your pitch accuracy and melodic timing across all repetitions."
-        onBack={handleBack}
       />
     );
   } else if (phase === 'results' && result) {
@@ -1882,31 +1825,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     paddingVertical: 24,
   },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
 
   playbackNoteContainer: {
     width: '100%',
@@ -1978,27 +1896,6 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     alignItems: 'center',
     backgroundColor: COLORS.white,
-  },
-  recordingQuitButton: {
-    position: 'absolute',
-    top: 48,
-    right: 22,
-    zIndex: 5,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingEyebrow: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    letterSpacing: 1.2,
-    marginTop: 20,
   },
   recordingTitle: {
     color: COLORS.brown,
@@ -2104,13 +2001,6 @@ const styles = StyleSheet.create({
     fontSize: 19,
     color: COLORS.brown,
   },
-  liveCardSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
   liveRecordingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2209,13 +2099,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.brown,
   },
-  indicatorSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 14,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
   pitchStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2310,12 +2193,6 @@ const styles = StyleSheet.create({
   centsValue: {
     fontFamily: 'FredokaBold',
     fontSize: 13,
-  },
-  liveSectionDivider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 20,
   },
   liveStats: {
     width: '100%',
@@ -2452,82 +2329,5 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

@@ -7,17 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  type DimensionValue,
-} from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 
 import {
   NOTE_MATCHING_PARAMS,
@@ -49,16 +39,25 @@ import {
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { formatFrequency } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/math';
 
-const COUNTDOWN_SECONDS = 3;
-const TARGET_NOTE_DURATION_SECONDS = 1.5;
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;
 const GUIDE_MAX_CENTS = 100;
@@ -97,10 +96,6 @@ type PitchGuideStatus = {
   cents: number | null;
   position: number;
 };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function calculateCentsDifference(
   detectedFrequency: number,
@@ -167,14 +162,6 @@ function getPitchGuideStatus(
   };
 }
 
-function formatFrequency(frequency: number): string {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
-    return '--';
-  }
-
-  return `${frequency.toFixed(1)} Hz`;
-}
-
 function formatCents(cents: number): string {
   if (!Number.isFinite(cents)) return '--';
   if (Math.abs(cents) < 0.5) return '0 cents';
@@ -216,7 +203,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
   );
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [livePitch, setLivePitch] = useState<LivePitchState>({
@@ -228,17 +215,18 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const [errorMessage, setErrorMessage] = useState('');
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [pitchTrace, setPitchTrace] = useState<number[]>([]);
 
   const mountedRef = useRef(true);
   const screenRef = useRef<Phase>('instructions');
   const pausedRef = useRef(false);
-  const quittingRef = useRef(false);
+  const quitInProgressRef = useRef(false);
   const showQuitModalRef = useRef(false);
   const discardNextStopRef = useRef(false);
-  const interruptedRepRef = useRef(1);
-  const interruptedScreenRef = useRef<Phase>('instructions');
+  const pausedRepetitionRef = useRef(1);
+  const pausedScreenRef = useRef<Phase>('instructions');
   const pitchHistoryRef = useRef<number[]>([]);
   const repResultsRef = useRef<ResultState[]>([]);
   const currentRepRef = useRef(1);
@@ -398,7 +386,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         !mountedRef.current ||
         pausedRef.current ||
         showQuitModalRef.current ||
-        quittingRef.current ||
+        quitInProgressRef.current ||
         screenRef.current !== 'recording'
       ) {
         return;
@@ -450,7 +438,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
       !mountedRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -482,14 +470,14 @@ export default function NoteMatchingScreen({ tier }: Props) {
       try {
         await playSingleNote(
           targetFrequency,
-          TARGET_NOTE_DURATION_SECONDS,
+          EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
         );
 
         if (
           !mountedRef.current ||
           pausedRef.current ||
           showQuitModalRef.current ||
-          quittingRef.current
+          quitInProgressRef.current
         ) {
           return;
         }
@@ -556,7 +544,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
       !mountedRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -590,7 +578,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const {
     startRecording,
     stopRecording,
-    isRecording,
   } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: (samples: Float32Array, sampleRate: number) => {
@@ -598,7 +585,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
       if (
         !mountedRef.current ||
-        quittingRef.current ||
+        quitInProgressRef.current ||
         discardNextStopRef.current ||
         pausedRef.current ||
         showQuitModalRef.current ||
@@ -611,6 +598,16 @@ export default function NoteMatchingScreen({ tier }: Props) {
       }
 
       finishingRef.current = true;
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        finishingRef.current = false;
+        startingRef.current = false;
+        resetLivePitch();
+        changeScreen('instructions');
+        setShowNoAudioModal(true);
+        return;
+      }
+
       changeScreen('processing');
 
       try {
@@ -644,7 +641,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           !mountedRef.current ||
           pausedRef.current ||
           showQuitModalRef.current ||
-          quittingRef.current
+          quitInProgressRef.current
         ) {
           return;
         }
@@ -676,7 +673,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
       !mountedRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
-      quittingRef.current ||
+      quitInProgressRef.current ||
       startingRef.current
     ) {
       return;
@@ -707,7 +704,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         !mountedRef.current ||
         pausedRef.current ||
         showQuitModalRef.current ||
-        quittingRef.current ||
+        quitInProgressRef.current ||
         screenRef.current !== 'recording'
       ) {
         return;
@@ -720,7 +717,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           !mountedRef.current ||
           pausedRef.current ||
           showQuitModalRef.current ||
-          quittingRef.current ||
+          quitInProgressRef.current ||
           finishingRef.current ||
           screenRef.current !== 'recording'
         ) {
@@ -773,23 +770,23 @@ export default function NoteMatchingScreen({ tier }: Props) {
       !mountedRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
 
     clearTimers();
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     changeScreen('countdown');
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
         !mountedRef.current ||
         pausedRef.current ||
         showQuitModalRef.current ||
-        quittingRef.current
+        quitInProgressRef.current
       ) {
         return;
       }
@@ -807,14 +804,14 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
       void playSingleNote(
         targetFrequency,
-        TARGET_NOTE_DURATION_SECONDS,
+        EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       )
         .then(async () => {
           if (
             !mountedRef.current ||
             pausedRef.current ||
             showQuitModalRef.current ||
-            quittingRef.current
+            quitInProgressRef.current
           ) {
             return;
           }
@@ -841,14 +838,14 @@ export default function NoteMatchingScreen({ tier }: Props) {
   }, [beginCountdown]);
 
   const openQuitModal = useCallback(() => {
-    if (quittingRef.current || showQuitModalRef.current) {
+    if (quitInProgressRef.current || showQuitModalRef.current) {
       return;
     }
 
     const activeScreen = screenRef.current;
 
-    interruptedScreenRef.current = activeScreen;
-    interruptedRepRef.current = currentRepRef.current;
+    pausedScreenRef.current = activeScreen;
+    pausedRepetitionRef.current = currentRepRef.current;
 
     pausedRef.current = true;
     showQuitModalRef.current = true;
@@ -882,9 +879,9 @@ export default function NoteMatchingScreen({ tier }: Props) {
   }, [clearTimers, resetLivePitch]);
 
   const continueExercise = useCallback(() => {
-    if (quittingRef.current) return;
+    if (quitInProgressRef.current) return;
 
-    const interruptedScreen = interruptedScreenRef.current;
+    const interruptedScreen = pausedScreenRef.current;
 
     showQuitModalRef.current = false;
     setShowQuitModal(false);
@@ -904,10 +901,10 @@ export default function NoteMatchingScreen({ tier }: Props) {
       return;
     }
 
-    currentRepRef.current = interruptedRepRef.current;
-    setCurrentRep(interruptedRepRef.current);
+    currentRepRef.current = pausedRepetitionRef.current;
+    setCurrentRep(pausedRepetitionRef.current);
     setElapsedSeconds(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     resetLivePitch();
 
     startingRef.current = false;
@@ -918,9 +915,9 @@ export default function NoteMatchingScreen({ tier }: Props) {
   }, [resetLivePitch]);
 
   const quitExercise = useCallback(async () => {
-    if (quittingRef.current) return;
+    if (quitInProgressRef.current) return;
 
-    quittingRef.current = true;
+    quitInProgressRef.current = true;
     pausedRef.current = true;
     showQuitModalRef.current = false;
     discardNextStopRef.current = true;
@@ -975,7 +972,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
       startingRef.current ||
       isLoadingAdaptiveParams ||
       pausedRef.current ||
-      quittingRef.current
+      quitInProgressRef.current
     ) {
       return;
     }
@@ -985,7 +982,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     startingRef.current = false;
     finishingRef.current = false;
     pausedRef.current = false;
-    quittingRef.current = false;
+    quitInProgressRef.current = false;
     showQuitModalRef.current = false;
     discardNextStopRef.current = false;
 
@@ -999,7 +996,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     setShowQuitModal(false);
     setIsQuitting(false);
     setElapsedSeconds(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     resetLivePitch();
 
     beginCountdown();
@@ -1014,7 +1011,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     clearTimers();
 
     pausedRef.current = false;
-    quittingRef.current = false;
+    quitInProgressRef.current = false;
     showQuitModalRef.current = false;
     discardNextStopRef.current = true;
 
@@ -1041,7 +1038,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     setResult(null);
     setErrorMessage('');
     setElapsedSeconds(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     resetLivePitch();
 
     finishingRef.current = false;
@@ -1082,96 +1079,57 @@ export default function NoteMatchingScreen({ tier }: Props) {
   }, [clearTimers]);
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons name="exit-outline" size={30} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            {interruptedScreenRef.current === 'instructions' ||
-            interruptedScreenRef.current === 'results'
+    <>
+      <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedScreenRef.current === 'instructions' ||
+            pausedScreenRef.current === 'results'
               ? 'Are you sure you want to leave Note Matching?'
-              : interruptedScreenRef.current === 'recording'
+              : pausedScreenRef.current === 'recording'
                 ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-                : interruptedScreenRef.current === 'processing'
+                : pausedScreenRef.current === 'processing'
                   ? 'Your exercise is paused. Continue to resume processing your current results.'
                   : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
               void quitExercise();
             }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+      <ExerciseNoAudioModal
+        visible={showNoAudioModal}
+        onRedo={function redoExerciseRepetition() {
+          setShowNoAudioModal(false);
+          currentRepRef.current = repResultsRef.current.length + 1;
+          setCurrentRep(currentRepRef.current);
+          setElapsedSeconds(0);
+          setErrorMessage('');
+          finishingRef.current = false;
+          startingRef.current = false;
+          resetLivePitch();
+          beginCountdownRef.current?.();
+        }}
+        onQuit={() => {
+          void quitExercise();
+        }}
+        isQuitting={isQuitting}
+      />
+    </>
   );
 
   if (screen === 'instructions' && isLoadingAdaptiveParams) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.largeIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.processingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.processingSubtitle}>
-            Adjusting the exercise to your current difficulty level
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level"
+          icon="options-outline"
+          iconSize={44}
+          containerStyle={styles.centerScreen}
+        />
         {quitModal}
       </>
     );
@@ -1503,6 +1461,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
             <View style={styles.metricsGrid}>
               <MetricCard
                 label="ACCURACY"
+                variant="noteMatching"
                 value={
                   livePitch.pitch > 0
                     ? `${Math.round(
@@ -1521,6 +1480,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
               <MetricCard
                 label="STABILITY"
+                variant="noteMatching"
                 value={
                   livePitch.pitch > 0
                     ? `${Math.round(livePitch.stability)}%`
@@ -1530,6 +1490,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
               <MetricCard
                 label="FREQUENCY"
+                variant="noteMatching"
                 value={
                   livePitch.pitch > 0
                     ? `${livePitch.pitch.toFixed(0)} Hz`
@@ -1571,8 +1532,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
             currentRep < adaptiveParams.repetitions
               ? `Checking repetition ${currentRep} of ${adaptiveParams.repetitions}.`
               : 'Calculating your final Note Matching result.'
-          }
-          onBack={goBack}
+         }
         />
       )}
 
@@ -1634,11 +1594,13 @@ export default function NoteMatchingScreen({ tier }: Props) {
           <View style={styles.resultsGrid}>
             <MetricCard
               label="PITCH ACCURACY"
+              variant="noteMatching"
               value={`${result.score}%`}
             />
 
             <MetricCard
               label="DEVIATION"
+              variant="noteMatching"
               value={
                 result.detectedFrequency > 0
                   ? formatCents(
@@ -1653,11 +1615,13 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
             <MetricCard
               label="AVG. CLARITY"
+              variant="noteMatching"
               value={`${Math.round(result.averageClarity * 100)}%`}
             />
 
             <MetricCard
               label="VOICED FRAMES"
+              variant="noteMatching"
               value={String(result.voicedFrames)}
             />
           </View>
@@ -1689,21 +1653,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
   );
 }
 
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metricCard}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -1715,31 +1664,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-  },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
   },
   sharedListenNoteBox: {
     minWidth: 180,
@@ -1873,83 +1797,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -2170,30 +2017,5 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     gap: 8,
     marginTop: 14,
-  },
-  metricCard: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: COLORS.background,
-    borderRadius: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    letterSpacing: 0.3,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  metricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-    marginTop: 4,
-    textAlign: 'center',
   },
 });

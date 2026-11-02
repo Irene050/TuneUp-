@@ -2,6 +2,7 @@ import {
   calcRMSWindows,
   toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
+import { average, clamp } from '@/utils/math';
 
 const WINDOW_MS = 50;
 const DEFAULT_TARGET_RANGE: [number, number] = [35, 45];
@@ -48,25 +49,6 @@ interface RepetitionResult {
   endReached: boolean;
   directionCorrect: boolean;
   valid: boolean;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return (
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length
-  );
 }
 
 function isValidVolume(value: number): boolean {

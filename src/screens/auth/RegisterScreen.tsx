@@ -20,16 +20,10 @@ import {
 import { registerUser } from '@/services/firebase/authService';
 
 import { COLORS } from '@/constants/appConstants';
-
-type AlertType = 'success' | 'error' | 'info';
-
-type AlertDetails = {
-  title: string;
-  message: string;
-  type: AlertType;
-  buttonLabel?: string;
-  onConfirm?: () => void;
-};
+import {
+  closeAlert,
+  type AlertDetails,
+} from '@/screens/auth/alertUtils';
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
@@ -50,14 +44,7 @@ export default function RegisterScreen() {
   const passwordsMismatch =
     confirmPassword.length > 0 && password !== confirmPassword;
 
-  function closeAlert() {
-    const onConfirm = alert?.onConfirm;
-
-    setAlert(null);
-    onConfirm?.();
-  }
-
-  function handleDateChange(event: any, date?: Date) {
+  function handleDateChange(_event: any, date?: Date) {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
@@ -375,7 +362,10 @@ export default function RegisterScreen() {
         />
       )}
 
-      <TuneUpAlertModal alert={alert} onClose={closeAlert} />
+      <TuneUpAlertModal
+        alert={alert}
+        onClose={() => closeAlert(alert, setAlert)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -462,23 +452,6 @@ const styles = StyleSheet.create({
     marginTop: 50,
     flex: 1,
     paddingHorizontal: 26,
-  },
-  header: {
-    height: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    marginHorizontal: -26,
-    paddingHorizontal: 26,
-  },
-  title: {
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  headerSpacer: {
-    width: 20,
   },
   logo: {
     width: 75,

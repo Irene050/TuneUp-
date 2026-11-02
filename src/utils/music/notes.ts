@@ -25,6 +25,24 @@ export function frequencyToMidi(
   return 69 + 12 * Math.log2(frequency / 440);
 }
 
+export function getSemitoneDistance(
+  detectedFrequency: number,
+  targetFrequency: number,
+): number {
+  if (
+    detectedFrequency <= 0 ||
+    targetFrequency <= 0 ||
+    !Number.isFinite(detectedFrequency) ||
+    !Number.isFinite(targetFrequency)
+  ) {
+    return Infinity;
+  }
+
+  return Math.abs(
+    12 * Math.log2(detectedFrequency / targetFrequency),
+  );
+}
+
 export function midiToFrequency(
   midi: number,
 ): number {

@@ -6,16 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
     type SustainedExhaleParams,
@@ -39,14 +30,21 @@ import {
     type SustainedExhaleScoreResult,
 } from '@/services/scoring/breathControl/sustainedExhale';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
-const PREPARATION_COUNTDOWN = 3;
 const PROCESSING_DELAY_MS = 1200;
 
 type Phase =
@@ -78,7 +76,7 @@ export default function SustainedExhaleScreen({
   const [phase, setPhase] = useState<Phase>('instructions');
   const [currentRep, setCurrentRep] = useState(1);
   const [countdown, setCountdown] = useState(
-    PREPARATION_COUNTDOWN,
+    EXERCISE_COUNTDOWN_SECONDS,
   );
   const [elapsed, setElapsed] = useState(0);
   const [volume, setVolume] = useState<number | null>(null);
@@ -86,6 +84,7 @@ export default function SustainedExhaleScreen({
   const [error, setError] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const paramsRef = useRef<SustainedExhaleParams | null>(null);
   const tierRef = useRef<Tier | null>(initialTier ?? null);
@@ -391,6 +390,14 @@ export default function SustainedExhaleScreen({
         return;
       }
 
+      if (!hasSufficientRecordedSignal(samples)) {
+        startingRef.current = false;
+        finishingRef.current = false;
+        setCurrentPhase('instructions');
+        setShowNoAudioModal(true);
+        return;
+      }
+
       setCurrentPhase('processing');
       setElapsed(0);
       setVolume(null);
@@ -578,12 +585,12 @@ export default function SustainedExhaleScreen({
     }
 
     clearTimers();
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsed(0);
     setVolume(null);
     setCurrentPhase('countdown');
 
-    let value = PREPARATION_COUNTDOWN;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -651,7 +658,7 @@ export default function SustainedExhaleScreen({
         );
       }
     } else if (currentPhase === 'countdown') {
-      setCountdown(PREPARATION_COUNTDOWN);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     }
 
     setShowQuitModal(true);
@@ -714,7 +721,7 @@ export default function SustainedExhaleScreen({
     setElapsed(0);
     setVolume(null);
     setError(null);
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setShowQuitModal(false);
 
     beginCountdown();
@@ -754,7 +761,7 @@ export default function SustainedExhaleScreen({
     setElapsed(0);
     setVolume(null);
     setError(null);
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setShowQuitModal(false);
     setCurrentPhase('instructions');
   }, [clearTimers, setCurrentPhase]);
@@ -838,101 +845,56 @@ export default function SustainedExhaleScreen({
   }, [clearTimers]);
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'instructions' ||
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Sustained Exhale?'
               : pausedPhaseRef.current === 'recording'
                 ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
                 : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
               void quitExercise();
             }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
+
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        startingRef.current = false;
+        finishingRef.current = false;
+        pausedRef.current = false;
+        quitInProgressRef.current = false;
+        beginCountdownRef.current?.();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (loadingParams || !params || !tier) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.largeIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level."
+          icon="options-outline"
+          iconSize={44}
+          containerStyle={styles.centerScreen}
+        />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1015,6 +977,7 @@ export default function SustainedExhaleScreen({
           onStart={startExercise}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1033,6 +996,7 @@ export default function SustainedExhaleScreen({
           onBack={handleBack}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1152,6 +1116,7 @@ export default function SustainedExhaleScreen({
           </View>
         </ScrollView>
         {quitModal}
+        {noAudioModal}
       </View>
     );
   }
@@ -1173,9 +1138,9 @@ export default function SustainedExhaleScreen({
               ? 'Calculating your overall breath control score'
               : `Processing repetition ${currentRep}`
           }
-          onBack={handleBack}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1208,24 +1173,28 @@ export default function SustainedExhaleScreen({
 
             <View style={styles.metricsGrid}>
               <MetricCard
+                variant="breathControl"
                 icon="time-outline"
                 label="Avg. Duration"
                 value={`${averageDuration.toFixed(1)}s`}
               />
 
               <MetricCard
+                variant="breathControl"
                 icon="pulse-outline"
                 label="Consistency"
                 value={`${Math.round(averageConsistency)}%`}
               />
 
               <MetricCard
+                variant="breathControl"
                 icon="repeat-outline"
                 label="Repetitions"
                 value={`${repResults.length}/${params.repetitions}`}
               />
 
               <MetricCard
+                variant="breathControl"
                 icon="checkmark-circle-outline"
                 label="Passed"
                 value={`${passedReps}/${repResults.length}`}
@@ -1300,26 +1269,8 @@ export default function SustainedExhaleScreen({
         </View>
       </ExerciseResultsScreen>
       {quitModal}
+      {noAudioModal}
     </>
-  );
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metricCard}>
-      <Ionicons name={icon} size={21} color={COLORS.brown} />
-
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
   );
 }
 
@@ -1335,35 +1286,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 30,
   },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
   recordingContent: {
     paddingHorizontal: 24,
     paddingTop: 76,
     paddingBottom: 40,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
   },
   resultsContent: {
     flex: 1,
@@ -1553,27 +1479,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  metricCard: {
-    width: '48%',
-    minHeight: 100,
-    backgroundColor: COLORS.background,
-    borderRadius: 17,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 8,
-  },
-  metricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
   repResultsCard: {
     backgroundColor: COLORS.background,
     borderRadius: 20,
@@ -1647,82 +1552,5 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: COLORS.brown,
     marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

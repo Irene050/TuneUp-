@@ -33,6 +33,8 @@ async function getAudioContext(): Promise<AudioContext> {
 export async function playSingleNote(
   frequencyHz: number,
   durationSec = 1.5,
+  onPlaybackStart?: () => void,
+  onPlaybackEnd?: () => void,
 ): Promise<void> {
   if (!Number.isFinite(frequencyHz) || frequencyHz <= 0) {
     throw new Error(`Invalid frequency: ${frequencyHz}`);
@@ -71,11 +73,19 @@ export async function playSingleNote(
 
   oscillator.start(startTime);
   oscillator.stop(endTime);
+  onPlaybackStart?.();
 
   console.log('✅ Note playback started');
 
   await new Promise<void>(resolve => {
-    setTimeout(resolve, durationSec * 1000 + 100);
+    setTimeout(() => {
+      onPlaybackEnd?.();
+      resolve();
+    }, durationSec * 1000);
+  });
+
+  await new Promise<void>(resolve => {
+    setTimeout(resolve, 100);
   });
 
   console.log('⏹️ Note playback finished');
@@ -84,6 +94,8 @@ export async function playSingleNote(
 export async function playNoteSequence(
   notes: NoteToPlay[],
   gapSec = GAP_SEC,
+  onNoteChange?: (index: number | null) => void,
+  shouldContinue?: () => boolean,
 ): Promise<void> {
   if (notes.length === 0) return;
 
@@ -97,11 +109,24 @@ export async function playNoteSequence(
   });
 
   for (let index = 0; index < notes.length; index++) {
+    if (shouldContinue && !shouldContinue()) {
+      break;
+    }
+
     const note = notes[index];
 
     console.log(`🎵 Playing note ${index + 1}/${notes.length}`);
 
-    await playSingleNote(note.frequencyHz, note.durationSec);
+    await playSingleNote(
+      note.frequencyHz,
+      note.durationSec,
+      () => onNoteChange?.(index),
+      () => onNoteChange?.(null),
+    );
+
+    if (shouldContinue && !shouldContinue()) {
+      break;
+    }
 
     if (index < notes.length - 1 && gapSec > 0) {
       await new Promise<void>(resolve => {

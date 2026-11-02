@@ -3,6 +3,7 @@ import {
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
+import { average } from '@/utils/math';
 
 export interface ScaleAccuracyMeasurement {
   detectedFreqs: number[];
@@ -198,13 +199,7 @@ export function measureScaleAccuracyDrill(
     transitionSmoothness.toFixed(1)
   );
 
-  const averageClarity =
-    clarityValues.length > 0
-      ? clarityValues.reduce(
-          (sum, value) => sum + value,
-          0
-        ) / clarityValues.length
-      : 0;
+  const averageClarity = average(clarityValues);
 
   const roundedAverageClarity = Number(
     averageClarity.toFixed(1)

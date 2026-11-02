@@ -6,15 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
     type DiaphragmaticBreathingParams,
@@ -37,16 +29,23 @@ import {
     scoreDiaphragmaticBreathing,
     type DiaphragmaticBreathingScoreResult,
 } from '@/services/scoring/breathControl/diaphragmaticBreathing';
-
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  Metric,
+  ResultStat,
 } from '../ExerciseScreen';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
-const PREPARATION_COUNTDOWN = 3;
 
 interface Props {
   tier?: Tier;
@@ -83,14 +82,15 @@ export default function DiaphragmaticBreathingScreen({
   const phaseRef = useRef<Phase>('instructions');
 
   const [countdown, setCountdown] =
-    useState(PREPARATION_COUNTDOWN);
+    useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsed, setElapsed] = useState(0);
   const [volume, setVolume] = useState(0);
-  const [showExitPrompt, setShowExitPrompt] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
-  const showExitPromptRef = useRef(false);
-  const pausedForExitRef = useRef(false);
+  const showQuitModalRef = useRef(false);
+  const pausedRef = useRef(false);
   const restartCurrentRepRef = useRef(false);
   const leavingRef = useRef(false);
 
@@ -133,8 +133,8 @@ export default function DiaphragmaticBreathingScreen({
   }, []);
 
   const setExitPromptVisible = useCallback((visible: boolean) => {
-    showExitPromptRef.current = visible;
-    setShowExitPrompt(visible);
+    showQuitModalRef.current = visible;
+    setShowQuitModal(visible);
   }, []);
 
   useEffect(() => {
@@ -272,7 +272,7 @@ export default function DiaphragmaticBreathingScreen({
     if (
       !mountedRef.current ||
       cancellingRef.current ||
-      pausedForExitRef.current ||
+      pausedRef.current ||
       leavingRef.current ||
       processingRef.current
     ) {
@@ -328,7 +328,7 @@ export default function DiaphragmaticBreathingScreen({
       if (
         !mountedRef.current ||
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         restartCurrentRepRef.current ||
         leavingRef.current ||
         processingRef.current
@@ -348,6 +348,13 @@ export default function DiaphragmaticBreathingScreen({
       }
 
       processingRef.current = true;
+
+      if (!hasSufficientRecordedSignal(exhaleSamples)) {
+        processingRef.current = false;
+        setCurrentPhase('instructions');
+        setShowNoAudioModal(true);
+        return;
+      }
 
       try {
         const measurement = measureDiaphragmaticBreathing(
@@ -392,7 +399,7 @@ export default function DiaphragmaticBreathingScreen({
           if (
             !mountedRef.current ||
             cancellingRef.current ||
-            pausedForExitRef.current ||
+            pausedRef.current ||
             leavingRef.current
           ) {
             processingRef.current = false;
@@ -411,7 +418,7 @@ export default function DiaphragmaticBreathingScreen({
         if (
           !mountedRef.current ||
           cancellingRef.current ||
-          pausedForExitRef.current
+          pausedRef.current
         ) {
           processingRef.current = false;
           return;
@@ -429,7 +436,7 @@ export default function DiaphragmaticBreathingScreen({
       if (
         !mountedRef.current ||
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         restartCurrentRepRef.current ||
         leavingRef.current ||
         phaseRef.current !== 'exhale'
@@ -450,7 +457,7 @@ export default function DiaphragmaticBreathingScreen({
         if (
           !mountedRef.current ||
           cancellingRef.current ||
-          pausedForExitRef.current ||
+          pausedRef.current ||
           restartCurrentRepRef.current ||
           leavingRef.current
         ) {
@@ -470,7 +477,7 @@ export default function DiaphragmaticBreathingScreen({
       if (
         !mountedRef.current ||
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         restartCurrentRepRef.current ||
         leavingRef.current ||
         phaseRef.current !== 'exhale'
@@ -492,7 +499,7 @@ export default function DiaphragmaticBreathingScreen({
     (durationSec: number, stopRecorder = true) => {
       if (
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         leavingRef.current
       ) {
         return;
@@ -507,7 +514,7 @@ export default function DiaphragmaticBreathingScreen({
         if (
           !mountedRef.current ||
           cancellingRef.current ||
-          pausedForExitRef.current ||
+          pausedRef.current ||
           leavingRef.current
         ) {
           return;
@@ -540,7 +547,7 @@ export default function DiaphragmaticBreathingScreen({
     if (
       !mountedRef.current ||
       cancellingRef.current ||
-      pausedForExitRef.current ||
+      pausedRef.current ||
       leavingRef.current
     ) {
       return;
@@ -571,7 +578,7 @@ export default function DiaphragmaticBreathingScreen({
         if (
           !mountedRef.current ||
           cancellingRef.current ||
-          pausedForExitRef.current ||
+          pausedRef.current ||
           restartCurrentRepRef.current ||
           leavingRef.current ||
           phaseRef.current !== 'exhale'
@@ -598,7 +605,7 @@ export default function DiaphragmaticBreathingScreen({
         if (
           !mountedRef.current ||
           cancellingRef.current ||
-          pausedForExitRef.current
+          pausedRef.current
         ) {
           return;
         }
@@ -618,7 +625,7 @@ export default function DiaphragmaticBreathingScreen({
     if (
       !mountedRef.current ||
       cancellingRef.current ||
-      pausedForExitRef.current ||
+      pausedRef.current ||
       leavingRef.current
     ) {
       return;
@@ -644,7 +651,7 @@ export default function DiaphragmaticBreathingScreen({
       if (
         !mountedRef.current ||
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         leavingRef.current
       ) {
         return;
@@ -662,7 +669,7 @@ export default function DiaphragmaticBreathingScreen({
     if (
       !mountedRef.current ||
       cancellingRef.current ||
-      pausedForExitRef.current ||
+      pausedRef.current ||
       leavingRef.current
     ) {
       return;
@@ -671,17 +678,17 @@ export default function DiaphragmaticBreathingScreen({
     clearTimers();
 
     setCurrentPhase('countdown');
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsed(0);
     setVolume(0);
 
-    let value = PREPARATION_COUNTDOWN;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
         !mountedRef.current ||
         cancellingRef.current ||
-        pausedForExitRef.current ||
+        pausedRef.current ||
         leavingRef.current
       ) {
         return;
@@ -713,14 +720,14 @@ export default function DiaphragmaticBreathingScreen({
     cancellingRef.current = false;
     processingRef.current = false;
     startingRef.current = false;
-    pausedForExitRef.current = false;
+    pausedRef.current = false;
     restartCurrentRepRef.current = false;
     leavingRef.current = false;
 
     setIsQuitting(false);
     clearTimers();
     resetRepetitionResults();
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setExitPromptVisible(false);
 
     startCountdownRef.current?.();
@@ -737,7 +744,7 @@ export default function DiaphragmaticBreathingScreen({
     cancellingRef.current = true;
     processingRef.current = false;
     startingRef.current = false;
-    pausedForExitRef.current = false;
+    pausedRef.current = false;
     restartCurrentRepRef.current = false;
 
     setIsQuitting(false);
@@ -745,7 +752,7 @@ export default function DiaphragmaticBreathingScreen({
     stopRecordingRef.current?.();
 
     resetRepetitionResults();
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setExitPromptVisible(false);
 
     cancellingRef.current = false;
@@ -761,7 +768,7 @@ export default function DiaphragmaticBreathingScreen({
     if (
       !mountedRef.current ||
       leavingRef.current ||
-      showExitPromptRef.current
+      showQuitModalRef.current
     ) {
       return;
     }
@@ -775,7 +782,7 @@ export default function DiaphragmaticBreathingScreen({
       currentPhase === 'processing';
 
     if (attemptIsActive) {
-      pausedForExitRef.current = true;
+      pausedRef.current = true;
 
       const recordingWasActive = currentPhase === 'exhale';
       const analysisWasPending = currentPhase === 'processing';
@@ -816,17 +823,17 @@ export default function DiaphragmaticBreathingScreen({
   ]);
 
   const continueExercise = useCallback(() => {
-    if (leavingRef.current || !showExitPromptRef.current) {
+    if (leavingRef.current || !showQuitModalRef.current) {
       return;
     }
 
     setExitPromptVisible(false);
 
-    if (!pausedForExitRef.current) {
+    if (!pausedRef.current) {
       return;
     }
 
-    pausedForExitRef.current = false;
+    pausedRef.current = false;
     cancellingRef.current = false;
     startingRef.current = false;
     processingRef.current = false;
@@ -846,7 +853,7 @@ export default function DiaphragmaticBreathingScreen({
 
     leavingRef.current = true;
     cancellingRef.current = true;
-    pausedForExitRef.current = false;
+    pausedRef.current = false;
     restartCurrentRepRef.current = false;
     processingRef.current = false;
     startingRef.current = false;
@@ -871,7 +878,7 @@ export default function DiaphragmaticBreathingScreen({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (showExitPromptRef.current) {
+        if (showQuitModalRef.current) {
           return true;
         }
 
@@ -889,7 +896,7 @@ export default function DiaphragmaticBreathingScreen({
     return () => {
       mountedRef.current = false;
       cancellingRef.current = true;
-      pausedForExitRef.current = false;
+      pausedRef.current = false;
       restartCurrentRepRef.current = false;
       processingRef.current = false;
       startingRef.current = false;
@@ -917,98 +924,45 @@ export default function DiaphragmaticBreathingScreen({
         : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
 
   const quitModal = (
-    <Modal
-      visible={showExitPrompt}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View
-          accessibilityRole="alert"
-          accessibilityLabel="Exercise exit confirmation"
-          style={styles.confirmationCard}
-        >
-          <View style={styles.confirmationIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={32}
-              color={COLORS.brown}
-            />
-          </View>
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={quitMessage}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={quitExercise}
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
 
-          <Text style={styles.confirmationTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.confirmationMessage}>
-            {quitMessage}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            onPress={continueExercise}
-            disabled={isQuitting}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            onPress={quitExercise}
-            disabled={isQuitting}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        processingRef.current = false;
+        startCountdownRef.current?.();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (!params || !tier || !paramsReady) {
     return (
       <>
-      <View style={styles.preparingScreen}>
-        <View style={styles.preparingIconCircle}>
-          <Ionicons
-            name="options-outline"
-            size={44}
-            color={COLORS.brown}
-          />
-        </View>
-
-        <Text style={styles.preparingTitle}>
-          Preparing Your Exercise
-        </Text>
-
-        <Text style={styles.preparingSubtitle}>
-          Adjusting the exercise to your current difficulty level
-        </Text>
-
-        <ActivityIndicator
-          size="large"
-          color={COLORS.brown}
-          style={styles.spinner}
-        />
-      </View>
+      <ExercisePreparingScreen
+        title="Preparing Your Exercise"
+        message="Adjusting the exercise to your current difficulty level"
+        icon="options-outline"
+        iconSize={44}
+      />
       {quitModal}
+      {noAudioModal}
       </>
     );
   }
@@ -1059,6 +1013,7 @@ export default function DiaphragmaticBreathingScreen({
   return (
     <View style={styles.screen}>
       {quitModal}
+      {noAudioModal}
 
       {phase === 'instructions' && (
         <ExerciseScreen
@@ -1186,7 +1141,6 @@ export default function DiaphragmaticBreathingScreen({
             icon="analytics-outline"
             title="Analyzing Your Breathing"
             message="Measuring duration, consistency, and relative microphone level..."
-            onBack={handleBack}
           />
 
           <Pressable
@@ -1321,72 +1275,10 @@ function ProgressBar({ progress }: { progress: number }) {
   );
 }
 
-function ResultStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.resultStat}>
-      <Text style={styles.resultStatValue}>{value}</Text>
-      <Text style={styles.resultStatLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.white,
-  },
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
   },
   exerciseContainer: {
     flex: 1,
@@ -1513,26 +1405,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  resultStat: {
-    width: '48%',
-    flexGrow: 1,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 16,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  resultStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-  },
-  resultStatLabel: {
-    marginTop: 3,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
   sectionTitle: {
     marginTop: 24,
     marginBottom: 10,
@@ -1577,99 +1449,5 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 13,
     gap: 8,
-  },
-  metric: {
-    width: '47%',
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  metricValue: {
-    marginTop: 2,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 26,
-  },
-  confirmationCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 26,
-    paddingBottom: 22,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  confirmationIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  confirmationTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  confirmationMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 21,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 9,
-    marginBottom: 22,
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 49,
-    backgroundColor: COLORS.pink,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 47,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    marginTop: 10,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

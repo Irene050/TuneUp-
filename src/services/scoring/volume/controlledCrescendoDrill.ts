@@ -1,6 +1,7 @@
 import type {
   ControlledCrescendoMeasurement,
 } from '@/services/measurement/volume/controlledCrescendoDrill';
+import { clamp } from '@/utils/math';
 
 export interface ControlledCrescendoScore {
   smoothness: number;
@@ -54,20 +55,6 @@ export function scoreControlledCrescendo(
         measurement.overallMeasurementQuality,
       ),
   };
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(
-    min,
-    Math.min(
-      max,
-      value,
-    ),
-  );
 }
 
 function round(

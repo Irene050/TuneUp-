@@ -37,6 +37,7 @@ import {
 } from '@/services/progress/progressRepo';
 
 import { COLORS } from '@/constants/appConstants';
+import { clampPercentage } from '@/utils/math';
 
 type ComponentInfo = {
   id: ComponentId;
@@ -88,14 +89,6 @@ function formatAssessmentDate(timestamp: number): string {
     day: 'numeric',
     year: 'numeric',
   });
-}
-
-function clampPercentage(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  return Math.round(Math.max(0, Math.min(100, value)));
 }
 
 function averageScorePct(

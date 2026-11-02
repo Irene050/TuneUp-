@@ -5,18 +5,11 @@ import type {
 import type {
     VowelConsistencyMeasurement,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
+import { clamp } from '@/utils/math';
 
 export interface VowelConsistencyScoreResult {
   score: number;
   passed: boolean;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 export function scoreVowelConsistencyExercise(

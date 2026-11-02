@@ -2,6 +2,7 @@ import {
   calcRMSWindows,
   toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
+import { average, clamp } from '@/utils/math';
 
 export interface DynamicRangeMeasurement {
   dbValues: number[];
@@ -343,17 +344,6 @@ function createContiguousIntervals(
   }));
 }
 
-function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return (
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length
-  );
-}
-
 function calculateSlope(values: number[]): number {
   if (values.length < 2) {
     return 0;
@@ -443,14 +433,6 @@ function calculatePeakAccuracy(
   );
 
   return (riseScore + fallScore) / 2;
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function createEmptyMeasurement(): DynamicRangeMeasurement {

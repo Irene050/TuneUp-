@@ -7,16 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { Tier } from '@/constants/params';
 import {
@@ -45,19 +36,28 @@ import {
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { formatFrequency } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/math';
 
-const FFT_SIZE = 1024;
-const FFT_HOP_SIZE = 512;
-const COUNTDOWN_SECONDS = 3;
-const TARGET_NOTE_DURATION_SECONDS = 1.5;
-const WAVEFORM_BAR_COUNT = 30;
 
 type Phase =
   | 'instructions'
@@ -85,18 +85,6 @@ type ResultState = {
   averageAmplitude: number;
 };
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatFrequency(frequency: number): string {
-  if (!Number.isFinite(frequency) || frequency <= 0) {
-    return '--';
-  }
-
-  return `${frequency.toFixed(1)} Hz`;
-}
-
 function formatVolume(volume: number): string {
   if (!Number.isFinite(volume) || volume <= -100) {
     return '--';
@@ -123,8 +111,8 @@ function LiveToneWaveform({
 
   const bars = useMemo(
     () =>
-      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (WAVEFORM_BAR_COUNT - 1) / 2;
+      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
+        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
         const distance = Math.abs(index - center) / center;
         const envelope = 1 - distance * 0.58;
 
@@ -215,7 +203,7 @@ export default function ToneConsistencyExerciseScreen({
     useState(true);
 
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [listenElapsedSeconds, setListenElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
@@ -231,6 +219,7 @@ export default function ToneConsistencyExerciseScreen({
   const [errorMessage, setErrorMessage] = useState('');
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const generatedTarget = useMemo(
     () => getRandomPitchNote(currentTier, vocalRange),
@@ -472,7 +461,7 @@ export default function ToneConsistencyExerciseScreen({
       const elapsed = (Date.now() - startTime) / 1000;
 
       setListenElapsedSeconds(
-        Math.min(elapsed, TARGET_NOTE_DURATION_SECONDS),
+        Math.min(elapsed, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS),
       );
     }, 50);
 
@@ -482,7 +471,7 @@ export default function ToneConsistencyExerciseScreen({
 
       await playSingleNote(
         targetToPlay.frequency,
-        TARGET_NOTE_DURATION_SECONDS,
+        EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       );
     } catch (error) {
       console.error('Failed to play target note:', error);
@@ -515,7 +504,7 @@ export default function ToneConsistencyExerciseScreen({
       return false;
     }
 
-    setListenElapsedSeconds(TARGET_NOTE_DURATION_SECONDS);
+    setListenElapsedSeconds(EXERCISE_REFERENCE_NOTE_DURATION_SECONDS);
 
     return true;
   }, [clearTimers, generatedTarget, setCurrentScreen]);
@@ -655,18 +644,23 @@ export default function ToneConsistencyExerciseScreen({
       }
 
       try {
+        if (!hasSufficientRecordedSignal(samples)) {
+          setCurrentScreen('instructions');
+          setShowNoAudioModal(true);
+          return;
+        }
+
         if (
-          samples.length === 0 ||
           !Number.isFinite(sampleRate) ||
           sampleRate <= 0
         ) {
-          throw new Error('No usable recording data was captured.');
+          throw new Error('The recording has an invalid sample rate.');
         }
 
         const fftFrames = samplesToFFTFrames(
           samples,
-          FFT_SIZE,
-          FFT_HOP_SIZE,
+          EXERCISE_FFT_SIZE,
+          EXERCISE_FFT_HOP_SIZE,
         );
 
         if (fftFrames.length === 0) {
@@ -717,7 +711,7 @@ export default function ToneConsistencyExerciseScreen({
           repetitionSamplesRef.current,
           repetitionFFTFramesRef.current,
           sampleRate,
-          FFT_SIZE,
+          EXERCISE_FFT_SIZE,
         );
 
         const scored = scoreToneConsistencyExercise(
@@ -852,10 +846,10 @@ export default function ToneConsistencyExerciseScreen({
 
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCurrentScreen('countdown');
 
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -968,7 +962,7 @@ export default function ToneConsistencyExerciseScreen({
     setErrorMessage('');
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
     setLiveTone({
       pitch: 0,
@@ -1055,7 +1049,7 @@ export default function ToneConsistencyExerciseScreen({
       setErrorMessage('');
       setElapsedSeconds(0);
       setListenElapsedSeconds(0);
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       setLiveTone({
         pitch: 0,
@@ -1169,7 +1163,7 @@ export default function ToneConsistencyExerciseScreen({
 
   const listenProgress =
     clamp(
-      listenElapsedSeconds / TARGET_NOTE_DURATION_SECONDS,
+      listenElapsedSeconds / EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       0,
       1,
     ) * 100;
@@ -1193,92 +1187,49 @@ export default function ToneConsistencyExerciseScreen({
               : 'Are you sure you want to leave Tone Consistency?';
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit Exercise?"}
+        message={quitMessage}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={quitExercise}
+        continueLabel={"Continue Exercise"}
+        quitLabel={"Quit Exercise"}
+      />
+  );
 
-          <Text style={styles.modalTitle}>Quit Exercise?</Text>
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        setErrorMessage('');
+        void (async () => {
+          const played = await listenToTargetNoteRef.current?.();
 
-          <Text style={styles.modalMessage}>{quitMessage}</Text>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isQuitting}
-            onPress={quitExercise}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            {isQuitting ? (
-              <ActivityIndicator color={COLORS.brown} />
-            ) : (
-              <Text style={styles.quitButtonText}>
-                Quit Exercise
-              </Text>
-            )}
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+          if (played && mountedRef.current && !quitInProgressRef.current) {
+            await startRecordingAttemptRef.current?.();
+          }
+        })();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (screen === 'instructions' && isLoadingAdaptiveParams) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level and
-            preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          icon="options-outline"
+          iconSize={44}
+        />
 
         {quitModal}
       </>
@@ -1335,6 +1286,7 @@ export default function ToneConsistencyExerciseScreen({
         />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1367,7 +1319,7 @@ export default function ToneConsistencyExerciseScreen({
           currentRep={currentRep}
           repetitions={params.repetitions}
           elapsed={listenElapsedSeconds}
-          targetDuration={TARGET_NOTE_DURATION_SECONDS}
+          targetDuration={EXERCISE_REFERENCE_NOTE_DURATION_SECONDS}
           promptTitle="Listen to the reference note"
           prompt="Listen carefully. After the note finishes, sing the same note."
           liveContent={
@@ -1598,7 +1550,6 @@ export default function ToneConsistencyExerciseScreen({
           icon="analytics-outline"
           title="Analyzing Your Singing"
           message="Comparing your repetitions for tone and vocal consistency."
-          onBack={goBack}
         />
 
         {quitModal}
@@ -1646,11 +1597,13 @@ export default function ToneConsistencyExerciseScreen({
           <View style={styles.resultsGrid}>
             <MetricCard
               label="OVERALL SCORE"
+              variant="toneConsistency"
               value={`${result.score}%`}
             />
 
             <MetricCard
               label="AVG. CENTROID"
+              variant="toneConsistency"
               value={
                 result.averageCentroidHz > 0
                   ? `${Math.round(result.averageCentroidHz)} Hz`
@@ -1660,6 +1613,7 @@ export default function ToneConsistencyExerciseScreen({
 
             <MetricCard
               label="AVG. AMPLITUDE"
+              variant="toneConsistency"
               value={
                 result.averageAmplitude > 0
                   ? result.averageAmplitude.toFixed(3)
@@ -1669,6 +1623,7 @@ export default function ToneConsistencyExerciseScreen({
 
             <MetricCard
               label="REPETITIONS"
+              variant="toneConsistency"
               value={String(params.repetitions)}
             />
           </View>
@@ -1700,54 +1655,7 @@ export default function ToneConsistencyExerciseScreen({
   return quitModal;
 }
 
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metricCard}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   sharedListenNoteBox: {
     minWidth: 180,
     backgroundColor: COLORS.pink,
@@ -1857,12 +1765,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
     color: COLORS.muted,
-  },
-  targetNoteHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 3,
   },
   targetNoteValueContainer: {
     alignItems: 'flex-end',
@@ -2068,44 +1970,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     textAlign: 'center',
   },
-  recordingTip: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 9,
-    backgroundColor: COLORS.background,
-    borderRadius: 15,
-    padding: 13,
-    marginTop: 13,
-  },
-  recordingTipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.muted,
-  },
-  metricCard: {
-    flex: 1,
-    minWidth: '47%',
-    backgroundColor: COLORS.background,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    letterSpacing: 0.6,
-    color: COLORS.muted,
-  },
-  metricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginTop: 3,
-  },
   resultCard: {
     width: '100%',
     backgroundColor: COLORS.background,
@@ -2175,82 +2039,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: COLORS.brown,
     marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

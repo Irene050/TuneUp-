@@ -9,21 +9,11 @@ import type {
 import {
     calcOverallToneQuality,
 } from '@/utils/dsp/spectral';
+import { clampScore } from '@/utils/math';
 
 export interface SteadyToneHoldingScoreResult {
   score: number;
   passed: boolean;
-}
-
-function clampScore(
-  value: number,
-): number {
-  return Number.isFinite(value)
-    ? Math.max(
-        0,
-        Math.min(100, value),
-      )
-    : 0;
 }
 
 export function scoreSteadyToneHolding(

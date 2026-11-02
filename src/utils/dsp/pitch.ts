@@ -1,4 +1,5 @@
 import { frequencyToNoteName } from '@/utils/music/notes';
+import { average } from '@/utils/math';
 import { PitchDetector } from 'pitchy';
 
 const MIN_TRACKING_CLARITY = 0.70;
@@ -212,13 +213,7 @@ export function calcLiveStability(
     return 0;
   }
 
-  const mean =
-    validPitches.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    validPitches.length;
+  const mean = average(validPitches);
 
   if (
     mean <= 0 ||
@@ -430,13 +425,7 @@ export function calcTransitionSmoothness(
     return 100;
   }
 
-  const mean =
-    diffs.reduce(
-      (sum, value) =>
-        sum + value,
-      0
-    ) /
-    diffs.length;
+  const mean = average(diffs);
 
   const averageDeviation =
     diffs.reduce(

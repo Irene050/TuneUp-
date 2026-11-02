@@ -10,7 +10,6 @@ import {
 import {
   ActivityIndicator,
   BackHandler,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +21,7 @@ import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+import { ExerciseQuitModal } from '@/screens/exercises/ExerciseScreen';
 import {
   ASSESSMENT_DURATION,
   type AssessmentAudioBundle,
@@ -1059,68 +1059,17 @@ export default function AssessmentScreen() {
   }, [isQuitting]);
   
   const quitModal = (
-    <Modal
+    <ExerciseQuitModal
       visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueAssessment}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit assessment?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            Your assessment progress may be lost if you leave
-            now. Are you sure you want to quit?
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue assessment"
-            disabled={isQuitting}
-            onPress={continueAssessment}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Assessment
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit assessment"
-            disabled={isQuitting}
-            onPress={() => {
-              void confirmQuitAssessment();
-            }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Assessment'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+      message="Your assessment progress may be lost if you leave now. Are you sure you want to quit?"
+      isQuitting={isQuitting}
+      onContinue={continueAssessment}
+      onQuit={() => void confirmQuitAssessment()}
+      title="Quit assessment?"
+      continueLabel="Continue Assessment"
+      quitLabel="Quit Assessment"
+      variant="assessment"
+    />
   );
 
   if (step === 'processingHum') {
@@ -2300,181 +2249,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     marginTop: 8,
-  },
-  quitModalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  quitModalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 26,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    elevation: 10,
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-  },
-  quitModalIcon: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  quitModalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    lineHeight: 31,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  quitModalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitModalHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  quitModalActions: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 10,
-  },
-  quitContinueButton: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: 10,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: COLORS.brown,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quitContinueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitConfirmButton: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: 10,
-    borderRadius: 24,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quitConfirmButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  quitButtonDisabled: {
-    opacity: 0.65,
-  },  
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.text,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

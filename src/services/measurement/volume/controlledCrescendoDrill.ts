@@ -2,6 +2,7 @@ import {
   calcRMSWindows,
   toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
+import { average, clamp } from '@/utils/math';
 
 export interface ControlledCrescendoMeasurement {
   dbValues: number[];
@@ -197,26 +198,6 @@ function calculateDerivatives(
   );
 }
 
-function average(
-  values: number[],
-): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return (
-    values.reduce(
-      (
-        sum,
-        value,
-      ) =>
-        sum + value,
-      0,
-    ) /
-    values.length
-  );
-}
-
 function variance(
   values: number[],
 ): number {
@@ -233,20 +214,6 @@ function variance(
         (
           value - mean
         ) ** 2,
-    ),
-  );
-}
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(
-    min,
-    Math.min(
-      max,
-      value,
     ),
   );
 }

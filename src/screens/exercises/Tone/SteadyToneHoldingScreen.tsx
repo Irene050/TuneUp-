@@ -7,16 +7,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import {
     STEADY_TONE_HOLDING_PARAMS,
@@ -28,9 +19,12 @@ import {
     type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -51,12 +45,17 @@ import {
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  TONE_WAVEFORM_BAR_COUNT,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { formatNumber } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/math';
 
-const FFT_SIZE = 1024;
-const FFT_HOP_SIZE = 512;
-const COUNTDOWN_SECONDS = 3;
-const WAVEFORM_BAR_COUNT = 30;
 
 interface Props {
   tier?: Tier;
@@ -74,21 +73,6 @@ interface ProcessingResult {
   result: SteadyToneHoldingScoreResult;
 }
 
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatNumber(
-  value: number,
-  decimals = 1,
-): string {
-  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
-}
-
 function LiveWaveform({
   frame,
 }: {
@@ -104,8 +88,8 @@ function LiveWaveform({
 
   const bars = useMemo(
     () =>
-      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (WAVEFORM_BAR_COUNT - 1) / 2;
+      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
+        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
         const distance = Math.abs(index - center) / center;
         const envelope = 1 - distance * 0.65;
 
@@ -173,13 +157,11 @@ function RecordingScreen({
   durationSeconds,
   liveFrame,
   isRecording,
-  onBack,
 }: {
   elapsedSeconds: number;
   durationSeconds: number;
   liveFrame: LiveAudioFrame | null;
   isRecording: boolean;
-  onBack: () => void;
 }) {
   const progress =
     durationSeconds > 0
@@ -347,7 +329,7 @@ export default function SteadyToneHoldingScreen({
     );
   const [loadingParams, setLoadingParams] = useState(true);
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [liveFrame, setLiveFrame] =
     useState<LiveAudioFrame | null>(null);
@@ -359,6 +341,7 @@ export default function SteadyToneHoldingScreen({
     useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
   const phaseRef = useRef<Phase>('instructions');
@@ -568,19 +551,22 @@ export default function SteadyToneHoldingScreen({
       clearTimers();
       setCurrentPhase('processing');
 
-      try {
-        if (samples.length === 0) {
-          throw new Error('No audio samples were recorded.');
-        }
+      if (!hasSufficientRecordedSignal(samples)) {
+        processingRef.current = false;
+        setCurrentPhase('instructions');
+        setShowNoAudioModal(true);
+        return;
+      }
 
+      try {
         if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
           throw new Error('Invalid audio sample rate.');
         }
 
         const fftFrames = samplesToFFTFrames(
           samples,
-          FFT_SIZE,
-          FFT_HOP_SIZE,
+          EXERCISE_FFT_SIZE,
+          EXERCISE_FFT_HOP_SIZE,
         );
 
         if (fftFrames.length === 0) {
@@ -591,7 +577,7 @@ export default function SteadyToneHoldingScreen({
           samples,
           fftFrames,
           sampleRate,
-          FFT_SIZE,
+          EXERCISE_FFT_SIZE,
         );
 
         const scored = scoreSteadyToneHolding(
@@ -833,10 +819,10 @@ export default function SteadyToneHoldingScreen({
     discardNextStopRef.current = false;
     savedRef.current = false;
 
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCurrentPhase('countdown');
 
-    let value = COUNTDOWN_SECONDS;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -912,7 +898,7 @@ export default function SteadyToneHoldingScreen({
     }
 
     if (activePhase === 'countdown') {
-      setCountdown(COUNTDOWN_SECONDS);
+      setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     }
 
     setShowQuitModal(true);
@@ -1019,7 +1005,7 @@ export default function SteadyToneHoldingScreen({
 
     setIsQuitting(false);
     setShowQuitModal(false);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
     setLiveFrame(null);
@@ -1085,94 +1071,42 @@ export default function SteadyToneHoldingScreen({
           : 'Are you sure you want to leave Steady Tone Holding? Your progress is saved after a completed recording is analyzed.';
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Leave Exercise?"}
+        message={quitMessage}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={quitExercise}
+        continueLabel={"Continue Exercise"}
+        quitLabel={"Quit Exercise"}
+      />
+  );
 
-          <Text style={styles.modalTitle}>Leave Exercise?</Text>
-
-          <Text style={styles.modalMessage}>{quitMessage}</Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={quitExercise}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            {isQuitting ? (
-              <ActivityIndicator color={COLORS.brown} />
-            ) : (
-              <Text style={styles.quitButtonText}>
-                Quit Exercise
-              </Text>
-            )}
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        startCountdownRef.current?.();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (loadingParams) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level
-            and preparing your recording.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your recording."
+          icon="options-outline"
+          iconSize={44}
+        />
         {quitModal}
       </>
     );
@@ -1224,7 +1158,9 @@ export default function SteadyToneHoldingScreen({
           error={errorMessage}
           startDisabled={loadingParams}
         />
+
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1253,7 +1189,6 @@ export default function SteadyToneHoldingScreen({
           durationSeconds={params.durationSec}
           liveFrame={liveFrame}
           isRecording={isRecording}
-          onBack={goBack}
         />
         {quitModal}
       </>
@@ -1267,7 +1202,6 @@ export default function SteadyToneHoldingScreen({
           icon="pulse-outline"
           title="Analyzing Your Tone"
           message="Measuring tone smoothness, loudness stability, pitch stability, and duration."
-          onBack={goBack}
         />
         {quitModal}
       </>
@@ -1352,38 +1286,6 @@ export default function SteadyToneHoldingScreen({
 }
 
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   recordingScreen: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1614,20 +1516,6 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
   },
-  recordingTip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: 18,
-    paddingHorizontal: 5,
-  },
-  recordingTipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
 
   resultCard: {
     width: '100%',
@@ -1675,81 +1563,4 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
   },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
 });

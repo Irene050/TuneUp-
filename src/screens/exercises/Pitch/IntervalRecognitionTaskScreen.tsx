@@ -6,17 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
     INTERVAL_RECOGNITION_PARAMS,
@@ -46,8 +36,17 @@ import {
     createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
     type VocalRange
 } from '@/utils/music/notes';
+import { sleep } from '@/utils/async';
+import { clamp } from '@/utils/math';
 
 import { COLORS } from '@/constants/appConstants';
+import {
+  ExerciseProcessingScreen,
+  ExercisePreparingScreen,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/screens/exercises/ExerciseScreen';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
 
 const GUIDE_MAX_CENTS = 100;
 const MIN_RESPONSE_TIME_PER_REPETITION_SEC = 1.8;
@@ -115,14 +114,6 @@ const INTERVALS: IntervalDefinition[] = [
     semitones: 12,
   },
 ];
-
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function getRecordingDurationSec(
   params: IntervalRecognitionParams,
@@ -229,10 +220,6 @@ function getPitchGuideStatus(
   };
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function formatCents(cents: number | null): string {
   if (cents === null || !Number.isFinite(cents)) {
     return 'Waiting for pitch...';
@@ -254,61 +241,18 @@ function QuitExerciseModal({
   onQuit,
 }: QuitExerciseModalProps) {
   return (
-    <Modal
-  visible={visible}
-  transparent
-  animationType="fade"
-  onRequestClose={onContinue}
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.quitModalCard}>
-      <View style={styles.quitIconCircle}>
-        <Ionicons
-          name="exit-outline"
-          size={30}
-          color={COLORS.brown}
-        />
-      </View>
-
-      <Text style={styles.quitModalTitle}>
-        Leave Exercise?
-      </Text>
-
-      <Text style={styles.quitModalMessage}>
-        Your current exercise progress may be lost.
-        Are you sure you want to leave?
-      </Text>
-
-      <Pressable
-        onPress={onContinue}
-        disabled={isQuitting}
-        style={({ pressed }) => [
-          styles.continueButton,
-          pressed && styles.modalButtonPressed,
-          isQuitting && styles.buttonDisabled,
-        ]}
-      >
-        <Text style={styles.continueButtonText}>
-          {isQuitting ? 'Please wait...' : 'Continue Exercise'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        onPress={onQuit}
-        disabled={isQuitting}
-        style={({ pressed }) => [
-          styles.quitButton,
-          pressed && styles.modalButtonPressed,
-          isQuitting && styles.buttonDisabled,
-        ]}
-      >
-        <Text style={styles.quitButtonText}>
-          {isQuitting ? 'Leaving...' : 'Quit Exercise'}
-        </Text>
-      </Pressable>
-    </View>
-  </View>
-</Modal>
+    <ExerciseQuitModal
+        visible={visible}
+        title={"Leave Exercise?"}
+        message={"Your current exercise progress may be lost. Are you sure you want to leave?"}
+        isQuitting={isQuitting}
+        onContinue={onContinue}
+        onQuit={onQuit}
+        continueLabel={isQuitting ? 'Please wait...' : 'Continue Exercise'}
+        quitLabel="Quit Exercise"
+        quittingLabel="Leaving..."
+        statusBarTranslucent={false}
+      />
   );
 }
 
@@ -331,6 +275,7 @@ export default function IntervalRecognitionTaskScreen({
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(3);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const [rootNote, setRootNote] = useState(() =>
     createMusicalNote(60),
@@ -372,7 +317,7 @@ export default function IntervalRecognitionTaskScreen({
 
   const [isQuitting, setIsQuitting] = useState(false);
 
-  const interruptedPhaseRef = useRef<Phase>('instructions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
   const isQuittingRef = useRef(false);
 
   const countdownTimerRef =
@@ -639,6 +584,15 @@ export default function IntervalRecognitionTaskScreen({
         processingRef.current
       ) {
         stopRequestedRef.current = false;
+        return;
+      }
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        stopRequestedRef.current = false;
+        processingRef.current = false;
+        setErrorMessage(null);
+        setCurrentPhase('instructions');
+        setShowNoAudioModal(true);
         return;
       }
 
@@ -946,7 +900,7 @@ export default function IntervalRecognitionTaskScreen({
           }
         }
 
-        await delay(PRE_RECORDING_DELAY_MS);
+        await sleep(PRE_RECORDING_DELAY_MS);
 
         if (
           !mountedRef.current ||
@@ -1088,7 +1042,7 @@ export default function IntervalRecognitionTaskScreen({
       return;
     }
 
-    interruptedPhaseRef.current = phaseRef.current;
+    pausedPhaseRef.current = phaseRef.current;
 
     pausedRef.current = true;
     playbackRunRef.current += 1;
@@ -1230,6 +1184,21 @@ export default function IntervalRecognitionTaskScreen({
     setQuitModalVisible,
   ]);
 
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        setErrorMessage(null);
+        startCountdownRef.current?.(true);
+      }}
+      onQuit={() => {
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
+  );
+
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1322,7 +1291,7 @@ export default function IntervalRecognitionTaskScreen({
     Math.floor(recordingProgress * repetitionCount),
   );
 
-  const currentRepetition = repetitionProgress + 1;
+  const currentRep = repetitionProgress + 1;
 
   const phaseProgress = isRecordingComplete
     ? 1
@@ -1362,39 +1331,24 @@ export default function IntervalRecognitionTaskScreen({
   if (phase === 'instructions' && isLoadingAdaptiveParams) {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.largeIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.processingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.processingSubtitle}>
-            Adjusting the exercise to your current difficulty level
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level"
+          icon="options-outline"
+          iconSize={44}
+          containerStyle={styles.centerScreen}
+        />
 
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
@@ -1579,13 +1533,14 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
@@ -1612,13 +1567,14 @@ export default function IntervalRecognitionTaskScreen({
         </View>
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
@@ -1680,13 +1636,14 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
@@ -1718,7 +1675,7 @@ export default function IntervalRecognitionTaskScreen({
 
             <View style={styles.repetitionBadge}>
               <Text style={styles.repetitionBadgeText}>
-                Repetition {currentRepetition} of {repetitionCount}
+                Repetition {currentRep} of {repetitionCount}
               </Text>
             </View>
 
@@ -2133,13 +2090,14 @@ export default function IntervalRecognitionTaskScreen({
 
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
@@ -2147,39 +2105,22 @@ export default function IntervalRecognitionTaskScreen({
   if (phase === 'processing') {
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.iconCircle}>
-            <Ionicons
-              name="analytics-outline"
-              size={34}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.phaseTitle}>
-            Analyzing Your Singing
-          </Text>
-
-          <Text style={styles.phaseSubtitle}>
-            Checking your repeated interval accuracy.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.processingIndicator}
-          />
-        </View>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Singing"
+          message="Checking your repeated interval accuracy."
+        />
 
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
 />
+{noAudioModal}
       </>
     );
   }
@@ -2423,26 +2364,30 @@ export default function IntervalRecognitionTaskScreen({
         </View>
         <QuitExerciseModal
           visible={showQuitModal}
-          interruptedPhase={interruptedPhaseRef.current}
+          interruptedPhase={pausedPhaseRef.current}
           isQuitting={isQuitting}
           onContinue={continueExercise}
           onQuit={() => {
             void quitExercise();
           }}
         />
+        {noAudioModal}
       </>
     );
   }
   return (
-    <QuitExerciseModal
-      visible={showQuitModal}
-      interruptedPhase={interruptedPhaseRef.current}
-      isQuitting={isQuitting}
-      onContinue={continueExercise}
-      onQuit={() => {
-        void quitExercise();
-      }}
-    />
+    <>
+      <QuitExerciseModal
+        visible={showQuitModal}
+        interruptedPhase={pausedPhaseRef.current}
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
+          void quitExercise();
+        }}
+      />
+      {noAudioModal}
+    </>
   );
 }
 
@@ -2488,15 +2433,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-  largeIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
   iconCircle: {
     width: 76,
     height: 76,
@@ -2532,25 +2468,6 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
-  },
-  processingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  processingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
-  processingIndicator: {
-    marginTop: 28,
   },
   errorText: {
     fontFamily: 'FredokaRegular',
@@ -2785,13 +2702,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.4,
     color: COLORS.brown,
-  },
-  pitchGuideSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    color: COLORS.muted,
-    marginTop: 7,
   },
   guideStatusPill: {
     flexDirection: 'row',
@@ -3107,13 +3017,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.guideGreen,
     borderRadius: 3,
   },
-  recordingProgressLabel: {
-    alignSelf: 'flex-end',
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 6,
-  },
   resultIcon: {
     width: 82,
     height: 82,
@@ -3252,94 +3155,5 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 14,
     color: COLORS.brown,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  quitModalCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 26,
-    paddingBottom: 22,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    elevation: 8,
-    shadowColor: COLORS.black,
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-  },
-  quitIconCircle: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  quitModalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitModalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 9,
-    marginBottom: 22,
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 46,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 46,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    paddingHorizontal: 16,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  modalButtonPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

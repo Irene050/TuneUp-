@@ -1,4 +1,5 @@
 import type { Tier } from '@/constants/params';
+import { clamp } from '@/utils/math';
 
 export interface ParameterBounds {
   min: number;
@@ -175,10 +176,3 @@ export function checkTierProgression(
   };
 }
 
-function clamp(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, value));
-}

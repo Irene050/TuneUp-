@@ -1,4 +1,5 @@
 import { calcRMS, rmsToDb } from './rms';
+import { average } from '@/utils/math';
 
 export function calcRMSWindows(samples: Float32Array, windowMs = 50, sampleRate = 44100): number[] {
   const windowSize = Math.floor((windowMs / 1000) * sampleRate);
@@ -34,7 +35,7 @@ export function calcDerivativeSmoothness(dbArray: number[]): number {
 export function calcVolumeConsistency(dbArray: number[]): number {
   const values = dbArray.filter(Number.isFinite);
   if (values.length < 2) return 0;
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const mean = average(values);
   const variance =
     values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
     values.length;

@@ -7,27 +7,18 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Modal,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
-import { measurePitchFreeModeFrame } from '@/services/measurement/freemode/pitch';
+import { measurePitchFreeModeFrame } from '@/services/measurement/freeMode/pitch';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';
+import { ExerciseQuitModal } from '@/screens/exercises/ExerciseScreen';
 
 type Phase = 'ready' | 'exercise';
 
@@ -59,7 +50,7 @@ export default function PitchFreeModeScreen() {
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const leaveRequestedRef = useRef(false);
-  const quitModalOpenRef = useRef(false);
+  const showQuitModalRef = useRef(false);
   const startTaskRef = useRef<Promise<void> | null>(null);
   const recentFrequenciesRef = useRef<number[]>([]);
 
@@ -169,20 +160,20 @@ export default function PitchFreeModeScreen() {
   );
 
   const handleBack = useCallback(() => {
-    if (leaveRequestedRef.current || quitModalOpenRef.current) {
+    if (leaveRequestedRef.current || showQuitModalRef.current) {
       return;
     }
 
-    quitModalOpenRef.current = true;
+    showQuitModalRef.current = true;
     setShowQuitModal(true);
   }, []);
 
-  const dismissQuitModal = useCallback(() => {
+  const continueExercise = useCallback(() => {
     if (leaveRequestedRef.current) {
       return;
     }
 
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
     setShowQuitModal(false);
   }, []);
 
@@ -193,7 +184,7 @@ export default function PitchFreeModeScreen() {
 
     leaveRequestedRef.current = true;
     isRecordingRef.current = false;
-    quitModalOpenRef.current = false;
+    showQuitModalRef.current = false;
 
     setIsQuitting(true);
     setShowQuitModal(false);
@@ -224,8 +215,8 @@ export default function PitchFreeModeScreen() {
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
-          if (quitModalOpenRef.current) {
-            dismissQuitModal();
+          if (showQuitModalRef.current) {
+            continueExercise();
             return true;
           }
 
@@ -235,76 +226,23 @@ export default function PitchFreeModeScreen() {
       );
 
       return () => subscription.remove();
-    }, [dismissQuitModal, handleBack]),
+    }, [continueExercise, handleBack]),
   );
 
   const quitConfirmationModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismissQuitModal}
-    >
-      <View style={styles.modalOverlay}>
-        <View
-          accessibilityRole="alert"
-          accessibilityLabel="Quit exercise confirmation"
-          style={styles.confirmationCard}
-        >
-          <View style={styles.modalIconCircle}>
-            <Ionicons name="musical-notes-outline" size={34} color={COLORS.brown} />
-          </View>
-
-          <Text style={styles.modalTitle}>Quit Exercise?</Text>
-
-          <Text style={styles.modalMessage}>
-            Are you sure you want to leave Pitch Free Mode?
-          </Text>
-
-          <Text style={styles.modalHint}>
-            Your current session will stop. Free Mode feedback is not saved
-            as a scored exercise.
-          </Text>
-
-          <View style={styles.modalButtons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="No, continue exercise"
-              disabled={isQuitting}
-              onPress={dismissQuitModal}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>No, Continue</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Yes, quit exercise"
-              disabled={isQuitting}
-              onPress={() => {
+    <ExerciseQuitModal
+    visible={showQuitModal}
+    icon="musical-notes-outline"
+    message="Are you sure you want to leave Pitch Free Mode?"
+    hint="Your current session will stop. Free Mode feedback is not saved as a scored exercise."
+    isQuitting={isQuitting}
+    onContinue={continueExercise}
+    onQuit={() => {
                 void confirmQuitExercise();
               }}
-              style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
-                isQuitting && styles.buttonDisabled,
-              ]}
-            >
-              {isQuitting ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Text style={styles.quitButtonText}>Yes, Quit</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    continueLabel="No, Continue"
+    quitLabel="Yes, Quit"
+    />
   );
 
   const startFreeMode = useCallback(async () => {
@@ -1014,102 +952,6 @@ const styles = StyleSheet.create({
     marginTop: -30,
     marginBottom: 52,
     gap: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  confirmationCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 24,
-    alignItems: 'center',
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  modalIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.dark,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  modalHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 10,
-    marginTop: 24,
-  },
-  continueButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  quitButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 999,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.78,
   },
   buttonDisabled: {
     opacity: 0.55,

@@ -57,6 +57,10 @@ import {
     RAPID_SCALE_TRILL_PARAMS,
     VOCAL_RUN_ACCURACY_PARAMS,
 } from '@/constants/params';
+import {
+  frequencyToMidi,
+  midiToFrequency,
+} from '@/utils/music/notes';
 
 import {
     calculateAdjustedParameterBounds,
@@ -1936,12 +1940,6 @@ const RAPID_SCALE_TRILL_PATTERNS: Record<Tier, number[]> = {
   intermediate: [0, 2, 4, 2, 0, 2, 4, 7, 4, 2],
   advanced: [0, 2, 4, 6, 8, 6, 4, 2, 0, 2, 4, 6, 8, 6, 4, 2],
 };
-function rapidScaleTrillHzToMidi(frequencyHz: number): number {
-  return 69 + 12 * Math.log2(frequencyHz / 440);
-}
-function rapidScaleTrillMidiToHz(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
 function generateRapidScaleTrillFrequencies(
   tier: Tier,
   vocalRange?: RapidScaleTrillVocalRange | null,
@@ -1956,10 +1954,10 @@ function generateRapidScaleTrillFrequencies(
     return [];
   }
   const rangeMinMidi = Math.ceil(
-    rapidScaleTrillHzToMidi(vocalRange.lowHz),
+    frequencyToMidi(vocalRange.lowHz),
   );
   const rangeMaxMidi = Math.floor(
-    rapidScaleTrillHzToMidi(vocalRange.highHz),
+    frequencyToMidi(vocalRange.highHz),
   );
   if (rangeMinMidi > rangeMaxMidi) {
     return [];
@@ -1987,7 +1985,7 @@ function generateRapidScaleTrillFrequencies(
       Math.random() * (maxStartMidi - rangeMinMidi + 1),
     );
   const frequencies = fittedPattern.map((offset) =>
-    rapidScaleTrillMidiToHz(startMidi + offset),
+    midiToFrequency(startMidi + offset),
   );
   if (
     frequencies.some(
@@ -2085,14 +2083,6 @@ export function generateArpeggioSpeedDrillParams({
   };
 }
 
-function quickIntervalFrequencyToMidi(frequencyHz: number): number {
-  return 69 + 12 * Math.log2(frequencyHz / 440);
-}
-
-function quickIntervalMidiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
 function generateQuickIntervalJumpFrequencies(
   noteCount: number,
   vocalRange?: { lowHz: number; highHz: number } | null,
@@ -2110,10 +2100,10 @@ function generateQuickIntervalJumpFrequencies(
   }
 
   const lowMidi = Math.ceil(
-    quickIntervalFrequencyToMidi(vocalRange.lowHz),
+    frequencyToMidi(vocalRange.lowHz),
   );
   const highMidi = Math.floor(
-    quickIntervalFrequencyToMidi(vocalRange.highHz),
+    frequencyToMidi(vocalRange.highHz),
   );
 
   const availableNotes = highMidi - lowMidi + 1;
@@ -2134,7 +2124,7 @@ function generateQuickIntervalJumpFrequencies(
   );
 
   return sequence.map((midi) =>
-    Number(quickIntervalMidiToFrequency(midi).toFixed(3)),
+    Number(midiToFrequency(midi).toFixed(3)),
   );
 }
 
@@ -2212,14 +2202,6 @@ export interface GenerateVocalRunAccuracyParamsInput {
   previousFrequencies?: readonly number[];
 }
 
-function vocalRunFrequencyToMidi(frequencyHz: number): number {
-  return 69 + 12 * Math.log2(frequencyHz / 440);
-}
-
-function vocalRunMidiToFrequency(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
 function areVocalRunSequencesEqual(
   first: readonly number[],
   second: readonly number[],
@@ -2248,10 +2230,10 @@ function generateVocalRunFrequencies(
   }
 
   const lowMidi = Math.ceil(
-    vocalRunFrequencyToMidi(vocalRange.lowHz),
+    frequencyToMidi(vocalRange.lowHz),
   );
   const highMidi = Math.floor(
-    vocalRunFrequencyToMidi(vocalRange.highHz),
+    frequencyToMidi(vocalRange.highHz),
   );
 
   if (highMidi - lowMidi < 2) {
@@ -2304,7 +2286,7 @@ function generateVocalRunFrequencies(
         Number.isFinite(frequency) && frequency > 0,
     )
       ? previousFrequencies.map((frequency) =>
-          Math.round(vocalRunFrequencyToMidi(frequency)),
+          Math.round(frequencyToMidi(frequency)),
         )
       : [];
 
@@ -2353,7 +2335,7 @@ function generateVocalRunFrequencies(
     choices[Math.floor(Math.random() * choices.length)];
 
   return selectedMidis.map((midi) =>
-    Number(vocalRunMidiToFrequency(midi).toFixed(3)),
+    Number(midiToFrequency(midi).toFixed(3)),
   );
 }
 

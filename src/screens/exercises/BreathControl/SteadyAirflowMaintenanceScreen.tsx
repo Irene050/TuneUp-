@@ -6,15 +6,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import {
-    ActivityIndicator,
-    BackHandler,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View
-} from 'react-native';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import type {
     SteadyAirflowParams,
@@ -22,9 +14,13 @@ import type {
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  Metric,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyAirflowParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -39,9 +35,12 @@ import {
 import type { SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
 import { scoreSteadyAirflow } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
 
-import { COLORS } from '@/constants/appConstants';
-
-const PREPARATION_COUNTDOWN = 3;
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import { hasSufficientRecordedSignal } from '@/utils/dsp/audioSignal';
+import { average } from '@/utils/math';
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;
 
@@ -72,7 +71,7 @@ export default function SteadyAirflowMaintenanceScreen({
     useState<SteadyAirflowParams | null>(null);
   const [phase, setPhase] = useState<Phase>('instructions');
   const [countdown, setCountdown] = useState(
-    PREPARATION_COUNTDOWN,
+    EXERCISE_COUNTDOWN_SECONDS,
   );
   const [elapsed, setElapsed] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
@@ -82,6 +81,7 @@ export default function SteadyAirflowMaintenanceScreen({
   const [repResults, setRepResults] = useState<RepResult[]>([]);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
+  const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const paramsRef = useRef<SteadyAirflowParams | null>(null);
   const tierRef = useRef<Tier>(initialTier ?? 'beginner');
@@ -271,11 +271,11 @@ export default function SteadyAirflowMaintenanceScreen({
     clearTimers();
 
     setCurrentPhase('countdown');
-    setCountdown(PREPARATION_COUNTDOWN);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsed(0);
     resetAirflowIndicator();
 
-    let value = PREPARATION_COUNTDOWN;
+    let value = EXERCISE_COUNTDOWN_SECONDS;
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -463,6 +463,15 @@ export default function SteadyAirflowMaintenanceScreen({
         return;
       }
 
+      if (!hasSufficientRecordedSignal(samples)) {
+        clearTimers();
+        setCurrentPhase('instructions');
+        setElapsed(0);
+        resetAirflowIndicator();
+        setShowNoAudioModal(true);
+        return;
+      }
+
       clearTimers();
 
       setCurrentPhase('processing');
@@ -597,23 +606,21 @@ export default function SteadyAirflowMaintenanceScreen({
     return;
   }
 
-  const average =
-    readings.reduce((sum, value) => sum + value, 0) /
-    readings.length;
+  const meanAmplitude = average(readings);
 
-  if (average <= 0) {
+  if (meanAmplitude <= 0) {
     setAirflowStability(0);
     return;
   }
 
   const variance =
     readings.reduce(
-      (sum, value) => sum + (value - average) ** 2,
+      (sum, value) => sum + (value - meanAmplitude) ** 2,
       0,
     ) / readings.length;
 
   const coefficientOfVariation =
-    Math.sqrt(variance) / average;
+    Math.sqrt(variance) / meanAmplitude;
 
   const stability = Math.max(
     0,
@@ -850,101 +857,53 @@ export default function SteadyAirflowMaintenanceScreen({
   ).length;
 
   const quitModal = (
-    <Modal
-      visible={showQuitModal}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={continueExercise}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalIcon}>
-            <Ionicons
-              name="exit-outline"
-              size={30}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.modalTitle}>
-            Quit exercise?
-          </Text>
-
-          <Text style={styles.modalMessage}>
-            {pausedPhaseRef.current === 'instructions' ||
+    <ExerciseQuitModal
+        visible={showQuitModal}
+        title={"Quit exercise?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Steady Airflow Maintenance?'
               : 'Your exercise is paused. Continue to resume with your current repetition. If it was interrupted, that repetition will restart. Your completed repetitions will be kept.'}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Continue exercise"
-            disabled={isQuitting}
-            onPress={continueExercise}
-            style={({ pressed }) => [
-              styles.continueButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue Exercise
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-            disabled={isQuitting}
-            onPress={() => {
+        isQuitting={isQuitting}
+        onContinue={continueExercise}
+        onQuit={() => {
               void quitExercise();
             }}
-            style={({ pressed }) => [
-              styles.quitButton,
-              pressed && styles.buttonPressed,
-              isQuitting && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.quitButtonText}>
-              {isQuitting ? 'Stopping...' : 'Quit Exercise'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+        continueLabel={"Continue Exercise"}
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+      />
+  );
+
+  const noAudioModal = (
+    <ExerciseNoAudioModal
+      visible={showNoAudioModal}
+      onRedo={function redoExerciseRepetition() {
+        setShowNoAudioModal(false);
+        exitRequestedRef.current = false;
+        quitInProgressRef.current = false;
+        restartCurrentRepRef.current = false;
+        startCountdown();
+      }}
+      onQuit={() => {
+        setShowNoAudioModal(false);
+        void quitExercise();
+      }}
+      isQuitting={isQuitting}
+    />
   );
 
   if (!params || !tier) {
     return (
       <>
-        <View style={styles.preparingScreen}>
-          <View style={styles.preparingIconCircle}>
-            <Ionicons
-              name="options-outline"
-              size={44}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={styles.preparingTitle}>
-            Preparing Your Exercise
-          </Text>
-
-          <Text style={styles.preparingSubtitle}>
-            Adjusting the exercise to your current difficulty level and
-            preparing your vocal range.
-          </Text>
-
-          <ActivityIndicator
-            size="large"
-            color={COLORS.brown}
-            style={styles.spinner}
-          />
-        </View>
+        <ExercisePreparingScreen
+          title="Preparing Your Exercise"
+          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          icon="options-outline"
+          iconSize={44}
+        />
 
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -998,6 +957,7 @@ export default function SteadyAirflowMaintenanceScreen({
           onStart={startExercise}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1016,6 +976,7 @@ export default function SteadyAirflowMaintenanceScreen({
           onBack={handleBack}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1146,6 +1107,7 @@ export default function SteadyAirflowMaintenanceScreen({
         </View>
 
         {quitModal}
+        {noAudioModal}
       </View>
     );
   }
@@ -1157,9 +1119,9 @@ export default function SteadyAirflowMaintenanceScreen({
           icon="analytics-outline"
           title="Analyzing your airflow"
           message="Measuring airflow stability and duration..."
-          onBack={handleBack}
         />
         {quitModal}
+        {noAudioModal}
       </>
     );
   }
@@ -1286,58 +1248,12 @@ export default function SteadyAirflowMaintenanceScreen({
       </ExerciseResultsScreen>
 
       {quitModal}
+      {noAudioModal}
     </>
   );
 }
 
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  preparingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  preparingIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 22,
-  },
-  preparingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  preparingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  spinner: {
-    marginTop: 28,
-  },
   exerciseScreen: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -1576,98 +1492,5 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 13,
     gap: 8,
-  },
-  metric: {
-    width: '47%',
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  metricValue: {
-    marginTop: 2,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });
