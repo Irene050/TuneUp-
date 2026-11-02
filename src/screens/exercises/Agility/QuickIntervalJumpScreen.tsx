@@ -1397,7 +1397,7 @@ export default function QuickIntervalJumpScreen() {
         </View>
 
         <Text style={styles.timerText}>
-          Repetition time: {recordingTime.toFixed(1)}s /{' '}
+          Recording Time: {recordingTime.toFixed(1)}s /{' '}
           {repetitionDurationSec.toFixed(1)}s
         </Text>
 

@@ -1,18 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { Tier } from '@/constants/params';
 import {
-    TONE_CONSISTENCY_PARAMS,
-    type ToneConsistencyParams,
+  TONE_CONSISTENCY_PARAMS,
+  type ToneConsistencyParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -21,38 +21,38 @@ import { auth } from '@/services/firebase/config';
 import { measureToneConsistency } from '@/services/measurement/tone/toneConsistencyExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    getRandomPitchNote,
-    type VocalRange,
+  getRandomPitchNote,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen,
-    MetricCard,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
@@ -1504,7 +1504,7 @@ export default function ToneConsistencyExerciseScreen({
             <View style={styles.recordingProgressSection}>
               <View style={styles.recordingProgressLabels}>
                 <Text style={styles.progressLabel}>
-                  RECORDING PROGRESS
+                  RECORDING
                 </Text>
 
                 <Text style={styles.progressTime}>
@@ -1811,7 +1811,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.waveform,
+    backgroundColor: COLORS.pink,
   },
   remainingText: {
     fontFamily: 'FredokaRegular',

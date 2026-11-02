@@ -1,26 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-    VOLUME_CONTROL_STABILITY_PARAMS,
-    type Tier,
-    type VolumeControlStabilityParams,
+  VOLUME_CONTROL_STABILITY_PARAMS,
+  type Tier,
+  type VolumeControlStabilityParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -28,26 +28,26 @@ import { auth } from '@/services/firebase/config';
 import { measureVolumeControlStability } from '@/services/measurement/volume/volumeControlStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    getVocalRangeMidiBounds,
-    midiToNoteName,
+  createMusicalNote,
+  getVocalRangeMidiBounds,
+  midiToNoteName,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
 } from '@/constants/appConstants';
 import {
-    concatenateRepetitions,
-    fixedDurationSamples,
-    hasSufficientRecordedSignal,
+  concatenateRepetitions,
+  fixedDurationSamples,
+  hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
 
 const DEFAULT_REFERENCE_MIDI = 60;
@@ -1284,29 +1284,9 @@ export default function VolumeControlStabilityScreen({
                 VOLUME CONTROL
               </Text>
             </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open quit exercise confirmation"
-              hitSlop={10}
-              style={styles.exerciseExitButton}
-              onPress={() => {
-                void pauseForExitPrompt();
-              }}
-            >
-              <Ionicons
-                name="close"
-                size={22}
-                color={ COLORS.brown}
-              />
-            </Pressable>
           </View>
 
           <View style={styles.singingPrompt}>
-            <Text style={styles.singingPromptTitle}>
-              Keep your voice steady
-            </Text>
-
             <Text style={styles.singingPromptText}>
               Sing {NOTE} on “Ah” at a comfortable
               volume. Keep your volume as consistent as

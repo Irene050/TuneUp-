@@ -1,62 +1,62 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    SUSTAINED_NOTE_STABILITY_PARAMS,
-    type SustainedNoteStabilityParams,
-    type Tier,
+  SUSTAINED_NOTE_STABILITY_PARAMS,
+  type SustainedNoteStabilityParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import {
-    measureSustainedNoteStability,
-    type SustainedNoteStabilityMeasurement,
+  measureSustainedNoteStability,
+  type SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreSustainedNoteStabilityRepetitions,
-    type SustainedNoteStabilityScoreResult,
+  scoreSustainedNoteStabilityRepetitions,
+  type SustainedNoteStabilityScoreResult,
 } from '@/services/scoring/pitch/sustainedNoteStability';
 import {
-    calcLiveStability,
-    calcPitchAccuracy,
+  calcLiveStability,
+  calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    getRandomPitchNote,
+  createMusicalNote,
+  getRandomPitchNote,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_RECORDING_INTERVAL_MS,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_RECORDING_INTERVAL_MS,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
@@ -1368,7 +1368,7 @@ export default function SustainedNoteStabilityScreen({
           <View style={styles.liveCard}>
             <View style={styles.liveCardHeader}>
               <View style={styles.liveHeaderText}>
-                <Text style={styles.liveCardTitle}>Live Pitch Monitor</Text>
+                <Text style={styles.liveCardTitle}>LIVE PITCH GUIDE</Text>
               </View>
             </View>
 
@@ -1471,13 +1471,6 @@ export default function SustainedNoteStabilityScreen({
 
             <Text style={styles.progressText}>
               {(elapsedMs / 1000).toFixed(1)}s / {params.durationSec}s
-            </Text>
-          </View>
-
-          <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>
-              {isRecording ? 'Recording...' : 'Preparing microphone...'}
             </Text>
           </View>
         </ScrollView>
@@ -1768,7 +1761,7 @@ function LiveStabilityIndicator({
         : 'UNSTEADY';
 
   const statusColor = !hasPitch
-    ? COLORS.muted
+    ? COLORS.pink
     : safeStability >= 80
       ? COLORS.guideGreen
       : safeStability >= 60
@@ -2186,23 +2179,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     marginTop: 7,
-  },
-  recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.brown,
-    marginRight: 7,
-  },
-  recordingText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
   },
   resultIcon: {
     width: 82,

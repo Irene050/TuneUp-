@@ -1,50 +1,50 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    INTERVAL_RECOGNITION_PARAMS,
-    type IntervalRecognitionParams,
-    type Tier,
+  INTERVAL_RECOGNITION_PARAMS,
+  type IntervalRecognitionParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureIntervalRecognition } from '@/services/measurement/pitch/intervalRecognitionTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreIntervalRecognitionTask,
-    type IntervalRecognitionScoreResult,
+  scoreIntervalRecognitionTask,
+  type IntervalRecognitionScoreResult,
 } from '@/services/scoring/pitch/intervalRecognitionTask';
 import { sleep } from '@/utils/async';
 import {
-    calcPitchAccuracy
+  calcPitchAccuracy
 } from '@/utils/dsp/pitch';
 import { clamp } from '@/utils/math';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
-    type VocalRange
+  createMusicalNote, frequencyToNoteName, getRandomIntervalNotes,
+  type VocalRange
 } from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';
 import {
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
 } from '@/screens/exercises/ExerciseScreen';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
@@ -1719,13 +1719,6 @@ export default function IntervalRecognitionTaskScreen({
               <View style={styles.pitchGuideHeader}>
                 <View style={styles.pitchGuideHeading}>
                   <View style={styles.pitchGuideTitleRow}>
-                    <View style={styles.pitchGuideIcon}>
-                      <Ionicons
-                        name="pulse-outline"
-                        size={17}
-                        color={COLORS.brown}
-                      />
-                    </View>
 
                     <Text style={styles.pitchGuideTitle}>
                       LIVE PITCH GUIDE

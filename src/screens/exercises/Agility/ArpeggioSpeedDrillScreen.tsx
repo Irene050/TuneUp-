@@ -1019,6 +1019,15 @@ export default function ArpeggioSpeedDrillScreen() {
         repetitions={repetitionCount}
         onBack={pauseForExitPrompt}
       >
+
+        <AgilitySequenceGuide
+          names={config.frequencies.map(frequencyToNoteName)}
+          activeIndex={timedReferenceNoteIndex}
+          liveNote={liveDetectedNote ?? undefined}
+          showFeedback
+          caption="Follow the highlighted note in time with the sequence."
+        />
+
         <View style={styles.liveCard}>
           <Text style={styles.liveLabel}>LIVE DETECTED NOTE</Text>
           <Text style={styles.liveCurrentNote}>
@@ -1033,14 +1042,6 @@ export default function ArpeggioSpeedDrillScreen() {
           <View style={styles.liveDivider} />
           <Text style={styles.liveStatLabel}>{liveStatus}</Text>
         </View>
-
-        <AgilitySequenceGuide
-          names={config.frequencies.map(frequencyToNoteName)}
-          activeIndex={timedReferenceNoteIndex}
-          liveNote={liveDetectedNote ?? undefined}
-          showFeedback
-          caption="Follow the highlighted note in time with the sequence."
-        />
 
         <Text style={styles.timerText}>
           Recording Time: {recordingTime.toFixed(1)}s

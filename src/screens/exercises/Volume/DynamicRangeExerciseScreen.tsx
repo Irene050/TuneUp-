@@ -1,61 +1,61 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import {
-    DYNAMIC_RANGE_PARAMS,
-    type DynamicRangeParams,
-    type Tier,
+  DYNAMIC_RANGE_PARAMS,
+  type DynamicRangeParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureDynamicRange,
-    type RepetitionInterval,
+  measureDynamicRange,
+  type RepetitionInterval,
 } from '@/services/measurement/volume/dynamicRangeExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    frequencyToMidi,
+  createMusicalNote,
+  frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    VOLUME_ANALYSIS_WINDOW_MS,
-    VOLUME_DBFS_MAX,
-    VOLUME_DBFS_MIN,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  VOLUME_ANALYSIS_WINDOW_MS,
+  VOLUME_DBFS_MAX,
+  VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
 import { sleep } from '@/utils/async';
 import {
-    concatenateRepetitions,
-    fixedDurationSamples,
-    hasSufficientRecordedSignal,
+  concatenateRepetitions,
+  fixedDurationSamples,
+  hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
 
 const BAR_COUNT = 32;
@@ -1125,7 +1125,9 @@ export default function DynamicRangeExercise({
           tip="Keep the same note throughout the exercise. Change your vocal volume gradually instead of changing pitch."
           tier={resolvedTier}
           onBack={handleBack}
-          onStart={startExercise}
+          onStart={() => {
+            void startExercise();
+          }}
         >
           <View style={styles.referenceCard}>
             <View style={styles.referenceTopRow}>
@@ -1644,7 +1646,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: '19%',
     height: '27%',
-    backgroundColor: COLORS.gray,
+    backgroundColor: COLORS.lightGray,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: COLORS.pink,

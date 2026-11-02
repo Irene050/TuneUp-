@@ -5,20 +5,20 @@ import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-    VOLUME_BAND_TARGETING_PARAMS,
-    type Tier,
-    type VolumeBandTargetingParams,
+  VOLUME_BAND_TARGETING_PARAMS,
+  type Tier,
+  type VolumeBandTargetingParams,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeBandTargetingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -26,22 +26,22 @@ import { auth } from '@/services/firebase/config';
 import { measureVolumeBandTargeting } from '@/services/measurement/volume/volumeBandTargeting';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    frequencyToMidi,
+  createMusicalNote,
+  frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    VOLUME_ANALYSIS_WINDOW_MS,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  VOLUME_ANALYSIS_WINDOW_MS,
 } from '@/constants/appConstants';
 import { clamp } from '@/utils/math';
 
@@ -1587,10 +1587,6 @@ export default function VolumeBandTargeting({
             </View>
 
             <View style={styles.activePromptBlock}>
-              <Text style={styles.activePromptTitle}>
-                Hold the zone
-              </Text>
-
               <Text style={styles.activePrompt}>
                 Sing {referenceNote.name} on “Ah”. Adjust your voice to
                 reach the {targetRangeText} target band and keep it steady.

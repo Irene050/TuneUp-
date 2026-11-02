@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
   useCallback,
@@ -7,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   COLORS,
@@ -1185,15 +1184,6 @@ export default function RapidNoteTransitionExerciseScreen({
         <View style={styles.timerTrack}>
           <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
-
-        <Pressable
-          style={styles.stopButton}
-          onPress={finishRecording}
-          disabled={!isRecording}
-        >
-          <Ionicons name="stop-circle-outline" size={20} color={COLORS.white} />
-          <Text style={styles.stopButtonText}>Finish Recording</Text>
-        </Pressable>
       </ExerciseRecordingScreen>
     );
   };
@@ -1506,22 +1496,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.muted,
-  },
-  stopButton: {
-    width: '100%',
-    minHeight: 50,
-    marginTop: 16,
-    borderRadius: 25,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  stopButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
   },
   resultCard: {
     width: '100%',

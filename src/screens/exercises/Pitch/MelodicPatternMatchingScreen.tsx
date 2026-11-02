@@ -2,56 +2,56 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    MELODIC_PATTERN_MATCHING_PARAMS,
-    type MelodicPatternMatchingParams,
-    type Tier,
+  MELODIC_PATTERN_MATCHING_PARAMS,
+  type MelodicPatternMatchingParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureMelodicPatternMatching } from '@/services/measurement/pitch/melodicPatternMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreMelodicPatternMatchingRepetitions,
-    type MelodicPatternScoreResult,
+  scoreMelodicPatternMatchingRepetitions,
+  type MelodicPatternScoreResult,
 } from '@/services/scoring/pitch/melodicPatternMatching';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
 import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    getRandomPitchNote,
-    type VocalRange,
+  createMusicalNote,
+  getRandomPitchNote,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen,
-    default as ExerciseScreen
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen,
+  default as ExerciseScreen
 } from '@/screens/exercises/ExerciseScreen';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
@@ -1547,7 +1547,7 @@ export default function MelodicPatternMatchingScreen({
             <View style={styles.liveCardHeader}>
               <View style={styles.liveHeaderText}>
                 <Text style={styles.liveCardTitle}>
-                  Live Pitch Monitor
+                  LIVE PITCH GUIDE
                 </Text>
               </View>
 

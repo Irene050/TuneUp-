@@ -1624,7 +1624,7 @@ export default function VocalRunAccuracyTaskScreen() {
       </View>
 
       <View style={styles.timerContainer}>
-        <Text style={styles.timerLabel}>Recording progress</Text>
+        <Text style={styles.timerLabel}>Recording Time</Text>
 
         <Text style={styles.timerText}>
           {recordingTime.toFixed(1)} / {recordingDurationSec.toFixed(1)} sec
