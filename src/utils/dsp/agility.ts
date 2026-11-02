@@ -1,13 +1,7 @@
 import { fftComplex } from '@/utils/dsp/fft';
 import { frequencyToMidi } from '@/utils/music/notes';
 
-import {
-  filterByClarity,
-} from './pitch';
 
-import type {
-  PitchFrame,
-} from './pitch';
 
 export interface PitchTransition {
   fromFreq: number;
@@ -408,44 +402,6 @@ export function extractAgilityNotes(
   return notes;
 }
 
-export function detectPitchChanges(
-  pitchFrames: PitchFrame[],
-  changeThresholdHz = 15,
-): PitchTransition[] {
-  if (
-    !Number.isFinite(changeThresholdHz) ||
-    changeThresholdHz < 0
-  ) {
-    return [];
-  }
-
-  const validFrames = filterByClarity(
-    pitchFrames,
-    0.70,
-  );
-
-  const transitions: PitchTransition[] = [];
-
-  for (let i = 1; i < validFrames.length; i++) {
-    const previous = validFrames[i - 1];
-    const current = validFrames[i];
-
-    const difference = Math.abs(
-      current.frequency - previous.frequency,
-    );
-
-    if (difference > changeThresholdHz) {
-      transitions.push({
-        fromFreq: previous.frequency,
-        toFreq: current.frequency,
-        timestamp: current.timestamp,
-      });
-    }
-  }
-
-  return transitions;
-}
-
 export function calcTransitionSpeed(
   transitionCount: number,
   durationSec: number,
@@ -455,53 +411,4 @@ export function calcTransitionSpeed(
     Number.isFinite(transitionCount)
     ? transitionCount / durationSec
     : 0;
-}
-
-export function calcJumpTime(
-  note1EndTimestamp: number,
-  note2StartTimestamp: number,
-): number {
-  return note2StartTimestamp - note1EndTimestamp;
-}
-
-export function calcTrillAccuracy(
-  alternations: PitchTransition[],
-  targetNotes: [number, number],
-): number {
-  if (
-    alternations.length === 0 ||
-    targetNotes.some(
-      frequency =>
-        !Number.isFinite(frequency) ||
-        frequency <= 0,
-    )
-  ) {
-    return 0;
-  }
-
-  let correct = 0;
-
-  for (const transition of alternations) {
-    const matchesFrom =
-      Math.abs(
-        transition.fromFreq - targetNotes[0],
-      ) / targetNotes[0] < 0.05 ||
-      Math.abs(
-        transition.fromFreq - targetNotes[1],
-      ) / targetNotes[1] < 0.05;
-
-    const matchesTo =
-      Math.abs(
-        transition.toFreq - targetNotes[0],
-      ) / targetNotes[0] < 0.05 ||
-      Math.abs(
-        transition.toFreq - targetNotes[1],
-      ) / targetNotes[1] < 0.05;
-
-    if (matchesFrom && matchesTo) {
-      correct++;
-    }
-  }
-
-  return (correct / alternations.length) * 100;
 }

@@ -21,11 +21,6 @@ const VOWEL_FREQUENCY_RANGES: Record<VowelBand, [number, number]> = {
   oh: [500, 900],
 };
 
-export function identifyVowelBand(centroid: number, assignedVowel: VowelBand): boolean {
-  const [min, max] = VOWEL_FREQUENCY_RANGES[assignedVowel];
-  return centroid >= min && centroid <= max;
-}
-
 export function calcCentroidStdSmoothness(centroidArray: number[]): number {
   if (centroidArray.length === 0) return 0;
   const mean = centroidArray.reduce((a, b) => a + b, 0) / centroidArray.length;

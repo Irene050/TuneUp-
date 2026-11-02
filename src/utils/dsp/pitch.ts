@@ -1,5 +1,5 @@
-import { frequencyToNoteName } from '@/utils/music/notes';
 import { average } from '@/utils/math';
+import { frequencyToNoteName } from '@/utils/music/notes';
 import { PitchDetector } from 'pitchy';
 
 const MIN_TRACKING_CLARITY = 0.70;
@@ -264,79 +264,6 @@ export function calcIntervalRatio(
   return freq2 / freq1;
 }
 
-export function segmentAudioByPause(
-  samples: Float32Array,
-  silenceThreshold = 0.01,
-  minSilenceMs = 100,
-  sampleRate = 44100
-): [
-  Float32Array,
-  Float32Array
-] {
-  if (
-    samples.length === 0
-  ) {
-    return [
-      samples,
-      samples,
-    ];
-  }
-
-  const minSilenceSamples =
-    Math.floor(
-      (minSilenceMs / 1000) *
-        sampleRate
-    );
-
-  let silenceStart = -1;
-
-  let splitIndex =
-    Math.floor(
-      samples.length / 2
-    );
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++
-  ) {
-    if (
-      Math.abs(
-        samples[i]
-      ) <
-      silenceThreshold
-    ) {
-      if (
-        silenceStart === -1
-      ) {
-        silenceStart = i;
-      }
-
-      if (
-        i - silenceStart >=
-        minSilenceSamples
-      ) {
-        splitIndex =
-          silenceStart;
-
-        break;
-      }
-    } else {
-      silenceStart = -1;
-    }
-  }
-
-  return [
-    samples.subarray(
-      0,
-      splitIndex
-    ),
-    samples.subarray(
-      splitIndex
-    ),
-  ];
-}
-
 export function segmentIntoNotes(
   samples: Float32Array,
   noteCount: number,
@@ -445,110 +372,6 @@ export function calcTransitionSmoothness(
       100 -
         averageDeviation *
           0.5
-    )
-  );
-}
-
-export function calcNoteAccuracyBatch(
-  detectedFreqs: number[],
-  targetFreqs: number[]
-): number {
-  if (
-    detectedFreqs.length === 0 ||
-    targetFreqs.length === 0
-  ) {
-    return 0;
-  }
-
-  const count =
-    Math.min(
-      detectedFreqs.length,
-      targetFreqs.length
-    );
-
-  if (
-    count === 0
-  ) {
-    return 0;
-  }
-
-  let withinTolerance =
-    0;
-
-  for (
-    let i = 0;
-    i < count;
-    i++
-  ) {
-    const accuracy =
-      calcPitchAccuracy(
-        detectedFreqs[i],
-        targetFreqs[i]
-      );
-
-    if (
-      accuracy >= 93
-    ) {
-      withinTolerance++;
-    }
-  }
-
-  return (
-    withinTolerance /
-    count
-  ) *
-  100;
-}
-
-export function calcRhythmAccuracy(
-  noteTimestamps: number[],
-  targetTimestamps: number[]
-): number {
-  if (
-    noteTimestamps.length === 0 ||
-    targetTimestamps.length === 0
-  ) {
-    return 0;
-  }
-
-  const count =
-    Math.min(
-      noteTimestamps.length,
-      targetTimestamps.length
-    );
-
-  if (
-    count === 0
-  ) {
-    return 0;
-  }
-
-  let totalDeviation =
-    0;
-
-  for (
-    let i = 0;
-    i < count;
-    i++
-  ) {
-    totalDeviation +=
-      Math.abs(
-        noteTimestamps[i] -
-          targetTimestamps[i]
-      );
-  }
-
-  const averageDeviation =
-    totalDeviation /
-    count;
-
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      100 -
-        averageDeviation *
-          100
     )
   );
 }
