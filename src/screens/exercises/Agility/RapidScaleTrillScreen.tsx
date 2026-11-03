@@ -11,16 +11,11 @@ import {
   Text,
   View,
 } from 'react-native';
-import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
-} from 'react-native-audio-api';
+import { AudioContext } from 'react-native-audio-api';
 
 import {
   AGILITY_CLOSE_NOTE_SEMITONES,
   AGILITY_GOOD_NOTE_SEMITONES,
-  AUDIO_BUFFER_SIZE,
   AUDIO_SAMPLE_RATE,
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
@@ -29,6 +24,7 @@ import {
   RAPID_SCALE_TRILL_PARAMS,
   type Tier,
 } from '@/constants/params';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -38,7 +34,7 @@ import ExerciseScreen, {
   ExerciseProcessingScreen,
   ExerciseQuitModal,
   ExerciseRecordingScreen,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateRapidScaleTrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -56,14 +52,11 @@ import {
   getSemitoneDistance,
 } from '@/utils/music/notes';
 
-const MAX_RECORDING_BUFFER_SECONDS = 20;
 const MIN_RECORDING_SECONDS = 0.25;
 const MIN_RECORDING_RMS = 0.001;
 
-
 const MIN_PITCH_HZ = 65;
 const MAX_PITCH_HZ = 1000;
-const MIN_PITCH_CONFIDENCE = 0.65;
 
 type VocalRange = {
   lowHz: number;
@@ -102,105 +95,6 @@ type RapidScaleTrillResult = {
   notesPerSecond: number;
   durationMs: number;
 };
-
-function estimatePitchHz(
-  input: Float32Array,
-  sampleRate: number,
-): number | null {
-  if (input.length < 1024) return null;
-
-  const samples: number[] = [];
-
-  for (let i = 0; i < input.length; i += 2) {
-    samples.push(input[i]);
-  }
-
-  const effectiveSampleRate = sampleRate / 2;
-  const sampleCount = samples.length;
-
-  if (sampleCount < 512) return null;
-
-  let mean = 0;
-
-  for (let i = 0; i < sampleCount; i++) {
-    mean += samples[i];
-  }
-
-  mean /= sampleCount;
-
-  const centered = new Float32Array(sampleCount);
-  let sumSquares = 0;
-
-  for (let i = 0; i < sampleCount; i++) {
-    centered[i] = samples[i] - mean;
-    sumSquares += centered[i] * centered[i];
-  }
-
-  const rms = Math.sqrt(sumSquares / sampleCount);
-
-  if (!Number.isFinite(rms) || rms < MIN_RECORDING_RMS) {
-    return null;
-  }
-
-  const minLag = Math.max(
-    2,
-    Math.floor(effectiveSampleRate / MAX_PITCH_HZ),
-  );
-
-  const maxLag = Math.min(
-    Math.floor(effectiveSampleRate / MIN_PITCH_HZ),
-    Math.floor(sampleCount / 2),
-  );
-
-  if (maxLag <= minLag) return null;
-
-  let bestLag = -1;
-  let bestCorrelation = -1;
-
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let correlation = 0;
-    let energyA = 0;
-    let energyB = 0;
-
-    const limit = sampleCount - lag;
-
-    for (let i = 0; i < limit; i++) {
-      const a = centered[i];
-      const b = centered[i + lag];
-
-      correlation += a * b;
-      energyA += a * a;
-      energyB += b * b;
-    }
-
-    const denominator = Math.sqrt(energyA * energyB);
-
-    if (denominator <= 0) continue;
-
-    const normalizedCorrelation = correlation / denominator;
-
-    if (normalizedCorrelation > bestCorrelation) {
-      bestCorrelation = normalizedCorrelation;
-      bestLag = lag;
-    }
-  }
-
-  if (bestLag < 0 || bestCorrelation < MIN_PITCH_CONFIDENCE) {
-    return null;
-  }
-
-  const frequency = effectiveSampleRate / bestLag;
-
-  if (
-    !Number.isFinite(frequency) ||
-    frequency < MIN_PITCH_HZ ||
-    frequency > MAX_PITCH_HZ
-  ) {
-    return null;
-  }
-
-  return frequency;
-}
 
 function getPitchStatus(
   detectedFrequency: number | null,
@@ -278,13 +172,14 @@ export default function RapidScaleTrillScreen() {
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(
     null,
   );
-
   const [vocalRangeError, setVocalRangeError] = useState<
     string | null
   >(null);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(
+    EXERCISE_COUNTDOWN_SECONDS,
+  );
   const [currentRep, setCurrentRep] = useState(1);
   const [recordingTime, setRecordingTime] = useState(0);
 
@@ -293,51 +188,35 @@ export default function RapidScaleTrillScreen() {
 
   const [confirmation, setConfirmation] =
     useState<Confirmation>(null);
-
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const [referencePlaying, setReferencePlaying] = useState(false);
-
   const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
     useState<number | null>(null);
-
   const [activeExerciseNoteIndex, setActiveExerciseNoteIndex] =
     useState<number | null>(null);
 
-  const [livePitchHz, setLivePitchHz] = useState<number | null>(
-    null,
-  );
-
+  const [livePitchHz, setLivePitchHz] = useState<number | null>(null);
   const [livePitchStatus, setLivePitchStatus] =
     useState<PitchStatus>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
-  const recorderRef = useRef<AudioRecorder | null>(null);
-
-  const samplesRef = useRef<Float32Array>(
-    new Float32Array(
-      AUDIO_SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
-    ),
-  );
-
-  const sampleCountRef = useRef(0);
-  const recordingStartRef = useRef<number | null>(null);
 
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
-
   const countdownTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const recordingStartRef = useRef<number | null>(null);
+  const recordingStopRequestedRef = useRef(false);
   const processingRef = useRef(false);
+
   const countdownRunRef = useRef(0);
   const referenceRunRef = useRef(0);
-
   const referencePlayingRef = useRef(false);
-  const savedAttemptRef = useRef(false);
 
-  const repetitionStartSampleCountRef = useRef(0);
+  const savedAttemptRef = useRef(false);
   const activeExerciseNoteIndexRef = useRef<number | null>(null);
 
   const phaseRef = useRef<Phase>('instructions');
@@ -355,24 +234,35 @@ export default function RapidScaleTrillScreen() {
     config?.repetitions ??
     RAPID_SCALE_TRILL_PARAMS.beginner.repetitions;
 
-  const targetSequenceDurationSeconds =
+  const singleSequenceDurationSeconds =
     frequencies.length * noteDurationSec;
+
+  const targetSequenceDurationSeconds =
+    singleSequenceDurationSeconds * repetitions;
 
   const expectedTargetNoteCount =
     frequencies.length * repetitions;
 
   const hasUsableSequence =
-    frequencies.length > 0 && noteDurationSec > 0;
+    frequencies.length >= 2 &&
+    noteDurationSec > 0 &&
+    repetitions > 0;
 
   const setCurrentPhase = useCallback((nextPhase: Phase) => {
     phaseRef.current = nextPhase;
-    setPhase(nextPhase);
+
+    if (mountedRef.current) {
+      setPhase(nextPhase);
+    }
   }, []);
 
   const setCurrentConfirmation = useCallback(
     (nextConfirmation: Confirmation) => {
       confirmationRef.current = nextConfirmation;
-      setConfirmation(nextConfirmation);
+
+      if (mountedRef.current) {
+        setConfirmation(nextConfirmation);
+      }
     },
     [],
   );
@@ -382,6 +272,15 @@ export default function RapidScaleTrillScreen() {
       clearTimeout(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+  }, []);
+
+  const clearRecordingTimer = useCallback(() => {
+    if (recordingTimerRef.current !== null) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    recordingStartRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -409,17 +308,19 @@ export default function RapidScaleTrillScreen() {
           'agility',
         );
 
-        const candidate = progress?.currentTier;
-
         if (!cancelled) {
-          setTier(candidate ?? 'beginner');
+          setTier(progress?.currentTier ?? 'beginner');
         }
       } catch (error) {
         console.error('Failed to load Agility tier:', error);
 
-        if (!cancelled) setTier('beginner');
+        if (!cancelled) {
+          setTier('beginner');
+        }
       } finally {
-        if (!cancelled) setTierLoading(false);
+        if (!cancelled) {
+          setTierLoading(false);
+        }
       }
     }
 
@@ -485,14 +386,19 @@ export default function RapidScaleTrillScreen() {
           vocalRange: assessedRange,
         });
 
-        if (!generated.frequencies.length) {
+        if (
+          !generated.frequencies ||
+          generated.frequencies.length < 2
+        ) {
           setVocalRangeError(
             'Your assessed vocal range could not produce a suitable note sequence. Please update your vocal assessment and try again.',
           );
           return;
         }
 
-        if (!cancelled) setConfig(generated);
+        if (!cancelled) {
+          setConfig(generated);
+        }
       } catch (error) {
         console.error(
           'Failed to load Rapid Scale Trill parameters:',
@@ -518,41 +424,14 @@ export default function RapidScaleTrillScreen() {
     };
   }, [currentUserId, tier, tierLoading]);
 
-  const stopRecording = useCallback(() => {
-    if (recordingTimerRef.current !== null) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-
-    recordingStartRef.current = null;
-
-    const recorder = recorderRef.current;
-    recorderRef.current = null;
-
-    if (recorder) {
-      try {
-        recorder.clearOnAudioReady();
-      } catch (error) {
-        console.warn(
-          'Could not clear the audio callback:',
-          error,
-        );
-      }
-
-      try {
-        void recorder.stop();
-      } catch (error) {
-        console.warn('Could not stop the recorder:', error);
-      }
-    }
-  }, []);
-
   const cancelReferencePlayback = useCallback(() => {
     referenceRunRef.current += 1;
     referencePlayingRef.current = false;
 
-    setReferencePlaying(false);
-    setActiveReferenceNoteIndex(null);
+    if (mountedRef.current) {
+      setReferencePlaying(false);
+      setActiveReferenceNoteIndex(null);
+    }
   }, []);
 
   const closeAudioContext = useCallback(() => {
@@ -563,30 +442,10 @@ export default function RapidScaleTrillScreen() {
       try {
         void context.close();
       } catch (error) {
-        console.warn(
-          'Could not close the audio context:',
-          error,
-        );
+        console.warn('Could not close the audio context:', error);
       }
     }
   }, []);
-
-  const requestMicrophonePermission =
-    useCallback(async (): Promise<boolean> => {
-      try {
-        return (
-          (await AudioManager.requestRecordingPermissions()) ===
-          'Granted'
-        );
-      } catch (error) {
-        console.warn(
-          'Microphone permission request failed:',
-          error,
-        );
-
-        return false;
-      }
-    }, []);
 
   const playReference = useCallback(async () => {
     if (
@@ -640,6 +499,7 @@ export default function RapidScaleTrillScreen() {
 
         oscillator.start(startTime);
         oscillator.stop(startTime + noteDurationSec);
+
         setActiveReferenceNoteIndex(index);
 
         await new Promise<void>(resolve => {
@@ -673,7 +533,323 @@ export default function RapidScaleTrillScreen() {
     noteDurationSec,
   ]);
 
-  // Recording phase: intentionally preserved.
+  const handleLiveFrame = useCallback(
+    (frame: LiveAudioFrame) => {
+      if (
+        !mountedRef.current ||
+        phaseRef.current !== 'recording' ||
+        confirmationRef.current !== null ||
+        quitInProgressRef.current
+      ) {
+        return;
+      }
+
+      const pitch =
+        frame.pitch > 0 &&
+        Number.isFinite(frame.pitch) &&
+        frame.pitch >= MIN_PITCH_HZ &&
+        frame.pitch <= MAX_PITCH_HZ
+          ? frame.pitch
+          : null;
+
+      const activeIndex = activeExerciseNoteIndexRef.current;
+
+      if (activeIndex === null) {
+        return;
+      }
+
+      setLivePitchHz(pitch);
+
+      setLivePitchStatus(
+        getPitchStatus(pitch, frequencies[activeIndex]),
+      );
+    },
+    [frequencies],
+  );
+
+  const showZeroScoreResult = useCallback(
+    (feedback: string, durationMs: number) => {
+      if (
+        !mountedRef.current ||
+        quitInProgressRef.current ||
+        confirmationRef.current === 'quit'
+      ) {
+        return;
+      }
+
+      const targetNoteCount = expectedTargetNoteCount;
+
+      const zeroResult: RapidScaleTrillResult = {
+        overall: 0,
+        pitchScore: 0,
+        sequenceScore: 0,
+        transitionScore: 0,
+        speedScore: 0,
+        passed: false,
+        feedback,
+        noteCount: targetNoteCount,
+        correctNoteCount: 0,
+        transitionCount: Math.max(0, targetNoteCount - 1),
+        correctTransitionCount: 0,
+        averageTransitionTimeMs: 0,
+        notesPerSecond: 0,
+        durationMs: Math.max(0, durationMs),
+      };
+
+      setResult(zeroResult);
+      setCurrentPhase('results');
+
+      if (tier && !savedAttemptRef.current) {
+        savedAttemptRef.current = true;
+
+        void saveCompletedExercise(
+          'agility',
+          'rapidScaleTrill',
+          tier,
+          0,
+        ).catch(error => {
+          console.error(
+            'Failed to save Rapid Scale Trill zero score:',
+            error,
+          );
+        });
+      }
+    },
+    [expectedTargetNoteCount, setCurrentPhase, tier],
+  );
+
+  const processRecording = useCallback(
+    async (samples: Float32Array, sampleRate: number) => {
+      if (
+        processingRef.current ||
+        !config ||
+        quitInProgressRef.current ||
+        confirmationRef.current === 'quit'
+      ) {
+        return;
+      }
+
+      processingRef.current = true;
+
+      setActiveExerciseNoteIndex(null);
+      activeExerciseNoteIndexRef.current = null;
+      setLivePitchHz(null);
+      setLivePitchStatus(null);
+      setCurrentPhase('processing');
+
+      try {
+        if (!hasSufficientRecordedSignal(samples)) {
+          setCurrentPhase('reference');
+          setShowNoAudioModal(true);
+          return;
+        }
+
+        const durationSeconds = samples.length / sampleRate;
+        const durationMs = durationSeconds * 1000;
+
+        if (
+          samples.length <
+          sampleRate * MIN_RECORDING_SECONDS
+        ) {
+          showZeroScoreResult(
+            'Your recording was too short to detect singing. Your score is 0%. Please sing the full pattern and try again.',
+            durationMs,
+          );
+          return;
+        }
+
+        let sumSquares = 0;
+
+        for (let i = 0; i < samples.length; i++) {
+          sumSquares += samples[i] * samples[i];
+        }
+
+        const rms = Math.sqrt(sumSquares / samples.length);
+
+        if (!Number.isFinite(rms) || rms < MIN_RECORDING_RMS) {
+          showZeroScoreResult(
+            'No clear singing was detected. Move closer to the microphone and sing in a quiet area.',
+            durationMs,
+          );
+          return;
+        }
+
+        const measurement = measureRapidScaleTrill(
+          samples,
+          sampleRate,
+          config.frequencies,
+          config.repetitions,
+        );
+
+        const scored = scoreRapidScaleTrill(
+          measurement,
+          config.accuracyThreshold,
+        );
+
+        if (
+          !mountedRef.current ||
+          quitInProgressRef.current ||
+          confirmationRef.current !== null
+        ) {
+          return;
+        }
+
+        const finalResult: RapidScaleTrillResult = {
+          overall: scored.overall,
+          pitchScore: scored.pitchScore,
+          sequenceScore: scored.sequenceScore,
+          transitionScore: scored.transitionScore,
+          speedScore: scored.speedScore,
+          passed: scored.passed,
+          feedback: scored.feedback,
+          noteCount: measurement.noteCount,
+          correctNoteCount: measurement.correctNoteCount,
+          transitionCount: measurement.transitionCount,
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+          averageTransitionTimeMs:
+            measurement.averageTransitionTimeMs,
+          notesPerSecond: measurement.notesPerSecond,
+          durationMs: measurement.durationMs,
+        };
+
+        setResult(finalResult);
+        setCurrentPhase('results');
+
+        if (tier && !savedAttemptRef.current) {
+          savedAttemptRef.current = true;
+
+          void saveCompletedExercise(
+            'agility',
+            'rapidScaleTrill',
+            tier,
+            scored.overall,
+          )
+            .then(() => {
+              console.log(
+                'Rapid Scale Trill progress saved:',
+                scored.overall,
+              );
+            })
+            .catch(error => {
+              console.error(
+                'Failed to save Rapid Scale Trill progress:',
+                error,
+              );
+            });
+        }
+      } catch (error) {
+        console.error(
+          'Rapid Scale Trill processing failed:',
+          error,
+        );
+
+        if (
+          !mountedRef.current ||
+          quitInProgressRef.current ||
+          confirmationRef.current !== null
+        ) {
+          return;
+        }
+
+        setCurrentPhase('instructions');
+
+        Alert.alert(
+          'Recording Not Processed',
+          error instanceof Error
+            ? error.message
+            : 'Unable to process the recording. Please try again.',
+          [
+            {
+              text: 'Try Again',
+              onPress: resetExercise,
+            },
+          ],
+        );
+      } finally {
+        processingRef.current = false;
+      }
+    },
+    [
+      config,
+      setCurrentPhase,
+      showZeroScoreResult,
+      tier,
+    ],
+  );
+
+  const handleRecordingStop = useCallback(
+    (samples: Float32Array, sampleRate: number) => {
+      clearRecordingTimer();
+
+      if (
+        !mountedRef.current ||
+        phaseRef.current !== 'recording' ||
+        quitInProgressRef.current ||
+        confirmationRef.current !== null
+      ) {
+        return;
+      }
+
+      setActiveExerciseNoteIndex(null);
+      activeExerciseNoteIndexRef.current = null;
+      setLivePitchHz(null);
+      setLivePitchStatus(null);
+
+      if (!hasSufficientRecordedSignal(samples)) {
+        setRecordingTime(0);
+        setCurrentPhase('reference');
+        setShowNoAudioModal(true);
+        return;
+      }
+
+      void processRecording(samples, sampleRate);
+    },
+    [
+      clearRecordingTimer,
+      processRecording,
+      setCurrentPhase,
+    ],
+  );
+
+  const {
+    startRecording: startAudioRecording,
+    stopRecording: stopAudioRecording,
+    cancelRecording: cancelAudioRecording,
+  } = useAudioRecorder({
+    analyzePitch: true,
+    onFrame: handleLiveFrame,
+    onStop: handleRecordingStop,
+  });
+
+  const cancelActiveRecording = useCallback(async () => {
+    clearRecordingTimer();
+
+    recordingStopRequestedRef.current = true;
+
+    try {
+      await cancelAudioRecording();
+    } catch (error) {
+      console.warn('Could not cancel audio recording:', error);
+    }
+  }, [cancelAudioRecording, clearRecordingTimer]);
+
+  const requestRecordingStop = useCallback(() => {
+    if (
+      recordingStopRequestedRef.current ||
+      phaseRef.current !== 'recording' ||
+      quitInProgressRef.current ||
+      confirmationRef.current !== null
+    ) {
+      return;
+    }
+
+    recordingStopRequestedRef.current = true;
+    clearRecordingTimer();
+
+    void stopAudioRecording();
+  }, [clearRecordingTimer, stopAudioRecording]);
+
   const startRecording = useCallback(async () => {
     if (
       !config ||
@@ -685,110 +861,31 @@ export default function RapidScaleTrillScreen() {
 
     try {
       processingRef.current = false;
+      recordingStopRequestedRef.current = false;
 
-      repetitionStartSampleCountRef.current =
-        sampleCountRef.current;
+      recordingStartRef.current = null;
+
+      activeExerciseNoteIndexRef.current = null;
 
       setLivePitchHz(null);
       setLivePitchStatus(null);
+      setActiveExerciseNoteIndex(null);
+      setRecordingTime(0);
+      setCurrentPhase('recording');
 
-      const recorder = new AudioRecorder();
-      recorderRef.current = recorder;
-
-      const callbackResult = recorder.onAudioReady(
-        {
-          sampleRate: AUDIO_SAMPLE_RATE,
-          bufferLength: AUDIO_BUFFER_SIZE,
-          channelCount: 1,
-        },
-        ({ buffer, numFrames }) => {
-          if (
-            recorderRef.current !== recorder ||
-            quitInProgressRef.current ||
-            confirmationRef.current !== null ||
-            phaseRef.current !== 'recording'
-          ) {
-            return;
-          }
-
-          try {
-            const channelData = buffer.getChannelData(0);
-
-            const frameCount = Math.min(
-              numFrames,
-              channelData.length,
-            );
-
-            const remaining =
-              samplesRef.current.length -
-              sampleCountRef.current;
-
-            const count = Math.min(frameCount, remaining);
-
-            for (let i = 0; i < count; i++) {
-              samplesRef.current[
-                sampleCountRef.current + i
-              ] = channelData[i];
-            }
-
-            sampleCountRef.current += count;
-
-            const pitch = estimatePitchHz(
-              channelData.subarray(0, frameCount),
-              AUDIO_SAMPLE_RATE,
-            );
-
-            const activeIndex =
-              activeExerciseNoteIndexRef.current;
-
-            if (activeIndex !== null) {
-              setLivePitchHz(pitch);
-
-              setLivePitchStatus(
-                getPitchStatus(
-                  pitch,
-                  config.frequencies[activeIndex],
-                ),
-              );
-            }
-          } catch (error) {
-            console.warn(
-              'Failed to capture or analyze audio frame:',
-              error,
-            );
-          }
-        },
-      );
-
-      if (callbackResult.status === 'error') {
-        throw new Error(callbackResult.message);
-      }
+      await startAudioRecording();
 
       if (
+        !mountedRef.current ||
         quitInProgressRef.current ||
-        confirmationRef.current !== null
+        confirmationRef.current !== null ||
+        phaseRef.current !== 'recording'
       ) {
-        stopRecording();
-        return;
-      }
-
-      const startResult = await recorder.start();
-
-      if (startResult.status === 'error') {
-        throw new Error(startResult.message);
-      }
-
-      if (
-        quitInProgressRef.current ||
-        confirmationRef.current !== null
-      ) {
-        stopRecording();
+        await cancelAudioRecording();
         return;
       }
 
       recordingStartRef.current = Date.now();
-      setRecordingTime(0);
-      setCurrentPhase('recording');
 
       recordingTimerRef.current = setInterval(() => {
         const startedAt = recordingStartRef.current;
@@ -796,6 +893,7 @@ export default function RapidScaleTrillScreen() {
         if (
           startedAt === null ||
           processingRef.current ||
+          recordingStopRequestedRef.current ||
           quitInProgressRef.current ||
           confirmationRef.current !== null ||
           phaseRef.current !== 'recording'
@@ -809,30 +907,34 @@ export default function RapidScaleTrillScreen() {
           Math.min(elapsed, targetSequenceDurationSeconds),
         );
 
-        const noteDurationMs = Math.max(
-          1,
-          noteDurationSec * 1000,
+        const completedRepetitions =
+          singleSequenceDurationSeconds > 0
+            ? Math.floor(elapsed / singleSequenceDurationSeconds)
+            : 0;
+
+        const nextRep = Math.min(
+          repetitions,
+          completedRepetitions + 1,
         );
 
-        const sequenceDurationMs =
-          noteDurationMs * frequencies.length;
-
-        const elapsedMs = elapsed * 1000;
-
-        let nextNoteIndex: number | null = null;
-
-        if (
-          frequencies.length > 0 &&
-          elapsedMs < sequenceDurationMs
-        ) {
-          nextNoteIndex = Math.min(
-            frequencies.length - 1,
-            Math.floor(
-              (elapsedMs % sequenceDurationMs) /
-                noteDurationMs,
-            ),
-          );
+        if (nextRep !== currentRep) {
+          setCurrentRep(nextRep);
         }
+
+        const elapsedWithinSequence =
+          singleSequenceDurationSeconds > 0
+            ? elapsed % singleSequenceDurationSeconds
+            : 0;
+
+        const nextNoteIndex =
+          elapsed >= targetSequenceDurationSeconds
+            ? null
+            : Math.min(
+                frequencies.length - 1,
+                Math.floor(
+                  elapsedWithinSequence / noteDurationSec,
+                ),
+              );
 
         if (
           nextNoteIndex !== activeExerciseNoteIndexRef.current
@@ -845,37 +947,13 @@ export default function RapidScaleTrillScreen() {
         }
 
         if (elapsed >= targetSequenceDurationSeconds) {
-          activeExerciseNoteIndexRef.current = null;
-
-          setActiveExerciseNoteIndex(null);
-          setLivePitchHz(null);
-          setLivePitchStatus(null);
-
-          stopRecording();
-
-          const repetitionSamples = samplesRef.current.subarray(
-            repetitionStartSampleCountRef.current,
-            sampleCountRef.current,
-          );
-
-          if (!hasSufficientRecordedSignal(repetitionSamples)) {
-            setCurrentPhase('reference');
-            setShowNoAudioModal(true);
-            return;
-          }
-
-          if (currentRep < repetitions) {
-            setCurrentRep(previous => previous + 1);
-            setCurrentPhase('reference');
-          } else {
-            void processRecording();
-          }
+          requestRecordingStop();
         }
-      }, 30);
+      }, 100);
     } catch (error) {
       console.error('Failed to start recording:', error);
 
-      stopRecording();
+      await cancelAudioRecording();
 
       if (
         !mountedRef.current ||
@@ -885,22 +963,27 @@ export default function RapidScaleTrillScreen() {
         return;
       }
 
+      recordingStopRequestedRef.current = false;
+      setCurrentPhase('reference');
+
       Alert.alert(
         'Recording Error',
         error instanceof Error
           ? error.message
           : 'The recording could not be started. Please try again.',
       );
-
-      setCurrentPhase('reference');
     }
   }, [
+    cancelAudioRecording,
     config,
     currentRep,
     frequencies.length,
     noteDurationSec,
     repetitions,
-    stopRecording,
+    requestRecordingStop,
+    setCurrentPhase,
+    singleSequenceDurationSeconds,
+    startAudioRecording,
     targetSequenceDurationSeconds,
   ]);
 
@@ -961,220 +1044,7 @@ export default function RapidScaleTrillScreen() {
     startRecording,
   ]);
 
-  const showZeroScoreResult = useCallback(
-    (feedback: string, durationMs: number) => {
-      if (
-        quitInProgressRef.current ||
-        confirmationRef.current !== null
-      ) {
-        return;
-      }
-
-      const targetNoteCount = expectedTargetNoteCount;
-
-      const zeroResult: RapidScaleTrillResult = {
-        overall: 0,
-        pitchScore: 0,
-        sequenceScore: 0,
-        transitionScore: 0,
-        speedScore: 0,
-        passed: false,
-        feedback,
-        noteCount: targetNoteCount,
-        correctNoteCount: 0,
-        transitionCount: Math.max(0, targetNoteCount - 1),
-        correctTransitionCount: 0,
-        averageTransitionTimeMs: 0,
-        notesPerSecond: 0,
-        durationMs: Math.max(0, durationMs),
-      };
-
-      setResult(zeroResult);
-      setCurrentPhase('results');
-
-      if (tier && !savedAttemptRef.current) {
-        savedAttemptRef.current = true;
-
-        void saveCompletedExercise(
-          'agility',
-          'rapidScaleTrill',
-          tier,
-          0,
-        ).catch(error => {
-          console.error(
-            'Failed to save Rapid Scale Trill zero score:',
-            error,
-          );
-        });
-      }
-    },
-    [expectedTargetNoteCount, setCurrentPhase, tier],
-  );
-
-  const processRecording = useCallback(async () => {
-    if (
-      processingRef.current ||
-      !config ||
-      quitInProgressRef.current ||
-      confirmationRef.current !== null
-    ) {
-      return;
-    }
-
-    processingRef.current = true;
-
-    stopRecording();
-
-    setActiveExerciseNoteIndex(null);
-    activeExerciseNoteIndexRef.current = null;
-    setLivePitchHz(null);
-    setLivePitchStatus(null);
-    setCurrentPhase('processing');
-
-    try {
-      const sampleCount = sampleCountRef.current;
-
-      if (!hasSufficientRecordedSignal(samplesRef.current.subarray(0, sampleCount))) {
-        setCurrentPhase('reference');
-        setShowNoAudioModal(true);
-        return;
-      }
-
-      if (sampleCount < AUDIO_SAMPLE_RATE * MIN_RECORDING_SECONDS) {
-        showZeroScoreResult(
-          'Your recording was too short to detect singing. Your score is 0%. Please sing the full pattern and try again.',
-          (sampleCount / AUDIO_SAMPLE_RATE) * 1000,
-        );
-
-        return;
-      }
-
-      const samples = samplesRef.current.subarray(
-        0,
-        sampleCount,
-      );
-
-      let sumSquares = 0;
-
-      for (let i = 0; i < samples.length; i++) {
-        sumSquares += samples[i] * samples[i];
-      }
-
-      const rms = Math.sqrt(sumSquares / samples.length);
-
-      if (rms < MIN_RECORDING_RMS) {
-        showZeroScoreResult(
-          'No clear singing was detected. Move closer to the microphone and sing in a quiet area.',
-          (sampleCount / AUDIO_SAMPLE_RATE) * 1000,
-        );
-
-        return;
-      }
-
-      const measurement = measureRapidScaleTrill(
-        samples,
-        AUDIO_SAMPLE_RATE,
-        config.frequencies,
-        config.repetitions,
-      );
-
-      const scored = scoreRapidScaleTrill(
-        measurement,
-        config.accuracyThreshold,
-      );
-
-      if (
-        !mountedRef.current ||
-        quitInProgressRef.current ||
-        confirmationRef.current === 'quit'
-      ) {
-        return;
-      }
-
-      const finalResult: RapidScaleTrillResult = {
-        overall: scored.overall,
-        pitchScore: scored.pitchScore,
-        sequenceScore: scored.sequenceScore,
-        transitionScore: scored.transitionScore,
-        speedScore: scored.speedScore,
-        passed: scored.passed,
-        feedback: scored.feedback,
-        noteCount: measurement.noteCount,
-        correctNoteCount: measurement.correctNoteCount,
-        transitionCount: measurement.transitionCount,
-        correctTransitionCount:
-          measurement.correctTransitionCount,
-        averageTransitionTimeMs:
-          measurement.averageTransitionTimeMs,
-        notesPerSecond: measurement.notesPerSecond,
-        durationMs: measurement.durationMs,
-      };
-
-      setResult(finalResult);
-      setCurrentPhase('results');
-
-      if (tier && !savedAttemptRef.current) {
-        savedAttemptRef.current = true;
-
-        void saveCompletedExercise(
-          'agility',
-          'rapidScaleTrill',
-          tier,
-          scored.overall,
-        )
-          .then(() => {
-            console.log(
-              'Rapid Scale Trill progress saved:',
-              scored.overall,
-            );
-          })
-          .catch(error => {
-            console.error(
-              'Failed to save Rapid Scale Trill progress:',
-              error,
-            );
-          });
-      }
-    } catch (error) {
-      console.error(
-        'Rapid Scale Trill processing failed:',
-        error,
-      );
-
-      if (
-        !mountedRef.current ||
-        quitInProgressRef.current ||
-        confirmationRef.current === 'quit'
-      ) {
-        return;
-      }
-
-      setCurrentPhase('instructions');
-
-      Alert.alert(
-        'Recording Not Processed',
-        error instanceof Error
-          ? error.message
-          : 'Unable to process the recording. Please try again.',
-        [
-          {
-            text: 'Try Again',
-            onPress: resetExercise,
-          },
-        ],
-      );
-    } finally {
-      processingRef.current = false;
-    }
-  }, [
-    config,
-    setCurrentPhase,
-    showZeroScoreResult,
-    stopRecording,
-    tier,
-  ]);
-
-  const beginExercise = useCallback(async () => {
+  const beginExercise = useCallback(() => {
     if (
       quitInProgressRef.current ||
       confirmationRef.current !== null
@@ -1192,35 +1062,9 @@ export default function RapidScaleTrillScreen() {
       return;
     }
 
-    const permission = await requestMicrophonePermission();
-
-    if (
-      quitInProgressRef.current ||
-      confirmationRef.current !== null
-    ) {
-      return;
-    }
-
-    if (!permission) {
-      Alert.alert(
-        'Microphone Permission Required',
-        'Allow microphone access to record your singing.',
-      );
-
-      return;
-    }
-
-    quitInProgressRef.current = false;
     savedAttemptRef.current = false;
     processingRef.current = false;
-
-    sampleCountRef.current = 0;
-
-    samplesRef.current = new Float32Array(
-      AUDIO_SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
-    );
-
-    repetitionStartSampleCountRef.current = 0;
+    recordingStopRequestedRef.current = false;
 
     setCurrentRep(1);
     setRecordingTime(0);
@@ -1230,10 +1074,10 @@ export default function RapidScaleTrillScreen() {
     setActiveExerciseNoteIndex(null);
     activeExerciseNoteIndexRef.current = null;
     setActiveReferenceNoteIndex(null);
+
     setCurrentPhase('reference');
   }, [
     hasUsableSequence,
-    requestMicrophonePermission,
     setCurrentPhase,
     vocalRange,
     vocalRangeError,
@@ -1264,10 +1108,7 @@ export default function RapidScaleTrillScreen() {
     }
 
     if (interruptedPhase === 'recording') {
-      stopRecording();
-
-      sampleCountRef.current =
-        repetitionStartSampleCountRef.current;
+      void cancelActiveRecording();
 
       setRecordingTime(0);
       setActiveExerciseNoteIndex(null);
@@ -1280,10 +1121,10 @@ export default function RapidScaleTrillScreen() {
 
     setCurrentConfirmation('quit');
   }, [
+    cancelActiveRecording,
     cancelReferencePlayback,
     clearCountdownTimer,
     setCurrentConfirmation,
-    stopRecording,
   ]);
 
   const continueExercise = useCallback(() => {
@@ -1324,7 +1165,7 @@ export default function RapidScaleTrillScreen() {
     startCountdown,
   ]);
 
-  const quitExercise = useCallback(() => {
+  const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
 
     quitInProgressRef.current = true;
@@ -1335,7 +1176,9 @@ export default function RapidScaleTrillScreen() {
 
     clearCountdownTimer();
     cancelReferencePlayback();
-    stopRecording();
+
+    await cancelActiveRecording();
+
     closeAudioContext();
 
     processingRef.current = false;
@@ -1346,11 +1189,11 @@ export default function RapidScaleTrillScreen() {
 
     router.replace('/exercises/agility');
   }, [
+    cancelActiveRecording,
     cancelReferencePlayback,
     clearCountdownTimer,
     closeAudioContext,
     setCurrentConfirmation,
-    stopRecording,
   ]);
 
   const resetExercise = useCallback(() => {
@@ -1360,22 +1203,17 @@ export default function RapidScaleTrillScreen() {
 
     clearCountdownTimer();
     cancelReferencePlayback();
-    stopRecording();
+
+    void cancelActiveRecording();
 
     processingRef.current = false;
+    recordingStopRequestedRef.current = false;
     savedAttemptRef.current = false;
     quitInProgressRef.current = false;
 
     resumeInterruptedRepetitionRef.current = false;
     pausedPhaseRef.current = null;
 
-    sampleCountRef.current = 0;
-
-    samplesRef.current = new Float32Array(
-      AUDIO_SAMPLE_RATE * MAX_RECORDING_BUFFER_SECONDS,
-    );
-
-    repetitionStartSampleCountRef.current = 0;
     activeExerciseNoteIndexRef.current = null;
 
     setResult(null);
@@ -1390,14 +1228,15 @@ export default function RapidScaleTrillScreen() {
     setActiveExerciseNoteIndex(null);
 
     setIsQuitting(false);
+    setShowNoAudioModal(false);
     setCurrentConfirmation(null);
     setCurrentPhase('instructions');
   }, [
+    cancelActiveRecording,
     cancelReferencePlayback,
     clearCountdownTimer,
     setCurrentConfirmation,
     setCurrentPhase,
-    stopRecording,
   ]);
 
   useEffect(() => {
@@ -1423,20 +1262,24 @@ export default function RapidScaleTrillScreen() {
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
+
       countdownRunRef.current += 1;
       referenceRunRef.current += 1;
 
       clearCountdownTimer();
-      stopRecording();
+      clearRecordingTimer();
 
       referencePlayingRef.current = false;
 
+      void cancelAudioRecording();
       closeAudioContext();
     };
   }, [
+    cancelAudioRecording,
     clearCountdownTimer,
+    clearRecordingTimer,
     closeAudioContext,
-    stopRecording,
   ]);
 
   const renderInstructions = () => (
@@ -1558,6 +1401,9 @@ export default function RapidScaleTrillScreen() {
           )
         : 0;
 
+    const activeStatusColor =
+      getPitchStatusColor(livePitchStatus);
+
     return (
       <ExerciseRecordingScreen
         title="Sing the Scale"
@@ -1568,7 +1414,11 @@ export default function RapidScaleTrillScreen() {
         <AgilitySequenceGuide
           names={frequencies.map(frequencyToNoteName)}
           activeIndex={activeExerciseNoteIndex}
-          liveNote={livePitchHz === null ? undefined : frequencyToNoteName(livePitchHz)}
+          liveNote={
+            livePitchHz === null
+              ? undefined
+              : frequencyToNoteName(livePitchHz)
+          }
           showFeedback
           caption="Follow the highlighted note. Green is in tune, yellow is close, and red is off pitch."
         />
@@ -1579,9 +1429,21 @@ export default function RapidScaleTrillScreen() {
               ? `Detected pitch: ${frequencyToNoteName(livePitchHz)} | ${livePitchHz.toFixed(0)} Hz`
               : 'Sing the active note to check your pitch.'}
           </Text>
-          <Text style={styles.detectedPitchText}>
-            Pitch status: {livePitchStatus ?? 'Listening'}
-          </Text>
+
+          <View style={styles.pitchStatusRow}>
+            <View
+              style={[
+                styles.pitchStatusDot,
+                {
+                  backgroundColor:
+                    activeStatusColor ?? COLORS.muted,
+                },
+              ]}
+            />
+            <Text style={styles.detectedPitchText}>
+              Pitch status: {livePitchStatus ?? 'Listening'}
+            </Text>
+          </View>
         </View>
 
         <Text style={styles.timerText}>
@@ -1714,17 +1576,18 @@ export default function RapidScaleTrillScreen() {
     );
   };
 
-  const isPreparing = tierLoading || isLoadingAdaptiveParams;
+  const isPreparing =
+    tierLoading || isLoadingAdaptiveParams;
 
   const quitMessage =
     pausedPhaseRef.current === 'instructions' ||
     pausedPhaseRef.current === 'results'
       ? 'Are you sure you want to leave Rapid Scale Trill?'
       : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+        ? 'Your exercise is paused. Your current recording will be discarded. Continue to restart the current repetition.'
         : pausedPhaseRef.current === 'countdown'
-          ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to restart the countdown for the current repetition.'
-          : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
+          ? 'Your exercise is paused. Continue to restart the countdown for the current repetition.'
+          : 'Your exercise is paused. Continue to resume your exercise.';
 
   return (
     <>
@@ -1736,50 +1599,59 @@ export default function RapidScaleTrillScreen() {
           iconSize={40}
         />
       ) : (
-        <ScrollView
-          style={styles.screen}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.screen}>
           {phase === 'instructions' && renderInstructions()}
           {phase === 'reference' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
           {phase === 'recording' && renderRecording()}
           {phase === 'processing' && renderProcessing()}
-          {phase === 'results' && renderResults()}
-        </ScrollView>
+
+          {phase === 'results' && (
+            <ScrollView
+              style={styles.screen}
+              contentContainerStyle={styles.resultsWrapper}
+              showsVerticalScrollIndicator={false}
+            >
+              {renderResults()}
+            </ScrollView>
+          )}
+        </View>
       )}
 
       <ExerciseQuitModal
         visible={confirmation === 'quit'}
-        title={"Quit exercise?"}
+        title="Quit exercise?"
         message={quitMessage}
         isQuitting={isQuitting}
         onContinue={continueExercise}
-        onQuit={quitExercise}
-        continueLabel={"Continue Exercise"}
+        onQuit={() => void quitExercise()}
+        continueLabel="Continue Exercise"
         quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
       />
 
       <ExerciseNoAudioModal
         visible={showNoAudioModal}
-        onRedo={function redoExerciseRepetition() {
+        onRedo={() => {
           setShowNoAudioModal(false);
-          stopRecording();
-          sampleCountRef.current =
-            repetitionStartSampleCountRef.current;
+
+          recordingStopRequestedRef.current = false;
           processingRef.current = false;
+
           setRecordingTime(0);
           setResult(null);
           setLivePitchHz(null);
           setLivePitchStatus(null);
           setActiveExerciseNoteIndex(null);
           activeExerciseNoteIndexRef.current = null;
+
+          setCurrentRep(1);
           setCurrentPhase('reference');
+
           void startCountdown();
         }}
         onQuit={() => {
           setShowNoAudioModal(false);
-          quitExercise();
+          void quitExercise();
         }}
         isQuitting={isQuitting}
       />
@@ -1869,6 +1741,10 @@ const styles = StyleSheet.create({
   rapidScaleCountdown: {
     paddingTop: 250,
   },
+  resultsWrapper: {
+    flexGrow: 1,
+    width: '100%',
+  },
   referenceCard: {
     width: '100%',
     padding: 18,
@@ -1900,6 +1776,18 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
+  },
+  pitchStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginTop: 4,
+  },
+  pitchStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   timerText: {
     fontFamily: 'FredokaRegular',

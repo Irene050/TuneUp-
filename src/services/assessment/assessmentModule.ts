@@ -529,6 +529,8 @@ function measureVolume(
       Number.isFinite(dbValues[index]),
   }));
 
+  const third = Math.floor(activeWindows.length / 3);
+
   const activeDbValues = activeWindows
     .filter(window => window.active)
     .map(window => window.db);
@@ -575,8 +577,6 @@ function measureVolume(
       : 0;
 
   const volumeConsistency = calcVolumeConsistency(activeDbValues);
-
-  const third = Math.floor(activeWindows.length / 3);
 
   if (third < 1) {
     return 0;

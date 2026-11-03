@@ -1,19 +1,24 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
-} from 'react-native-audio-api';
+  BackHandler,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { AudioContext } from 'react-native-audio-api';
 
 import {
-  AUDIO_BUFFER_SIZE,
   AUDIO_SAMPLE_RATE,
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import type { Tier } from '@/constants/params';
+import {
+  useAudioRecorder,
+  type LiveAudioFrame,
+} from '@/hooks/useAudioRecorder';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
@@ -23,7 +28,7 @@ import ExerciseScreen, {
   ExerciseProcessingScreen,
   ExerciseQuitModal,
   ExerciseRecordingScreen,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -37,10 +42,8 @@ import {
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { detectPitchAutocorrelation } from '@/utils/dsp/agility';
 import { average } from '@/utils/math';
 import { frequencyToNoteName } from '@/utils/music/notes';
-
 
 type Phase =
   | 'instructions'
@@ -78,7 +81,11 @@ type ExerciseResult = {
   repetitionsCompleted: number;
 };
 
-type PitchStatus = 'inTune' | 'close' | 'notInTune' | 'listening';
+type PitchStatus =
+  | 'inTune'
+  | 'close'
+  | 'notInTune'
+  | 'listening';
 
 function isValidVocalRange(
   range: VocalRange | null | undefined,
@@ -198,14 +205,18 @@ function getPitchAccuracy(
 export default function VocalRunAccuracyTaskScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
   const [tierLoading, setTierLoading] = useState(true);
+
   const [config, setConfig] = useState<Config | null>(null);
   const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
     useState(true);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(
+    EXERCISE_COUNTDOWN_SECONDS,
+  );
   const [recordingTime, setRecordingTime] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
+
   const [result, setResult] = useState<ExerciseResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [livePitch, setLivePitch] = useState<LivePitch | null>(null);
@@ -217,19 +228,17 @@ export default function VocalRunAccuracyTaskScreen() {
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
-
   const mountedRef = useRef(true);
   const phaseRef = useRef<Phase>('instructions');
 
   const audioContextRef = useRef<AudioContext | null>(null);
-  const recorderRef = useRef<AudioRecorder | null>(null);
 
-  const samplesRef = useRef<number[]>([]);
   const measurementsRef = useRef<
     ReturnType<typeof measureVocalRunAccuracy>[]
   >([]);
 
   const recordingStartRef = useRef<number | null>(null);
+
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -248,9 +257,13 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const recentScoresRef = useRef<number[]>([]);
   const vocalRangeRef = useRef<VocalRange | null>(null);
+  const processRecordingRef = useRef<
+    ((samples: Float32Array, sampleRate: number) => Promise<void>) | null
+  >(null);
 
   const setExercisePhase = useCallback((next: Phase) => {
     console.log(`[VocalRun] Phase: ${phaseRef.current} -> ${next}`);
+
     phaseRef.current = next;
     setPhase(next);
   }, []);
@@ -262,40 +275,118 @@ export default function VocalRunAccuracyTaskScreen() {
     }
   }, []);
 
-  const stopRecording = useCallback(() => {
+  const handleLiveAudioFrame = useCallback(
+    (frame: LiveAudioFrame) => {
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current ||
+        phaseRef.current !== 'recording'
+      ) {
+        return;
+      }
+
+      const frequency = frame.pitch;
+      const clarity = frame.clarity;
+
+      if (
+        !Number.isFinite(frequency) ||
+        frequency < 70 ||
+        frequency > 1000 ||
+        !Number.isFinite(clarity) ||
+        clarity < 0.45
+      ) {
+        setLivePitch(null);
+        return;
+      }
+
+      setLivePitch({
+        note: frame.note || frequencyToNoteName(frequency),
+        frequency,
+      });
+    },
+    [],
+  );
+
+  const handleAudioRecordingStop = useCallback(
+    (samples: Float32Array, sampleRate: number) => {
+      console.log('[VocalRun] Shared recorder stopped:', {
+        sampleCount: samples.length,
+        sampleRate,
+        durationSeconds:
+          sampleRate > 0 ? samples.length / sampleRate : 0,
+      });
+
+      if (
+        !mountedRef.current ||
+        pausedRef.current ||
+        showQuitModalRef.current ||
+        quitInProgressRef.current
+      ) {
+        console.log(
+          '[VocalRun] Ignoring stopped recording because exercise is paused or exiting.',
+        );
+        return;
+      }
+
+      const processor = processRecordingRef.current;
+
+      if (!processor) {
+        console.warn('[VocalRun] Recording processor is not ready.');
+        return;
+      }
+
+      void processor(samples, sampleRate);
+    },
+    [],
+  );
+
+  const {
+    startRecording: startAudioRecording,
+    stopRecording: stopAudioRecording,
+    cancelRecording: cancelAudioRecording,
+  } = useAudioRecorder({
+    onFrame: handleLiveAudioFrame,
+    onStop: handleAudioRecordingStop,
+  });
+
+  const cancelActiveRecording = useCallback(async () => {
     clearRecordingTimer();
-
-    const recorder = recorderRef.current;
-    recorderRef.current = null;
-
-    if (recorder) {
-      try {
-        recorder.clearOnAudioReady();
-      } catch (error) {
-        console.warn('[VocalRun] Could not clear audio callback:', error);
-      }
-
-      try {
-        void Promise.resolve(recorder.stop()).catch(error => {
-          console.warn('[VocalRun] Recorder stop failed:', error);
-        });
-      } catch (error) {
-        console.warn('[VocalRun] Recorder stop failed:', error);
-      }
-    }
-
     recordingStartRef.current = null;
 
     try {
-      void Promise.resolve(
-        AudioManager.setAudioSessionActivity(false),
-      ).catch(error => {
-        console.warn('[VocalRun] Audio session stop failed:', error);
-      });
+      await cancelAudioRecording();
     } catch (error) {
-      console.warn('[VocalRun] Audio session stop failed:', error);
+      console.warn('[VocalRun] Could not cancel recording:', error);
     }
-  }, [clearRecordingTimer]);
+  }, [cancelAudioRecording, clearRecordingTimer]);
+
+  const stopActiveRecording = useCallback(async () => {
+    clearRecordingTimer();
+    recordingStartRef.current = null;
+
+    try {
+      await stopAudioRecording();
+    } catch (error) {
+      console.warn('[VocalRun] Could not stop recording:', error);
+
+      if (
+        mountedRef.current &&
+        !quitInProgressRef.current &&
+        !pausedRef.current
+      ) {
+        setErrorMessage(
+          'The recording could not be stopped. Please try again.',
+        );
+        setExercisePhase('instructions');
+      }
+    }
+  }, [
+    clearRecordingTimer,
+    setExercisePhase,
+    stopAudioRecording,
+  ]);
 
   const cancelReferencePlayback = useCallback(() => {
     referencePlaybackIdRef.current += 1;
@@ -306,10 +397,16 @@ export default function VocalRunAccuracyTaskScreen() {
     if (context) {
       try {
         void context.suspend().catch(error => {
-          console.warn('[VocalRun] Could not suspend reference audio:', error);
+          console.warn(
+            '[VocalRun] Could not suspend reference audio:',
+            error,
+          );
         });
       } catch (error) {
-        console.warn('[VocalRun] Could not suspend reference audio:', error);
+        console.warn(
+          '[VocalRun] Could not suspend reference audio:',
+          error,
+        );
       }
     }
 
@@ -324,6 +421,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
     return () => {
       mountedRef.current = false;
+
       exerciseRunIdRef.current += 1;
       countdownRunIdRef.current += 1;
       referencePlaybackIdRef.current += 1;
@@ -331,7 +429,9 @@ export default function VocalRunAccuracyTaskScreen() {
       pausedRef.current = true;
       referencePlayingRef.current = false;
 
-      stopRecording();
+      clearRecordingTimer();
+
+      void cancelAudioRecording();
 
       const context = audioContextRef.current;
       audioContextRef.current = null;
@@ -340,11 +440,14 @@ export default function VocalRunAccuracyTaskScreen() {
         try {
           void context.close();
         } catch (error) {
-          console.warn('[VocalRun] Could not close audio context:', error);
+          console.warn(
+            '[VocalRun] Could not close audio context:',
+            error,
+          );
         }
       }
     };
-  }, [stopRecording]);
+  }, [cancelAudioRecording, clearRecordingTimer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -417,7 +520,10 @@ export default function VocalRunAccuracyTaskScreen() {
 
           recentScores = getRecentVocalRunScores(records, tier);
         } catch (error) {
-          console.warn('[VocalRun] Could not load score history:', error);
+          console.warn(
+            '[VocalRun] Could not load score history:',
+            error,
+          );
         }
 
         if (cancelled) {
@@ -447,7 +553,10 @@ export default function VocalRunAccuracyTaskScreen() {
             vocalRange = { lowHz, highHz };
           }
         } catch (error) {
-          console.warn('[VocalRun] Could not load vocal range:', error);
+          console.warn(
+            '[VocalRun] Could not load vocal range:',
+            error,
+          );
         }
       }
 
@@ -480,7 +589,10 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     void loadParameters().catch(error => {
-      console.warn('[VocalRun] Parameter loading failed:', error);
+      console.warn(
+        '[VocalRun] Parameter loading failed:',
+        error,
+      );
 
       if (!cancelled) {
         const fallback = generateVocalRunAccuracyParams({
@@ -560,33 +672,6 @@ export default function VocalRunAccuracyTaskScreen() {
           ? 'NOT IN TUNE'
           : 'LISTENING...';
 
-  const requestMicrophonePermission = useCallback(
-    async (): Promise<boolean> => {
-      try {
-        const permission =
-          await AudioManager.requestRecordingPermissions();
-
-        if (permission !== 'Granted') {
-          setErrorMessage(
-            'Microphone permission is required to perform this exercise.',
-          );
-          return false;
-        }
-
-        return true;
-      } catch (error) {
-        console.warn('[VocalRun] Microphone permission failed:', error);
-
-        setErrorMessage(
-          'We could not access the microphone. Please check your microphone permissions.',
-        );
-
-        return false;
-      }
-    },
-    [],
-  );
-
   const playReference = useCallback(async () => {
     if (
       !mountedRef.current ||
@@ -641,6 +726,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
         oscillator.start(startTime);
         oscillator.stop(startTime + config.noteDurationSec);
+
         setActiveReferenceNoteIndex(index);
 
         await sleep(config.noteDurationSec * 1000);
@@ -660,7 +746,10 @@ export default function VocalRunAccuracyTaskScreen() {
         }
       }
     } catch (error) {
-      console.warn('[VocalRun] Reference playback failed:', error);
+      console.warn(
+        '[VocalRun] Reference playback failed:',
+        error,
+      );
 
       if (
         mountedRef.current &&
@@ -703,13 +792,12 @@ export default function VocalRunAccuracyTaskScreen() {
 
     setErrorMessage('');
 
-    const runId = ++exerciseRunIdRef.current;
-
+    exerciseRunIdRef.current += 1;
     countdownRunIdRef.current += 1;
+
     cancelReferencePlayback();
 
     measurementsRef.current = [];
-    samplesRef.current = [];
     processingRef.current = false;
     recordingStartInProgressRef.current = false;
 
@@ -718,249 +806,246 @@ export default function VocalRunAccuracyTaskScreen() {
     setRecordingTime(0);
     setLivePitch(null);
     setResult(null);
-
-    const permission = await requestMicrophonePermission();
-
-    if (
-      !permission ||
-      !mountedRef.current ||
-      pausedRef.current ||
-      showQuitModalRef.current ||
-      quitInProgressRef.current ||
-      runId !== exerciseRunIdRef.current
-    ) {
-      return;
-    }
-
+    setShowNoAudioModal(false);
     setExercisePhase('reference');
   }, [
     cancelReferencePlayback,
     hasValidGeneratedSequence,
     isLoadingAdaptiveParams,
-    requestMicrophonePermission,
     setExercisePhase,
     tierLoading,
   ]);
 
-  const processRecording = useCallback(async () => {
-    if (
-      processingRef.current ||
-      pausedRef.current ||
-      showQuitModalRef.current ||
-      quitInProgressRef.current ||
-      !config ||
-      phaseRef.current !== 'recording'
-    ) {
-      return;
-    }
-
-    processingRef.current = true;
-
-    const runId = exerciseRunIdRef.current;
-
-    try {
-      setExercisePhase('processing');
-      stopRecording();
-      setLivePitch(null);
-
-      await sleep(200);
-
+  const processRecording = useCallback(
+    async (samples: Float32Array, sampleRate: number) => {
       if (
-        !mountedRef.current ||
+        processingRef.current ||
         pausedRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current ||
-        runId !== exerciseRunIdRef.current
+        !config ||
+        phaseRef.current !== 'processing'
       ) {
         return;
       }
 
-      const samples = new Float32Array(samplesRef.current);
+      processingRef.current = true;
 
-      if (!hasSufficientRecordedSignal(samples)) {
-        samplesRef.current = [];
-        setExercisePhase('reference');
-        setShowNoAudioModal(true);
-        return;
-      }
+      const runId = exerciseRunIdRef.current;
 
-      const measurement = measureVocalRunAccuracy(
-        samples,
-        AUDIO_SAMPLE_RATE,
-        config.frequencies,
-      );
+      try {
+        setLivePitch(null);
 
-      console.log('[VocalRun] Measurement:', {
-        sampleCount: samples.length,
-        targetNotes: measurement.targetNotes,
-        detectedNotes: measurement.detectedNotes,
-        pitchAccuracy: measurement.pitchAccuracy,
-        sequenceAccuracy: measurement.sequenceAccuracy,
-        noteCount: measurement.noteCount,
-        correctNoteCount: measurement.correctNoteCount,
-        transitionCount: measurement.transitionCount,
-        correctTransitionCount: measurement.correctTransitionCount,
-      });
+        if (
+          !Number.isFinite(sampleRate) ||
+          sampleRate <= 0 ||
+          samples.length === 0 ||
+          !hasSufficientRecordedSignal(samples)
+        ) {
+          console.warn('[VocalRun] No sufficient audio signal:', {
+            sampleCount: samples.length,
+            sampleRate,
+          });
 
-      measurementsRef.current.push(measurement);
+          if (
+            mountedRef.current &&
+            runId === exerciseRunIdRef.current &&
+            !quitInProgressRef.current
+          ) {
+            setRecordingTime(0);
+            setExercisePhase('reference');
+            setShowNoAudioModal(true);
+          }
 
-      const completedRepetitions = measurementsRef.current.length;
+          return;
+        }
 
-      if (completedRepetitions < config.repetitions) {
+        const measurement = measureVocalRunAccuracy(
+          samples,
+          sampleRate,
+          config.frequencies,
+        );
+
+        console.log('[VocalRun] Measurement:', {
+          sampleCount: samples.length,
+          sampleRate,
+          durationSeconds: samples.length / sampleRate,
+          targetNotes: measurement.targetNotes,
+          detectedNotes: measurement.detectedNotes,
+          pitchAccuracy: measurement.pitchAccuracy,
+          sequenceAccuracy: measurement.sequenceAccuracy,
+          noteCount: measurement.noteCount,
+          correctNoteCount: measurement.correctNoteCount,
+          transitionCount: measurement.transitionCount,
+          correctTransitionCount:
+            measurement.correctTransitionCount,
+        });
+
         if (
           !mountedRef.current ||
-          runId !== exerciseRunIdRef.current
+          runId !== exerciseRunIdRef.current ||
+          quitInProgressRef.current
         ) {
           return;
         }
 
-        samplesRef.current = [];
+        measurementsRef.current.push(measurement);
 
-        setCurrentRep(completedRepetitions + 1);
-        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-        setRecordingTime(0);
-        setLivePitch(null);
+        const completedRepetitions = measurementsRef.current.length;
 
-        processingRef.current = false;
-        setExercisePhase('reference');
-        return;
-      }
+        if (completedRepetitions < config.repetitions) {
+          setCurrentRep(completedRepetitions + 1);
+          setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+          setRecordingTime(0);
+          setLivePitch(null);
 
-      const measurements = measurementsRef.current;
+          processingRef.current = false;
+          setExercisePhase('reference');
 
-      const totalNoteCount = measurements.reduce(
-        (sum, item) => sum + item.noteCount,
-        0,
-      );
+          return;
+        }
 
-      const totalCorrectNoteCount = measurements.reduce(
-        (sum, item) => sum + item.correctNoteCount,
-        0,
-      );
+        const measurements = measurementsRef.current;
 
-      const totalTransitionCount = measurements.reduce(
-        (sum, item) => sum + item.transitionCount,
-        0,
-      );
-
-      const totalCorrectTransitionCount = measurements.reduce(
-        (sum, item) => sum + item.correctTransitionCount,
-        0,
-      );
-
-      const totalDurationMs = measurements.reduce(
-        (sum, item) => sum + item.durationMs,
-        0,
-      );
-
-      const pitchScore = average(
-        measurements.map(item => item.pitchAccuracy),
-      );
-
-      const sequenceScore = average(
-        measurements.map(item => item.sequenceAccuracy),
-      );
-
-      const notesPerSecond =
-        totalDurationMs > 0
-          ? totalNoteCount / (totalDurationMs / 1000)
-          : 0;
-
-      const aggregatedMeasurement = {
-        detectedPitches: measurements.flatMap(
-          item => item.detectedPitches,
-        ),
-        detectedNotes: measurements.flatMap(
-          item => item.detectedNotes,
-        ),
-        targetNotes: measurements.flatMap(
-          item => item.targetNotes,
-        ),
-        pitchAccuracy: pitchScore,
-        sequenceAccuracy: sequenceScore,
-        noteCount: totalNoteCount,
-        correctNoteCount: totalCorrectNoteCount,
-        transitionCount: totalTransitionCount,
-        correctTransitionCount: totalCorrectTransitionCount,
-        durationMs: totalDurationMs,
-        notesPerSecond,
-      };
-
-      const score = scoreVocalRunAccuracy(
-        aggregatedMeasurement,
-        config.accuracyThreshold,
-      );
-
-      if (
-        !mountedRef.current ||
-        runId !== exerciseRunIdRef.current ||
-        quitInProgressRef.current
-      ) {
-        return;
-      }
-
-      const feedback = score.passed
-        ? score.feedback
-        : sequenceScore < config.accuracyThreshold
-          ? `Sequence accuracy must reach at least ${config.accuracyThreshold}% for the ${config.label.toLowerCase()} level.`
-          : score.feedback;
-
-      await saveCompletedExercise(
-        'agility',
-        'vocalRunAccuracy',
-        tier,
-        score.overall,
-      );
-
-      if (
-        !mountedRef.current ||
-        runId !== exerciseRunIdRef.current ||
-        quitInProgressRef.current
-      ) {
-        return;
-      }
-
-      setResult({
-        overall: score.overall,
-        pitchScore: score.pitchScore,
-        sequenceScore: score.sequenceScore,
-        transitionScore: score.transitionScore,
-        passed: score.passed,
-        feedback,
-        noteCount: totalNoteCount,
-        correctNoteCount: totalCorrectNoteCount,
-        transitionCount: totalTransitionCount,
-        correctTransitionCount: totalCorrectTransitionCount,
-        notesPerSecond,
-        durationMs: totalDurationMs,
-        repetitionsCompleted: measurements.length,
-      });
-
-      setExercisePhase('results');
-    } catch (error) {
-      console.warn('[VocalRun] Recording processing failed:', error);
-
-      if (
-        mountedRef.current &&
-        runId === exerciseRunIdRef.current &&
-        !quitInProgressRef.current
-      ) {
-        setErrorMessage(
-          'We could not analyze this recording. Please try again.',
+        const totalNoteCount = measurements.reduce(
+          (sum, item) => sum + item.noteCount,
+          0,
         );
-        setExercisePhase('instructions');
+
+        const totalCorrectNoteCount = measurements.reduce(
+          (sum, item) => sum + item.correctNoteCount,
+          0,
+        );
+
+        const totalTransitionCount = measurements.reduce(
+          (sum, item) => sum + item.transitionCount,
+          0,
+        );
+
+        const totalCorrectTransitionCount = measurements.reduce(
+          (sum, item) => sum + item.correctTransitionCount,
+          0,
+        );
+
+        const totalDurationMs = measurements.reduce(
+          (sum, item) => sum + item.durationMs,
+          0,
+        );
+
+        const pitchScore = average(
+          measurements.map(item => item.pitchAccuracy),
+        );
+
+        const sequenceScore = average(
+          measurements.map(item => item.sequenceAccuracy),
+        );
+
+        const notesPerSecond =
+          totalDurationMs > 0
+            ? totalNoteCount / (totalDurationMs / 1000)
+            : 0;
+
+        const aggregatedMeasurement = {
+          detectedPitches: measurements.flatMap(
+            item => item.detectedPitches,
+          ),
+          detectedNotes: measurements.flatMap(
+            item => item.detectedNotes,
+          ),
+          targetNotes: measurements.flatMap(
+            item => item.targetNotes,
+          ),
+          pitchAccuracy: pitchScore,
+          sequenceAccuracy: sequenceScore,
+          noteCount: totalNoteCount,
+          correctNoteCount: totalCorrectNoteCount,
+          transitionCount: totalTransitionCount,
+          correctTransitionCount: totalCorrectTransitionCount,
+          durationMs: totalDurationMs,
+          notesPerSecond,
+        };
+
+        const score = scoreVocalRunAccuracy(
+          aggregatedMeasurement,
+          config.accuracyThreshold,
+        );
+
+        if (
+          !mountedRef.current ||
+          runId !== exerciseRunIdRef.current ||
+          quitInProgressRef.current
+        ) {
+          return;
+        }
+
+        const feedback = score.passed
+          ? score.feedback
+          : sequenceScore < config.accuracyThreshold
+            ? `Sequence accuracy must reach at least ${config.accuracyThreshold}% for the ${config.label.toLowerCase()} level.`
+            : score.feedback;
+
+        await saveCompletedExercise(
+          'agility',
+          'vocalRunAccuracy',
+          tier,
+          score.overall,
+        );
+
+        if (
+          !mountedRef.current ||
+          runId !== exerciseRunIdRef.current ||
+          quitInProgressRef.current
+        ) {
+          return;
+        }
+
+        setResult({
+          overall: score.overall,
+          pitchScore: score.pitchScore,
+          sequenceScore: score.sequenceScore,
+          transitionScore: score.transitionScore,
+          passed: score.passed,
+          feedback,
+          noteCount: totalNoteCount,
+          correctNoteCount: totalCorrectNoteCount,
+          transitionCount: totalTransitionCount,
+          correctTransitionCount: totalCorrectTransitionCount,
+          notesPerSecond,
+          durationMs: totalDurationMs,
+          repetitionsCompleted: measurements.length,
+        });
+
+        setExercisePhase('results');
+      } catch (error) {
+        console.warn(
+          '[VocalRun] Recording processing failed:',
+          error,
+        );
+
+        if (
+          mountedRef.current &&
+          runId === exerciseRunIdRef.current &&
+          !quitInProgressRef.current
+        ) {
+          setErrorMessage(
+            'We could not analyze this recording. Please try again.',
+          );
+          setExercisePhase('instructions');
+        }
+      } finally {
+        if (runId === exerciseRunIdRef.current) {
+          processingRef.current = false;
+        }
       }
-    } finally {
-      if (runId === exerciseRunIdRef.current) {
-        processingRef.current = false;
-      }
-    }
-  }, [config, setExercisePhase, stopRecording, tier]);
+    },
+    [config, setExercisePhase, tier],
+  );
+
+  processRecordingRef.current = processRecording;
 
   const startRecording = useCallback(async () => {
     if (
       recordingStartInProgressRef.current ||
-      recorderRef.current ||
       phaseRef.current !== 'countdown' ||
       pausedRef.current ||
       showQuitModalRef.current ||
@@ -974,128 +1059,17 @@ export default function VocalRunAccuracyTaskScreen() {
 
     const runId = exerciseRunIdRef.current;
 
-    const maxSamples = Math.ceil(
-      recordingDurationSec * AUDIO_SAMPLE_RATE,
-    );
-
     try {
-      samplesRef.current = [];
       setRecordingTime(0);
       setLivePitch(null);
-
-      const recorder = new AudioRecorder();
-      recorderRef.current = recorder;
-
-      console.log('[VocalRun] Configuring audio recorder.');
-
-      const callbackResult = recorder.onAudioReady(
-        {
-          sampleRate: AUDIO_SAMPLE_RATE,
-          bufferLength: AUDIO_BUFFER_SIZE,
-          channelCount: 1,
-        },
-        ({ buffer, numFrames }) => {
-          if (
-            !mountedRef.current ||
-            pausedRef.current ||
-            showQuitModalRef.current ||
-            quitInProgressRef.current ||
-            runId !== exerciseRunIdRef.current ||
-            phaseRef.current !== 'recording'
-          ) {
-            return;
-          }
-
-          try {
-            const channelData = buffer.getChannelData(0);
-
-            const frameCount = Math.min(
-              numFrames,
-              channelData.length,
-            );
-
-            const remaining =
-              maxSamples - samplesRef.current.length;
-
-            const copyCount = Math.min(
-              frameCount,
-              Math.max(remaining, 0),
-            );
-
-            for (let i = 0; i < copyCount; i++) {
-              const sample = channelData[i];
-
-              if (Number.isFinite(sample)) {
-                samplesRef.current.push(sample);
-              }
-            }
-
-            const liveFrame = new Float32Array(
-              channelData.slice(0, frameCount),
-            );
-
-            const detected = detectPitchAutocorrelation(
-              liveFrame,
-              AUDIO_SAMPLE_RATE,
-              {
-                minFrequency: 70,
-                maxFrequency: 1000,
-                minRms: 0.008,
-                minCorrelation: 0.70,
-              },
-            );
-
-            if (
-              mountedRef.current &&
-              !pausedRef.current &&
-              typeof detected === 'number' &&
-              Number.isFinite(detected) &&
-              detected >= 70 &&
-              detected <= 1000
-            ) {
-              setLivePitch({
-                note: frequencyToNoteName(detected),
-                frequency: detected,
-              });
-            } else {
-              setLivePitch(null);
-            }
-          } catch (error) {
-            console.warn('[VocalRun] Live audio analysis failed:', error);
-          }
-        },
-      );
-
-      if (callbackResult.status === 'error') {
-        throw new Error(callbackResult.message);
-      }
-
-      await AudioManager.setAudioSessionActivity(true);
-
-      if (
-        !mountedRef.current ||
-        pausedRef.current ||
-        showQuitModalRef.current ||
-        quitInProgressRef.current ||
-        runId !== exerciseRunIdRef.current
-      ) {
-        stopRecording();
-        return;
-      }
-
-      console.log('[VocalRun] Transitioning to recording phase.');
 
       recordingStartRef.current = Date.now();
 
       setExercisePhase('recording');
 
-      console.log('[VocalRun] Starting audio recorder.');
+      console.log('[VocalRun] Starting shared audio recorder.');
 
-      const startResult = await recorder.start();
-
-      if (startResult.status === 'error') {
-        throw new Error(startResult.message);
-      }
+      await startAudioRecording();
 
       if (
         !mountedRef.current ||
@@ -1104,9 +1078,15 @@ export default function VocalRunAccuracyTaskScreen() {
         quitInProgressRef.current ||
         runId !== exerciseRunIdRef.current
       ) {
-        stopRecording();
+        console.log(
+          '[VocalRun] Recording start completed after cancellation. Discarding it.',
+        );
+
+        await cancelActiveRecording();
         return;
       }
+
+      recordingStartRef.current = Date.now();
 
       console.log('[VocalRun] Recording started successfully.');
 
@@ -1126,6 +1106,7 @@ export default function VocalRunAccuracyTaskScreen() {
         }
 
         const elapsed = (Date.now() - started) / 1000;
+
         const boundedElapsed = Math.min(
           elapsed,
           recordingDurationSec,
@@ -1135,19 +1116,32 @@ export default function VocalRunAccuracyTaskScreen() {
 
         if (elapsed >= recordingDurationSec) {
           setRecordingTime(recordingDurationSec);
+
           clearRecordingTimer();
-          void processRecording();
+          recordingStartRef.current = null;
+
+          setExercisePhase('processing');
+
+          console.log(
+            '[VocalRun] Recording duration reached. Stopping recorder.',
+          );
+
+          void stopActiveRecording();
         }
       }, 100);
     } catch (error) {
-      console.warn('[VocalRun] Could not start recording:', error);
+      console.warn(
+        '[VocalRun] Could not start recording:',
+        error,
+      );
 
-      stopRecording();
+      await cancelActiveRecording();
 
       if (
         mountedRef.current &&
         runId === exerciseRunIdRef.current &&
-        !quitInProgressRef.current
+        !quitInProgressRef.current &&
+        !pausedRef.current
       ) {
         setLivePitch(null);
         setErrorMessage(
@@ -1159,12 +1153,13 @@ export default function VocalRunAccuracyTaskScreen() {
       recordingStartInProgressRef.current = false;
     }
   }, [
+    cancelActiveRecording,
     clearRecordingTimer,
     config,
-    processRecording,
     recordingDurationSec,
     setExercisePhase,
-    stopRecording,
+    startAudioRecording,
+    stopActiveRecording,
   ]);
 
   const startCountdown = useCallback(async () => {
@@ -1238,11 +1233,12 @@ export default function VocalRunAccuracyTaskScreen() {
     countdownRunIdRef.current += 1;
 
     cancelReferencePlayback();
-    stopRecording();
+
+    void cancelActiveRecording();
 
     processingRef.current = false;
     recordingStartInProgressRef.current = false;
-    samplesRef.current = [];
+
     measurementsRef.current = [];
 
     let nextScores = recentScoresRef.current;
@@ -1268,6 +1264,7 @@ export default function VocalRunAccuracyTaskScreen() {
     showQuitModalRef.current = false;
 
     setShowQuitModal(false);
+    setShowNoAudioModal(false);
     setIsQuitting(false);
 
     setConfig(nextConfig);
@@ -1280,11 +1277,11 @@ export default function VocalRunAccuracyTaskScreen() {
 
     setExercisePhase('instructions');
   }, [
+    cancelActiveRecording,
     cancelReferencePlayback,
     config,
     result,
     setExercisePhase,
-    stopRecording,
     tier,
   ]);
 
@@ -1298,6 +1295,7 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     pausedPhaseRef.current = phaseRef.current;
+
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
@@ -1306,28 +1304,23 @@ export default function VocalRunAccuracyTaskScreen() {
     cancelReferencePlayback();
 
     if (pausedPhaseRef.current === 'recording') {
-      samplesRef.current = [];
-
       setRecordingTime(0);
       setLivePitch(null);
 
-      stopRecording();
+      void cancelActiveRecording();
     } else if (pausedPhaseRef.current === 'countdown') {
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     }
 
     setShowQuitModal(true);
-  }, [cancelReferencePlayback, stopRecording]);
+  }, [cancelActiveRecording, cancelReferencePlayback]);
 
-  const continueExercise = useCallback(() => {
+  const continueExercise = useCallback(async () => {
     if (quitInProgressRef.current) {
       return;
     }
 
     const previousPhase = pausedPhaseRef.current;
-
-    pausedRef.current = false;
-    showQuitModalRef.current = false;
 
     setShowQuitModal(false);
     setErrorMessage('');
@@ -1336,7 +1329,26 @@ export default function VocalRunAccuracyTaskScreen() {
       previousPhase === 'countdown' ||
       previousPhase === 'recording'
     ) {
-      samplesRef.current = [];
+      while (
+        recordingStartInProgressRef.current &&
+        mountedRef.current &&
+        !quitInProgressRef.current
+      ) {
+        await sleep(50);
+      }
+
+      if (!mountedRef.current || quitInProgressRef.current) {
+        return;
+      }
+
+      await cancelActiveRecording();
+
+      if (!mountedRef.current || quitInProgressRef.current) {
+        return;
+      }
+
+      pausedRef.current = false;
+      showQuitModalRef.current = false;
 
       setRecordingTime(0);
       setLivePitch(null);
@@ -1346,20 +1358,24 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
+    pausedRef.current = false;
+    showQuitModalRef.current = false;
+
     if (previousPhase === 'reference') {
       setExercisePhase('reference');
       return;
     }
 
     if (previousPhase === 'processing') {
-      if (
-        phaseRef.current === 'processing' &&
-        !processingRef.current
-      ) {
-        void processRecording();
-      }
+      setExercisePhase('reference');
+      return;
     }
-  }, [processRecording, setExercisePhase]);
+
+    setExercisePhase(previousPhase);
+  }, [
+    cancelActiveRecording,
+    setExercisePhase,
+  ]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) {
@@ -1376,16 +1392,18 @@ export default function VocalRunAccuracyTaskScreen() {
 
     referencePlayingRef.current = false;
     processingRef.current = false;
-    recordingStartInProgressRef.current = false;
 
     setIsQuitting(true);
     setShowQuitModal(false);
 
     clearRecordingTimer();
-    samplesRef.current = [];
+
+    setLivePitch(null);
+    setRecordingTime(0);
 
     cancelReferencePlayback();
-    stopRecording();
+
+    await cancelActiveRecording();
 
     const context = audioContextRef.current;
     audioContextRef.current = null;
@@ -1394,15 +1412,18 @@ export default function VocalRunAccuracyTaskScreen() {
       try {
         await context.close();
       } catch (error) {
-        console.warn('[VocalRun] Could not close audio context:', error);
+        console.warn(
+          '[VocalRun] Could not close audio context:',
+          error,
+        );
       }
     }
 
     router.replace('/exercises/agility');
   }, [
+    cancelActiveRecording,
     cancelReferencePlayback,
     clearRecordingTimer,
-    stopRecording,
   ]);
 
   const handleBack = useCallback(() => {
@@ -1627,7 +1648,8 @@ export default function VocalRunAccuracyTaskScreen() {
         <Text style={styles.timerLabel}>Recording Time</Text>
 
         <Text style={styles.timerText}>
-          {recordingTime.toFixed(1)} / {recordingDurationSec.toFixed(1)} sec
+          {recordingTime.toFixed(1)} /{' '}
+          {recordingDurationSec.toFixed(1)} sec
         </Text>
 
         <View style={styles.progressTrack}>
@@ -1768,24 +1790,25 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const quitModal = (
     <ExerciseQuitModal
-        visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={quitModalMessage}
-        isQuitting={isQuitting}
-        onContinue={continueExercise}
-        onQuit={() => void quitExercise()}
-        continueLabel={"Continue Exercise"}
-        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
-      />
+      visible={showQuitModal}
+      title="Quit exercise?"
+      message={quitModalMessage}
+      isQuitting={isQuitting}
+      onContinue={() => void continueExercise()}
+      onQuit={() => void quitExercise()}
+      continueLabel="Continue Exercise"
+      quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
+    />
   );
 
   const noAudioModal = (
     <ExerciseNoAudioModal
       visible={showNoAudioModal}
-      onRedo={function redoExerciseRepetition() {
+      onRedo={() => {
         setShowNoAudioModal(false);
+        setLivePitch(null);
+        setRecordingTime(0);
         setExercisePhase('reference');
-        void startCountdown();
       }}
       onQuit={() => {
         setShowNoAudioModal(false);
