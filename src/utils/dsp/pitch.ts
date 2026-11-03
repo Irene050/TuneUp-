@@ -63,12 +63,6 @@ export function analyzePitchFrame(
 
     const note = frequencyToNoteName(detectedFrequency);
 
-    console.log('[Pitch Detection]', {
-      frequencyHz: Number(detectedFrequency.toFixed(2)),
-      note,
-      clarity: Number(clarity.toFixed(3)),
-    });
-
     return {
       frequency: detectedFrequency,
       note,

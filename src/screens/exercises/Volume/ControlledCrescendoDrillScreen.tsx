@@ -553,6 +553,7 @@ export default function ControlledCrescendoExercise({
     stopRecording,
     isRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: frame => {
       if (
         phaseRef.current !== 'exercise' ||

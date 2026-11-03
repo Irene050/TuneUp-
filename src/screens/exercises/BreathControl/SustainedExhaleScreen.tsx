@@ -456,6 +456,7 @@ export default function SustainedExhaleScreen({
     startRecording,
     stopRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });

@@ -758,8 +758,13 @@ export default function MelodicPatternMatchingScreen({
         getRecordingDurationSec(params) * 1000;
 
       clearRecordingTimer();
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -771,8 +776,7 @@ export default function MelodicPatternMatchingScreen({
           return;
         }
 
-        recordingElapsedRef.current +=
-          RECORDING_TIMER_INTERVAL_MS;
+        recordingElapsedRef.current += elapsedDelta;
 
         const elapsed = recordingElapsedRef.current;
         setRecordingElapsedMs(elapsed);

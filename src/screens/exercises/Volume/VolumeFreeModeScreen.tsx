@@ -113,6 +113,7 @@ export default function VolumeFreeModeScreen() {
     stopRecording,
     isRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: handleAudioFrame,
   });
 

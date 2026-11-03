@@ -645,6 +645,7 @@ export default function ControlledBreathReleaseScreen({
   );
 
   const { startRecording, stopRecording } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: frame => {
       if (
         !mountedRef.current ||

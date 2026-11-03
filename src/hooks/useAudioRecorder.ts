@@ -19,7 +19,7 @@ import {
 const DEFAULT_SAMPLE_RATE = 44100;
 const BUFFER_LENGTH = 2048;
 const CHANNEL_COUNT = 1;
-const LIVE_ANALYSIS_INTERVAL_MS = 50;
+const LIVE_ANALYSIS_INTERVAL_MS = 100;
 const MIN_VOICED_DB = -45;
 const MIN_PITCH_HZ = 60;
 const MAX_PITCH_HZ = 1500;
@@ -47,6 +47,7 @@ function centsBetween(
 }
 
 interface UseAudioRecorderOptions {
+  analyzePitch?: boolean;
   onFrame?: (frame: LiveAudioFrame) => void;
   onStop?: (
     samples: Float32Array,
@@ -205,10 +206,15 @@ export function useAudioRecorder(
     useRef<UseAudioRecorderOptions['onStop']>(
       options.onStop,
     );
+  const analyzePitchRef = useRef(options.analyzePitch ?? true);
 
   useEffect(() => {
     onFrameRef.current = options.onFrame;
   }, [options.onFrame]);
+
+  useEffect(() => {
+    analyzePitchRef.current = options.analyzePitch ?? true;
+  }, [options.analyzePitch]);
 
   useEffect(() => {
     onStopRef.current = options.onStop;
@@ -372,13 +378,13 @@ export function useAudioRecorder(
               chunksRef.current.push(samples);
               sampleCountRef.current += samples.length;
 
-              pitchBufferRef.current = appendToRollingBuffer(
-                pitchBufferRef.current,
-                samples,
-                BUFFER_LENGTH,
-              );
-
-              const signal = analyzeLiveSignal(samples);
+              if (analyzePitchRef.current) {
+                pitchBufferRef.current = appendToRollingBuffer(
+                  pitchBufferRef.current,
+                  samples,
+                  BUFFER_LENGTH,
+                );
+              }
 
               const now = Date.now();
 
@@ -390,6 +396,20 @@ export function useAudioRecorder(
               }
 
               lastLiveAnalysisRef.current = now;
+
+              const signal = analyzeLiveSignal(samples);
+
+              if (!analyzePitchRef.current) {
+                emitLiveFrame({
+                  pitch: 0,
+                  note: '--',
+                  clarity: 0,
+                  volume: signal.db,
+                  samples,
+                  sampleRate: DEFAULT_SAMPLE_RATE,
+                });
+                return;
+              }
 
               const emitInvalidFrame = () => {
                 const timeSinceLastValidPitch =
@@ -541,23 +561,6 @@ export function useAudioRecorder(
 
                     pendingOctaveCountRef.current = 1;
                   }
-
-                  console.warn(
-                    '[Pitch Tracking] Possible octave jump',
-                    {
-                      previousPitchHz: Number(
-                        previousPitch.toFixed(2),
-                      ),
-                      detectedPitchHz: Number(
-                        detectedPitch.toFixed(2),
-                      ),
-                      differenceCents: Number(
-                        pitchDifferenceCents.toFixed(1),
-                      ),
-                      confirmationCount:
-                        pendingOctaveCountRef.current,
-                    },
-                  );
 
                   if (
                     pendingOctaveCountRef.current <

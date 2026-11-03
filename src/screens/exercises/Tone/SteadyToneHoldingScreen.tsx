@@ -717,8 +717,13 @@ export default function SteadyToneHoldingScreen({
       recordingRef.current = true;
 
       const durationMs = paramsRef.current.durationSec * 1000;
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -731,7 +736,7 @@ export default function SteadyToneHoldingScreen({
           return;
         }
 
-        elapsedRef.current += 100;
+        elapsedRef.current += elapsedDelta;
         setElapsedMs(elapsedRef.current);
 
         if (elapsedRef.current >= durationMs) {

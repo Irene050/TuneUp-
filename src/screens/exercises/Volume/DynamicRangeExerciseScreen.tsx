@@ -370,6 +370,7 @@ export default function DynamicRangeExercise({
     stopRecording,
     isRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: frame => {
       if (
         !mountedRef.current ||

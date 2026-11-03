@@ -886,8 +886,13 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         noteCount * RECORDING_MS_PER_NOTE,
       );
       const noteDuration = recordingDuration / noteCount;
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -899,7 +904,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           return;
         }
 
-        recordingElapsedRef.current += EXERCISE_RECORDING_INTERVAL_MS;
+        recordingElapsedRef.current += elapsedDelta;
 
         const elapsedMs = recordingElapsedRef.current;
         const nextNoteIndex = Math.min(

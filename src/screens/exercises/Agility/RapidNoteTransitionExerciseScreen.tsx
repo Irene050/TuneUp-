@@ -840,17 +840,17 @@ export default function RapidNoteTransitionExerciseScreen({
         return;
       }
 
-      recordingStartRef.current = Date.now();
+      const recordingStartedAt = Date.now();
+      recordingStartRef.current = recordingStartedAt;
       setElapsedSeconds(0);
-
-      let elapsed = 0;
 
       recordingTimerRef.current = setInterval(() => {
         if (!mountedRef.current) {
           return;
         }
 
-        elapsed += 0.1;
+        const elapsed =
+          (Date.now() - recordingStartedAt) / 1000;
         setElapsedSeconds(Math.min(elapsed, recordingDurationSeconds));
 
         if (elapsed >= recordingDurationSeconds) {

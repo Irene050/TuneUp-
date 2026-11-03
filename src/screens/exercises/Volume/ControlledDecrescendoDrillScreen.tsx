@@ -542,6 +542,7 @@ export default function ControlledDecrescendoDrill({
     stopRecording,
     isRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: (frame) => {
       if (
         phaseRef.current !== 'exercise' ||

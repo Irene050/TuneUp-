@@ -480,6 +480,7 @@ export default function SustainedSSSSScreen({
     startRecording,
     stopRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });

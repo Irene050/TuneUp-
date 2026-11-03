@@ -672,8 +672,13 @@ export default function VowelConsistencyExerciseScreen({
       recordingRef.current = true;
 
       const durationMs = targetDurationRef.current * 1000;
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -685,7 +690,7 @@ export default function VowelConsistencyExerciseScreen({
           return;
         }
 
-        elapsedRef.current += 100;
+        elapsedRef.current += elapsedDelta;
         setElapsedMs(elapsedRef.current);
 
         if (elapsedRef.current >= durationMs) {

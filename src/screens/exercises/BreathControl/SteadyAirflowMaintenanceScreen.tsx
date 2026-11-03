@@ -542,6 +542,7 @@ export default function SteadyAirflowMaintenanceScreen({
     startRecording,
     stopRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: frame => {
 
   if (

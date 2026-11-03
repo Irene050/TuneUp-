@@ -744,8 +744,13 @@ export default function WaveformSmoothnessDrillScreen({
       }
 
       const durationMs = params.durationSec * 1000;
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           leavingRef.current ||
@@ -759,7 +764,7 @@ export default function WaveformSmoothnessDrillScreen({
           return;
         }
 
-        elapsedRef.current += 100;
+        elapsedRef.current += elapsedDelta;
         setElapsedMs(elapsedRef.current);
 
         if (elapsedRef.current >= durationMs) {

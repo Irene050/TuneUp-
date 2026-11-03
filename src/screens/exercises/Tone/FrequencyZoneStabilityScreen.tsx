@@ -612,7 +612,13 @@ export default function FrequencyZoneStabilityScreen({
         return;
       }
 
+      let lastTickAt = Date.now();
+
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -623,7 +629,7 @@ export default function FrequencyZoneStabilityScreen({
           return;
         }
 
-        elapsedRef.current += EXERCISE_RECORDING_INTERVAL_MS;
+        elapsedRef.current += elapsedDelta;
         setElapsedMs(elapsedRef.current);
 
         if (

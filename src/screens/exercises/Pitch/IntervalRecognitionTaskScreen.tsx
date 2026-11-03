@@ -746,8 +746,13 @@ export default function IntervalRecognitionTaskScreen({
       recordingRef.current = true;
 
       const durationMs = getRecordingDurationSec(params) * 1000;
+      let lastTickAt = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedDelta = now - lastTickAt;
+        lastTickAt = now;
+
         if (
           !mountedRef.current ||
           pausedRef.current ||
@@ -759,7 +764,7 @@ export default function IntervalRecognitionTaskScreen({
           return;
         }
 
-        recordingElapsedRef.current += 100;
+        recordingElapsedRef.current += elapsedDelta;
 
         const elapsed = recordingElapsedRef.current;
         setRecordingElapsedMs(elapsed);

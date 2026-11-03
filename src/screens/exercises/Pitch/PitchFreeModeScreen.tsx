@@ -121,6 +121,7 @@ export default function PitchFreeModeScreen() {
     stopRecording,
     isRecording,
   } = useAudioRecorder({
+    analyzePitch: false,
     onFrame: handleAudioFrame,
   });
 
@@ -129,8 +130,11 @@ export default function PitchFreeModeScreen() {
       return;
     }
 
+    const startedAt = Date.now();
     const timer = setInterval(() => {
-      setElapsedSeconds(previous => previous + 1);
+      setElapsedSeconds(
+        Math.floor((Date.now() - startedAt) / 1000),
+      );
     }, 1000);
 
     return () => clearInterval(timer);
