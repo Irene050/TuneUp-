@@ -410,14 +410,6 @@ export default function AssessmentScreen() {
       const matchedCount = agilityTargetIndexRef.current;
       setAgilityMatchedCount(matchedCount);
 
-      console.log('AGILITY ASSESSMENT NOTE MATCHED:', {
-        matchedNote: matchedCount,
-        totalNotes: sequence.length,
-        expectedFrequencyHz: expectedFrequency,
-        detectedFrequencyHz: frame.pitch,
-        deviationPct: Number((deviation * 100).toFixed(2)),
-      });
-
       if (matchedCount < sequence.length) {
         return;
       }

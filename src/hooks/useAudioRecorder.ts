@@ -772,7 +772,7 @@ export function useAudioRecorder(
         lastLiveAnalysisRef.current = 0;
 
         console.log(
-          '[AudioRecorder] 🧹 RECORDER CLEANUP COMPLETE',
+          '🧹 RECORDER CLEANUP COMPLETE',
           {
             recorderExists: !!recorderRef.current,
             audioSessionActive: sessionActiveRef.current,
@@ -804,7 +804,7 @@ export function useAudioRecorder(
           fullBuffer.length / DEFAULT_SAMPLE_RATE;
 
         console.log(
-          '[AudioRecorder] Recording summary',
+          'Recording summary',
           {
             sampleRate: DEFAULT_SAMPLE_RATE,
             durationSeconds: Number(

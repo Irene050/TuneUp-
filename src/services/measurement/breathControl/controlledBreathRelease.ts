@@ -21,15 +21,7 @@ export function measureControlledBreathRelease(
   sampleRate: number,
   maxPulseCount?: number,
 ): ControlledBreathReleaseMeasurement {
-  console.log('🔎 MEASUREMENT STARTED:', {
-    sampleCount: samples.length,
-    sampleRate,
-    durationSec: samples.length / sampleRate,
-    maxPulseCount,
-  });
-
   const rmsLevel = calcRMS(samples);
-
   const detectedPeaks = detectPulses(
     samples,
     rmsLevel,
