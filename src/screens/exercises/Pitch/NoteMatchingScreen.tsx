@@ -1,17 +1,26 @@
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
-import { BackHandler, ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
-
 import {
-    NOTE_MATCHING_PARAMS,
-    type Tier,
+  BackHandler,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type DimensionValue,
+} from 'react-native';
+
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS } from '@/constants/appConstants';
+import {
+  NOTE_MATCHING_PARAMS,
+  type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -20,43 +29,37 @@ import { auth } from '@/services/firebase/config';
 import { measureNoteMatching } from '@/services/measurement/pitch/noteMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreNoteMatching } from '@/services/scoring/pitch/noteMatching';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-    calcLiveStability,
-    calcPitchAccuracy,
+  calcLiveStability,
+  calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
+import { clamp } from '@/utils/math';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    frequencyToNoteName,
-    getRandomPitchNote,
-    type VocalRange
+  frequencyToNoteName,
+  getRandomPitchNote,
+  type VocalRange,
 } from '@/utils/music/notes';
+import { formatFrequency } from '@/utils/numberFormatting';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen,
-    MetricCard,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
-
-import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-} from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { clamp } from '@/utils/math';
-import { formatFrequency } from '@/utils/numberFormatting';
 
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;
@@ -84,7 +87,6 @@ type LivePitchState = {
 type ResultState = {
   score: number;
   passed: boolean;
-  deviationPct: number;
   detectedFrequency: number;
   averageClarity: number;
   voicedFrames: number;
@@ -95,6 +97,7 @@ type PitchGuideStatus = {
   color: string;
   cents: number | null;
   position: number;
+  hint: string;
 };
 
 function calculateCentsDifference(
@@ -124,10 +127,11 @@ function getPitchGuideStatus(
     targetFrequency <= 0
   ) {
     return {
-      label: 'LISTENING FOR PITCH',
+      label: 'LISTENING',
       color: COLORS.muted,
       cents: null,
       position: 50,
+      hint: 'Sing the target note to see your live pitch.',
     };
   }
 
@@ -136,22 +140,30 @@ function getPitchGuideStatus(
 
   let label: string;
   let color: string;
+  let hint: string;
 
   if (absoluteCents <= 25) {
     label = 'IN TUNE';
     color = COLORS.guideGreen;
+    hint = 'Great! Keep holding the target pitch steadily.';
   } else if (absoluteCents <= 60) {
     label = cents > 0 ? 'A LITTLE HIGH' : 'A LITTLE LOW';
     color = COLORS.guideYellow;
+    hint = cents > 0
+      ? 'Relax your voice slightly and bring your pitch down.'
+      : 'Gently raise your pitch toward the target note.';
   } else {
     label = cents > 0 ? 'TOO HIGH' : 'TOO LOW';
     color = COLORS.guideRed;
+    hint = cents > 0
+      ? 'Your pitch is too high. Try aiming lower.'
+      : 'Your pitch is too low. Try aiming higher.';
   }
 
   const position = clamp(
-    50 + cents * 0.5,
-    4.2,
-    95.8,
+    50 + (cents / GUIDE_MAX_CENTS) * 43,
+    7,
+    93,
   );
 
   return {
@@ -159,6 +171,7 @@ function getPitchGuideStatus(
     color,
     cents,
     position,
+    hint,
   };
 }
 
@@ -502,10 +515,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
         results.length,
     );
 
-    const averageDeviation =
-      results.reduce((sum, item) => sum + item.deviationPct, 0) /
-      results.length;
-
     const detectedResults = results.filter(
       item => item.detectedFrequency > 0,
     );
@@ -552,7 +561,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
     setResult({
       score: finalScore,
       passed,
-      deviationPct: averageDeviation,
       detectedFrequency: averageDetectedFrequency,
       averageClarity,
       voicedFrames: totalVoicedFrames,
@@ -626,7 +634,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
         const repetitionResult: ResultState = {
           score: scored.score,
           passed: scored.passed,
-          deviationPct: scored.deviationPct,
           detectedFrequency: scored.detectedFrequency,
           averageClarity: scored.averageClarity,
           voicedFrames: measurement.voicedFrames,
@@ -1082,26 +1089,29 @@ export default function NoteMatchingScreen({ tier }: Props) {
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={pausedScreenRef.current === 'instructions' ||
-            pausedScreenRef.current === 'results'
-              ? 'Are you sure you want to leave Note Matching?'
-              : pausedScreenRef.current === 'recording'
-                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-                : pausedScreenRef.current === 'processing'
-                  ? 'Your exercise is paused. Continue to resume processing your current results.'
-                  : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'}
+        title="Quit exercise?"
+        message={
+          pausedScreenRef.current === 'instructions' ||
+          pausedScreenRef.current === 'results'
+            ? 'Are you sure you want to leave Note Matching?'
+            : pausedScreenRef.current === 'recording'
+              ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+              : pausedScreenRef.current === 'processing'
+                ? 'Your exercise is paused. Continue to resume processing your current results.'
+                : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={() => {
-              void quitExercise();
-            }}
-        continueLabel={"Continue Exercise"}
+          void quitExercise();
+        }}
+        continueLabel="Continue Exercise"
         quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
       />
+
       <ExerciseNoAudioModal
         visible={showNoAudioModal}
-        onRedo={function redoExerciseRepetition() {
+        onRedo={() => {
           setShowNoAudioModal(false);
           currentRepRef.current = repResultsRef.current.length + 1;
           setCurrentRep(currentRepRef.current);
@@ -1225,7 +1235,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
               <Ionicons name="mic" size={30} color={COLORS.brown} />
             </View>
 
-            
             <Text style={styles.recordingTitle}>Sing the Note</Text>
             <Text style={styles.recordingSubtitle}>
               Repetition {currentRep} of {adaptiveParams.repetitions}
@@ -1246,12 +1255,12 @@ export default function NoteMatchingScreen({ tier }: Props) {
                     {
                       backgroundColor:
                         pitchGuide.cents === null
-                          ? COLORS.white
-                          : `${pitchGuide.color}15`,
+                          ? COLORS.lightGray
+                          : `${pitchGuide.color}18`,
                       borderColor:
                         pitchGuide.cents === null
                           ? COLORS.border
-                          : `${pitchGuide.color}55`,
+                          : `${pitchGuide.color}70`,
                     },
                   ]}
                 >
@@ -1261,248 +1270,244 @@ export default function NoteMatchingScreen({ tier }: Props) {
                       { color: pitchGuide.color },
                     ]}
                   >
-                    {pitchGuide.cents === null
-                      ? 'LISTENING'
-                      : pitchGuide.label}
+                    {pitchGuide.label}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.pitchTargetSummary}>
-                <View style={styles.pitchTargetSide}>
-                  <Text style={styles.pitchTargetCaption}>
-                    TARGET NOTE
-                  </Text>
-                  <Text style={styles.pitchTargetValue}>
-                    {targetNote}
-                  </Text>
-                  <Text style={styles.pitchTargetFrequency}>
-                    {formatFrequency(targetFrequency)}
-                  </Text>
-                </View>
+              <View style={styles.pitchGuideInner}>
+                <View style={styles.pitchTargetSummary}>
+                  <View style={styles.pitchTargetSide}>
+                    <Text style={styles.pitchTargetCaption}>
+                      TARGET NOTE
+                    </Text>
+                    <Text style={styles.pitchTargetValue}>
+                      {targetNote}
+                    </Text>
+                    <Text style={styles.pitchTargetFrequency}>
+                      {formatFrequency(targetFrequency)}
+                    </Text>
+                  </View>
 
-                <View style={styles.pitchDetectedSummary}>
-                  <Text style={styles.pitchTargetCaption}>
-                    YOUR PITCH
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pitchDetectedValue,
-                      {
-                        color:
-                          pitchGuide.cents === null
-                            ? COLORS.brown
-                            : pitchGuide.color,
-                      },
-                    ]}
-                  >
-                    {livePitch.pitch > 0 ? livePitch.note : '--'}
-                  </Text>
-                  <Text style={styles.pitchTargetFrequency}>
-                    {formatFrequency(livePitch.pitch)}
-                  </Text>
-                </View>
-              </View>
+                  <View style={styles.pitchComparisonArrow}>
+                    <Ionicons
+                      name="mic-outline"
+                      size={22}
+                      color={COLORS.muted}
+                    />
+                  </View>
 
-              <View style={styles.horizontalPitchMeter}>
-                <View style={styles.pitchMeterLabels}>
-                  <Text style={styles.pitchMeterEdgeLabel}>
-                    {'← LOW'}
-                  </Text>
-                  <Text style={styles.pitchMeterCenterLabel}>
-                    TARGET
-                  </Text>
-                  <Text style={styles.pitchMeterEdgeLabel}>
-                    {'HIGH →'}
-                  </Text>
-                </View>
-
-                <View style={styles.pitchMeterTrack}>
-                  <View
-                    style={[
-                      styles.pitchMeterZone,
-                      {
-                        left: '0%',
-                        width: '20%',
-                        backgroundColor: COLORS.guideRed,
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.pitchMeterZone,
-                      {
-                        left: '20%',
-                        width: '17.5%',
-                        backgroundColor: COLORS.guideYellow,
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.pitchMeterZone,
-                      {
-                        left: '37.5%',
-                        width: '25%',
-                        backgroundColor: COLORS.guideGreen,
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.pitchMeterZone,
-                      {
-                        left: '62.5%',
-                        width: '17.5%',
-                        backgroundColor: COLORS.guideYellow,
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.pitchMeterZone,
-                      {
-                        left: '80%',
-                        width: '20%',
-                        backgroundColor: COLORS.guideRed,
-                      },
-                    ]}
-                  />
-
-                  <View style={styles.pitchMeterTargetLine} />
-
-                  {pitchTrace.map((sample, index) => {
-                    const traceLeft: DimensionValue =
-                      `${clamp(50 + sample * 50, 4.2, 95.8)}%`;
-
-                    const absoluteCents = Math.abs(
-                      sample * GUIDE_MAX_CENTS,
-                    );
-
-                    const traceColor =
-                      absoluteCents <= 25
-                        ? COLORS.guideGreen
-                        : absoluteCents <= 60
-                          ? COLORS.guideYellow
-                          : COLORS.guideRed;
-
-                    return (
-                      <View
-                        key={`pitch-trace-${index}`}
-                        style={[
-                          styles.pitchMeterTrace,
-                          {
-                            left: traceLeft,
-                            opacity:
-                              0.2 +
-                              (index /
-                                Math.max(pitchTrace.length, 1)) *
-                                0.65,
-                            backgroundColor: traceColor,
-                          },
-                        ]}
-                      />
-                    );
-                  })}
-
-                  <View
-                    style={[
-                      styles.pitchMeterMarker,
-                      {
-                        left: pitchIndicatorLeft,
-                        borderColor: pitchGuide.color,
-                        backgroundColor: COLORS.gray,
-                      },
-                    ]}
-                  >
-                    <View
+                  <View style={styles.pitchDetectedSummary}>
+                    <Text style={styles.pitchTargetCaption}>
+                      YOUR PITCH
+                    </Text>
+                    <Text
                       style={[
-                        styles.pitchMeterMarkerInner,
+                        styles.pitchDetectedValue,
                         {
-                          backgroundColor:
+                          color:
                             pitchGuide.cents === null
-                              ? COLORS.muted
+                              ? COLORS.brown
                               : pitchGuide.color,
                         },
                       ]}
-                    />
+                    >
+                      {livePitch.pitch > 0 ? livePitch.note : '--'}
+                    </Text>
+                    <Text style={styles.pitchTargetFrequency}>
+                      {formatFrequency(livePitch.pitch)}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.pitchMeterScale}>
-                  <Text style={styles.pitchMeterScaleText}>
-                    -100 cents
-                  </Text>
-                  <Text style={styles.pitchMeterScaleText}>0</Text>
-                  <Text style={styles.pitchMeterScaleText}>
-                    +100 cents
-                  </Text>
+                <View style={styles.horizontalPitchMeter}>
+                  <View style={styles.pitchMeterLabels}>
+                    <Text style={styles.pitchMeterEdgeLabel}>
+                      ← LOW
+                    </Text>
+                    <Text style={styles.pitchMeterCenterLabel}>
+                      TARGET
+                    </Text>
+                    <Text style={styles.pitchMeterEdgeLabel}>
+                      HIGH →
+                    </Text>
+                  </View>
+
+                  <View style={styles.pitchMeterTrack}>
+                    <View
+                      style={[
+                        styles.pitchMeterZone,
+                        {
+                          left: '0%',
+                          width: '20%',
+                          backgroundColor: COLORS.guideRed,
+                          borderTopLeftRadius: 8,
+                          borderBottomLeftRadius: 8,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pitchMeterZone,
+                        {
+                          left: '20%',
+                          width: '15%',
+                          backgroundColor: COLORS.guideYellow,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pitchMeterZone,
+                        {
+                          left: '35%',
+                          width: '30%',
+                          backgroundColor: COLORS.guideGreen,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pitchMeterZone,
+                        {
+                          left: '65%',
+                          width: '15%',
+                          backgroundColor: COLORS.guideYellow,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pitchMeterZone,
+                        {
+                          left: '80%',
+                          width: '20%',
+                          backgroundColor: COLORS.guideRed,
+                          borderTopRightRadius: 8,
+                          borderBottomRightRadius: 8,
+                        },
+                      ]}
+                    />
+
+                    <View style={styles.pitchMeterTargetLine} />
+
+                    {pitchTrace.map((sample, index) => {
+                      const traceLeft: DimensionValue =
+                        `${clamp(50 + sample * 43, 7, 93)}%`;
+
+                      const absoluteCents = Math.abs(
+                        sample * GUIDE_MAX_CENTS,
+                      );
+
+                      const traceColor =
+                        absoluteCents <= 25
+                          ? COLORS.guideGreen
+                          : absoluteCents <= 60
+                            ? COLORS.guideYellow
+                            : COLORS.guideRed;
+
+                      return (
+                        <View
+                          key={`pitch-trace-${index}`}
+                          style={[
+                            styles.pitchMeterTrace,
+                            {
+                              left: traceLeft,
+                              opacity:
+                                0.2 +
+                                (index /
+                                  Math.max(pitchTrace.length, 1)) *
+                                  0.65,
+                              backgroundColor: traceColor,
+                            },
+                          ]}
+                        />
+                      );
+                    })}
+
+                    <View
+                      style={[
+                        styles.pitchMeterMarker,
+                        {
+                          left: pitchIndicatorLeft,
+                          borderColor:
+                            pitchGuide.cents === null
+                              ? COLORS.muted
+                              : pitchGuide.color,
+                          opacity:
+                            pitchGuide.cents === null ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.pitchMeterMarkerInner,
+                          {
+                            backgroundColor:
+                              pitchGuide.cents === null
+                                ? COLORS.muted
+                                : pitchGuide.color,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.pitchMeterScale}>
+                    <Text style={styles.pitchMeterScaleText}>
+                      -100 cents
+                    </Text>
+                    <Text style={styles.pitchMeterScaleText}>
+                      0
+                    </Text>
+                    <Text style={styles.pitchMeterScaleText}>
+                      +100 cents
+                    </Text>
+                  </View>
                 </View>
               </View>
 
-              <View style={styles.pitchGuideFooter}>
-                <Ionicons
-                  name="ear-outline"
-                  size={15}
-                  color={COLORS.muted}
+              <View style={styles.metricsGrid}>
+                <MetricCard
+                  label="ACCURACY"
+                  variant="noteMatching"
+                  value={
+                    livePitch.pitch > 0
+                      ? `${Math.round(
+                          clamp(
+                            calcPitchAccuracy(
+                              livePitch.pitch,
+                              targetFrequency,
+                            ),
+                            0,
+                            100,
+                          ),
+                        )}%`
+                      : '--'
+                  }
                 />
-                <Text style={styles.pitchGuideHint}>
-                  {pitchGuide.cents === null
-                    ? 'Sing the target note to activate the guide.'
-                    : pitchGuide.cents > 25
-                      ? 'Lower your pitch toward the center.'
-                      : pitchGuide.cents < -25
-                        ? 'Raise your pitch toward the center.'
-                        : 'Great! Keep your pitch steady.'}
-                </Text>
+
+                <MetricCard
+                  label="STABILITY"
+                  variant="noteMatching"
+                  value={
+                    livePitch.pitch > 0
+                      ? `${Math.round(livePitch.stability)}%`
+                      : '--'
+                  }
+                />
+
+                <MetricCard
+                  label="FREQUENCY"
+                  variant="noteMatching"
+                  value={
+                    livePitch.pitch > 0
+                      ? `${livePitch.pitch.toFixed(0)} Hz`
+                      : '-- Hz'
+                  }
+                />
               </View>
             </View>
-
-            <View style={styles.metricsGrid}>
-              <MetricCard
-                label="ACCURACY"
-                variant="noteMatching"
-                value={
-                  livePitch.pitch > 0
-                    ? `${Math.round(
-                        clamp(
-                          calcPitchAccuracy(
-                            livePitch.pitch,
-                            targetFrequency,
-                          ),
-                          0,
-                          100,
-                        ),
-                      )}%`
-                    : '--'
-                }
-              />
-
-              <MetricCard
-                label="STABILITY"
-                variant="noteMatching"
-                value={
-                  livePitch.pitch > 0
-                    ? `${Math.round(livePitch.stability)}%`
-                    : '--'
-                }
-              />
-
-              <MetricCard
-                label="FREQUENCY"
-                variant="noteMatching"
-                value={
-                  livePitch.pitch > 0
-                    ? `${livePitch.pitch.toFixed(0)} Hz`
-                    : '-- Hz'
-                }
-              />
-            </View>
-
-            <Text style={styles.timerText}>
-              {elapsedSeconds.toFixed(1)} /{' '}
-              {RECORDING_DURATION_SECONDS.toFixed(1)}s
-            </Text>
 
             <View style={styles.timerTrack}>
               <View
@@ -1520,6 +1525,10 @@ export default function NoteMatchingScreen({ tier }: Props) {
                 ]}
               />
             </View>
+            <Text style={styles.timerText}>
+              {elapsedSeconds.toFixed(1)} /{' '}
+              {RECORDING_DURATION_SECONDS.toFixed(1)}s
+            </Text>
           </ScrollView>
         </View>
       )}
@@ -1532,7 +1541,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
             currentRep < adaptiveParams.repetitions
               ? `Checking repetition ${currentRep} of ${adaptiveParams.repetitions}.`
               : 'Calculating your final Note Matching result.'
-         }
+          }
         />
       )}
 
@@ -1627,7 +1636,11 @@ export default function NoteMatchingScreen({ tier }: Props) {
           </View>
 
           <View style={styles.feedbackCard}>
-            <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
+            <Ionicons
+              name="bulb-outline"
+              size={21}
+              color={COLORS.brown}
+            />
 
             <View style={styles.feedbackContent}>
               <Text style={styles.feedbackTitle}>Feedback</Text>
@@ -1695,7 +1708,7 @@ const styles = StyleSheet.create({
   recordingIcon: {
     width: 64,
     height: 64,
-    borderRadius: 22,
+    borderRadius: 99,
     backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1706,10 +1719,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     textAlign: 'center',
-    marginTop: 18,
-    marginBottom: 7,
+    marginTop: 8,
   },
   timerTrack: {
+    marginTop: 12,
     width: '100%',
     height: 7,
     backgroundColor: COLORS.lightGray,
@@ -1796,7 +1809,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     marginTop: 4,
   },
-
   recordingContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -1820,7 +1832,7 @@ const styles = StyleSheet.create({
   },
   pitchGuideCard: {
     width: '100%',
-    padding: 14,
+    padding: 12,
     borderRadius: 22,
     backgroundColor: COLORS.background,
     borderWidth: 1,
@@ -1831,6 +1843,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+    marginBottom: 10,
   },
   pitchGuideTitleRow: {
     flexDirection: 'row',
@@ -1841,7 +1854,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: COLORS.gray,
+    backgroundColor: COLORS.brown,
   },
   pitchGuideTitle: {
     fontFamily: 'FredokaBold',
@@ -1855,28 +1868,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 9,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     maxWidth: '53%',
   },
   guideStatusText: {
     fontFamily: 'FredokaBold',
     fontSize: 8,
-    letterSpacing: 0.15,
+    letterSpacing: 0.2,
     flexShrink: 1,
     textAlign: 'center',
+  },
+  pitchGuideInner: {
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 13,
   },
   pitchTargetSummary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
   },
   pitchTargetSide: {
     flex: 1,
@@ -1889,20 +1905,10 @@ const styles = StyleSheet.create({
   },
   pitchTargetValue: {
     fontFamily: 'FredokaBold',
-    fontSize: 28,
-    lineHeight: 33,
+    fontSize: 29,
+    lineHeight: 35,
     color: COLORS.brown,
-    marginTop: 1,
-  },
-  pitchDetectedSummary: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  pitchDetectedValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    lineHeight: 33,
-    marginTop: 1,
+    marginTop: 2,
   },
   pitchTargetFrequency: {
     fontFamily: 'FredokaRegular',
@@ -1910,9 +1916,28 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 1,
   },
+  pitchComparisonArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.lightGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+  },
+  pitchDetectedSummary: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  pitchDetectedValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 29,
+    lineHeight: 35,
+    marginTop: 2,
+  },
   horizontalPitchMeter: {
     width: '100%',
-    marginTop: 18,
+    marginTop: 19,
   },
   pitchMeterLabels: {
     flexDirection: 'row',
@@ -1968,54 +1993,80 @@ const styles = StyleSheet.create({
   pitchMeterMarker: {
     position: 'absolute',
     top: '50%',
-    width: 23,
-    height: 23,
-    borderRadius: 12,
-    borderWidth: 2,
-    marginLeft: -11.5,
-    marginTop: -11.5,
+    width: 25,
+    height: 25,
+    marginLeft: -12.5,
+    marginTop: -12.5,
+    borderRadius: 13,
+    borderWidth: 3,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
-    elevation: 3,
+    zIndex: 3,
+    elevation: 4,
+    shadowColor: COLORS.gray,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
   },
   pitchMeterMarkerInner: {
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: COLORS.white,
   },
   pitchMeterScale: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 7,
   },
   pitchMeterScaleText: {
     fontFamily: 'FredokaRegular',
-    fontSize: 8,
+    fontSize: 9,
     color: COLORS.muted,
   },
   pitchGuideFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    marginTop: 14,
-    paddingTop: 12,
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    marginTop: 14,
+    paddingTop: 11,
+    gap: 10,
+  },
+  pitchGuideHintRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   pitchGuideHint: {
     flex: 1,
     fontFamily: 'FredokaRegular',
     fontSize: 10,
-    lineHeight: 15,
+    lineHeight: 14,
+    color: COLORS.brown,
+  },
+  pitchGuideCents: {
+    alignItems: 'flex-end',
+    minWidth: 65,
+  },
+  pitchGuideCentsLabel: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 8,
+    letterSpacing: 0.45,
     color: COLORS.muted,
+  },
+  pitchGuideCentsValue: {
+    fontFamily: 'FredokaBold',
+    fontSize: 12,
+    marginTop: 2,
   },
   metricsGrid: {
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'nowrap',
     gap: 8,
-    marginTop: 14,
+    marginTop: 10,
   },
 });

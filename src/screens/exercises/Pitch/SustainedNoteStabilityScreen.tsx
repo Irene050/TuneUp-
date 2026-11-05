@@ -1354,22 +1354,16 @@ export default function SustainedNoteStabilityScreen({
           </View>
 
           <Text style={styles.phaseTitle}>
-            Hold {targetNote.name}
+            Sustain {targetNote.name}
           </Text>
 
           <Text style={styles.phaseSubtitle}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <Text style={styles.phaseSubtitle}>
-            Keep your pitch as steady as possible.
-          </Text>
-
           <View style={styles.liveCard}>
             <View style={styles.liveCardHeader}>
-              <View style={styles.liveHeaderText}>
-                <Text style={styles.liveCardTitle}>LIVE PITCH GUIDE</Text>
-              </View>
+              <Text style={styles.liveCardTitle}>LIVE PITCH GUIDE</Text>
             </View>
 
             <View style={styles.pitchComparison}>
@@ -1383,7 +1377,7 @@ export default function SustainedNoteStabilityScreen({
 
               <View style={styles.pitchComparisonDivider}>
                 <Ionicons
-                  name="arrow-forward"
+                  name="mic-outline"
                   size={20}
                   color={COLORS.muted}
                 />
@@ -1429,12 +1423,7 @@ export default function SustainedNoteStabilityScreen({
             <View style={styles.liveStats}>
               <View style={styles.liveStat}>
                 <View style={styles.liveStatHeading}>
-                  <Ionicons
-                    name="locate-outline"
-                    size={15}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.liveStatLabel}>Accuracy</Text>
+                  <Text style={styles.liveStatLabel}>ACCURACY</Text>
                 </View>
                 <Text style={styles.liveStatValue}>
                   {Math.round(liveAccuracy)}%
@@ -1445,12 +1434,7 @@ export default function SustainedNoteStabilityScreen({
 
               <View style={styles.liveStat}>
                 <View style={styles.liveStatHeading}>
-                  <Ionicons
-                    name="pulse-outline"
-                    size={15}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.liveStatLabel}>Stability</Text>
+                  <Text style={styles.liveStatLabel}>STABILITY</Text>
                 </View>
                 <Text style={styles.liveStatValue}>
                   {Math.round(liveStability)}%
@@ -1660,12 +1644,6 @@ function LivePitchIndicator({
   return (
     <View style={styles.pitchIndicator}>
       <View style={styles.pitchIndicatorHeader}>
-        <View>
-          <Text style={styles.indicatorTitle}>Pitch Accuracy</Text>
-          <Text style={styles.indicatorSubtitle}>
-            Distance from target
-          </Text>
-        </View>
 
         <View
           style={[
@@ -1691,9 +1669,9 @@ function LivePitchIndicator({
       </View>
 
       <View style={styles.pitchMeterLabels}>
-        <Text style={styles.pitchMeterEndLabel}>FLAT</Text>
-        <Text style={styles.pitchMeterCenterLabel}>IN TUNE</Text>
-        <Text style={styles.pitchMeterEndLabel}>SHARP</Text>
+        <Text style={styles.pitchMeterEndLabel}>← LOW</Text>
+        <Text style={styles.pitchMeterCenterLabel}>TARGET</Text>
+        <Text style={styles.pitchMeterEndLabel}>→ HIGH</Text>
       </View>
 
       <View style={styles.pitchMeter}>
@@ -1770,13 +1748,9 @@ function LiveStabilityIndicator({
 
   return (
     <View style={styles.stabilityIndicator}>
-      <View style={styles.stabilityHeader}>
-        <View style={styles.stabilityHeadingText}>
           <Text style={styles.indicatorTitle}>
             Pitch Stability
           </Text>
-        </View>
-      </View>
 
       <View style={styles.stabilityTrack}>
         <View
@@ -2065,7 +2039,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: COLORS.muted,
     textAlign: 'center',
-    marginTop: 8,
   },
   targetCard: {
     width: '100%',
@@ -2159,7 +2132,7 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     width: '100%',
-    marginTop: 22,
+    marginTop: 16,
     alignItems: 'center',
   },
   progressTrack: {
@@ -2301,15 +2274,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  liveHeaderText: {
-    flex: 1,
-    paddingRight: 8,
+    marginBottom: 18,
   },
   liveCardTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 19,
+    fontSize: 12,
     color: COLORS.brown,
   },
   pitchComparison: {
@@ -2332,7 +2301,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,
@@ -2458,20 +2427,16 @@ const styles = StyleSheet.create({
   stabilityIndicator: {
     width: '100%',
   },
-  stabilityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   stabilityHeadingText: {
     flex: 1,
   },
   stabilityTrack: {
     height: 10,
     width: '100%',
-    backgroundColor: COLORS.gray,
+    backgroundColor: COLORS.lightGray,
     borderRadius: 5,
     overflow: 'hidden',
-    marginTop: 15,
+    marginTop: 10,
   },
   stabilityFill: {
     height: '100%',

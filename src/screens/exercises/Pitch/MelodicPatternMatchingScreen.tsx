@@ -214,38 +214,10 @@ function LivePitchIndicator({
 
   return (
     <View style={styles.pitchIndicator}>
-      <View style={styles.pitchIndicatorHeader}>
-        <View style={styles.indicatorHeading}>
-          <Text style={styles.indicatorTitle}>Pitch Accuracy</Text>
-        </View>
-
-        <View
-          style={[
-            styles.pitchStatusBadge,
-            { backgroundColor: statusBackground },
-          ]}
-        >
-          <View
-            style={[
-              styles.pitchStatusDot,
-              { backgroundColor: statusColor },
-            ]}
-          />
-          <Text
-            style={[
-              styles.pitchStatusText,
-              { color: statusColor },
-            ]}
-          >
-            {status}
-          </Text>
-        </View>
-      </View>
-
       <View style={styles.pitchMeterLabels}>
-        <Text style={styles.pitchMeterEndLabel}>FLAT</Text>
-        <Text style={styles.pitchMeterCenterLabel}>IN TUNE</Text>
-        <Text style={styles.pitchMeterEndLabel}>SHARP</Text>
+        <Text style={styles.pitchMeterEndLabel}>← LOW</Text>
+        <Text style={styles.pitchMeterCenterLabel}>TARGET</Text>
+        <Text style={styles.pitchMeterEndLabel}>HIGH →</Text>
       </View>
 
       <View style={styles.pitchMeter}>
@@ -1526,44 +1498,20 @@ export default function MelodicPatternMatchingScreen({
       <View style={styles.recordingScreen}>
         <View style={styles.recordingHeader}>
 
-          <Text style={styles.recordingTitle}>
-            Your Turn to Sing
-          </Text>
-
-          <Text style={styles.recordingSubtitle}>
-            Match the melody in the same order
-          </Text>
-
-          <View style={styles.repBadge}>
-            <Text style={styles.repBadgeText}>
-              Repetition {currentRep} of {repetitionCount}
-            </Text>
-          </View>
-        </View>
-
-        <ScrollView
-          style={styles.recordingScroll}
-          contentContainerStyle={styles.recordingScrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-
-          <View style={styles.liveCard}>
-            <View style={styles.liveCardHeader}>
-              <View style={styles.liveHeaderText}>
-                <Text style={styles.liveCardTitle}>
-                  LIVE PITCH GUIDE
-                </Text>
-              </View>
-
-              <View style={styles.liveRecordingBadge}>
-                <View style={styles.liveRecordingDot} />
-                <Text style={styles.liveRecordingBadgeText}>
-                  LIVE
-                </Text>
-              </View>
+          <View style={styles.recordingIcon}>
+              <Ionicons name="mic" size={30} color={COLORS.brown} />
             </View>
 
-            <View
+          <Text style={styles.recordingTitle}>
+            Sing the Melody
+          </Text>
+
+          <Text style={styles.repBadgeText}>
+            Repetition {currentRep} of {repetitionCount}
+          </Text>
+        </View>
+
+        <View
               style={[
                 styles.recordingNoteList,
                 { gap: noteChipGap },
@@ -1577,6 +1525,28 @@ export default function MelodicPatternMatchingScreen({
                   size={noteChipSize}
                 />
               ))}
+            </View>
+
+        <ScrollView
+          style={styles.recordingScroll}
+          contentContainerStyle={styles.recordingScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+
+          <View style={styles.liveCard}>
+            <View style={styles.liveCardHeader}>
+              <View style={styles.liveHeaderText}>
+                <Text style={styles.liveCardTitle}>
+                  <View style={styles.liveRecordingDot} />
+                  LIVE PITCH GUIDE
+                </Text>
+              </View>
+
+              <View style={styles.liveRecordingBadge}>
+                <Text style={styles.liveRecordingBadgeText}>
+                  LISTENING
+                </Text>
+              </View>
             </View>
 
             <View style={styles.pitchComparison}>
@@ -1594,7 +1564,7 @@ export default function MelodicPatternMatchingScreen({
 
               <View style={styles.pitchComparisonDivider}>
                 <Ionicons
-                  name="arrow-forward"
+                  name="mic-outline"
                   size={18}
                   color={COLORS.muted}
                 />
@@ -1631,12 +1601,7 @@ export default function MelodicPatternMatchingScreen({
             <View style={styles.liveStats}>
               <View style={styles.liveStatSummary}>
                 <View style={styles.liveStatHeading}>
-                  <Ionicons
-                    name="musical-note-outline"
-                    size={15}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.liveStatLabel}>Note</Text>
+                  <Text style={styles.liveStatLabel}>Notes</Text>
                 </View>
                 <Text style={styles.liveStatValue}>
                   {Math.min(currentNoteIndex + 1, params.noteCount)}
@@ -1648,11 +1613,6 @@ export default function MelodicPatternMatchingScreen({
 
               <View style={styles.liveStatSummary}>
                 <View style={styles.liveStatHeading}>
-                  <Ionicons
-                    name="list-outline"
-                    size={15}
-                    color={COLORS.brown}
-                  />
                   <Text style={styles.liveStatLabel}>Pattern</Text>
                 </View>
                 <Text style={styles.liveStatValue}>
@@ -1661,23 +1621,7 @@ export default function MelodicPatternMatchingScreen({
               </View>
             </View>
           </View>
-          <View style={styles.recordingTimerCard}>
-            <View style={styles.recordingTimerTopRow}>
-              <View style={styles.recordingStatus}>
-                <View style={styles.liveRecordingDot} />
-                <Text style={styles.recordingStatusText}>
-                  RECORDING
-                </Text>
-              </View>
-
-              <Text style={styles.recordingTime}>
-                {Math.min(elapsed, targetDuration).toFixed(1)}s
-                {' / '}
-                {targetDuration.toFixed(1)}s
-              </Text>
-            </View>
-
-            <View style={styles.recordingProgressTrack}>
+          <View style={styles.recordingProgressTrack}>
               <View
                 style={[
                   styles.recordingProgressFill,
@@ -1685,7 +1629,6 @@ export default function MelodicPatternMatchingScreen({
                 ]}
               />
             </View>
-          </View>
         </ScrollView>
       </View>
     );
@@ -1869,19 +1812,18 @@ const styles = StyleSheet.create({
   },
   noteChip: {
     minWidth: 0,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.lightGray,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 0,
   },
   noteChipActive: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.pink,
+    backgroundColor: COLORS.pink,
   },
   noteChipText: {
-    color: COLORS.brown,
+    color: COLORS.muted,
     fontSize: 18,
     fontFamily: 'FredokaSemiBold',
   },
@@ -1890,7 +1832,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
   },
   recordingScreen: {
-    paddingTop: 40,
+    paddingTop: 60,
     flex: 1,
     backgroundColor: COLORS.white,
   },
@@ -1926,9 +1868,11 @@ const styles = StyleSheet.create({
     marginTop: 13,
   },
   repBadgeText: {
-    color: COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
+    color: COLORS.muted,
+    fontFamily: 'FredokaRegular',
     fontSize: 12,
+    marginTop: 4,
+    marginBottom: -12,
   },
   recordingScroll: {
     flex: 1,
@@ -1978,7 +1922,7 @@ const styles = StyleSheet.create({
   recordingProgressFill: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.brown,
+    backgroundColor: COLORS.pink,
   },
   liveCard: {
     width: '100%',
@@ -1994,7 +1938,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 10,
+    marginTop: -6,
   },
   liveHeaderText: {
     flex: 1,
@@ -2002,13 +1947,13 @@ const styles = StyleSheet.create({
   },
   liveCardTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 19,
+    fontSize: 12,
     color: COLORS.brown,
   },
   liveRecordingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.pink,
+    backgroundColor: COLORS.lightGray,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
@@ -2017,13 +1962,13 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: COLORS.guideRed,
+    backgroundColor: COLORS.brown,
     marginRight: 5,
   },
   liveRecordingBadgeText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
-    color: COLORS.brown,
+    color: COLORS.muted,
   },
   pitchComparison: {
     width: '100%',
@@ -2058,7 +2003,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 3,
@@ -2087,7 +2032,7 @@ const styles = StyleSheet.create({
   },
   pitchIndicator: {
     width: '100%',
-    marginTop: 21,
+    marginTop: 8,
   },
   pitchIndicatorHeader: {
     flexDirection: 'row',
@@ -2102,6 +2047,15 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: COLORS.brown,
+  },
+  recordingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 99,
+    backgroundColor: COLORS.pink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   pitchStatusBadge: {
     flexDirection: 'row',
@@ -2128,9 +2082,9 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   pitchMeterEndLabel: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FredokaBold',
     fontSize: 9,
-    color: COLORS.muted,
+    color: COLORS.guideRed,
   },
   pitchMeterCenterLabel: {
     fontFamily: 'FredokaBold',

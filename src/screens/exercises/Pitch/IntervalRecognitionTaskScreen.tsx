@@ -192,7 +192,7 @@ function getPitchGuideStatus(
   );
 
   const absoluteCents = Math.abs(cents);
-  const direction = cents < 0 ? 'FLAT' : 'SHARP';
+  const direction = cents < 0 ? '← LOW' : '→ HIGH';
 
   if (absoluteCents <= 25) {
     return {
@@ -1673,16 +1673,9 @@ export default function IntervalRecognitionTaskScreen({
               Sing the Interval
             </Text>
 
-            <Text style={styles.phaseSubtitle}>
-              Repeat the same interval {repetitionCount} times. Leave a
-              short pause between notes and repetitions.
-            </Text>
-
-            <View style={styles.repetitionBadge}>
-              <Text style={styles.repetitionBadgeText}>
+            <Text style={styles.repetitionBadgeText}>
                 Repetition {currentRep} of {repetitionCount}
-              </Text>
-            </View>
+            </Text>
 
             <View style={styles.intervalProgress}>
               <View
@@ -1724,7 +1717,12 @@ export default function IntervalRecognitionTaskScreen({
               <View style={styles.pitchGuideHeader}>
                 <View style={styles.pitchGuideHeading}>
                   <View style={styles.pitchGuideTitleRow}>
-
+                  <View
+                    style={[
+                      styles.guideStatusDot,
+                      { backgroundColor: COLORS.brown },
+                    ]}
+                  />
                     <Text style={styles.pitchGuideTitle}>
                       LIVE PITCH GUIDE
                     </Text>
@@ -1737,21 +1735,15 @@ export default function IntervalRecognitionTaskScreen({
                     {
                       backgroundColor:
                         pitchGuide.cents === null
-                          ? COLORS.white
+                          ? COLORS.lightGray
                           : `${pitchGuide.color}15`,
                       borderColor:
                         pitchGuide.cents === null
-                          ? COLORS.border
+                          ? COLORS.lightGray
                           : `${pitchGuide.color}66`,
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.guideStatusDot,
-                      { backgroundColor: pitchGuide.color },
-                    ]}
-                  />
 
                   <Text
                     style={[
@@ -1767,7 +1759,7 @@ export default function IntervalRecognitionTaskScreen({
               <View style={styles.pitchTargetSummary}>
                 <View style={styles.pitchSummaryColumn}>
                   <Text style={styles.pitchTargetCaption}>
-                    CURRENT TARGET
+                    TARGET NOTE
                   </Text>
 
                   <Text style={styles.pitchTargetValue}>
@@ -1783,7 +1775,7 @@ export default function IntervalRecognitionTaskScreen({
 
                 <View style={styles.pitchDetectedSummary}>
                   <Text style={styles.pitchTargetCaption}>
-                    YOUR NOTE
+                    YOUR PITCH
                   </Text>
 
                   <Text
@@ -1813,15 +1805,15 @@ export default function IntervalRecognitionTaskScreen({
               <View style={styles.horizontalPitchMeter}>
                 <View style={styles.pitchMeterLabels}>
                   <Text style={styles.pitchMeterEdgeLabel}>
-                    FLAT
+                    ← LOW
                   </Text>
 
                   <Text style={styles.pitchMeterCenterLabel}>
-                    IN TUNE
+                    TARGET
                   </Text>
 
                   <Text style={styles.pitchMeterEdgeLabel}>
-                    SHARP
+                    HIGH →
                   </Text>
                 </View>
 
@@ -1955,23 +1947,6 @@ export default function IntervalRecognitionTaskScreen({
 
               <View style={styles.pitchGuideFooter}>
                 <View style={styles.pitchDeviationInfo}>
-                  <View
-                    style={[
-                      styles.pitchDeviationIcon,
-                      {
-                        backgroundColor:
-                          pitchGuide.cents === null
-                            ? COLORS.white
-                            : `${pitchGuide.color}15`,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name="analytics-outline"
-                      size={17}
-                      color={pitchGuide.color}
-                    />
-                  </View>
 
                   <View style={styles.pitchDeviationTextGroup}>
                     <Text style={styles.pitchDeviationLabel}>
@@ -2011,66 +1986,6 @@ export default function IntervalRecognitionTaskScreen({
                   </Text>
                 </View>
               </View>
-
-              <View style={styles.pitchGuideLegend}>
-                <View style={styles.pitchLegendItem}>
-                  <View
-                    style={[
-                      styles.pitchLegendDot,
-                      { backgroundColor: COLORS.guideGreen },
-                    ]}
-                  />
-
-                  <Text style={styles.pitchLegendText}>
-                    On target
-                  </Text>
-                </View>
-
-                <View style={styles.pitchLegendItem}>
-                  <View
-                    style={[
-                      styles.pitchLegendDot,
-                      { backgroundColor: COLORS.guideYellow },
-                    ]}
-                  />
-
-                  <Text style={styles.pitchLegendText}>
-                    Slightly off
-                  </Text>
-                </View>
-
-                <View style={styles.pitchLegendItem}>
-                  <View
-                    style={[
-                      styles.pitchLegendDot,
-                      { backgroundColor: COLORS.guideRed },
-                    ]}
-                  />
-
-                  <Text style={styles.pitchLegendText}>
-                    Far from target
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.recordingIndicator}>
-              <View
-                style={[
-                  styles.recordingDot,
-                  {
-                    backgroundColor: isRecording
-                      ? COLORS.guideRed
-                      : COLORS.guideYellow,
-                  },
-                ]}
-              />
-
-              <Text style={styles.recordingText}>
-                {isRecording
-                  ? 'Listening to your voice...'
-                  : 'Preparing microphone...'}
-              </Text>
             </View>
 
             <View style={styles.recordingBar}>
@@ -2391,7 +2306,7 @@ export default function IntervalRecognitionTaskScreen({
 
 const styles = StyleSheet.create({
   screen: {
-    paddingTop: 40,
+    paddingTop: 100,
     flex: 1,
     backgroundColor: COLORS.white,
   },
@@ -2660,13 +2575,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   repetitionBadgeText: {
-    fontFamily: 'FredokaBold',
+    fontFamily: 'FredokaRegular',
     fontSize: 12,
-    color: COLORS.brown,
+    color: COLORS.muted,
   },
   pitchGuideCard: {
     width: '100%',
-    marginTop: 20,
+    marginTop: 18,
     padding: 17,
     borderRadius: 24,
     backgroundColor: COLORS.background,
@@ -2678,6 +2593,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 9,
+    marginBottom: -10,
   },
   pitchGuideHeading: {
     flex: 1,
@@ -2685,7 +2601,7 @@ const styles = StyleSheet.create({
   pitchGuideTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 2,
   },
   pitchGuideIcon: {
     width: 30,
@@ -2781,13 +2697,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   pitchMeterEdgeLabel: {
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.7,
-    color: COLORS.muted,
+    color: COLORS.guideRed,
   },
   pitchMeterCenterLabel: {
     fontFamily: 'FredokaBold',
@@ -2980,7 +2896,7 @@ const styles = StyleSheet.create({
   recordingIcon: {
     width: 64,
     height: 64,
-    borderRadius: 22,
+    borderRadius: 99,
     backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
@@ -3012,7 +2928,7 @@ const styles = StyleSheet.create({
   },
   recordingBarFill: {
     height: '100%',
-    backgroundColor: COLORS.guideGreen,
+    backgroundColor: COLORS.pink,
     borderRadius: 3,
   },
   resultIcon: {

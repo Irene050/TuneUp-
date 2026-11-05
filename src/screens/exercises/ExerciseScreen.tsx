@@ -1472,7 +1472,7 @@ const styles = StyleSheet.create({
   noteMatchingMetricCard: {
     flex: 1,
     minWidth: 0,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     paddingVertical: 11,
     paddingHorizontal: 8,
