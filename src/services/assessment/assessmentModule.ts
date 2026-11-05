@@ -291,14 +291,9 @@ export function measureBreathControl(
     ? Math.max(0, Math.min(100, rawConsistency))
     : 0;
 
-  const strictConsistencyScore = Math.max(
-    0,
-    Math.min(100, ((consistencyScore - 40) / 60) * 100),
-  );
-
   const finalScore =
     durationScore * 0.4 +
-    strictConsistencyScore * 0.6;
+    consistencyScore * 0.6;
 
   const score = clampPercentage(finalScore);
 
@@ -307,7 +302,7 @@ export function measureBreathControl(
     targetDurationSec,
     durationScore,
     rawConsistency: consistencyScore,
-    strictConsistencyScore: Math.round(strictConsistencyScore),
+    consistencyScore: Math.round(consistencyScore),
     finalScore: score,
   });
 
