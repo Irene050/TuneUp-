@@ -1,4 +1,3 @@
-
 import type { SustainedExhaleParams } from '@/constants/params';
 import type { SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
 
@@ -43,14 +42,9 @@ export function scoreSustainedExhale(
     ? Math.max(0, Math.min(100, measurement.consistencyPct))
     : 0;
 
-  const strictConsistencyScore = Math.max(
-    0,
-    Math.min(100, (consistencyScore - 50) * 2),
-  );
-
   const score = Math.round(
     durationScore * 0.3 +
-      strictConsistencyScore * 0.7,
+      consistencyScore * 0.7,
   );
 
   const passed =
@@ -58,17 +52,6 @@ export function scoreSustainedExhale(
     actualDurationSec >= maxDurationSec &&
     consistencyScore >= Math.max(params.consistencyThreshold, 85) &&
     score >= 85;
-
-  console.log('🌬️ STRICT SUSTAINED EXHALE DEBUG:', {
-    actualDurationSec,
-    minDurationSec,
-    maxDurationSec,
-    durationScore,
-    consistencyScore,
-    strictConsistencyScore,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score,

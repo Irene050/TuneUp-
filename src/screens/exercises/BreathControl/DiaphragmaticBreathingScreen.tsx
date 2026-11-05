@@ -1102,7 +1102,7 @@ export default function DiaphragmaticBreathingScreen({
             <Text style={styles.instructionTitle}>
               {phase === 'inhale'
                 ? 'Breathe in slowly'
-                : 'Exhale gently'}
+                : 'Exhale slowly'}
             </Text>
 
             <Text style={styles.instructionText}>
@@ -1126,12 +1126,6 @@ export default function DiaphragmaticBreathingScreen({
             )}
 
             <ProgressBar progress={progress} />
-
-            <Text style={styles.smallHint}>
-              {phase === 'inhale'
-                ? 'Keep your shoulders relaxed.'
-                : 'Keep your airflow smooth and consistent.'}
-            </Text>
           </View>
         </View>
       )}
@@ -1352,7 +1346,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.brown,
+    backgroundColor: COLORS.pink,
   },
   smallHint: {
     marginTop: 18,

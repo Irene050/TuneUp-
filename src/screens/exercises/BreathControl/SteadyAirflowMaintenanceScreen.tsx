@@ -987,7 +987,7 @@ export default function SteadyAirflowMaintenanceScreen({
       <View style={styles.exerciseScreen}>
         <View style={styles.exerciseContent}>
           <Text style={styles.phaseLabel}>
-            STEADY AIRFLOW
+            Maintain a Steady Airflow
           </Text>
 
           <Text style={styles.repText}>
@@ -1014,15 +1014,6 @@ export default function SteadyAirflowMaintenanceScreen({
               / {params.durationSec.toFixed(1)}s
             </Text>
           </View>
-
-          <Text style={styles.exerciseTitle}>
-            Exhale steadily
-          </Text>
-
-          <Text style={styles.exerciseDescription}>
-            Gently blow toward the microphone. Keep your airflow
-            as even as possible.
-          </Text>
 
           <View style={styles.airflowCard}>
             <View style={styles.airflowHeader}>
@@ -1267,8 +1258,7 @@ const styles = StyleSheet.create({
   },
   phaseLabel: {
     fontFamily: 'FredokaBold',
-    fontSize: 14,
-    letterSpacing: 1.5,
+    fontSize: 29,
     color: COLORS.brown,
   },
   repText: {
@@ -1415,7 +1405,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.brown,
+    backgroundColor: COLORS.pink,
   },
   smallHint: {
     marginTop: 16,

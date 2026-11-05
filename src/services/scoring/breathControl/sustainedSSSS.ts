@@ -48,14 +48,9 @@ export function scoreSustainedSSSS(
       )
     : 0;
 
-  const strictConsistencyScore = Math.max(
-    0,
-    Math.min(100, (consistencyScore - 50) * 2),
-  );
-
   const score = Math.round(
     durationScore * 0.3 +
-      strictConsistencyScore * 0.7,
+      consistencyScore * 0.7,
   );
 
   const passed =
@@ -65,17 +60,6 @@ export function scoreSustainedSSSS(
       85,
     ) &&
     score >= 85;
-
-  console.log('🌬️ STRICT SUSTAINED SSSS SCORE DEBUG:', {
-    actualDurationSec,
-    minDurationSec,
-    maxDurationSec,
-    durationScore,
-    consistencyScore,
-    strictConsistencyScore,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score,

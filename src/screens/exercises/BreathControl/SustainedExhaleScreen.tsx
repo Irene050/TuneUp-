@@ -1010,16 +1010,12 @@ export default function SustainedExhaleScreen({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.recordingHeader}>
-            <Text style={styles.repLabel}>
-              Repetition {currentRep} of {params.repetitions}
-            </Text>
-
             <Text style={styles.recordingTitle}>
               Exhale Slowly
             </Text>
 
-            <Text style={styles.recordingSubtitle}>
-              Keep your airflow steady
+            <Text style={styles.repLabel}>
+              Repetition {currentRep} of {params.repetitions}
             </Text>
           </View>
 
@@ -1088,30 +1084,11 @@ export default function SustainedExhaleScreen({
             </View>
 
             <View style={styles.liveTextContainer}>
-              <Text style={styles.liveLabel}>AIRFLOW</Text>
+              <Text style={styles.liveLabel}>RELATIVE MIC LEVEL</Text>
               <Text style={styles.liveValue}>
                 {volume !== null
                   ? volume.toFixed(2)
                   : 'Listening...'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.pacingCard}>
-            <Ionicons
-              name="speedometer-outline"
-              size={22}
-              color={COLORS.brown}
-            />
-
-            <View style={styles.pacingTextContainer}>
-              <Text style={styles.pacingTitle}>
-                Keep it steady
-              </Text>
-
-              <Text style={styles.pacingText}>
-                Maintain a controlled airflow throughout your
-                exhale.
               </Text>
             </View>
           </View>
@@ -1431,31 +1408,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 18,
     color: COLORS.brown,
-    marginTop: 2,
-  },
-  pacingCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    borderRadius: 17,
-    padding: 15,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  pacingTextContainer: {
-    flex: 1,
-    marginLeft: 11,
-  },
-  pacingTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  pacingText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
     marginTop: 2,
   },
   scoreBar: {

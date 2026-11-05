@@ -1205,10 +1205,6 @@ export default function ControlledBreathReleaseScreen({
               <Text style={styles.repLabel}>
                 Repetition {currentRep} of {params.repetitions}
               </Text>
-
-              <Text style={styles.recordingSubtitle}>
-                Follow the pulse guide and keep each breath controlled
-              </Text>
             </View>
 
             <View style={styles.recordingVisual}>
@@ -1313,10 +1309,6 @@ export default function ControlledBreathReleaseScreen({
                 </Text>
               </View>
             </View>
-
-            <Text style={styles.timerText}>
-              {elapsed.toFixed(1)}s
-            </Text>
 
             <View style={styles.progressTrack}>
               <View
@@ -1563,7 +1555,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.brown,
     marginRight: 7,
   },
   recordingBadgeText: {

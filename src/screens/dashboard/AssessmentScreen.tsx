@@ -1157,8 +1157,6 @@ export default function AssessmentScreen() {
 
         {isAgilityComplete && (
           <View style={styles.completionRangeCard}>
-            <Ionicons name="musical-notes" size={24} color={COLORS.brown} />
-
             <View style={styles.completionRangeTextContainer}>
               <Text style={styles.completionRangeLabel}>
                 Assessment Components Completed
@@ -1905,10 +1903,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
     width: '90%',
-    backgroundColor: COLORS.pink,
+    backgroundColor: COLORS.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: COLORS.pink,
+    borderColor: COLORS.background,
     paddingVertical: 18,
     paddingHorizontal: 16,
     marginBottom: 18,
