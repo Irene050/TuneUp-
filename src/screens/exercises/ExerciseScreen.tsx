@@ -1093,9 +1093,8 @@ const styles = StyleSheet.create({
   quitModalContinueButton: {
     width: '100%',
     minHeight: 50,
-    borderRadius: 25,
-    borderWidth: 1.5,
-    borderColor: COLORS.brown,
+    borderRadius: 16,
+    backgroundColor: COLORS.pink,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 22,
@@ -1122,8 +1121,10 @@ const styles = StyleSheet.create({
   quitModalQuitButton: {
     width: '100%',
     minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.brown,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
@@ -1131,7 +1132,7 @@ const styles = StyleSheet.create({
   quitModalQuitText: {
     fontFamily: 'FredokaSemiBold',
     fontSize: 15,
-    color: COLORS.white,
+    color: COLORS.muted,
   },
   quitModalAssessmentQuitButton: {
     width: '100%',
