@@ -1,27 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import {
-    CONTROLLED_CRESCENDO_PARAMS,
-    type Tier,
+  CONTROLLED_CRESCENDO_PARAMS,
+  type Tier,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledCrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -29,32 +29,32 @@ import { auth } from '@/services/firebase/config';
 import { measureControlledCrescendo } from '@/services/measurement/volume/controlledCrescendoDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreControlledCrescendo } from '@/services/scoring/volume/controlledCrescendoDrill';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    frequencyToMidi,
+  createMusicalNote,
+  frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    VOLUME_ANALYSIS_WINDOW_MS,
-    VOLUME_DBFS_MAX,
-    VOLUME_DBFS_MIN,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  VOLUME_ANALYSIS_WINDOW_MS,
+  VOLUME_DBFS_MAX,
+  VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
 import {
-    ResultItem,
-    VolumeVisualizer,
+  ResultItem,
+  VolumeVisualizer,
 } from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clamp } from '@/utils/math';
 
-const BAR_COUNT = 32;
+const BAR_COUNT = 28;
 
 type ControlledCrescendoParams =
   typeof CONTROLLED_CRESCENDO_PARAMS.beginner;
@@ -179,11 +179,6 @@ function TargetCrescendoGuide({
   return (
     <View style={styles.guideCard}>
       <Text style={styles.guideTitle}>Follow this pattern</Text>
-
-      <Text style={styles.guideSubtitle}>
-        Start softly, then gradually get louder until the guide reaches
-        Loud.
-      </Text>
 
       <View style={styles.guideBars}>
         {Array.from({ length: BAR_COUNT }, (_, index) => (
@@ -1405,26 +1400,6 @@ export default function ControlledCrescendoExercise({
     return (
       <>
         <View style={styles.exerciseScreen}>
-          <View style={styles.exerciseHeader}>
-            <View style={styles.exerciseHeaderCopy}>
-              <Text style={styles.exerciseHeaderTitle}>
-                Controlled Crescendo
-              </Text>
-              <Text style={styles.exerciseHeaderSubtitle}>
-                Repetition {currentRep} of {repetitions}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.exerciseProgressTrack}>
-            <View
-              style={[
-                styles.exerciseProgressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-
           <View style={styles.exercisePrompt}>
             <Text style={styles.exercisePromptTitle}>
               {instruction.title}
@@ -1482,17 +1457,6 @@ export default function ControlledCrescendoExercise({
                 </View>
               </View>
 
-              <View style={styles.targetRow}>
-                <View>
-                  <Text style={styles.targetLabel}>TARGET RANGE</Text>
-                  <Text style={styles.targetValue}>
-                    {targetMin} → {targetMax} dB
-                  </Text>
-                </View>
-
-                <Text style={styles.patternText}>Soft → Loud</Text>
-              </View>
-
               <View style={styles.sessionRow}>
                 <View style={styles.sessionPart}>
                   <Text style={styles.sessionLabel}>REPETITION</Text>
@@ -1519,6 +1483,14 @@ export default function ControlledCrescendoExercise({
                   </Text>
                 </View>
               </View>
+          <View style={styles.exerciseProgressTrack}>
+            <View
+              style={[
+                styles.exerciseProgressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
             </View>
           </ScrollView>
         </View>
@@ -1751,7 +1723,7 @@ const styles = StyleSheet.create({
   exerciseProgressFill: {
     height: '100%',
     borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.pink,
   },
   exercisePrompt: {
     alignItems: 'center',
@@ -1784,7 +1756,7 @@ const styles = StyleSheet.create({
   },
   guideCard: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1793,23 +1765,18 @@ const styles = StyleSheet.create({
   },
   guideTitle: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+    fontSize: 15,
     color: COLORS.brown,
-  },
-  guideSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: COLORS.muted,
-    marginTop: 2,
   },
   guideBars: {
     height: 54,
-    marginTop: 8,
+    marginTop: 12,
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 2,
+    alignItems: 'center',
+    gap: 4,
     overflow: 'hidden',
     position: 'relative',
+    marginBottom: 12,
   },
   guideBar: {
     flex: 1,
@@ -1895,12 +1862,12 @@ const styles = StyleSheet.create({
   },
   visualizerTitle: {
     fontFamily: 'FredokaBold',
-    fontSize: 15,
+    fontSize: 18,
     color: COLORS.brown,
   },
   visualizerSubtitle: {
     fontFamily: 'FredokaRegular',
-    fontSize: 9,
+    fontSize: 12,
     color: COLORS.muted,
     marginTop: 2,
   },
@@ -1916,7 +1883,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 7,
+    marginTop: 8,
   },
   legendDot: {
     width: 14,
@@ -1933,7 +1900,7 @@ const styles = StyleSheet.create({
   visualizerLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 8,
   },
   visualizerLabel: {
     fontFamily: 'FredokaSemiBold',

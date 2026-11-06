@@ -1286,14 +1286,6 @@ export default function VolumeControlStabilityScreen({
             </View>
           </View>
 
-          <View style={styles.singingPrompt}>
-            <Text style={styles.singingPromptText}>
-              Sing {NOTE} on “Ah” at a comfortable
-              volume. Keep your volume as consistent as
-              possible throughout the exercise.
-            </Text>
-          </View>
-
           <View style={styles.liveCard}>
             <View style={styles.rowBetween}>
               <View style={styles.stabilityHeading}>
@@ -1472,23 +1464,7 @@ export default function VolumeControlStabilityScreen({
               </Text>
             </View>
           </View>
-
-          <View style={styles.progressCard}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.mutedSmall}>
-                    Repetition{' '}
-                    {Math.min(
-                      repetitions,
-                      Math.floor(elapsedTotal / durationSeconds) + 1,
-                    )}{' '}
-                    of {repetitions}
-              </Text>
-              <Text style={styles.progressTime}>
-                {Math.ceil(remainingSeconds)}s total left
-              </Text>
-            </View>
-
-            <View style={styles.exerciseProgressTrack}>
+          <View style={styles.exerciseProgressTrack}>
               <View
                 style={[
                   styles.exerciseProgressFill,
@@ -1501,8 +1477,6 @@ export default function VolumeControlStabilityScreen({
                 ]}
               />
             </View>
-
-          </View>
         </View>
 
         {quitModal}
@@ -1649,6 +1623,7 @@ const styles = StyleSheet.create({
   },
   exerciseHeaderText: {
     flex: 1,
+    marginBottom: 20,
   },
   exerciseExitButton: {
     width: 36,
@@ -1661,12 +1636,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   exerciseEyebrow: {
-    color: COLORS.accent,
+    textAlign: 'center',
+    color: COLORS.muted,
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 1,
   },
   exerciseTitle: {
+    textAlign: 'center',
     marginTop: 2,
     color:  COLORS.brown,
     fontFamily: 'FredokaBold',
@@ -1863,7 +1840,7 @@ const styles = StyleSheet.create({
     height: 14,
     marginTop: 11,
     borderRadius: 6,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.pink,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -1949,7 +1926,6 @@ const styles = StyleSheet.create({
   },
   exerciseProgressTrack: {
     height: 7,
-    marginTop: 9,
     borderRadius: 5,
     backgroundColor: COLORS.background,
     overflow: 'hidden',
@@ -1957,7 +1933,7 @@ const styles = StyleSheet.create({
   exerciseProgressFill: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.pink,
   },
   resultCard: {
     width: '100%',

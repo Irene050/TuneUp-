@@ -1,56 +1,56 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import {
-    STEADY_TONE_HOLDING_PARAMS,
-    type SteadyToneHoldingParams,
-    type Tier,
+  STEADY_TONE_HOLDING_PARAMS,
+  type SteadyToneHoldingParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureSteadyToneHolding,
-    type SteadyToneHoldingMeasurement,
+  measureSteadyToneHolding,
+  type SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreSteadyToneHolding,
-    type SteadyToneHoldingScoreResult,
+  scoreSteadyToneHolding,
+  type SteadyToneHoldingScoreResult,
 } from '@/services/scoring/tone/steadyToneHolding';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
@@ -193,31 +193,17 @@ function RecordingScreen({
     <View style={styles.recordingScreen}>
 
       <Text style={styles.recordingTitle}>Hold Your Tone</Text>
-
-      <Text style={styles.recordingSubtitle}>
-        Sustain one comfortable note. Keep your tone smooth, your
-        loudness steady, and your pitch as stable as possible.
-      </Text>
-
-      <View style={styles.recordingBody}>
-        <View style={styles.repPill}>
-          <Ionicons
-            name="repeat-outline"
-            size={16}
-            color={COLORS.brown}
-          />
-          <Text style={styles.repPillText}>
+      <Text style={styles.repPillText}>
             STEADY TONE · SINGLE ATTEMPT
           </Text>
-        </View>
-
+      <View style={styles.recordingBody}>
         <View style={styles.liveCard}>
           <View style={styles.liveCardHeader}>
             <View style={styles.liveMicCircle}>
               <Ionicons
                 name="mic"
                 size={21}
-                color={COLORS.guideGreen}
+                color={COLORS.waveform}
               />
             </View>
 
@@ -226,25 +212,13 @@ function RecordingScreen({
                 Live Voice Monitor
               </Text>
               <Text style={styles.liveCardSubtitle}>
-                Real-time microphone feedback
+                Your microphone feedback
               </Text>
             </View>
 
             <View style={styles.liveIndicatorPill}>
-              <View
-                style={[
-                  styles.recordingDot,
-                  !isRecording && styles.recordingDotInactive,
-                ]}
-              />
-              <Text
-                style={[
-                  styles.liveIndicatorText,
-                  !isRecording && styles.liveIndicatorTextInactive,
-                ]}
-              >
-                {isRecording ? 'LIVE' : 'STARTING'}
-              </Text>
+              <View style={styles.recordingDot} />
+              <Text style={styles.liveIndicatorText}>LIVE</Text>
             </View>
           </View>
 
@@ -1321,22 +1295,13 @@ const styles = StyleSheet.create({
   recordingBody: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 22,
-  },
-  repPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.pink,
   },
   repPillText: {
-    fontFamily: 'FredokaBold',
+    textAlign: 'center',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     letterSpacing: 0.5,
-    color: COLORS.brown,
+    color: COLORS.muted,
   },
   recordingProgressSection: {
     width: '100%',
@@ -1401,7 +1366,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 21,
-    backgroundColor: COLORS.lightGreen,
+    backgroundColor: COLORS.background,
   },
   liveCardHeading: {
     flex: 1,
@@ -1433,17 +1398,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: COLORS.guideRed,
   },
-  recordingDotInactive: {
-    backgroundColor: COLORS.background,
-  },
   liveIndicatorText: {
     fontFamily: 'FredokaBold',
     fontSize: 10,
     letterSpacing: 0.7,
     color: COLORS.guideRed,
-  },
-  liveIndicatorTextInactive: {
-    color: COLORS.muted,
   },
   waveformContainer: {
     width: '100%',

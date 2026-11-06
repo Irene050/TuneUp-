@@ -77,7 +77,7 @@ type AdaptiveConfig = ReturnType<
   typeof generateRapidScaleTrillParams
 >;
 
-type PitchStatus = 'match' | 'close' | 'miss' | null;
+type PitchStatus = 'match' | 'close' | '--' | null;
 
 type RapidScaleTrillResult = {
   overall: number;
@@ -105,7 +105,7 @@ function getPitchStatus(
     targetFrequency === undefined ||
     targetFrequency <= 0
   ) {
-    return 'miss';
+    return '--';
   }
 
   const distance = getSemitoneDistance(
@@ -116,7 +116,7 @@ function getPitchStatus(
   if (distance <= AGILITY_GOOD_NOTE_SEMITONES) return 'match';
   if (distance <= AGILITY_CLOSE_NOTE_SEMITONES) return 'close';
 
-  return 'miss';
+  return '--';
 }
 
 function getPitchStatusColor(
@@ -127,7 +127,7 @@ function getPitchStatusColor(
       return COLORS.guideGreen;
     case 'close':
       return COLORS.guideYellow;
-    case 'miss':
+    case '--':
       return COLORS.guideRed;
     default:
       return null;
@@ -1420,36 +1420,23 @@ export default function RapidScaleTrillScreen() {
               : frequencyToNoteName(livePitchHz)
           }
           showFeedback
-          caption="Follow the highlighted note. Green is in tune, yellow is close, and red is off pitch."
+          caption="Follow the highlighted note."
         />
 
         <View style={styles.liveCard}>
-          <Text style={styles.detectedPitchText}>
-            {livePitchHz !== null
-              ? `Detected pitch: ${frequencyToNoteName(livePitchHz)} | ${livePitchHz.toFixed(0)} Hz`
-              : 'Sing the active note to check your pitch.'}
+
+          <Text style={styles.liveLabel}>
+            CURRENT NOTE
           </Text>
 
-          <View style={styles.pitchStatusRow}>
-            <View
-              style={[
-                styles.pitchStatusDot,
-                {
-                  backgroundColor:
-                    activeStatusColor ?? COLORS.muted,
-                },
-              ]}
-            />
-            <Text style={styles.detectedPitchText}>
-              Pitch status: {livePitchStatus ?? 'Listening'}
-            </Text>
-          </View>
-        </View>
+          <Text style={styles.detectedPitchText}>
+            {livePitchHz  ?? '--' }
+          </Text>
 
-        <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s /{' '}
-          {targetSequenceDurationSeconds.toFixed(1)}s
-        </Text>
+          <Text style={styles.detectedPitchTextSub}>
+             {livePitchStatus ?? '--'}
+          </Text>
+        </View>
 
         <View style={styles.timerTrack}>
           <View
@@ -1459,6 +1446,9 @@ export default function RapidScaleTrillScreen() {
             ]}
           />
         </View>
+        <Text style={styles.timerText}>
+          Recording Time: {recordingTime.toFixed(1)}s
+        </Text>
       </ExerciseRecordingScreen>
     );
   };
@@ -1766,16 +1756,29 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 18,
-    marginTop: 20,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  detectedPitchText: {
+  liveLabel: {
     fontFamily: 'FredokaRegular',
-    fontSize: 11,
+    fontSize: 10,
+    letterSpacing: 0.8,
     color: COLORS.muted,
+  },
+  detectedPitchText: {
+    fontFamily: 'FredokaBold',
+    fontSize: 42,
+    color: COLORS.brown,
     textAlign: 'center',
     marginTop: 8,
+  },
+  detectedPitchTextSub: {
+    fontFamily: 'FredokaRegular',
+    fontSize: 14,
+    color: COLORS.muted,
+    marginTop: 4,
+    textAlign: 'center',
   },
   pitchStatusRow: {
     flexDirection: 'row',
@@ -1793,21 +1796,21 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.muted,
-    marginTop: 18,
-    marginBottom: 7,
+    marginTop: 10,
+    marginBottom: 6,
     textAlign: 'center',
   },
   timerTrack: {
     width: '100%',
     height: 8,
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.background,
     borderRadius: 4,
     overflow: 'hidden',
-    marginTop: 5,
+    marginTop: 10,
   },
   timerFill: {
     height: '100%',
-    backgroundColor: COLORS.waveform,
+    backgroundColor: COLORS.pink,
     borderRadius: 4,
   },
   scoreDetailsText: {

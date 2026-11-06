@@ -661,16 +661,7 @@ export default function VocalRunAccuracyTaskScreen() {
         ? COLORS.guideYellow
         : pitchStatus === 'notInTune'
           ? COLORS.guideRed
-          : COLORS.gray;
-
-  const pitchStatusLabel =
-    pitchStatus === 'inTune'
-      ? 'IN TUNE'
-      : pitchStatus === 'close'
-        ? 'CLOSE'
-        : pitchStatus === 'notInTune'
-          ? 'NOT IN TUNE'
-          : 'LISTENING...';
+          : COLORS.brown;
 
   const playReference = useCallback(async () => {
     if (
@@ -1571,33 +1562,7 @@ export default function VocalRunAccuracyTaskScreen() {
       />
 
       <View style={styles.recordingCard}>
-        <Text style={styles.cardTitle}>Live Pitch Accuracy</Text>
-
-        <View
-          style={[
-            styles.pitchStatusBadge,
-            {
-              backgroundColor: `${pitchStatusColor}18`,
-              borderColor: pitchStatusColor,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.pitchStatusDot,
-              { backgroundColor: pitchStatusColor },
-            ]}
-          />
-
-          <Text
-            style={[
-              styles.pitchStatusText,
-              { color: pitchStatusColor },
-            ]}
-          >
-            {pitchStatusLabel}
-          </Text>
-        </View>
+        <Text style={styles.cardTitle}>CURRENT NOTE</Text>
 
         <Text
           style={[
@@ -1611,7 +1576,7 @@ export default function VocalRunAccuracyTaskScreen() {
         <Text style={styles.hint}>
           {livePitch
             ? `${livePitch.frequency.toFixed(1)} Hz`
-            : 'Listening for a clear vocal pitch'}
+            : '--'}
         </Text>
 
         {pitchAccuracy ? (
@@ -1624,34 +1589,9 @@ export default function VocalRunAccuracyTaskScreen() {
                 : 'on pitch'}
           </Text>
         ) : null}
-
-        <View style={styles.pitchLegend}>
-          {[
-            [COLORS.guideGreen, 'In tune'],
-            [COLORS.guideYellow, 'Close'],
-            [COLORS.guideRed, 'Not in tune'],
-          ].map(([color, label]) => (
-            <View key={label} style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendDot,
-                  { backgroundColor: color },
-                ]}
-              />
-              <Text style={styles.legendText}>{label}</Text>
-            </View>
-          ))}
-        </View>
       </View>
 
       <View style={styles.timerContainer}>
-        <Text style={styles.timerLabel}>Recording Time</Text>
-
-        <Text style={styles.timerText}>
-          {recordingTime.toFixed(1)} /{' '}
-          {recordingDurationSec.toFixed(1)} sec
-        </Text>
-
         <View style={styles.progressTrack}>
           <View
             style={[
@@ -1669,11 +1609,11 @@ export default function VocalRunAccuracyTaskScreen() {
             ]}
           />
         </View>
+        <Text style={styles.timerText}>
+          Recording Time: {' '}
+          {recordingTime.toFixed(1)}
+        </Text>
       </View>
-
-      <Text style={styles.hint}>
-        Sing each note in the displayed order.
-      </Text>
     </ExerciseRecordingScreen>
   );
 
@@ -1888,12 +1828,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     marginBottom: 10,
+    marginTop: 8,
   },
   cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginBottom: 10,
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
+    color: COLORS.muted,
     marginTop: 6,
     textAlign: 'center',
   },
@@ -1984,32 +1924,24 @@ const styles = StyleSheet.create({
   timerContainer: {
     width: '100%',
     paddingHorizontal: 4,
-    marginTop: 2,
-  },
-  timerLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
   },
   timerText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
+    fontFamily: 'FredokaRegular',
+    fontSize: 10,
+    color: COLORS.muted,
     textAlign: 'center',
-    marginTop: 4,
   },
   progressTrack: {
     width: '100%',
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.background,
     overflow: 'hidden',
-    marginTop: 8,
+    marginBottom: 4,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: COLORS.waveform,
+    backgroundColor: COLORS.pink,
     borderRadius: 4,
   },
   metricBlock: {

@@ -39,12 +39,12 @@ import {
   type VocalRange
 } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, } from '@/constants/appConstants';
 import {
   ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
+  ExerciseQuitModal
 } from '@/screens/exercises/ExerciseScreen';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 
@@ -60,7 +60,7 @@ interface Props {
 type Phase =
   | 'instructions'
   | 'countdown'
-  | 'playing'
+  | 'listening'
   | 'recording'
   | 'processing'
   | 'results';
@@ -273,7 +273,7 @@ export default function IntervalRecognitionTaskScreen({
     useState(true);
 
   const [phase, setPhase] = useState<Phase>('instructions');
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
@@ -849,7 +849,7 @@ export default function IntervalRecognitionTaskScreen({
       }
 
       try {
-        setCurrentPhase('playing');
+        setCurrentPhase('listening');
 
         const repetitions = Math.max(
           1,
@@ -1584,7 +1584,7 @@ export default function IntervalRecognitionTaskScreen({
     );
   }
 
-  if (phase === 'playing') {
+  if (phase === 'listening') {
     return (
       <>
         <View style={styles.centerScreen}>
@@ -1771,8 +1771,13 @@ export default function IntervalRecognitionTaskScreen({
                   </Text>
                 </View>
 
-                <View style={styles.pitchTargetDivider} />
-
+                <View style={styles.pitchComparisonDivider}>
+                  <Ionicons
+                    name="mic-outline"
+                    size={18}
+                    color={COLORS.muted}
+                  />
+                </View>
                 <View style={styles.pitchDetectedSummary}>
                   <Text style={styles.pitchTargetCaption}>
                     YOUR PITCH
@@ -2673,11 +2678,14 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 1,
   },
-  pitchTargetDivider: {
-    width: 1,
-    height: 48,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 13,
+  pitchComparisonDivider: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.lightGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 3,
   },
   pitchDetectedSummary: {
     flex: 1,

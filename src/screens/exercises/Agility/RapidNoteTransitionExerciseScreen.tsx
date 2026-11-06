@@ -999,17 +999,6 @@ export default function RapidNoteTransitionExerciseScreen({
     setScreen('instructions');
   }, [clearTimers, resetLiveState, setScreen]);
 
-  const renderRepetitionProgress = () => (
-    <View style={styles.repetitionProgressCard}>
-      <View style={styles.repetitionProgressHeader}>
-        <Text style={styles.repetitionProgressLabel}>REPETITION</Text>
-        <Text style={styles.repetitionProgressCount}>
-          {currentRep} OF {exerciseConfig.repetitions}
-        </Text>
-      </View>
-    </View>
-  );
-
   const closeConfirmation = () => {
     const action = confirmation;
     setConfirmation(null);
@@ -1158,7 +1147,6 @@ export default function RapidNoteTransitionExerciseScreen({
         repetitions={exerciseConfig.repetitions}
         onBack={() => setConfirmation('quit')}
       >
-        {renderRepetitionProgress()}
 
         <AgilitySequenceGuide
           names={exerciseConfig.sequence.names}
@@ -1176,14 +1164,13 @@ export default function RapidNoteTransitionExerciseScreen({
           </Text>
         </View>
 
+        <View style={styles.timerTrack}>
+          <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
+        </View>
         <Text style={styles.timerText}>
           Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
           {recordingDurationSeconds.toFixed(1)}s
         </Text>
-
-        <View style={styles.timerTrack}>
-          <View style={[styles.timerFill, { width: `${progress * 100}%` }]} />
-        </View>
       </ExerciseRecordingScreen>
     );
   };
@@ -1465,6 +1452,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lightGray,
     borderRadius: 5,
     overflow: 'hidden',
+    marginTop: 12,
   },
   timerFill: {
     height: '100%',

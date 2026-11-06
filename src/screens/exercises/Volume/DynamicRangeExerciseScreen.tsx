@@ -1238,15 +1238,6 @@ export default function DynamicRangeExercise({
             contentContainerStyle={styles.exerciseScrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.visualizerHeader}>
-              <View>
-                <Text style={styles.visualizerTitle}>Your Performance</Text>
-                <Text style={styles.visualizerSubtitle}>Follow the reference pattern</Text>
-              </View>
-              <View style={styles.micCircle}>
-                <Ionicons name="mic" size={20} color={COLORS.brown} />
-              </View>
-            </View>
 
             <View style={styles.phaseCountdownCard}>
               <Text style={styles.phaseCountdownLabel}>NEXT PHASE IN</Text>
@@ -1266,29 +1257,6 @@ export default function DynamicRangeExercise({
               <Text style={styles.visualizerLabel}>SOFT</Text>
             </View>
 
-            <View style={styles.voiceRow}>
-              <View style={styles.voiceLeft}>
-                <Ionicons name="mic-outline" size={20} color={COLORS.brown} />
-                <Text style={styles.voiceLabel}>
-                  {liveFrame ? 'Voice signal' : 'Listening...'}
-                </Text>
-              </View>
-              <Text style={styles.voiceValue}>
-                {liveFrame && Number.isFinite(liveFrame.volume)
-                  ? liveFrame.volume.toFixed(1)
-                  : '--'}
-                <Text style={styles.voiceUnit}> dBFS</Text>
-              </Text>
-            </View>
-
-            <View style={styles.targetRow}>
-              <View>
-                <Text style={styles.targetLabel}>TARGET RANGE</Text>
-                <Text style={styles.targetValue}>{targetMin}–{targetMax} dB</Text>
-              </View>
-              <Text style={styles.pattern}>Soft → Loud → Soft</Text>
-            </View>
-
             <View style={styles.sessionRow}>
               <View style={styles.sessionPart}>
                 <Text style={styles.sessionLabel}>REPETITION</Text>
@@ -1305,11 +1273,6 @@ export default function DynamicRangeExercise({
 
             <View style={styles.liveProgressTrack}>
               <View style={[styles.liveProgressFill, { width: `${progress}%` }]} />
-            </View>
-            <View style={styles.exerciseFooter}>
-              <Text style={styles.exerciseFooterText}>
-                Repetition {currentRep} of {repetitions}
-              </Text>
             </View>
           </ScrollView>
         </View>
@@ -1786,13 +1749,13 @@ const styles = StyleSheet.create({
   liveProgressTrack: {
     height: 6,
     marginTop: 10,
-    backgroundColor: '#F3E4E8',
+    backgroundColor: COLORS.background,
     borderRadius: 3,
     overflow: 'hidden',
   },
   liveProgressFill: {
     height: '100%',
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.pink,
     borderRadius: 3,
   },
   exerciseFooter: { alignItems: 'center', marginTop: 14 },

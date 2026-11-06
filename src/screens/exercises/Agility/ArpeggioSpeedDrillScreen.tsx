@@ -1182,7 +1182,7 @@ export default function ArpeggioSpeedDrillScreen() {
       <Text style={styles.phaseTitle}>Get Ready</Text>
 
       <Text style={styles.phaseSubtitle}>
-        Repetition {currentRep} of {repetitionCount}
+        Repetitions {currentRep} of {repetitionCount}
       </Text>
 
       <Text style={styles.countdownText}>
@@ -1215,15 +1215,6 @@ export default function ArpeggioSpeedDrillScreen() {
         ? config.notes[liveMatch.index]
         : null;
 
-    const liveStatus =
-      livePitchHz === null
-        ? 'No clear pitch detected'
-        : liveMatch.distance <= 0.5
-          ? 'Close pitch match'
-          : liveMatch.distance <= 1.5
-            ? 'Near the target pitch'
-            : 'Pitch does not closely match a target';
-
     return (
       <ExerciseRecordingScreen
         title="Sing the Arpeggio"
@@ -1243,32 +1234,22 @@ export default function ArpeggioSpeedDrillScreen() {
 
         <View style={styles.liveCard}>
           <Text style={styles.liveLabel}>
-            LIVE DETECTED NOTE
+            CURRENT NOTE
           </Text>
 
           <Text style={styles.liveCurrentNote}>
             {liveDetectedNote ??
               (livePitchHz === null
-                ? 'Listening...'
+                ? '--'
                 : 'Unmatched')}
           </Text>
 
           <Text style={styles.liveStatValue}>
             {livePitchHz !== null
               ? `${livePitchHz.toFixed(1)} Hz`
-              : 'Sing a clear, sustained note'}
-          </Text>
-
-          <View style={styles.liveDivider} />
-
-          <Text style={styles.liveStatLabel}>
-            {liveStatus}
+              : '--'}
           </Text>
         </View>
-
-        <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s
-        </Text>
 
         <View style={styles.timerTrack}>
           <View
@@ -1278,6 +1259,11 @@ export default function ArpeggioSpeedDrillScreen() {
             ]}
           />
         </View>
+
+        <Text style={styles.timerText}>
+          Recording Time: {recordingTime.toFixed(1)}s
+        </Text>
+
       </ExerciseRecordingScreen>
     );
   };
@@ -1721,7 +1707,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderRadius: 20,
     padding: 20,
-    marginTop: 22,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
@@ -1758,7 +1744,7 @@ const styles = StyleSheet.create({
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
-    color: COLORS.brown,
+    color: COLORS.muted,
     marginTop: 3,
   },
 
@@ -1767,7 +1753,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 6,
     marginBottom: 7,
   },
 
@@ -1777,6 +1763,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lightGray,
     borderRadius: 4,
     overflow: 'hidden',
+    marginTop: 12,
   },
 
   timerFill: {

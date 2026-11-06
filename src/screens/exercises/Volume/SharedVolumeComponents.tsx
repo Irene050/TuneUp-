@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   actualBar: {
     flex: 1,
     maxWidth: 8,
-    backgroundColor: COLORS.brown,
+    backgroundColor: COLORS.waveform,
     borderRadius: 5,
   },
   crescendoBars: {

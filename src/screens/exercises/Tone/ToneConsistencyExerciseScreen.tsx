@@ -1361,32 +1361,12 @@ export default function ToneConsistencyExerciseScreen({
               Sing the Note
             </Text>
 
-            <Text style={styles.recordingSubtitle}>
-              Match the reference note and keep your voice consistent
-              throughout each repetition.
-            </Text>
-
-            <View style={styles.repPill}>
-              <Ionicons
-                name="repeat-outline"
-                size={15}
-                color={COLORS.brown}
-              />
-
-              <Text style={styles.repPillText}>
-                REPETITION {currentRep} OF {params.repetitions}
+            <Text style={styles.repPillText}>
+                Repetition {currentRep} of {params.repetitions}
               </Text>
-            </View>
 
             <View style={styles.targetNoteCard}>
               <View style={styles.targetNoteHeading}>
-                <View style={styles.targetNoteIcon}>
-                  <Ionicons
-                    name="musical-note"
-                    size={19}
-                    color={COLORS.brown}
-                  />
-                </View>
 
                 <View style={styles.targetNoteText}>
                   <Text style={styles.targetNoteLabel}>
@@ -1412,35 +1392,23 @@ export default function ToneConsistencyExerciseScreen({
                   <Ionicons
                     name="mic"
                     size={21}
-                    color={COLORS.guideGreen}
+                    color={COLORS.waveform}
                   />
                 </View>
 
                 <View style={styles.liveCardHeading}>
                   <Text style={styles.liveCardTitle}>
-                    Live Tone Monitor
+                    Live Voice Monitor
                   </Text>
 
                   <Text style={styles.liveCardSubtitle}>
-                    Real-time microphone feedback
+                    Your microphone feedback
                   </Text>
                 </View>
 
                 <View style={styles.liveIndicatorPill}>
-                  <View
-                    style={[
-                      styles.recordingDot,
-                      {
-                        backgroundColor: isRecording
-                          ? COLORS.guideRed
-                          : COLORS.muted,
-                      },
-                    ]}
-                  />
-
-                  <Text style={styles.liveIndicatorText}>
-                    {isRecording ? 'LIVE' : 'STARTING'}
-                  </Text>
+                  <View style={styles.recordingDot} />
+                  <Text style={styles.liveIndicatorText}>LIVE</Text>
                 </View>
               </View>
 
@@ -1712,21 +1680,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     maxWidth: 330,
   },
-  repPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    marginTop: 17,
-  },
   repPillText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
+    textAlign: 'center',
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
     letterSpacing: 0.5,
-    color: COLORS.brown,
+    color: COLORS.muted,
   },
   targetNoteCard: {
     width: '110%',
@@ -1735,8 +1694,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: COLORS.background,
     borderRadius: 19,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     paddingHorizontal: 15,
     paddingVertical: 13,
     marginTop: 17,
@@ -1745,16 +1702,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-  },
-  targetNoteIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   targetNoteText: {
     flex: 1,
@@ -1837,9 +1784,7 @@ const styles = StyleSheet.create({
     width: 41,
     height: 41,
     borderRadius: 21,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1862,32 +1807,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    borderRadius: 15,
     paddingHorizontal: 9,
     paddingVertical: 6,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 14,
+    backgroundColor: COLORS.background,
   },
   recordingDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
+    borderRadius: 99,
+    backgroundColor: COLORS.guideRed,
   },
   liveIndicatorText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 0.5,
-    color: COLORS.brown,
+    fontFamily: 'FredokaBold',
+    fontSize: 10,
+    letterSpacing: 0.7,
+    color: COLORS.guideRed,
   },
   waveformContainer: {
     marginTop: 15,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
     borderRadius: 17,
     paddingHorizontal: 10,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   waveformBars: {
     height: 56,
@@ -1916,9 +1858,9 @@ const styles = StyleSheet.create({
     marginRight: 7,
   },
   waveformStatus: {
-    fontFamily: 'FredokaRegular',
+    fontFamily: 'FredokaSemiBold',
     fontSize: 10,
-    color: COLORS.muted,
+    color: COLORS.waveform,
     textAlign: 'center',
   },
 

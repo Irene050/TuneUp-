@@ -2105,13 +2105,13 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   pitchMeterRed: {
-    backgroundColor: COLORS.pink,
+    backgroundColor: COLORS.guideRed,
   },
   pitchMeterYellow: {
-    backgroundColor: '#F0D58B',
+    backgroundColor: COLORS.guideYellow,
   },
   pitchMeterGreen: {
-    backgroundColor: '#86CBA2',
+    backgroundColor: COLORS.guideGreen,
   },
   pitchMeterCenterLine: {
     position: 'absolute',

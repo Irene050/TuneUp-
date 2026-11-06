@@ -1,4 +1,3 @@
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
@@ -207,7 +206,7 @@ function getFeedback(
 }
 
 export default function NoteMatchingScreen({ tier }: Props) {
-  const [screen, setScreen] = useState<Phase>('instructions');
+  const [phase, setPhase] = useState<Phase>('instructions');
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
   );
@@ -259,9 +258,9 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const beginCountdownRef = useRef<(() => void) | null>(null);
   const continueAfterProcessingRef = useRef<(() => void) | null>(null);
 
-  const changeScreen = useCallback((nextScreen: Phase) => {
-    screenRef.current = nextScreen;
-    setScreen(nextScreen);
+  const changePhase = useCallback((nextPhase: Phase) => {
+    screenRef.current = nextPhase;
+    setPhase(nextPhase);
   }, []);
 
   const clearTimers = useCallback(() => {
@@ -461,7 +460,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     if (results.length === 0) {
       finishingRef.current = false;
       startingRef.current = false;
-      changeScreen('instructions');
+      changePhase('instructions');
       setErrorMessage(
         'No repetition results were available. Please try again.',
       );
@@ -478,7 +477,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
       finishingRef.current = false;
       startingRef.current = false;
-      changeScreen('listening');
+      changePhase('listening');
 
       try {
         await playSingleNote(
@@ -503,7 +502,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           setErrorMessage(
             'We could not play the target note. Please try again.',
           );
-          changeScreen('instructions');
+          changePhase('instructions');
         }
       }
 
@@ -568,10 +567,10 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
     finishingRef.current = false;
     startingRef.current = false;
-    changeScreen('results');
+    changePhase('results');
   }, [
     adaptiveParams.repetitions,
-    changeScreen,
+    changePhase,
     currentTier,
     resetLivePitch,
     targetFrequency,
@@ -611,12 +610,12 @@ export default function NoteMatchingScreen({ tier }: Props) {
         finishingRef.current = false;
         startingRef.current = false;
         resetLivePitch();
-        changeScreen('instructions');
+        changePhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
 
-      changeScreen('processing');
+      changePhase('processing');
 
       try {
         const measurement = measureNoteMatching(
@@ -661,7 +660,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          changeScreen('instructions');
+          changePhase('instructions');
         }
 
         finishingRef.current = false;
@@ -692,7 +691,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
       setErrorMessage(
         'The audio recorder is not ready. Please try again.',
       );
-      changeScreen('instructions');
+      changePhase('instructions');
       return;
     }
 
@@ -702,7 +701,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
     startingRef.current = true;
     finishingRef.current = false;
-    changeScreen('recording');
+    changePhase('recording');
 
     try {
       await start();
@@ -763,10 +762,10 @@ export default function NoteMatchingScreen({ tier }: Props) {
         setErrorMessage(
           'We could not start recording. Please check your microphone permission and try again.',
         );
-        changeScreen('instructions');
+        changePhase('instructions');
       }
     }
-  }, [changeScreen, clearTimers, resetLivePitch]);
+  }, [changePhase, clearTimers, resetLivePitch]);
 
   useEffect(() => {
     startRecordingAttemptRef.current = startRecordingAttempt;
@@ -784,7 +783,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
     clearTimers();
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    changeScreen('countdown');
+    changePhase('countdown');
 
     let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
@@ -807,7 +806,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
       clearTimers();
       setCountdown(0);
-      changeScreen('listening');
+      changePhase('listening');
 
       void playSingleNote(
         targetFrequency,
@@ -834,11 +833,11 @@ export default function NoteMatchingScreen({ tier }: Props) {
             setErrorMessage(
               'We could not start the exercise. Please check your microphone permission and try again.',
             );
-            changeScreen('instructions');
+            changePhase('instructions');
           }
         });
     }, 1000);
-  }, [changeScreen, clearTimers, targetFrequency]);
+  }, [changePhase, clearTimers, targetFrequency]);
 
   useEffect(() => {
     beginCountdownRef.current = beginCountdown;
@@ -1049,8 +1048,8 @@ export default function NoteMatchingScreen({ tier }: Props) {
     resetLivePitch();
 
     finishingRef.current = false;
-    changeScreen('instructions');
-  }, [changeScreen, clearTimers, resetLivePitch]);
+    changePhase('instructions');
+  }, [changePhase, clearTimers, resetLivePitch]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1130,7 +1129,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
     </>
   );
 
-  if (screen === 'instructions' && isLoadingAdaptiveParams) {
+  if (phase === 'instructions' && isLoadingAdaptiveParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1147,7 +1146,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
   return (
     <>
-      {screen === 'instructions' && (
+      {phase === 'instructions' && (
         <ExerciseScreen
           title="Note Matching Exercise"
           category="Pitch"
@@ -1191,7 +1190,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         />
       )}
 
-      {screen === 'countdown' && (
+      {phase === 'countdown' && (
         <ExerciseCountdownScreen
           icon="musical-notes-outline"
           title="Get Ready"
@@ -1204,7 +1203,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         />
       )}
 
-      {screen === 'listening' && (
+      {phase === 'listening' && (
         <ExerciseListeningScreen
           icon="volume-high-outline"
           title="Listen to the Note"
@@ -1225,8 +1224,8 @@ export default function NoteMatchingScreen({ tier }: Props) {
         />
       )}
 
-      {screen === 'recording' && (
-        <View style={styles.screen}>
+      {phase === 'recording' && (
+        <View style={styles.phase}>
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.recordingContent}
@@ -1533,7 +1532,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         </View>
       )}
 
-      {screen === 'processing' && (
+      {phase === 'processing' && (
         <ExerciseProcessingScreen
           icon="analytics-outline"
           title="Analyzing Your Singing"
@@ -1545,7 +1544,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
         />
       )}
 
-      {screen === 'results' && result && (
+      {phase === 'results' && result && (
         <ExerciseResultsScreen
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={`Note Matching Result • ${adaptiveParams.repetitions} repetitions`}
@@ -1667,7 +1666,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  phase: {
     flex: 1,
     backgroundColor: COLORS.white,
   },

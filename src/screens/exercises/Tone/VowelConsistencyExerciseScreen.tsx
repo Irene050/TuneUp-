@@ -1,59 +1,59 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-    type Tier,
-    VOWEL_CONSISTENCY_PARAMS,
-    type VowelConsistencyParams,
+  type Tier,
+  VOWEL_CONSISTENCY_PARAMS,
+  type VowelConsistencyParams,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseNoAudioModal,
-    type ExercisePreparationStep,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    type ExerciseSummaryItem
+  ExerciseCountdownScreen,
+  ExerciseNoAudioModal,
+  type ExercisePreparationStep,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  type ExerciseSummaryItem
 } from '@/screens/exercises/ExerciseScreen';
 import {
-    generateVowelConsistencyParams,
+  generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureVowelConsistency,
+  measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 import {
-    saveCompletedExercise,
+  saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreVowelConsistencyExercise,
-    type VowelConsistencyScoreResult,
+  scoreVowelConsistencyExercise,
+  type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
@@ -571,22 +571,10 @@ export default function VowelConsistencyExerciseScreen({
 
         processingRef.current = true;
 
-        console.log('📊 VOWEL REPETITION SCORES:', {
-  repetitionScores: nextResults.map(item => item.score),
-  repetitionCount: nextResults.length,
-  expectedRepetitions: repetitions,
-});
-
         const overallScore = Math.round(
           nextResults.reduce((sum, item) => sum + item.score, 0) /
             nextResults.length,
         );
-
-        console.log('📊 VOWEL FINAL SCORE:', {
-  overallScore,
-  savedTier: currentTier,
-  repetitionScores: nextResults.map(item => item.score),
-});
 
         const finalScored: VowelConsistencyScoreResult = {
           score: clamp(overallScore, 0, 100),
@@ -1155,21 +1143,9 @@ export default function VowelConsistencyExerciseScreen({
             Keep the Vowel Consistent
           </Text>
 
-          <Text style={styles.recordingSubtitle}>
-            Hold the same vowel sound. Stay relaxed and let your
-            voice flow naturally.
-          </Text>
-
-          <View style={styles.repPill}>
-            <Ionicons
-              name="repeat-outline"
-              size={16}
-              color={COLORS.brown}
-            />
-            <Text style={styles.repPillText}>
-              REPETITION {currentRep} OF {repetitions}
+          <Text style={styles.repText}>
+              Repetition {currentRep} of {repetitions}
             </Text>
-          </View>
 
           <View style={styles.liveCard}>
             <View style={styles.liveCardHeader}>
@@ -1177,7 +1153,7 @@ export default function VowelConsistencyExerciseScreen({
                 <Ionicons
                   name="mic"
                   size={21}
-                  color={COLORS.guideGreen}
+                  color={COLORS.waveform}
                 />
               </View>
 
@@ -1740,20 +1716,12 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     paddingBottom: 36,
   },
-  repPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.pink,
-  },
-  repPillText: {
-    fontFamily: 'FredokaBold',
+  repText: {
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     letterSpacing: 0.6,
-    color: COLORS.brown,
+    color: COLORS.muted,
+    marginBottom: 10,
   },
   recordingProgressSection: {
     width: '100%',

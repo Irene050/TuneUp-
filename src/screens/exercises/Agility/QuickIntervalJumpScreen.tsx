@@ -1366,44 +1366,19 @@ export default function QuickIntervalJumpScreen() {
           ]}
         >
           <Text style={styles.liveLabel}>
-            LIVE PITCH DETECTION
+            CURRENT NOTE
           </Text>
 
           <Text style={styles.liveCurrentNote}>
-            {liveDetectedNote ?? 'Listening…'}
+            {liveDetectedNote ?? '--'}
           </Text>
 
           <Text style={styles.liveStatValue}>
             {livePitchHz !== null
               ? `${livePitchHz.toFixed(1)} Hz`
-              : 'Waiting for a clear pitch'}
+              : '--'}
           </Text>
-
-          <View style={styles.liveDivider} />
-
-          <View style={styles.liveStatusRow}>
-            <View
-              style={[
-                styles.liveStatusDot,
-                { backgroundColor: liveStatusColor },
-              ]}
-            />
-
-            <Text
-              style={[
-                styles.liveStatLabel,
-                { color: liveStatusColor },
-              ]}
-            >
-              {liveStatus}
-            </Text>
-          </View>
         </View>
-
-        <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s /{' '}
-          {repetitionDurationSec.toFixed(1)}s
-        </Text>
 
         <View style={styles.timerTrack}>
           <View
@@ -1413,6 +1388,10 @@ export default function QuickIntervalJumpScreen() {
             ]}
           />
         </View>
+        <Text style={styles.timerText}>
+          Recording Time: {recordingTime.toFixed(1)}s /{' '}
+          {repetitionDurationSec.toFixed(1)}s
+        </Text>
       </ExerciseRecordingScreen>
     );
   };
@@ -1938,19 +1917,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.muted,
     textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 7,
+    marginTop: 8,
   },
   timerTrack: {
+    marginTop: 10,
     width: '100%',
     height: 7,
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.background,
     borderRadius: 4,
     overflow: 'hidden',
   },
   timerFill: {
     height: '100%',
-    backgroundColor: COLORS.waveform,
+    backgroundColor: COLORS.pink,
   },
   resultIcon: {
     width: 82,

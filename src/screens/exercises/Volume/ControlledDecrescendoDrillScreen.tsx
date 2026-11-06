@@ -166,18 +166,7 @@ function TargetDecrescendoGuide({
 
   return (
     <View style={styles.guideCard}>
-      <View style={styles.guideHeader}>
-        <View style={styles.guideHeaderText}>
-          <Text style={styles.guideTitle}>Follow the target</Text>
-          <Text style={styles.guideSubtitle}>
-            Gradually lower your volume from loud to soft
-          </Text>
-        </View>
-
-        <View style={styles.guideIcon}>
-          <Ionicons name="trending-down" size={18} color={COLORS.brown} />
-        </View>
-      </View>
+      <Text style={styles.guideTitle}>Follow this pattern</Text>
 
       <View style={styles.guideVisualizer}>
         {Array.from({ length: BAR_COUNT }, (_, index) => {
@@ -246,7 +235,6 @@ function QuitExerciseModal({
       />
   );
 }
-
 
 export default function ControlledDecrescendoDrill({
   tier,
@@ -1296,26 +1284,6 @@ export default function ControlledDecrescendoDrill({
     return (
       <>
         <View style={styles.exerciseScreen}>
-          <View style={styles.exerciseHeader}>
-            <View style={styles.exerciseHeaderCopy}>
-              <Text style={styles.exerciseScreenTitle}>
-                Controlled Decrescendo
-              </Text>
-              <Text style={styles.exerciseScreenSubtitle}>
-                Repetition {currentRep} of {repetitions}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.exerciseProgressTrack}>
-            <View
-              style={[
-                styles.exerciseProgressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-
           <View style={styles.exercisePrompt}>
             <Text style={styles.exercisePromptTitle}>
               {instruction.title}
@@ -1343,7 +1311,7 @@ export default function ControlledDecrescendoDrill({
                       Your Performance
                     </Text>
                     <Text style={styles.visualizerSubtitle}>
-                      Compare your voice with the target above
+                      Match the target decrescendo
                     </Text>
                   </View>
 
@@ -1364,48 +1332,9 @@ export default function ControlledDecrescendoDrill({
                 />
 
                 <View style={styles.visualizerLabels}>
-                  <Text style={styles.visualizerLabel}>LIVE AUDIO</Text>
-                  <Text style={styles.visualizerLabel}>RECENT VOLUME</Text>
+                  <Text style={styles.visualizerLabel}>LOUD</Text>
+                  <Text style={styles.visualizerLabel}>SOFT</Text>
                 </View>
-              </View>
-
-              <View style={styles.voiceRow}>
-                <View style={styles.voiceLeft}>
-                  <View style={styles.smallMic}>
-                    <Ionicons
-                      name="mic-outline"
-                      size={17}
-                      color={COLORS.brown}
-                    />
-                  </View>
-
-                  <View>
-                    <Text style={styles.voiceTitle}>Your voice</Text>
-                    <Text style={styles.voiceSubtitle}>
-                      {liveFrame
-                        ? 'Microphone receiving audio'
-                        : 'Listening for your voice…'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.voiceValue}>
-                  {liveFrame && Number.isFinite(liveFrame.volume)
-                    ? liveFrame.volume.toFixed(1)
-                    : '--'}
-                  <Text style={styles.voiceUnit}> dBFS</Text>
-                </Text>
-              </View>
-
-              <View style={styles.targetRow}>
-                <View>
-                  <Text style={styles.targetLabel}>TARGET RANGE</Text>
-                  <Text style={styles.targetValue}>
-                    {targetMax}–{targetMin} dB
-                  </Text>
-                </View>
-
-                <Text style={styles.patternText}>Loud → Soft</Text>
               </View>
 
               <View style={styles.sessionRow}>
@@ -1434,6 +1363,14 @@ export default function ControlledDecrescendoDrill({
                   </Text>
                 </View>
               </View>
+              <View style={styles.exerciseProgressTrack}>
+            <View
+              style={[
+                styles.exerciseProgressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
             </View>
           </ScrollView>
         </View>
@@ -1609,6 +1546,7 @@ const styles = StyleSheet.create({
     height: 58,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
     marginTop: 7,
     overflow: 'hidden',
   },
@@ -1617,7 +1555,6 @@ const styles = StyleSheet.create({
     maxWidth: 7,
     backgroundColor: COLORS.otherpink,
     borderRadius: 4,
-    marginHorizontal: 1,
   },
   previewLabels: {
     flexDirection: 'row',
@@ -1629,7 +1566,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.muted,
   },
-
   exerciseScreen: {
     position: 'absolute',
     top: 90,
@@ -1680,7 +1616,7 @@ const styles = StyleSheet.create({
   exerciseProgressFill: {
     height: '100%',
     borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.pink,
   },
   exercisePrompt: {
     alignItems: 'center',
@@ -1741,7 +1677,7 @@ const styles = StyleSheet.create({
   },
   guideCard: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
     borderRadius: 17,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1757,24 +1693,9 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   guideTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 15,
     color: COLORS.brown,
-  },
-  guideSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    lineHeight: 14,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  guideIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   guideVisualizer: {
     height: 55,
@@ -1878,7 +1799,7 @@ const styles = StyleSheet.create({
   visualizerLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 12,
   },
   visualizerLabel: {
     fontFamily: 'FredokaSemiBold',

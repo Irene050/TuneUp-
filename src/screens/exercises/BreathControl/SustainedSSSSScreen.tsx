@@ -1211,15 +1211,6 @@ export default function SustainedSSSSScreen({
           </View>
 
           <View style={styles.liveCard}>
-            <View style={styles.liveIconCircle}>
-              <Ionicons
-                name="water-outline"
-                size={24}
-                color={COLORS.brown}
-              />
-            </View>
-
-            <View style={styles.liveTextContainer}>
               <Text style={styles.liveLabel}>
                 RELATIVE MIC LEVEL
               </Text>
@@ -1230,7 +1221,6 @@ export default function SustainedSSSSScreen({
                   : 'Listening...'}
               </Text>
             </View>
-          </View>
         </ScrollView>
       </View>
     );
@@ -1531,12 +1521,11 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
   },
   liveCard: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor:COLORS.background,
     borderRadius: 18,
-    padding: 16,
-    marginTop: 28,
+    padding: 14,
+    marginTop: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
   },

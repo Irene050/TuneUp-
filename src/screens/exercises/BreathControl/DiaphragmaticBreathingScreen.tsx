@@ -1111,6 +1111,8 @@ export default function DiaphragmaticBreathingScreen({
                 : 'Slowly release your breath toward the microphone.'}
             </Text>
 
+            <ProgressBar progress={progress} />
+
             {phase === 'exhale' && (
               <View style={styles.volumeCard}>
                 <Text style={styles.volumeLabel}>
@@ -1124,8 +1126,6 @@ export default function DiaphragmaticBreathingScreen({
                 </Text>
               </View>
             )}
-
-            <ProgressBar progress={progress} />
           </View>
         </View>
       )}
@@ -1357,22 +1357,24 @@ const styles = StyleSheet.create({
   },
   volumeCard: {
     width: '100%',
-    marginTop: 22,
+    marginTop: 18,
     padding: 16,
-    borderRadius: 18,
+    borderRadius: 16,
     backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
+    borderWidth: 1,
     alignItems: 'center',
   },
   volumeLabel: {
     fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 1,
     color: COLORS.muted,
   },
   volumeValue: {
     marginTop: 3,
     fontFamily: 'FredokaBold',
-    fontSize: 28,
+    fontSize: 26,
     color: COLORS.brown,
   },
   processingPauseButton: {

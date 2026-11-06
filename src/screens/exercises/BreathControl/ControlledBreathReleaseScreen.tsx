@@ -1288,29 +1288,7 @@ export default function ControlledBreathReleaseScreen({
               </View>
             </View>
 
-            <View style={styles.liveCard}>
-              <View style={styles.liveIconCircle}>
-                <Ionicons
-                  name="water-outline"
-                  size={24}
-                  color={COLORS.brown}
-                />
-              </View>
-
-              <View style={styles.liveTextContainer}>
-                <Text style={styles.liveLabel}>
-                  RELATIVE MIC LEVEL
-                </Text>
-
-                <Text style={styles.liveValue}>
-                  {volume !== null
-                    ? `${Math.round(volume * 100)}%`
-                    : 'Listening...'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.progressTrack}>
+             <View style={styles.progressTrack}>
               <View
                 style={[
                   styles.progressFill,
@@ -1327,6 +1305,18 @@ export default function ControlledBreathReleaseScreen({
               <Text style={styles.rangeText}>
                 {targetRecordingDuration.toFixed(1)}s
               </Text>
+            </View>
+
+            <View style={styles.liveCard}>
+                <Text style={styles.liveLabel}>
+                  RELATIVE MIC LEVEL
+                </Text>
+
+                <Text style={styles.liveValue}>
+                  {volume !== null
+                    ? volume.toFixed(2)
+                    : 'Listening...'}
+                </Text>
             </View>
           </ScrollView>
         </View>
@@ -1674,7 +1664,6 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   liveCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor:COLORS.background,
     borderRadius: 18,
@@ -1682,18 +1671,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
-  },
-  liveIconCircle: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveTextContainer: {
-    flex: 1,
-    marginLeft: 12,
   },
   liveLabel: {
     fontFamily: 'FredokaSemiBold',

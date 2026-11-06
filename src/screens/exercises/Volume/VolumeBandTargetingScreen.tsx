@@ -190,12 +190,7 @@ function TargetBandMeter({
   return (
     <View style={styles.card}>
       <View style={styles.rowBetween}>
-        <View style={styles.flex}>
-          <Text style={styles.cardTitle}>Target Volume</Text>
-          <Text style={styles.mutedSmall}>
-            Adjust your voice to reach the pink band.
-          </Text>
-        </View>
+        <Text style={styles.cardTitle}>Target Volume</Text>
 
         <Text style={styles.targetRange}>
           {formatTargetRange(targetRange)}
@@ -313,8 +308,6 @@ function StabilityHistory({
             Bars show your detected microphone level over time.
           </Text>
         </View>
-
-        <Ionicons name="pulse-outline" size={22} color={COLORS.waveform} />
       </View>
 
       <View style={styles.history}>
@@ -358,12 +351,6 @@ function StabilityHistory({
             );
           })}
         </View>
-      </View>
-
-      <View style={styles.rowBetween}>
-        <Text style={styles.scaleText}>Too soft</Text>
-        <Text style={styles.targetRange}>TARGET BAND</Text>
-        <Text style={styles.scaleText}>Too loud</Text>
       </View>
     </View>
   );
@@ -1574,8 +1561,6 @@ export default function VolumeBandTargeting({
 
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.exerciseScreen}>
-            <View style={styles.activeHeader}>
-              <View style={styles.activeHeaderCopy}>
                 <Text style={styles.activeTitle}>
                   Volume Band Targeting
                 </Text>
@@ -1583,15 +1568,6 @@ export default function VolumeBandTargeting({
                 <Text style={styles.activeCategory}>
                   VOLUME CONTROL
                 </Text>
-              </View>
-            </View>
-
-            <View style={styles.activePromptBlock}>
-              <Text style={styles.activePrompt}>
-                Sing {referenceNote.name} on “Ah”. Adjust your voice to
-                reach the {targetRangeText} target band and keep it steady.
-              </Text>
-            </View>
 
             <ScrollView
               style={styles.activeScroll}
@@ -1609,15 +1585,6 @@ export default function VolumeBandTargeting({
                 targetRange={params.targetDbRange}
               />
 
-              <View style={styles.bottomRepCard}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.repLabel}>Repetition</Text>
-
-                  <Text style={styles.repValue}>
-                    {currentRep} of {params.repetitions}
-                  </Text>
-                </View>
-
                 <View style={styles.repTrack}>
                   <View
                     style={[
@@ -1626,28 +1593,6 @@ export default function VolumeBandTargeting({
                     ]}
                   />
                 </View>
-
-                <View style={styles.rowBetween}>
-                  <Text style={styles.mutedSmall}>
-                    Keep your volume steady
-                  </Text>
-
-                  <Text style={styles.repTimer}>
-                    {Math.max(
-                      0,
-                      exerciseDurationSec -
-                        Math.floor(currentRepElapsed / 1000),
-                    )}
-                    s left
-                  </Text>
-                </View>
-              </View>
-
-              {!isRecording && (
-                <Text style={styles.waitingText}>
-                  Starting microphone...
-                </Text>
-              )}
             </ScrollView>
           </View>
         </SafeAreaView>
@@ -1712,7 +1657,7 @@ export default function VolumeBandTargeting({
               </View>
 
               <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Target Band</Text>
+                <Text style={styles.resultLabel}>Target</Text>
 
                 <Text style={styles.resultValue}>
                   {targetRangeText}
@@ -1869,21 +1814,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
   },
-  activeHeader: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-  },
-  activeHeaderCopy: {
-    position: 'absolute',
-    left: 50,
-    right: 50,
-    alignItems: 'center',
-  },
   activeCategory: {
-    color: COLORS.waveform,
+    color: COLORS.muted,
     fontFamily: 'FredokaSemiBold',
     fontSize: 10,
     letterSpacing: 0.8,
@@ -1892,8 +1824,8 @@ const styles = StyleSheet.create({
   activeTitle: {
     marginTop: 2,
     color: COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 17,
+    fontFamily: 'FredokaBold',
+    fontSize: 22,
     textAlign: 'center',
   },
   activePromptBlock: {
@@ -1906,6 +1838,7 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 20,
     textAlign: 'center',
+    marginBottom: 20,
   },
   activePrompt: {
     marginTop: 4,
@@ -1924,16 +1857,6 @@ const styles = StyleSheet.create({
   liveContent: {
     paddingBottom: 12,
   },
-  bottomRepCard: {
-    marginTop: 12,
-    marginBottom: 8,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor:  COLORS.background,
-    gap: 9,
-  },
   repLabel: {
     color: COLORS.text,
     fontFamily: 'FredokaRegular',
@@ -1945,6 +1868,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   repTrack: {
+    marginTop: 12,
     height: 7,
     borderRadius: 5,
     backgroundColor: COLORS.background,
@@ -1953,7 +1877,7 @@ const styles = StyleSheet.create({
   repProgress: {
     height: '100%',
     borderRadius: 5,
-    backgroundColor: COLORS.waveform,
+    backgroundColor: COLORS.pink,
   },
   repTimer: {
     color: COLORS.waveform,
@@ -2021,7 +1945,7 @@ const styles = StyleSheet.create({
   meter: {
     position: 'relative',
     height: 38,
-    marginTop: 13,
+    marginTop: 15,
     marginBottom: 7,
     borderRadius: 20,
     backgroundColor: COLORS.background,
@@ -2032,9 +1956,7 @@ const styles = StyleSheet.create({
     top: 5,
     bottom: 5,
     borderRadius: 18,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.pink,
+    backgroundColor: COLORS.pink,
   },
   marker: {
     position: 'absolute',

@@ -1,75 +1,75 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
 
 import {
-    type Tier,
-    WAVEFORM_SMOOTHNESS_PARAMS,
-    type WaveformSmoothnessParams,
+  type Tier,
+  WAVEFORM_SMOOTHNESS_PARAMS,
+  type WaveformSmoothnessParams,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExerciseNoAudioModal,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseQuitModal,
+  ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import {
-    generateWaveformSmoothnessParams,
+  generateWaveformSmoothnessParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureWaveformSmoothness,
-    type WaveformSmoothnessMeasurement,
+  measureWaveformSmoothness,
+  type WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import {
-    saveCompletedExercise,
+  saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreWaveformSmoothnessDrill,
-    type WaveformSmoothnessScoreResult,
+  scoreWaveformSmoothnessDrill,
+  type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
 import {
-    samplesToFFTFrames,
+  samplesToFFTFrames,
 } from '@/utils/dsp/fft';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    frequencyToNoteName,
-    getRandomPitchNote,
-    getSemitoneDistance,
-    type VocalRange,
+  frequencyToNoteName,
+  getRandomPitchNote,
+  getSemitoneDistance,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
@@ -222,29 +222,17 @@ function RecordingScreen({
     <View style={styles.recordingScreen}>
 
         <Text style={styles.recordingTitle}>Sustain Smoothly</Text>
-        <Text style={styles.recordingSubtitle}>
-          Hold your note steadily. Keep your tone even and consistent.
+        <Text style={styles.repPillText}>
+              Repetition {currentRep} of {repetitions}
         </Text>
-
         <View style={styles.recordingBody}>
-          <View style={styles.repPill}>
-            <Ionicons
-              name="repeat-outline"
-              size={16}
-              color={COLORS.brown}
-            />
-            <Text style={styles.repPillText}>
-              REPETITION {currentRep} OF {repetitions}
-            </Text>
-        </View>
-
         <View style={styles.liveCard}>
           <View style={styles.liveCardHeader}>
             <View style={styles.liveMicCircle}>
               <Ionicons
                 name="mic"
                 size={21}
-                color={COLORS.guideGreen}
+                color={COLORS.waveform}
               />
             </View>
             <View style={styles.liveCardHeading}>
@@ -1532,22 +1520,14 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 22,
-    paddingTop: 25,
-  },
-  repPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.pink,
+    paddingTop: 2,
   },
   repPillText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
+    textAlign: 'center',
+    fontFamily: 'FredokaRegular',
+    fontSize: 12,
     letterSpacing: 0.6,
-    color: COLORS.brown,
+    color: COLORS.muted,
   },
   recordingTitle: {
     marginTop: 18,
@@ -1556,18 +1536,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     textAlign: 'center',
     paddingHorizontal: 20,
-  },
-  recordingSubtitle: {
-    width: '100%',
-    maxWidth: 320,
-    marginTop: 6,
-    paddingHorizontal: 8,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.muted,
-    textAlign: 'center',
-    alignSelf: 'center',
   },
   recordingProgressSection: {
     width: '100%',
@@ -1631,7 +1599,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 21,
-    backgroundColor: COLORS.lightGreen,
+    backgroundColor: COLORS.background,
   },
   liveCardHeading: {
     flex: 1,

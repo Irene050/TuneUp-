@@ -1293,33 +1293,28 @@ export default function FrequencyZoneStabilityScreen({
             <Text style={styles.recordingTitle}>
               Hold Your Frequency
             </Text>
-
-            <View style={styles.repPill}>
-              <Ionicons
-                name="repeat-outline"
-                size={16}
-                color={COLORS.brown}
-              />
-
               <Text style={styles.repPillText}>
-                REPETITION {currentRep} OF {params.repetitions}
+                Repetition {currentRep} of {params.repetitions}
               </Text>
-            </View>
-
             <View style={styles.liveCard}>
               <View style={styles.liveCardHeader}>
                 <View style={styles.liveMicCircle}>
                   <Ionicons
                     name="mic"
                     size={21}
-                    color={COLORS.guideGreen}
+                    color={COLORS.waveform}
                   />
                 </View>
 
                 <View style={styles.liveCardHeading}>
                   <Text style={styles.liveCardTitle}>
-                    Live Frequency Monitor
+                    Live Voice Monitor
                   </Text>
+                  <Text style={styles.liveCardSubtitle}>
+                    Your microphone feedback
+                  </Text>
+
+
                 </View>
 
                 <View style={styles.liveIndicatorPill}>
@@ -1550,18 +1545,9 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     textAlign: 'center',
   },
-  repPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginTop: 10,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.pink,
-  },
   repPillText: {
-    fontFamily: 'FredokaBold',
+    textAlign: 'center',
+    fontFamily: 'FredokaRegular',
     fontSize: 11,
     letterSpacing: 0.6,
     color: COLORS.brown,
@@ -1628,7 +1614,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 21,
-    backgroundColor: COLORS.lightGreen,
+    backgroundColor: COLORS.background,
   },
   liveCardHeading: {
     flex: 1,
@@ -1638,6 +1624,12 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 15,
     color: COLORS.brown,
+  },
+  liveCardSubtitle: {
+    marginTop: 2,
+    fontFamily: 'FredokaRegular',
+    fontSize: 11,
+    color: COLORS.muted,
   },
   liveIndicatorPill: {
     flexDirection: 'row',
