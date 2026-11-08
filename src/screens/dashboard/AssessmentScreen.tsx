@@ -40,7 +40,10 @@ import {
   type NoteToPlay,
   playNoteSequence,
 } from '@/utils/music/notePlayer';
-import { frequencyToNoteName } from '@/utils/music/notes';
+import {
+  frequencyToMidi,
+  frequencyToNoteName,
+} from '@/utils/music/notes';
 
 import { COLORS } from '@/constants/appConstants';
 
@@ -218,6 +221,74 @@ function getStepReferenceNotes(
     default:
       return [];
   }
+}
+
+type VoiceClassification =
+  | 'Soprano'
+  | 'Alto'
+  | 'Tenor'
+  | 'Bass';
+
+const VOICE_CLASSIFICATION_RANGES: {
+  type: VoiceClassification;
+  lowMidi: number;
+  highMidi: number;
+}[] = [
+  {
+    type: 'Soprano',
+    lowMidi: 60, // C4
+    highMidi: 84, // C6
+  },
+  {
+    type: 'Alto',
+    lowMidi: 53, // F3
+    highMidi: 77, // F5
+  },
+  {
+    type: 'Tenor',
+    lowMidi: 48, // C3
+    highMidi: 72, // C5
+  },
+  {
+    type: 'Bass',
+    lowMidi: 40, // E2
+    highMidi: 64, // E4
+  },
+];
+
+function classifyVoice(
+  lowHz: number,
+  highHz: number,
+): VoiceClassification {
+  const detectedLow = frequencyToMidi(lowHz);
+  const detectedHigh = frequencyToMidi(highHz);
+
+  let bestClassification: VoiceClassification = 'Soprano';
+  let greatestOverlap = -1;
+  let smallestDistance = Infinity;
+
+  for (const range of VOICE_CLASSIFICATION_RANGES) {
+    const overlap = Math.max(
+      0,
+      Math.min(detectedHigh, range.highMidi) -
+        Math.max(detectedLow, range.lowMidi),
+    );
+
+    const distance =
+      Math.pow(detectedLow - range.lowMidi, 2) +
+      Math.pow(detectedHigh - range.highMidi, 2);
+
+    if (
+      overlap > greatestOverlap ||
+      (overlap === greatestOverlap && distance < smallestDistance)
+    ) {
+      greatestOverlap = overlap;
+      smallestDistance = distance;
+      bestClassification = range.type;
+    }
+  }
+
+  return bestClassification;
 }
 
 function isRecordingUsable(
@@ -1138,6 +1209,10 @@ export default function AssessmentScreen() {
                   {' – '}
                   {frequencyToNoteName(vocalRange.highHz)}
                 </Text>
+
+                <Text style={styles.voiceClassification}>
+                  {classifyVoice(vocalRange.lowHz, vocalRange.highHz)}
+                </Text>
               </View>
 
               <Text style={styles.completionRangeLabel}>
@@ -1250,11 +1325,11 @@ export default function AssessmentScreen() {
             {frequencyToNoteName(result.vocalRangeHighHz)}
           </Text>
 
-          <Text style={styles.rangeHzText}>
-            {result.vocalRangeLowHz.toFixed(1)}
-            {' Hz  –  '}
-            {result.vocalRangeHighHz.toFixed(1)}
-            {' Hz'}
+          <Text style={styles.voiceClassification}>
+            {classifyVoice(
+              result.vocalRangeLowHz,
+              result.vocalRangeHighHz,
+            )}
           </Text>
         </View>
 
@@ -1764,6 +1839,13 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 80,
   },
+  voiceClassificationContainer: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    alignItems: 'center',
+  },
   resultsContent: {
     paddingHorizontal: 24,
     paddingTop: 50,
@@ -1919,7 +2001,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   completionRangeLabel: {
-    fontFamily: 'FredokaSemiBold',
+    fontFamily: 'FredokaRegular',
     fontSize: 12,
     color: COLORS.brown,
     textAlign: 'center',
@@ -1927,6 +2009,12 @@ const styles = StyleSheet.create({
   completionRangeNotes: {
     fontFamily: 'FredokaBold',
     fontSize: 36,
+    color: COLORS.brown,
+    textAlign: 'center',
+  },
+  voiceClassification: {
+    fontFamily: 'FredokaSemiBold',
+    fontSize: 20,
     color: COLORS.brown,
     textAlign: 'center',
   },
@@ -2205,12 +2293,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: COLORS.brown,
     marginTop: 2,
-  },
-  rangeHzText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 6,
   },
   scoreCard: {
     backgroundColor: COLORS.background,
