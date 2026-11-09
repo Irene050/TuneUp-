@@ -366,23 +366,16 @@ export default function RapidNoteTransitionExerciseScreen({
       Math.min(baseParams.maxSpeed, adaptiveParams.maxSpeed),
     );
 
-    const shortestAllowedDuration = Math.max(
-      0.05,
-      1 / maxSpeed - REFERENCE_NOTE_GAP_SECONDS,
-    );
-
-    const longestAllowedDuration = Math.max(
-      shortestAllowedDuration,
-      1 / minSpeed - REFERENCE_NOTE_GAP_SECONDS,
-    );
-
-    const noteDurationSec = Math.min(
-      longestAllowedDuration,
-      Math.max(shortestAllowedDuration, adaptiveParams.noteDurationSec),
-    );
-
+    // Select a target speed within the current adaptive speed range.
     const targetSpeed =
-      1 / (noteDurationSec + REFERENCE_NOTE_GAP_SECONDS);
+      minSpeed + Math.random() * (maxSpeed - minSpeed);
+
+    // The note duration plus the playback gap must equal
+    // exactly one note-to-note interval.
+    const noteDurationSec = Math.max(
+      0.05,
+      1 / targetSpeed - REFERENCE_NOTE_GAP_SECONDS,
+    );
 
     const assessedMinMidi = assessedVocalRangeHz
       ? Math.max(
@@ -480,21 +473,21 @@ export default function RapidNoteTransitionExerciseScreen({
   const guideBeatDurationSeconds =
     guideNoteDurationSeconds + REFERENCE_NOTE_GAP_SECONDS;
 
-  const recordingBeatPosition =
-    guideBeatDurationSeconds > 0
-      ? elapsedSeconds % guideBeatDurationSeconds
-      : 0;
-
   const recordingSequenceDurationSeconds =
-    exerciseConfig.sequence.names.length * guideBeatDurationSeconds;
+    exerciseConfig.sequence.names.length > 0
+      ? (exerciseConfig.sequence.names.length - 1) *
+          guideBeatDurationSeconds +
+        guideNoteDurationSeconds
+      : 0;
 
   const currentGuideNoteIndex =
     screen === 'recording' &&
     exerciseConfig.sequence.names.length > 0 &&
     elapsedSeconds < recordingSequenceDurationSeconds
-      ? recordingBeatPosition < guideNoteDurationSeconds
-        ? Math.floor(elapsedSeconds / guideBeatDurationSeconds)
-        : null
+      ? Math.min(
+          Math.floor(elapsedSeconds / guideBeatDurationSeconds),
+          exerciseConfig.sequence.names.length - 1,
+        )
       : screen === 'listening'
         ? activeGuideNoteIndex
         : null;
@@ -864,7 +857,7 @@ export default function RapidNoteTransitionExerciseScreen({
             void stopRecording();
           }
         }
-      }, 100);
+      }, 50);
     } catch (error) {
       console.error('Could not start recording:', error);
 

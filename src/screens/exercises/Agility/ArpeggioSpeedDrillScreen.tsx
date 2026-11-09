@@ -75,7 +75,6 @@ type Phase =
   | 'results';
 
 type ArpeggioExerciseConfig = {
-  name: string;
   notes: string[];
   frequencies: number[];
   speedLabel: string;
@@ -90,7 +89,6 @@ type Result = {
   sequenceScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
   noteCount: number;
   correctNoteCount: number;
   notesPerSecond: number;
@@ -142,9 +140,6 @@ const buildFinalResult = (
       average(attempts.map((item) => item.speedScore)),
     ),
     passed,
-    feedback: passed
-      ? `You completed all ${repetitionCount} repetitions successfully. Keep building speed while maintaining accuracy.`
-      : `You completed all ${repetitionCount} repetitions. Review your pitch and sequence accuracy, then try again for more consistent arpeggios.`,
     noteCount: attempts.reduce(
       (sum, item) => sum + item.noteCount,
       0,
@@ -170,7 +165,6 @@ const generateArpeggioFromVocalRange = (
   lowHz: number,
   highHz: number,
 ): {
-  name: string;
   notes: string[];
   frequencies: number[];
 } | null => {
@@ -216,7 +210,6 @@ const generateArpeggioFromVocalRange = (
   );
 
   return {
-    name: 'Personalized Arpeggio',
     notes,
     frequencies,
   };
@@ -289,7 +282,6 @@ export default function ArpeggioSpeedDrillScreen() {
   const [config, setConfig] =
     useState<ArpeggioExerciseConfig>({
       ...baseConfig,
-      name: 'Personalized Arpeggio',
       notes: [],
       frequencies: [],
     });
@@ -353,37 +345,33 @@ export default function ArpeggioSpeedDrillScreen() {
     setPhase(nextPhase);
   }, []);
 
-  const timedReferenceNoteIndex =
-    phase === 'recording'
-      ? (() => {
-          const noteDurationMs =
-            config.noteDurationSec * 1000;
+const noteCycleDuration =
+  config.noteDurationSec + config.gapSec;
 
-          const gapMs = config.gapSec * 1000;
+const elapsedInCycle =
+  noteCycleDuration > 0
+    ? recordingTime % noteCycleDuration
+    : 0;
 
-          const cycleMs = noteDurationMs + gapMs;
+const timedNoteIndex =
+  config.frequencies.length > 0 &&
+  noteCycleDuration > 0
+    ? Math.floor(recordingTime / noteCycleDuration) %
+      config.frequencies.length
+    : null;
 
-          if (
-            cycleMs <= 0 ||
-            !config.frequencies.length
-          ) {
-            return null;
-          }
+const isNoteWindowActive =
+  phase === 'recording' &&
+  timedNoteIndex !== null &&
+  elapsedInCycle < config.noteDurationSec;
 
-          const positionInSequence =
-            (recordingTime * 1000) %
-            (cycleMs * config.frequencies.length);
+const timedReferenceNoteIndex =
+  isNoteWindowActive ? timedNoteIndex : null;
 
-          const index = Math.floor(
-            positionInSequence / cycleMs,
-          );
-
-          return positionInSequence - index * cycleMs <
-            noteDurationMs
-            ? index
-            : null;
-        })()
-      : null;
+const expectedNote =
+  timedNoteIndex !== null
+    ? config.notes[timedNoteIndex]
+    : null;
 
   const clearRecordingTimer = useCallback(() => {
     if (recordingTimerRef.current) {
@@ -445,12 +433,10 @@ export default function ArpeggioSpeedDrillScreen() {
           sequenceScore: scored.sequenceScore,
           speedScore: scored.speedScore,
           passed: scored.passed,
-          feedback: scored.feedback,
           noteCount: measurement.noteCount,
           correctNoteCount: measurement.correctNoteCount,
           notesPerSecond: measurement.notesPerSecond,
-          averageNoteDurationMs:
-            measurement.averageNoteDurationMs,
+          averageNoteDurationMs: measurement.averageNoteDurationMs,
           durationMs: measurement.durationMs,
         };
 
@@ -575,7 +561,6 @@ export default function ArpeggioSpeedDrillScreen() {
     startRecording: startAudioRecording,
     stopRecording: stopAudioRecording,
     cancelRecording: cancelAudioRecording,
-    isRecording,
   } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
@@ -693,40 +678,36 @@ export default function ArpeggioSpeedDrillScreen() {
         return;
       }
 
-      recordingStartRef.current = Date.now();
-      setRecordingTime(0);
+  recordingStartRef.current = Date.now();
+  setRecordingTime(0);
+
+  recordingTimerRef.current = setInterval(() => {
+    const start = recordingStartRef.current;
+
+    if (
+      start === null ||
+      processingRef.current ||
+      phaseRef.current !== 'recording'
+    ) {
+      return;
+    }
+
+    const elapsed = (Date.now() - start) / 1000;
+
+    setRecordingTime(
+      Math.min(elapsed, EXERCISE_MAX_RECORDING_SECONDS),
+    );
+
+    if (elapsed >= EXERCISE_MAX_RECORDING_SECONDS) {
+      processingRef.current = true;
 
       clearRecordingTimer();
 
-      recordingStartRef.current = Date.now();
-
-      recordingTimerRef.current = setInterval(() => {
-        const start = recordingStartRef.current;
-
-        if (
-          start === null ||
-          processingRef.current ||
-          phaseRef.current !== 'recording'
-        ) {
-          return;
-        }
-
-        const elapsed = (Date.now() - start) / 1000;
-
-        setRecordingTime(
-          Math.min(elapsed, EXERCISE_MAX_RECORDING_SECONDS),
-        );
-
-        if (elapsed >= EXERCISE_MAX_RECORDING_SECONDS) {
-          processingRef.current = true;
-
-          clearRecordingTimer();
-
-          changePhase('processing');
-          setLivePitchHz(null);
-          void stopActiveRecording();
-        }
-      }, 100);
+      changePhase('processing');
+      setLivePitchHz(null);
+      void stopActiveRecording();
+    }
+  }, 30);
     } catch (error) {
       console.error(
         'Arpeggio Speed Drill recording failed:',
@@ -929,7 +910,6 @@ export default function ArpeggioSpeedDrillScreen() {
 
         setConfig({
           ...generated,
-          name: arpeggio?.name ?? 'Personalized Arpeggio',
           notes: arpeggio?.notes ?? [],
           frequencies: arpeggio?.frequencies ?? [],
         });
@@ -960,7 +940,6 @@ export default function ArpeggioSpeedDrillScreen() {
         if (!cancelled) {
           setConfig({
             ...baseConfig,
-            name: 'Personalized Arpeggio',
             notes: [],
             frequencies: [],
           });
@@ -1195,78 +1174,83 @@ export default function ArpeggioSpeedDrillScreen() {
     </View>
   );
 
-  const renderRecording = () => {
-    const progress = Math.min(
-      recordingTime / EXERCISE_MAX_RECORDING_SECONDS,
-      1,
-    );
+const renderRecording = () => {
+  const progress = Math.min(
+    recordingTime / EXERCISE_MAX_RECORDING_SECONDS,
+    1,
+  );
 
-    const liveMatch =
-      livePitchHz === null
-        ? { index: -1, distance: Infinity }
-        : findClosestTarget(
-            livePitchHz,
-            config.frequencies,
-          );
+  const liveMatch =
+    livePitchHz === null
+      ? { index: -1, distance: Infinity }
+      : findClosestTarget(
+          livePitchHz,
+          config.frequencies,
+        );
 
-    const liveDetectedNote =
-      liveMatch.index >= 0 &&
-      liveMatch.distance <= 1.5
-        ? config.notes[liveMatch.index]
-        : null;
+  const liveDetectedNote =
+    liveMatch.index >= 0 &&
+    liveMatch.distance <= 1.5
+      ? config.notes[liveMatch.index]
+      : null;
 
-    return (
-      <ExerciseRecordingScreen
-        title="Sing the Arpeggio"
-        currentRep={currentRep}
-        repetitions={repetitionCount}
-        onBack={pauseForExitPrompt}
-      >
-        <AgilitySequenceGuide
-          names={config.frequencies.map(
-            frequencyToNoteName,
-          )}
-          activeIndex={timedReferenceNoteIndex}
-          liveNote={liveDetectedNote ?? undefined}
-          showFeedback
-          caption="Follow the highlighted note in time with the sequence."
-        />
+  const isSingingWindow =
+    isNoteWindowActive && expectedNote !== null;
 
-        <View style={styles.liveCard}>
-          <Text style={styles.liveLabel}>
-            CURRENT NOTE
-          </Text>
-
-          <Text style={styles.liveCurrentNote}>
-            {liveDetectedNote ??
-              (livePitchHz === null
-                ? '--'
-                : 'Unmatched')}
-          </Text>
-
-          <Text style={styles.liveStatValue}>
-            {livePitchHz !== null
-              ? `${livePitchHz.toFixed(1)} Hz`
-              : '--'}
-          </Text>
-        </View>
-
-        <View style={styles.timerTrack}>
-          <View
-            style={[
-              styles.timerFill,
-              { width: `${progress * 100}%` },
-            ]}
-          />
-        </View>
-
-        <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s
+  return (
+    <ExerciseRecordingScreen
+      title="Sing the Arpeggio"
+      currentRep={currentRep}
+      repetitions={repetitionCount}
+      onBack={pauseForExitPrompt}
+    >
+      <AgilitySequenceGuide
+        names={config.notes}
+        activeIndex={timedReferenceNoteIndex}
+        liveNote={liveDetectedNote ?? undefined}
+        showFeedback
+        caption={
+          isSingingWindow
+            ? `Sing ${expectedNote} now!`
+            : expectedNote
+              ? `Get ready for ${expectedNote}...`
+              : 'Follow the highlighted notes.'
+        }
+      />
+      <View style={styles.liveCard}>
+        <Text style={styles.liveLabel}>
+          DETECTED NOTE
         </Text>
 
-      </ExerciseRecordingScreen>
-    );
-  };
+        <Text style={styles.liveCurrentNote}>
+          {liveDetectedNote ??
+            (livePitchHz === null
+              ? '--'
+              : 'Unmatched')}
+        </Text>
+
+        <Text style={styles.liveStatValue}>
+          {livePitchHz !== null
+            ? `${livePitchHz.toFixed(1)} Hz`
+            : 'Listening...'}
+        </Text>
+      </View>
+
+      <View style={styles.timerTrack}>
+        <View
+          style={[
+            styles.timerFill,
+            { width: `${progress * 100}%` },
+          ]}
+        />
+      </View>
+
+      <Text style={styles.timerText}>
+        Recording Time: {recordingTime.toFixed(1)}s
+      </Text>
+    </ExerciseRecordingScreen>
+  );
+};
 
   const renderProcessing = () => (
     <ExerciseProcessingScreen
@@ -1458,18 +1442,6 @@ export default function ArpeggioSpeedDrillScreen() {
           </View>
         </View>
 
-        <View style={styles.tipCard}>
-          <Ionicons
-            name="bulb-outline"
-            size={20}
-            color={COLORS.brown}
-          />
-
-          <Text style={styles.tipText}>
-            {result.feedback}
-          </Text>
-        </View>
-
         <Pressable
           style={styles.startButton}
           onPress={resetExercise}
@@ -1639,28 +1611,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 320,
   },
-
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 15,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-
   startButton: {
     width: '100%',
     height: 54,
@@ -1726,21 +1676,6 @@ const styles = StyleSheet.create({
     color: COLORS.brown,
     marginTop: 4,
   },
-
-  liveDivider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 15,
-  },
-
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-
   liveStatValue: {
     fontFamily: 'FredokaBold',
     fontSize: 15,
@@ -1897,18 +1832,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-
   metricRowLast: {
     borderBottomWidth: 0,
   },
-
   metricLabel: {
     fontFamily: 'FredokaRegular',
     fontSize: 11,
     color: COLORS.muted,
     flex: 1,
   },
-
   metricValue: {
     fontFamily: 'FredokaBold',
     fontSize: 12,

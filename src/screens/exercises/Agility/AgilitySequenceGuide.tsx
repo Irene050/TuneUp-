@@ -25,7 +25,9 @@ function getFeedbackColor(
     return COLORS.guideGreen;
   }
 
-  return semitoneDistance === 1 ? COLORS.guideYellow : COLORS.guideRed;
+  return semitoneDistance === 1
+    ? COLORS.guideYellow
+    : COLORS.guideRed;
 }
 
 export function AgilitySequenceGuide({
@@ -63,9 +65,11 @@ export function AgilitySequenceGuide({
       steps[match[1].toUpperCase()]
     );
   });
+
   const minStep = Math.min(...stepValues, 0);
   const maxStep = Math.max(...stepValues, 4);
   const range = Math.max(4, maxStep - minStep);
+
   const itemWidth = 38;
   const staffWidth = Math.max(210, names.length * itemWidth + 42);
 
@@ -100,35 +104,43 @@ export function AgilitySequenceGuide({
           </View>
 
           {names.map((name, index) => {
-            const normalized = (stepValues[index] - minStep) / range;
+            const normalized =
+              (stepValues[index] - minStep) / range;
+
             const top = 48 - normalized * 34;
             const left = 34 + index * itemWidth;
             const active = activeIndex === index;
+
             const feedbackColor =
               active && showFeedback
                 ? getFeedbackColor(name, liveNote)
                 : null;
-            const referenceActive = active && !showFeedback;
-            const noteColor =
-              feedbackColor ??
-              (referenceActive ? COLORS.waveform : COLORS.brown);
+
+            const noteColor = active
+              ? feedbackColor ?? COLORS.waveform
+              : COLORS.brown;
+
+            const haloBorderColor = active
+              ? feedbackColor ?? COLORS.otherpink
+              : 'transparent';
 
             return (
               <View key={`${name}-${index}`}>
                 <View
                   style={[
                     styles.halo,
-                    active
-                      ? {
-                          backgroundColor: COLORS.pink,
-                          borderColor: referenceActive
-                            ? COLORS.waveform
-                            : feedbackColor ?? COLORS.otherpink,
-                        }
-                      : styles.inactiveHalo,
-                    { left: left - 5, top: top - 5 },
+                    {
+                      left: left - 5,
+                      top: top - 5,
+                      backgroundColor: active
+                        ? COLORS.pink
+                        : 'transparent',
+                      borderColor: haloBorderColor,
+                      borderWidth: active ? 2 : 0,
+                    },
                   ]}
                 />
+
                 <View
                   style={[
                     styles.noteHead,
@@ -140,6 +152,7 @@ export function AgilitySequenceGuide({
                     },
                   ]}
                 />
+
                 <View
                   style={[
                     styles.noteStem,
@@ -150,23 +163,29 @@ export function AgilitySequenceGuide({
                     },
                   ]}
                 />
+
                 <Text
                   style={[
                     styles.noteNumber,
                     {
                       left: left - 5,
-                      color: active ? noteColor : COLORS.muted,
+                      color: active
+                        ? noteColor
+                        : COLORS.muted,
                     },
                   ]}
                 >
                   {index + 1}
                 </Text>
+
                 <Text
                   style={[
                     styles.noteName,
                     {
                       left: left - 10,
-                      color: active ? noteColor : COLORS.brown,
+                      color: active
+                        ? noteColor
+                        : COLORS.brown,
                     },
                   ]}
                 >
@@ -180,7 +199,11 @@ export function AgilitySequenceGuide({
 
       <View style={styles.legend}>
         {[
-          { color: COLORS.waveform, label: 'Active note', border: true },
+          {
+            color: COLORS.waveform,
+            label: 'Active note',
+            border: true,
+          },
           { color: COLORS.guideGreen, label: 'Correct' },
           { color: COLORS.guideYellow, label: 'Close' },
           { color: COLORS.guideRed, label: 'Off pitch' },
@@ -191,12 +214,16 @@ export function AgilitySequenceGuide({
                 styles.legendDot,
                 {
                   backgroundColor: item.color,
-                  borderColor: item.border ? COLORS.otherpink : item.color,
+                  borderColor: item.border
+                    ? COLORS.otherpink
+                    : item.color,
                   borderWidth: item.border ? 1 : 0,
                 },
               ]}
             />
-            <Text style={styles.legendText}>{item.label}</Text>
+            <Text style={styles.legendText}>
+              {item.label}
+            </Text>
           </View>
         ))}
       </View>
@@ -274,13 +301,7 @@ const styles = StyleSheet.create({
     width: 23,
     height: 18,
     borderRadius: 10,
-    borderWidth: 2,
     zIndex: 0,
-  },
-  inactiveHalo: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-    borderWidth: 0,
   },
   noteHead: {
     position: 'absolute',

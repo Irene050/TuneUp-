@@ -3,8 +3,8 @@ import {
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
 
-import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
 import { clampFinite } from '@/utils/math';
+import { frequencyToMidi, midiToFrequency } from '@/utils/music/notes';
 
 export type ArpeggioSpeedMeasurement = {
   detectedPitches: number[];
@@ -125,6 +125,8 @@ function calculatePitchAccuracy(
 
         totalScore += clampFinite(
           100 - (errorPercent / tolerance) * 100,
+          0,
+          100,
         );
 
         if (errorPercent <= tolerance) {
@@ -143,10 +145,10 @@ function calculatePitchAccuracy(
     }
   }
 
-  const denominator = Math.max(detectedCount, targetCount);
-
   return {
-    accuracy: Math.round(clampFinite(totalScore / denominator)),
+    accuracy: Math.round(
+      clampFinite(totalScore / Math.max(detectedCount, targetCount), 0, 100),
+    ),
     correctCount,
   };
 }
@@ -173,9 +175,7 @@ function calculateSequenceAccuracy(
 
   for (let i = 1; i < rows; i++) {
     for (let j = 1; j < columns; j++) {
-      if (
-        Math.abs(detectedNotes[i - 1] - targetMidi[j - 1]) <= 1
-      ) {
+      if (Math.abs(detectedNotes[i - 1] - targetMidi[j - 1]) <= 1) {
         dp[i][j] = dp[i - 1][j - 1] + 1;
       } else {
         dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
@@ -188,7 +188,7 @@ function calculateSequenceAccuracy(
 
   return {
     accuracy: Math.round(
-      clampFinite((correctCount / denominator) * 100),
+      clampFinite((correctCount / denominator) * 100, 0, 100),
     ),
     correctCount,
   };
@@ -204,7 +204,9 @@ export function measureArpeggioSpeed(
   const durationMs =
     sampleRate > 0 ? (samples.length / sampleRate) * 1000 : 0;
 
-  const targetNotes = targetFrequencies.map(frequencyToMidi);
+  const targetNotes = targetFrequencies.map((frequency) =>
+    Math.round(frequencyToMidi(frequency)),
+  );
 
   const targetNotesPerSecond =
     Number.isFinite(expectedNoteIntervalSec) &&
@@ -248,9 +250,7 @@ export function measureArpeggioSpeed(
     },
   );
 
-  const detectedPitches = pitchFrames.map(
-    (frame) => frame.frequency,
-  );
+  const detectedPitches = pitchFrames.map((frame) => frame.frequency);
 
   const extractedNotes = extractAgilityNotes(
     pitchFrames,

@@ -1420,17 +1420,36 @@ export default function RapidScaleTrillScreen() {
         />
 
         <View style={styles.liveCard}>
-
           <Text style={styles.liveLabel}>
             CURRENT NOTE
           </Text>
 
           <Text style={styles.detectedPitchText}>
-            {livePitchHz  ?? '--' }
+            {livePitchHz !== null
+              ? frequencyToNoteName(livePitchHz)
+              : '--'}
           </Text>
 
-          <Text style={styles.detectedPitchTextSub}>
-             {livePitchStatus ?? '--'}
+          <Text
+            style={[
+              styles.detectedPitchTextSub,
+              {
+                color:
+                  livePitchStatus === 'match'
+                    ? COLORS.guideGreen
+                    : livePitchStatus === 'close'
+                      ? COLORS.guideYellow
+                      : COLORS.muted,
+              },
+            ]}
+          >
+            {livePitchStatus === 'match'
+              ? 'Correct'
+              : livePitchStatus === 'close'
+                ? 'Almost there'
+                : livePitchStatus === '--'
+                  ? 'Keep singing'
+                  : 'Waiting for note'}
           </Text>
         </View>
 
