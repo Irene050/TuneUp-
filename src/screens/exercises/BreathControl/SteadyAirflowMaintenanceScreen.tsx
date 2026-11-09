@@ -984,7 +984,7 @@ export default function SteadyAirflowMaintenanceScreen({
 
   if (phase === 'recording') {
     return (
-      <View style={styles.exerciseScreen}>
+      <View style={styles.screen}>
         <View style={styles.exerciseContent}>
           <Text style={styles.phaseLabel}>
             Maintain a Steady Airflow
@@ -1246,7 +1246,7 @@ export default function SteadyAirflowMaintenanceScreen({
 }
 
 const styles = StyleSheet.create({
-  exerciseScreen: {
+  screen: {
     flex: 1,
     backgroundColor: COLORS.white,
   },

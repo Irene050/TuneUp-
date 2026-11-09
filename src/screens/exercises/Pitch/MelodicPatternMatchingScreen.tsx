@@ -62,7 +62,7 @@ interface Props {
 type Phase =
   | 'instructions'
   | 'countdown'
-  | 'playing'
+  | 'listening'
   | 'recording'
   | 'processing'
   | 'results';
@@ -601,7 +601,7 @@ export default function MelodicPatternMatchingScreen({
           processingRef.current = false;
           continueRepetitionRef.current = true;
 
-          setPhase('playing');
+          setPhase('listening');
           return;
         }
 
@@ -850,7 +850,7 @@ export default function MelodicPatternMatchingScreen({
         runId !== playbackRunIdRef.current;
 
       try {
-        setPhase('playing');
+        setPhase('listening');
 
         for (
           let index = 0;
@@ -1433,7 +1433,7 @@ export default function MelodicPatternMatchingScreen({
         onBack={handleBack}
       />
     );
-  } else if (phase === 'playing') {
+  } else if (phase === 'listening') {
     screenContent = (
       <View style={styles.screenWrapper}>
         <ExerciseListeningScreen

@@ -1,4 +1,3 @@
-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -55,7 +54,7 @@ const MAX_RECORDING_SECONDS = 15;
 
 type Phase =
   | 'instructions'
-  | 'reference'
+  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -498,7 +497,7 @@ export default function QuickIntervalJumpScreen() {
         );
 
         if (totalSamples === 0) {
-          changePhase('reference');
+          changePhase('listening');
           setShowNoAudioModal(true);
           return;
         }
@@ -519,7 +518,7 @@ export default function QuickIntervalJumpScreen() {
         });
 
         if (!hasSufficientRecordedSignal(combinedSamples)) {
-          changePhase('reference');
+          changePhase('listening');
           setShowNoAudioModal(true);
           return;
         }
@@ -641,7 +640,7 @@ export default function QuickIntervalJumpScreen() {
       });
 
       if (!hasSufficientRecordedSignal(samples)) {
-        changePhase('reference');
+        changePhase('listening');
         setRecordingTime(0);
         resetLivePitch();
         setShowNoAudioModal(true);
@@ -654,7 +653,7 @@ export default function QuickIntervalJumpScreen() {
         setCurrentRep((previous) => previous + 1);
         setRecordingTime(0);
         resetLivePitch();
-        changePhase('reference');
+        changePhase('listening');
         return;
       }
 
@@ -703,7 +702,7 @@ export default function QuickIntervalJumpScreen() {
         mountedRef.current &&
         !quitInProgressRef.current
       ) {
-        changePhase('reference');
+        changePhase('listening');
       }
     }
   }, [
@@ -756,7 +755,7 @@ export default function QuickIntervalJumpScreen() {
   const playReference = async () => {
     if (
       referencePlayingRef.current ||
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
       isLoadingAdaptiveParams ||
@@ -862,7 +861,7 @@ export default function QuickIntervalJumpScreen() {
     setRecordingTime(0);
     resetLivePitch();
 
-    changePhase('reference');
+    changePhase('listening');
   };
 
   const startRecording = async (countdownToken: number) => {
@@ -932,7 +931,7 @@ export default function QuickIntervalJumpScreen() {
       clearRecordingTimer();
 
       if (mountedRef.current) {
-        changePhase('reference');
+        changePhase('listening');
         setVocalRangeMessage(
           'Unable to start microphone recording. Check microphone permission and try again.',
         );
@@ -942,7 +941,7 @@ export default function QuickIntervalJumpScreen() {
 
   const startCountdown = async () => {
     if (
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       referencePlayingRef.current ||
       isPlayingReference ||
       isLoadingAdaptiveParams ||
@@ -1057,13 +1056,13 @@ export default function QuickIntervalJumpScreen() {
 
       setRecordingTime(0);
       resetLivePitch();
-      changePhase('reference');
+      changePhase('listening');
     } else if (currentPhase === 'countdown') {
       setRecordingTime(0);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-      changePhase('reference');
-    } else if (currentPhase === 'reference') {
-      changePhase('reference');
+      changePhase('listening');
+    } else if (currentPhase === 'listening') {
+      changePhase('listening');
     }
   }, [
     cancelActiveRecording,
@@ -1104,7 +1103,7 @@ export default function QuickIntervalJumpScreen() {
       processingRef.current = false;
       recordingStopRequestedRef.current = false;
 
-      changePhase('reference');
+      changePhase('listening');
 
       setIsPreparingResume(true);
 
@@ -1629,7 +1628,7 @@ export default function QuickIntervalJumpScreen() {
       ) : (
         <View style={styles.screen}>
           {phase === 'instructions' && renderInstructions()}
-          {phase === 'reference' && renderReference()}
+          {phase === 'listening' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
           {phase === 'recording' && renderRecording()}
           {phase === 'processing' && renderProcessing()}
@@ -1669,7 +1668,7 @@ export default function QuickIntervalJumpScreen() {
           processingRef.current = false;
           recordingStopRequestedRef.current = false;
 
-          changePhase('reference');
+          changePhase('listening');
 
           void startCountdown();
         }}

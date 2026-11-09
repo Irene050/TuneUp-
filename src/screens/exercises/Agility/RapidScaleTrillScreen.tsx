@@ -65,7 +65,7 @@ type VocalRange = {
 
 type Phase =
   | 'instructions'
-  | 'reference'
+  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -450,7 +450,7 @@ export default function RapidScaleTrillScreen() {
   const playReference = useCallback(async () => {
     if (
       referencePlayingRef.current ||
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       confirmationRef.current !== null ||
       quitInProgressRef.current ||
       !hasUsableSequence ||
@@ -639,7 +639,7 @@ export default function RapidScaleTrillScreen() {
 
       try {
         if (!hasSufficientRecordedSignal(samples)) {
-          setCurrentPhase('reference');
+          setCurrentPhase('listening');
           setShowNoAudioModal(true);
           return;
         }
@@ -798,7 +798,7 @@ export default function RapidScaleTrillScreen() {
 
       if (!hasSufficientRecordedSignal(samples)) {
         setRecordingTime(0);
-        setCurrentPhase('reference');
+        setCurrentPhase('listening');
         setShowNoAudioModal(true);
         return;
       }
@@ -964,7 +964,7 @@ export default function RapidScaleTrillScreen() {
       }
 
       recordingStopRequestedRef.current = false;
-      setCurrentPhase('reference');
+      setCurrentPhase('listening');
 
       Alert.alert(
         'Recording Error',
@@ -990,7 +990,7 @@ export default function RapidScaleTrillScreen() {
   const startCountdown = useCallback(async () => {
     if (
       referencePlayingRef.current ||
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       confirmationRef.current !== null ||
       !hasUsableSequence ||
       quitInProgressRef.current
@@ -1075,7 +1075,7 @@ export default function RapidScaleTrillScreen() {
     activeExerciseNoteIndexRef.current = null;
     setActiveReferenceNoteIndex(null);
 
-    setCurrentPhase('reference');
+    setCurrentPhase('listening');
   }, [
     hasUsableSequence,
     setCurrentPhase,
@@ -1145,14 +1145,14 @@ export default function RapidScaleTrillScreen() {
       (interruptedPhase === 'recording' ||
         interruptedPhase === 'countdown')
     ) {
-      setCurrentPhase('reference');
+      setCurrentPhase('listening');
 
       setTimeout(() => {
         if (
           mountedRef.current &&
           !quitInProgressRef.current &&
           confirmationRef.current === null &&
-          phaseRef.current === 'reference'
+          phaseRef.current === 'listening'
         ) {
           void startCountdown();
         }
@@ -1388,7 +1388,6 @@ export default function RapidScaleTrillScreen() {
       promptTitle="Prepare to Sing"
       prompt={`Get ready to sing repetition ${currentRep} of ${repetitions}.`}
       onBack={pauseForExitPrompt}
-      contentStyle={styles.rapidScaleCountdown}
     />
   );
 
@@ -1400,9 +1399,6 @@ export default function RapidScaleTrillScreen() {
             1,
           )
         : 0;
-
-    const activeStatusColor =
-      getPitchStatusColor(livePitchStatus);
 
     return (
       <ExerciseRecordingScreen
@@ -1591,7 +1587,7 @@ export default function RapidScaleTrillScreen() {
       ) : (
         <View style={styles.screen}>
           {phase === 'instructions' && renderInstructions()}
-          {phase === 'reference' && renderReference()}
+          {phase === 'listening' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
           {phase === 'recording' && renderRecording()}
           {phase === 'processing' && renderProcessing()}
@@ -1635,7 +1631,7 @@ export default function RapidScaleTrillScreen() {
           activeExerciseNoteIndexRef.current = null;
 
           setCurrentRep(1);
-          setCurrentPhase('reference');
+          setCurrentPhase('listening');
 
           void startCountdown();
         }}
@@ -1727,9 +1723,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.white,
-  },
-  rapidScaleCountdown: {
-    paddingTop: 250,
   },
   resultsWrapper: {
     flexGrow: 1,

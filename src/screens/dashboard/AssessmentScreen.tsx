@@ -52,7 +52,7 @@ const AGILITY_CONFIRMATION_FRAMES = 3;
 const AGILITY_MIN_CLARITY = 0.75;
 
 type AssessmentStep =
-  | 'intro'
+  | 'instructions'
   | 'lowHum'
   | 'highHum'
   | 'breathControl'
@@ -308,7 +308,7 @@ function isRecordingUsable(
 }
 
 export default function AssessmentScreen() {
-  const [step, setStep] = useState<AssessmentStep>('intro');
+  const [step, setStep] = useState<AssessmentStep>('instructions');
   const [completedStep, setCompletedStep] =
     useState<CompletedStep | null>(null);
   const [isRecordingSection, setIsRecordingSection] = useState(false);
@@ -348,7 +348,7 @@ export default function AssessmentScreen() {
 
   const needsReferenceNote = NOTE_GUIDED_STEPS.includes(step);
   const isAssessmentInProgress =
-    step !== 'intro' && step !== 'results';
+    step !== 'instructions' && step !== 'results';
 
   useEffect(() => {
     setHasPlayedNote(false);
@@ -897,7 +897,7 @@ export default function AssessmentScreen() {
       setAgilityMatchedCount(0);
       setCompletedStep(null);
       setShowQuitModal(false);
-      setStep('intro');
+      setStep('instructions');
       setIsQuitting(false);
     }
   }, [
@@ -1110,7 +1110,7 @@ export default function AssessmentScreen() {
     setCompletedStep(null);
     setShowQuitModal(false);
     setIsQuitting(false);
-    setStep('intro');
+    setStep('instructions');
   }, [clearRecordingTimer]);
 
     const continueAssessment = useCallback(() => {
@@ -1385,7 +1385,7 @@ export default function AssessmentScreen() {
     );
   }
 
-  if (step === 'intro') {
+  if (step === 'instructions') {
     return (
       <ScrollView
         style={styles.screen}

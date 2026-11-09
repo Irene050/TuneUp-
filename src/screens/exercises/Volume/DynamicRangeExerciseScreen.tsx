@@ -64,9 +64,9 @@ const PROCESSING_MIN_DURATION_MS = 350;
 const TIMER_TICK_MS = 100;
 
 type Phase =
-  | 'directions'
+  | 'instructions'
   | 'countdown'
-  | 'exercise'
+  | 'recording'
   | 'processing'
   | 'results';
 
@@ -123,7 +123,7 @@ export default function DynamicRangeExercise({
     DYNAMIC_RANGE_PARAMS[initialTier],
   );
   const [referenceNote, setReferenceNote] = useState(() => createMusicalNote(60));
-  const [phase, setPhase] = useState<Phase>('directions');
+  const [phase, setPhase] = useState<Phase>('instructions');
   const [loadingParams, setLoadingParams] = useState(true);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [countdownFor, setCountdownFor] = useState<CountdownFor>('start');
@@ -155,7 +155,7 @@ export default function DynamicRangeExercise({
   );
 
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('directions');
+  const phaseRef = useRef<Phase>('instructions');
   const countdownRunIdRef = useRef(0);
   const shouldSaveResultRef = useRef(false);
   const finishingRef = useRef(false);
@@ -165,7 +165,7 @@ export default function DynamicRangeExercise({
   const showQuitModalRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const discardNextStopRef = useRef(false);
-  const pausedPhaseRef = useRef<Phase>('directions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
   const pausedHadRecordingRef = useRef(false);
   const recordingActiveRef = useRef(false);
   const referencePlayingRef = useRef(false);
@@ -378,7 +378,7 @@ export default function DynamicRangeExercise({
         pausedRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current ||
-        phaseRef.current !== 'exercise'
+        phaseRef.current !== 'recording'
       ) {
         return;
       }
@@ -432,7 +432,7 @@ export default function DynamicRangeExercise({
             finishingRef.current = false;
             setCurrentRep(retryingRepetition + 1);
             setShowNoAudioModal(true);
-            setCurrentPhase('directions');
+            setCurrentPhase('instructions');
             return;
           }
 
@@ -476,7 +476,7 @@ export default function DynamicRangeExercise({
           finishingRef.current = false;
           setCurrentRep(missingRepetition + 1);
           setShowNoAudioModal(true);
-          setCurrentPhase('directions');
+          setCurrentPhase('instructions');
           return;
         }
 
@@ -563,7 +563,7 @@ export default function DynamicRangeExercise({
                 ? error.message
                 : 'We could not analyze this attempt. Please try again.',
             );
-            setCurrentPhase('directions');
+            setCurrentPhase('instructions');
           }
         } finally {
           finishingRef.current = false;
@@ -710,14 +710,14 @@ export default function DynamicRangeExercise({
       acceptFramesRef.current = true;
       setSeconds(0);
       setCurrentRep(repetitionToRedo ?? 1);
-      setCurrentPhase('exercise');
+      setCurrentPhase('recording');
     } catch (error) {
       console.error('[DynamicRange] Could not start recording:', error);
       acceptFramesRef.current = false;
       shouldSaveResultRef.current = false;
       recordingActiveRef.current = false;
       if (mountedRef.current && runId === countdownRunIdRef.current) {
-        setCurrentPhase('directions');
+        setCurrentPhase('instructions');
       }
     }
   }, [
@@ -756,7 +756,7 @@ export default function DynamicRangeExercise({
     clearCountdown();
     acceptFramesRef.current = false;
 
-    if (current === 'exercise') {
+    if (current === 'recording') {
       discardNextStopRef.current = true;
       shouldSaveResultRef.current = false;
       finishingRef.current = true;
@@ -789,7 +789,7 @@ export default function DynamicRangeExercise({
     }
 
     if (
-      interruptedPhase !== 'exercise' &&
+      interruptedPhase !== 'recording' &&
       interruptedPhase !== 'countdown'
     ) {
       return;
@@ -797,7 +797,7 @@ export default function DynamicRangeExercise({
 
     const runId = ++countdownRunIdRef.current;
 
-    if (interruptedPhase === 'exercise') {
+    if (interruptedPhase === 'recording') {
       finishingRef.current = false;
       shouldSaveResultRef.current = false;
       setCurrentRep(1);
@@ -842,7 +842,7 @@ export default function DynamicRangeExercise({
       return;
     }
 
-    if (interruptedPhase === 'exercise' || !hadRecording) {
+    if (interruptedPhase === 'recording' || !hadRecording) {
       try {
         discardNextStopRef.current = false;
         await startRecording();
@@ -864,7 +864,7 @@ export default function DynamicRangeExercise({
         setCurrentRep(1);
       } catch (error) {
         console.error('[DynamicRange] Could not resume recording:', error);
-        if (mountedRef.current) setCurrentPhase('directions');
+        if (mountedRef.current) setCurrentPhase('instructions');
         return;
       }
     } else if (countdownFor === 'repetition') {
@@ -874,7 +874,7 @@ export default function DynamicRangeExercise({
 
     acceptFramesRef.current = true;
     setSeconds(0);
-    setCurrentPhase('exercise');
+    setCurrentPhase('recording');
   }, [
     beginRecordingSession,
     countdownFor,
@@ -925,7 +925,7 @@ export default function DynamicRangeExercise({
 
   useEffect(() => {
     if (
-      phase !== 'exercise' ||
+      phase !== 'recording' ||
       !isRecording ||
       finishingRef.current ||
       pausedRef.current ||
@@ -937,7 +937,7 @@ export default function DynamicRangeExercise({
 
     const interval = setInterval(() => {
       if (
-        phaseRef.current !== 'exercise' ||
+        phaseRef.current !== 'recording' ||
         pausedRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current ||
@@ -983,7 +983,7 @@ export default function DynamicRangeExercise({
           repetitionStartedAtRef.current = Date.now();
           acceptFramesRef.current = true;
           setSeconds(0);
-          setCurrentPhase('exercise');
+          setCurrentPhase('recording');
         })();
 
         return;
@@ -1000,7 +1000,7 @@ export default function DynamicRangeExercise({
           finishingRef.current = false;
           shouldSaveResultRef.current = false;
           if (mountedRef.current && !quitInProgressRef.current) {
-            setCurrentPhase('directions');
+            setCurrentPhase('instructions');
           }
         });
       }
@@ -1042,15 +1042,15 @@ export default function DynamicRangeExercise({
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={pausedPhaseRef.current === 'directions' ||
+        title={"Quit recording?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Dynamic Range?'
-              : pausedPhaseRef.current === 'exercise'
-                ? 'Your current recording will be discarded. Continuing restarts the exercise from repetition 1.'
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your current recording will be discarded. Continuing restarts the recording from repetition 1.'
                 : pausedPhaseRef.current === 'countdown'
                   ? 'The countdown is paused. Continue to restart the countdown and carry on.'
-                  : 'Your results are being processed. Continue to return to your results, or quit to leave this exercise.'}
+                  : 'Your results are being processed. Continue to return to your results, or quit to leave this recording.'}
         isQuitting={isQuitting}
         onContinue={() => void continueExercise()}
         onQuit={() => void quitExercise()}
@@ -1074,7 +1074,7 @@ export default function DynamicRangeExercise({
       <>
         <ExercisePreparingScreen
           title="Preparing Your Exercise"
-          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          message="Adjusting the recording to your current difficulty level and preparing your vocal range."
           icon="options-outline"
           iconSize={44}
           containerStyle={styles.centerScreen}
@@ -1084,7 +1084,7 @@ export default function DynamicRangeExercise({
     );
   }
 
-  if (phase === 'directions') {
+  if (phase === 'instructions') {
     return (
       <>
         <ExerciseScreen
@@ -1123,7 +1123,7 @@ export default function DynamicRangeExercise({
               hint: 'complete patterns',
             },
           ]}
-          tip="Keep the same note throughout the exercise. Change your vocal volume gradually instead of changing pitch."
+          tip="Keep the same note throughout the recording. Change your vocal volume gradually instead of changing pitch."
           tier={resolvedTier}
           onBack={handleBack}
           onStart={() => {
@@ -1215,10 +1215,10 @@ export default function DynamicRangeExercise({
     );
   }
 
-  if (phase === 'exercise') {
+  if (phase === 'recording') {
     return (
       <>
-        <View style={styles.exerciseScreen}>
+        <View style={styles.screen}>
           <View style={styles.exerciseHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.exerciseHeaderTitle}>Dynamic Range</Text>
@@ -1479,7 +1479,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.muted,
   },
-  exerciseScreen: {
+  screen: {
     position: 'absolute',
     top: 90,
     right: 8,

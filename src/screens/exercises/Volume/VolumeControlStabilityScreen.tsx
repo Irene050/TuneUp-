@@ -55,9 +55,9 @@ const MAX_LIVE_HISTORY = 40;
 const MIN_VOICE_CLARITY = 0.45;
 
 type Phase =
-  | 'directions'
+  | 'instructions'
   | 'countdown'
-  | 'exercise'
+  | 'recording'
   | 'results';
 
 type MeasurementResult =
@@ -120,7 +120,7 @@ export default function VolumeControlStabilityScreen({
   tier?: Tier;
 }) {
   const [phase, setPhase] =
-    useState<Phase>('directions');
+    useState<Phase>('instructions');
 
   const [referenceMidi, setReferenceMidi] =
     useState(DEFAULT_REFERENCE_MIDI);
@@ -207,7 +207,7 @@ export default function VolumeControlStabilityScreen({
   const quitInProgressRef = useRef(false);
 
   const pausedPhaseRef =
-    useRef<Phase>('directions');
+    useRef<Phase>('instructions');
 
   const pauseStopPendingRef = useRef(false);
 
@@ -460,7 +460,7 @@ export default function VolumeControlStabilityScreen({
         scored.overallScore,
       ).catch((error) => {
         console.error(
-          'Unable to save completed exercise:',
+          'Unable to save completed recording:',
           error,
         );
       });
@@ -478,7 +478,7 @@ export default function VolumeControlStabilityScreen({
       onFrame: (frame) => {
         if (
           !mountedRef.current ||
-          phase !== 'exercise' ||
+          phase !== 'recording' ||
           pausedRef.current ||
           showQuitModalRef.current ||
           quitInProgressRef.current
@@ -594,7 +594,7 @@ export default function VolumeControlStabilityScreen({
           if (!hasSufficientRecordedSignal(samples)) {
             setNoAudioRepetition(retryingRepetition + 1);
             setShowNoAudioModal(true);
-            setPhase('directions');
+            setPhase('instructions');
             recordingDurationSecondsRef.current = totalExerciseSeconds;
             return;
           }
@@ -636,7 +636,7 @@ export default function VolumeControlStabilityScreen({
         if (missingRepetition !== -1) {
           setNoAudioRepetition(missingRepetition + 1);
           setShowNoAudioModal(true);
-          setPhase('directions');
+          setPhase('instructions');
           return;
         }
 
@@ -693,7 +693,7 @@ export default function VolumeControlStabilityScreen({
       setRemainingSeconds(
         recordingDurationSecondsRef.current || totalExerciseSeconds,
       );
-      setPhase('exercise');
+      setPhase('recording');
     } catch (error) {
       console.error(
         'Unable to start recording:',
@@ -708,7 +708,7 @@ export default function VolumeControlStabilityScreen({
         return;
       }
 
-      setPhase('directions');
+      setPhase('instructions');
 
       setReferenceError(
         'Microphone could not be started. Please check microphone permission.',
@@ -759,7 +759,7 @@ export default function VolumeControlStabilityScreen({
 
   useEffect(() => {
     if (
-      phase !== 'exercise' ||
+      phase !== 'recording' ||
       pausedRef.current ||
       showQuitModalRef.current
     ) {
@@ -904,7 +904,7 @@ export default function VolumeControlStabilityScreen({
     recordingFinishedRef.current = false;
     exerciseStartedAtRef.current = null;
 
-    setPhase('directions');
+    setPhase('instructions');
   }, [totalExerciseSeconds]);
 
   const pauseForExitPrompt = useCallback(async () => {
@@ -923,7 +923,7 @@ export default function VolumeControlStabilityScreen({
     setShowQuitModal(true);
     setIsQuitting(false);
 
-    if (phase === 'exercise') {
+    if (phase === 'recording') {
       setIsPausing(true);
 
       recordingFinishedRef.current = true;
@@ -962,7 +962,7 @@ export default function VolumeControlStabilityScreen({
     setIsQuitting(false);
     setIsPausing(false);
 
-    if (previousPhase === 'exercise') {
+    if (previousPhase === 'recording') {
       setMeasurement(null);
       setScore(null);
 
@@ -1001,7 +1001,7 @@ export default function VolumeControlStabilityScreen({
     recordingFinishedRef.current = true;
     exerciseStartedAtRef.current = null;
 
-    if (pausedPhaseRef.current === 'exercise') {
+    if (pausedPhaseRef.current === 'recording') {
       pauseStopPendingRef.current = true;
 
       try {
@@ -1053,12 +1053,12 @@ export default function VolumeControlStabilityScreen({
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={pausedPhaseRef.current === 'exercise'
-              ? 'Your recording has been stopped. If you continue, this exercise will restart from the countdown.'
+        title={"Quit recording?"}
+        message={pausedPhaseRef.current === 'recording'
+              ? 'Your recording has been stopped. If you continue, this recording will restart from the countdown.'
               : pausedPhaseRef.current === 'countdown'
-                ? 'Your exercise is paused. Continue when you are ready to start the countdown again.'
-                : 'Are you sure you want to leave this exercise?'}
+                ? 'Your recording is paused. Continue when you are ready to start the countdown again.'
+                : 'Are you sure you want to leave this recording?'}
         isQuitting={isQuitting || isPausing}
         onContinue={continueExercise}
         onQuit={() => {
@@ -1086,7 +1086,7 @@ export default function VolumeControlStabilityScreen({
     return (
       <ExercisePreparingScreen
         title="Preparing Your Exercise"
-        message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+        message="Adjusting the recording to your current difficulty level and preparing your vocal range."
         icon="options-outline"
         iconSize={44}
         headerContent={quitModal}
@@ -1094,7 +1094,7 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  if (phase === 'directions') {
+  if (phase === 'instructions') {
     return (
       <SafeAreaView style={styles.safeArea}>
         <ExerciseScreen
@@ -1177,7 +1177,7 @@ export default function VolumeControlStabilityScreen({
 
             <Text style={styles.referenceInstruction}>
               Play the note if you want a pitch guide.
-              You can start the exercise without playing it.
+              You can start the recording without playing it.
             </Text>
 
             <Pressable
@@ -1233,7 +1233,7 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
-  if (phase === 'exercise') {
+  if (phase === 'recording') {
     const startedAt = exerciseStartedAtRef.current;
 
     const elapsedTotal =
@@ -1273,7 +1273,7 @@ export default function VolumeControlStabilityScreen({
 
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.exerciseScreen}>
+        <View style={styles.screen}>
           <View style={styles.exerciseHeader}>
             <View style={styles.exerciseHeaderText}>
               <Text style={styles.exerciseTitle}>
@@ -1552,7 +1552,7 @@ export default function VolumeControlStabilityScreen({
         title="Volume Stability Results"
         subtitle={
           score?.feedback ??
-          'Your result reflects volume consistency and sustained vocal coverage during the exercise.'
+          'Your result reflects volume consistency and sustained vocal coverage during the recording.'
         }
         score={Math.round(finalScore)}
         scoreSuffix="/100"
@@ -1603,7 +1603,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  exerciseScreen: {
+  screen: {
     position: 'absolute',
     top: 90,
     right: 8,

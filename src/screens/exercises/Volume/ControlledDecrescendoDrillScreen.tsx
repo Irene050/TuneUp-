@@ -4,19 +4,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import {
-  CONTROLLED_DECRESCENDO_PARAMS,
-  type Tier,
+    CONTROLLED_DECRESCENDO_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseListeningScreen,
-  ExerciseNoAudioModal,
-  ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen
+    ExerciseListeningScreen,
+    ExerciseNoAudioModal,
+    ExercisePreparingScreen,
+    ExerciseQuitModal,
+    ExerciseResultsScreen
 } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledDecrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -24,27 +24,27 @@ import { auth } from '@/services/firebase/config';
 import { measureControlledDecrescendo } from '@/services/measurement/volume/controlledDecrescendoDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
-  VOLUME_DBFS_MAX,
-  VOLUME_DBFS_MIN,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    VOLUME_ANALYSIS_WINDOW_MS,
+    VOLUME_DBFS_MAX,
+    VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
 import {
-  ResultItem,
-  VolumeVisualizer,
+    ResultItem,
+    VolumeVisualizer,
 } from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
@@ -1283,7 +1283,7 @@ export default function ControlledDecrescendoDrill({
 
     return (
       <>
-        <View style={styles.exerciseScreen}>
+        <View style={styles.screen}>
           <View style={styles.exercisePrompt}>
             <Text style={styles.exercisePromptTitle}>
               {instruction.title}
@@ -1566,7 +1566,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.muted,
   },
-  exerciseScreen: {
+  screen: {
     position: 'absolute',
     top: 90,
     right: 8,

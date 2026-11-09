@@ -59,7 +59,7 @@ const BAR_COUNT = 28;
 type ControlledCrescendoParams =
   typeof CONTROLLED_CRESCENDO_PARAMS.beginner;
 
-type Phase = 'directions' | 'exercise' | 'countdown' | 'results';
+type Phase = 'instructions' | 'recording' | 'countdown' | 'results';
 
 interface ControlledCrescendoExerciseProps {
   tier?: Tier;
@@ -228,7 +228,7 @@ function TargetCrescendoGuide({
 export default function ControlledCrescendoExercise({
   tier,
 }: ControlledCrescendoExerciseProps) {
-  const [phase, setPhase] = useState<Phase>('directions');
+  const [phase, setPhase] = useState<Phase>('instructions');
 
   const [loadingParams, setLoadingParams] = useState(true);
   const [resolvedTier, setResolvedTier] = useState<Tier>(
@@ -286,7 +286,7 @@ export default function ControlledCrescendoExercise({
   const pausedRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const discardInterruptedStopRef = useRef(false);
-  const pausedPhaseRef = useRef<Phase>('directions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
 
   const stopRecordingRef =
     useRef<(() => void | Promise<void>) | null>(null);
@@ -551,7 +551,7 @@ export default function ControlledCrescendoExercise({
     analyzePitch: false,
     onFrame: frame => {
       if (
-        phaseRef.current !== 'exercise' ||
+        phaseRef.current !== 'recording' ||
         pausedRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current
@@ -706,10 +706,10 @@ export default function ControlledCrescendoExercise({
         );
 
         setErrorMessage(
-          'We could not analyze this recording. Please try the exercise again.',
+          'We could not analyze this recording. Please try the recording again.',
         );
 
-        setCurrentPhase('directions');
+        setCurrentPhase('instructions');
       } finally {
         clearLiveState();
         finishingRef.current = false;
@@ -723,7 +723,7 @@ export default function ControlledCrescendoExercise({
   }, [stopRecording]);
 
   useEffect(() => {
-    if (phase !== 'exercise' || showQuitModal) {
+    if (phase !== 'recording' || showQuitModal) {
       return;
     }
 
@@ -747,7 +747,7 @@ export default function ControlledCrescendoExercise({
   }, [phase, currentRep, rampSeconds, showQuitModal]);
 
   useEffect(() => {
-    if (phase !== 'exercise' || showQuitModal) {
+    if (phase !== 'recording' || showQuitModal) {
       return;
     }
 
@@ -770,7 +770,7 @@ export default function ControlledCrescendoExercise({
 
   useEffect(() => {
     if (
-      phase !== 'exercise' ||
+      phase !== 'recording' ||
       showQuitModal ||
       seconds < rampSeconds
     ) {
@@ -823,7 +823,7 @@ export default function ControlledCrescendoExercise({
             'The recording could not continue. Please try again.',
           );
 
-          setCurrentPhase('directions');
+          setCurrentPhase('instructions');
         });
 
       return;
@@ -851,7 +851,7 @@ export default function ControlledCrescendoExercise({
           'The recording could not be completed. Please try again.',
         );
 
-        setCurrentPhase('directions');
+        setCurrentPhase('instructions');
       });
     }
   }, [
@@ -895,7 +895,7 @@ export default function ControlledCrescendoExercise({
       setLiveHistory([]);
 
       completedNaturallyRef.current = false;
-      setCurrentPhase('exercise');
+      setCurrentPhase('recording');
 
       void startRecording()
         .then(() => {
@@ -907,7 +907,7 @@ export default function ControlledCrescendoExercise({
             return;
           }
 
-          setCurrentPhase('exercise');
+          setCurrentPhase('recording');
         })
         .catch(recordingError => {
           console.error(
@@ -920,7 +920,7 @@ export default function ControlledCrescendoExercise({
             'Microphone recording could not restart. Please try again.',
           );
 
-          setCurrentPhase('directions');
+          setCurrentPhase('instructions');
         });
     }, 1000);
 
@@ -989,7 +989,7 @@ export default function ControlledCrescendoExercise({
     pausedRef.current = true;
     showQuitModalRef.current = true;
 
-    if (currentPhase === 'exercise' && isRecording) {
+    if (currentPhase === 'recording' && isRecording) {
       discardInterruptedStopRef.current = true;
       completedNaturallyRef.current = false;
       interRepStopRef.current = false;
@@ -1042,7 +1042,7 @@ export default function ControlledCrescendoExercise({
 
     const pausedPhase = pausedPhaseRef.current;
 
-    if (pausedPhase === 'exercise' || pausedPhase === 'countdown') {
+    if (pausedPhase === 'recording' || pausedPhase === 'countdown') {
       finishingRef.current = false;
       completedNaturallyRef.current = false;
       interRepStopRef.current = false;
@@ -1146,13 +1146,13 @@ export default function ControlledCrescendoExercise({
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={pausedPhaseRef.current === 'directions' ||
+        title={"Quit recording?"}
+        message={pausedPhaseRef.current === 'instructions' ||
             pausedPhaseRef.current === 'results'
               ? 'Are you sure you want to leave Controlled Crescendo?'
-              : pausedPhaseRef.current === 'exercise'
-                ? 'Your exercise is paused. Completed repetitions will be kept, but you will restart the current repetition when you continue.'
-                : 'Your exercise is paused. Your completed repetitions will be kept. Continue when you are ready to resume.'}
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your recording is paused. Completed repetitions will be kept, but you will restart the current repetition when you continue.'
+                : 'Your recording is paused. Your completed repetitions will be kept. Continue when you are ready to resume.'}
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={() => {
@@ -1194,7 +1194,7 @@ export default function ControlledCrescendoExercise({
       <>
         <ExercisePreparingScreen
           title="Preparing Your Exercise"
-          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          message="Adjusting the recording to your current difficulty level and preparing your vocal range."
           icon="options-outline"
           iconSize={44}
         />
@@ -1223,7 +1223,7 @@ export default function ControlledCrescendoExercise({
 
   const passed = smoothness >= smoothnessTarget && rangeReached;
 
-  if (phase === 'directions') {
+  if (phase === 'instructions') {
     return (
       <>
         <ExerciseScreen
@@ -1232,10 +1232,10 @@ export default function ControlledCrescendoExercise({
           icon="volume-high-outline"
           tier={resolvedTier}
           instructions={`1. Begin with a soft voice.
-                      2. Gradually increase your volume.
-                      3. Keep the increase smooth and even.
-                      4. Reach the target volume.
-                      5. Repeat the exercise ${repetitions} times.`}
+2. Gradually increase your volume.
+3. Keep the increase smooth and even.
+4. Reach the target volume.
+5. Repeat the recording ${repetitions} times.`}
           summary={[
             {
               label: 'Reference note',
@@ -1394,12 +1394,12 @@ export default function ControlledCrescendoExercise({
     );
   }
 
-  if (phase === 'exercise') {
+  if (phase === 'recording') {
     const progress = clamp(seconds / rampSeconds, 0, 1);
 
     return (
       <>
-        <View style={styles.exerciseScreen}>
+        <View style={styles.screen}>
           <View style={styles.exercisePrompt}>
             <Text style={styles.exercisePromptTitle}>
               {instruction.title}
@@ -1681,7 +1681,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.muted,
   },
-  exerciseScreen: {
+  screen: {
     position: 'absolute',
     top: 90,
     right: 8,

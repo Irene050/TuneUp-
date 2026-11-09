@@ -47,7 +47,7 @@ import { frequencyToNoteName } from '@/utils/music/notes';
 
 type Phase =
   | 'instructions'
-  | 'reference'
+  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -669,7 +669,7 @@ export default function VocalRunAccuracyTaskScreen() {
       pausedRef.current ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       referencePlayingRef.current ||
       !config ||
       !hasValidGeneratedSequence
@@ -699,7 +699,7 @@ export default function VocalRunAccuracyTaskScreen() {
           showQuitModalRef.current ||
           quitInProgressRef.current ||
           playbackId !== referencePlaybackIdRef.current ||
-          phaseRef.current !== 'reference'
+          phaseRef.current !== 'listening'
         ) {
           return;
         }
@@ -798,7 +798,7 @@ export default function VocalRunAccuracyTaskScreen() {
     setLivePitch(null);
     setResult(null);
     setShowNoAudioModal(false);
-    setExercisePhase('reference');
+    setExercisePhase('listening');
   }, [
     cancelReferencePlayback,
     hasValidGeneratedSequence,
@@ -844,7 +844,7 @@ export default function VocalRunAccuracyTaskScreen() {
             !quitInProgressRef.current
           ) {
             setRecordingTime(0);
-            setExercisePhase('reference');
+            setExercisePhase('listening');
             setShowNoAudioModal(true);
           }
 
@@ -891,7 +891,7 @@ export default function VocalRunAccuracyTaskScreen() {
           setLivePitch(null);
 
           processingRef.current = false;
-          setExercisePhase('reference');
+          setExercisePhase('listening');
 
           return;
         }
@@ -1155,7 +1155,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const startCountdown = useCallback(async () => {
     if (
-      phaseRef.current !== 'reference' ||
+      phaseRef.current !== 'listening' ||
       referencePlayingRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
@@ -1345,20 +1345,20 @@ export default function VocalRunAccuracyTaskScreen() {
       setLivePitch(null);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
-      setExercisePhase('reference');
+      setExercisePhase('listening');
       return;
     }
 
     pausedRef.current = false;
     showQuitModalRef.current = false;
 
-    if (previousPhase === 'reference') {
-      setExercisePhase('reference');
+    if (previousPhase === 'listening') {
+      setExercisePhase('listening');
       return;
     }
 
     if (previousPhase === 'processing') {
-      setExercisePhase('reference');
+      setExercisePhase('listening');
       return;
     }
 
@@ -1448,8 +1448,8 @@ export default function VocalRunAccuracyTaskScreen() {
         ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
         : pausedPhaseRef.current === 'countdown'
           ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
-          : pausedPhaseRef.current === 'reference'
-            ? 'Your completed repetitions will be kept. Continue to return to the reference sequence.'
+          : pausedPhaseRef.current === 'listening'
+            ? 'Your completed repetitions will be kept. Continue to return to the listening sequence.'
             : 'Your completed repetitions will be kept. Continue to resume your exercise.';
 
   const renderInstructions = () => (
@@ -1748,7 +1748,7 @@ export default function VocalRunAccuracyTaskScreen() {
         setShowNoAudioModal(false);
         setLivePitch(null);
         setRecordingTime(0);
-        setExercisePhase('reference');
+        setExercisePhase('listening');
       }}
       onQuit={() => {
         setShowNoAudioModal(false);
@@ -1787,7 +1787,7 @@ export default function VocalRunAccuracyTaskScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {phase === 'reference' && renderReference()}
+          {phase === 'listening' && renderReference()}
           {phase === 'recording' && renderRecording()}
         </ScrollView>
       )}

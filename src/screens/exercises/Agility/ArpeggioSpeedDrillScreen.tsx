@@ -68,7 +68,7 @@ import {
 
 type Phase =
   | 'instructions'
-  | 'reference'
+  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -420,7 +420,7 @@ export default function ArpeggioSpeedDrillScreen() {
         if (!hasSufficientRecordedSignal(samples)) {
           processingRef.current = false;
 
-          changePhase('reference');
+          changePhase('listening');
           setShowNoAudioModal(true);
 
           return;
@@ -477,7 +477,7 @@ export default function ArpeggioSpeedDrillScreen() {
 
           processingRef.current = false;
 
-          changePhase('reference');
+          changePhase('listening');
 
           return;
         }
@@ -738,7 +738,7 @@ export default function ArpeggioSpeedDrillScreen() {
       processingRef.current = false;
 
       if (mountedRef.current && !quitInProgressRef.current) {
-        changePhase('reference');
+        changePhase('listening');
         setShowNoAudioModal(true);
       }
     }
@@ -1030,7 +1030,7 @@ export default function ArpeggioSpeedDrillScreen() {
     setRecordingTime(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
-    changePhase('reference');
+    changePhase('listening');
   }, [changePhase]);
 
   const resetExercise = useCallback(() => {
@@ -1081,7 +1081,7 @@ export default function ArpeggioSpeedDrillScreen() {
         title="Arpeggio Speed Drill"
         category="Vocal Agility"
         icon="flash-outline"
-        instructions="Listen carefully to the reference arpeggio, then sing the notes in order while maintaining accuracy at the required speed."
+        instructions="Listen carefully to the listening arpeggio, then sing the notes in order while maintaining accuracy at the required speed."
         preparationSteps={[
           {
             icon: 'volume-mute-outline',
@@ -1511,7 +1511,7 @@ export default function ArpeggioSpeedDrillScreen() {
   const activeContent =
     phase === 'instructions'
       ? renderInstructions()
-      : phase === 'reference'
+      : phase === 'listening'
         ? renderReference()
         : phase === 'countdown'
           ? renderCountdown()
@@ -1546,8 +1546,8 @@ export default function ArpeggioSpeedDrillScreen() {
               ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
               : pausedPhaseRef.current === 'countdown'
                 ? 'Your exercise is paused. Your completed repetitions will be kept. The countdown will restart when you continue.'
-                : pausedPhaseRef.current === 'reference'
-                  ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to return to the reference arpeggio.'
+                : pausedPhaseRef.current === 'listening'
+                  ? 'Your exercise is paused. Your completed repetitions will be kept. Continue to return to the listening arpeggio.'
                   : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
         }
         isQuitting={isQuitting}

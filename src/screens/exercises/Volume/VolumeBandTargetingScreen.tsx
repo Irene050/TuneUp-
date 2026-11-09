@@ -53,7 +53,7 @@ const LIVE_LEVEL_OFFSET = 70;
 const LIVE_SMOOTHING_ALPHA = 0.25;
 const MAX_QUIET_FRAMES = 2;
 
-type Phase = 'directions' | 'countdown' | 'exercise' | 'results';
+type Phase = 'instructions' | 'countdown' | 'recording' | 'results';
 type VoiceStatus = 'low' | 'inside' | 'high' | 'none';
 type StopReason = 'none' | 'rep' | 'final' | 'cancel';
 
@@ -392,8 +392,8 @@ export default function VolumeBandTargeting({
 }: {
   tier?: Tier;
 }) {
-  const [phase, setPhase] = useState<Phase>('directions');
-  const phaseRef = useRef<Phase>('directions');
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const phaseRef = useRef<Phase>('instructions');
 
   phaseRef.current = phase;
 
@@ -456,7 +456,7 @@ export default function VolumeBandTargeting({
   const showQuitModalRef = useRef(false);
   const pausedRef = useRef(false);
   const quitInProgressRef = useRef(false);
-  const pausedPhaseRef = useRef<Phase>('directions');
+  const pausedPhaseRef = useRef<Phase>('instructions');
   const pauseStopPendingRef = useRef(false);
 
   const exerciseDurationSec =
@@ -674,7 +674,7 @@ export default function VolumeBandTargeting({
       setHasPlayedReference(false);
 
       setReferencePlaybackError(
-        'The reference note has an invalid frequency. Please reload the exercise.',
+        'The reference note has an invalid frequency. Please reload the recording.',
       );
 
       return false;
@@ -719,7 +719,7 @@ export default function VolumeBandTargeting({
   } = useAudioRecorder({
     onFrame: (frame) => {
       if (
-        phaseRef.current !== 'exercise' ||
+        phaseRef.current !== 'recording' ||
         pausedRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current ||
@@ -796,7 +796,7 @@ export default function VolumeBandTargeting({
         );
 
         resetLiveLevel();
-        setPhase('directions');
+        setPhase('instructions');
         return;
       }
 
@@ -818,7 +818,7 @@ export default function VolumeBandTargeting({
         );
 
         resetLiveLevel();
-        setPhase('directions');
+        setPhase('instructions');
         return;
       }
 
@@ -830,11 +830,11 @@ export default function VolumeBandTargeting({
         stopRequestedRef.current = false;
 
         setRecordingNotice(
-          'The microphone sample rate changed during the exercise. Please try again.',
+          'The microphone sample rate changed during the recording. Please try again.',
         );
 
         resetLiveLevel();
-        setPhase('directions');
+        setPhase('instructions');
         return;
       }
 
@@ -854,7 +854,7 @@ export default function VolumeBandTargeting({
         stopReasonRef.current = 'none';
         resetLiveLevel();
         setRecordingNotice(null);
-        setPhase('directions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
@@ -900,7 +900,7 @@ export default function VolumeBandTargeting({
         );
 
         resetLiveLevel();
-        setPhase('directions');
+        setPhase('instructions');
         return;
       }
 
@@ -982,11 +982,11 @@ export default function VolumeBandTargeting({
         console.error('VOLUME BAND MEASUREMENT ERROR:', error);
 
         setRecordingNotice(
-          'The recording could not be measured. Please try the exercise again.',
+          'The recording could not be measured. Please try the recording again.',
         );
 
         resetLiveLevel();
-        setPhase('directions');
+        setPhase('instructions');
       } finally {
         resetLiveLevel();
         recordingStartedAtRef.current = null;
@@ -1016,7 +1016,7 @@ export default function VolumeBandTargeting({
     setIsPausing(false);
 
     if (
-      phaseRef.current === 'exercise' &&
+      phaseRef.current === 'recording' &&
       (isRecording || recordingStartedAtRef.current !== null)
     ) {
       cancelledRecordingRef.current = true;
@@ -1065,7 +1065,7 @@ export default function VolumeBandTargeting({
     setShowQuitModal(false);
 
     if (
-      previousPhase === 'exercise' ||
+      previousPhase === 'recording' ||
       previousPhase === 'countdown'
     ) {
       resetAttemptRefs();
@@ -1151,7 +1151,7 @@ export default function VolumeBandTargeting({
   }, [isRecording]);
 
   useEffect(() => {
-    if (phase !== 'exercise') return;
+    if (phase !== 'recording') return;
 
     const timer = setInterval(() => {
       if (
@@ -1207,7 +1207,7 @@ export default function VolumeBandTargeting({
             );
 
             resetLiveLevel();
-            setPhase('directions');
+            setPhase('instructions');
           }
         })();
       }
@@ -1259,7 +1259,7 @@ export default function VolumeBandTargeting({
 
       recordingStartedAtRef.current = Date.now();
       setElapsedMs(0);
-      setPhase('exercise');
+      setPhase('recording');
     } catch (error) {
       console.error('VOLUME BAND TARGETING START ERROR:', error);
 
@@ -1277,7 +1277,7 @@ export default function VolumeBandTargeting({
           'The microphone could not start. Please check microphone permission and try again.',
         );
 
-        setPhase('directions');
+        setPhase('instructions');
       }
     }
   };
@@ -1287,7 +1287,7 @@ export default function VolumeBandTargeting({
       !parametersReady ||
       isRecording ||
       phase === 'countdown' ||
-      phase === 'exercise' ||
+      phase === 'recording' ||
       showQuitModalRef.current ||
       quitInProgressRef.current
     ) {
@@ -1351,11 +1351,11 @@ export default function VolumeBandTargeting({
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
-        title={"Quit exercise?"}
-        message={pausedPhaseRef.current === 'exercise'
-          ? 'Your current repetition has been stopped. If you continue, the exercise will restart from Rep 1.'
+        title={"Quit recording?"}
+        message={pausedPhaseRef.current === 'recording'
+          ? 'Your current repetition has been stopped. If you continue, the recording will restart from Rep 1.'
           : pausedPhaseRef.current === 'countdown'
-            ? 'Your exercise is paused. Continuing will restart from Rep 1.'
+            ? 'Your recording is paused. Continuing will restart from Rep 1.'
             : 'Are you sure you want to leave Volume Band Targeting?'}
         isQuitting={isQuitting}
         onContinue={continueExercise}
@@ -1388,7 +1388,7 @@ export default function VolumeBandTargeting({
 
         <ExercisePreparingScreen
           title="Preparing Your Exercise"
-          message="Adjusting the exercise to your current difficulty level and preparing your vocal range."
+          message="Adjusting the recording to your current difficulty level and preparing your vocal range."
           icon="options-outline"
           iconSize={44}
           useSafeArea
@@ -1397,7 +1397,7 @@ export default function VolumeBandTargeting({
     );
   }
 
-  if (phase === 'directions') {
+  if (phase === 'instructions') {
     const startDisabled = !parametersReady || isRecording;
 
     return (
@@ -1521,7 +1521,7 @@ export default function VolumeBandTargeting({
               </View>
 
               <Text style={styles.infoText}>
-                This exercise evaluates how consistently your detected
+                This recording evaluates how consistently your detected
                 microphone level stays within a target range. The displayed
                 level is a relative audio indicator, not a calibrated
                 sound-pressure measurement.
@@ -1554,13 +1554,13 @@ export default function VolumeBandTargeting({
     );
   }
 
-  if (phase === 'exercise') {
+  if (phase === 'recording') {
     return (
       <>
         {quitModal}
 
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.exerciseScreen}>
+          <View style={styles.screen}>
                 <Text style={styles.activeTitle}>
                   Volume Band Targeting
                 </Text>
@@ -1802,7 +1802,7 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.6,
   },
-  exerciseScreen: {
+  screen: {
     position: 'absolute',
     top: 90,
     right: 8,

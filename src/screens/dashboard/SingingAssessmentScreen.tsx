@@ -40,12 +40,10 @@ import {
   midiToNoteName,
 } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
+import { AUDIO_SAMPLE_RATE, COLORS, EXERCISE_COUNTDOWN_SECONDS } from '@/constants/appConstants';
 
-const COUNTDOWN_SECONDS = 3;
 const BEAT_MS = 60_000 / SINGING_ASSESSMENT_BPM;
 const BEAT_SECONDS = BEAT_MS / 1000;
-const SAMPLE_RATE = 44100;
 const GUIDE_START_DELAY_SECONDS = 0.12;
 const RECORDING_START_DELAY_SECONDS = 0.08;
 const RECORDING_END_PADDING_MS = 500;
@@ -65,7 +63,7 @@ const RECORDING_DURATION_MS =
 const RECORDING_DURATION_SECONDS = RECORDING_DURATION_MS / 1000;
 
 type Phase =
-  | 'intro'
+  | 'instructions'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -100,7 +98,7 @@ function formatMelodyLyric(lyric: string): string {
 
 async function playMelodyGuide(): Promise<void> {
   const context = new AudioContext({
-    sampleRate: SAMPLE_RATE,
+    sampleRate: AUDIO_SAMPLE_RATE,
   });
 
   try {
@@ -205,8 +203,8 @@ function playBeatClick(
 }
 
 export default function SingingAssessmentScreen() {
-  const [phase, setPhase] = useState<Phase>('intro');
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  const [phase, setPhase] = useState<Phase>('instructions');
+  const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsed, setElapsed] = useState(0);
   const [recordingStartAt, setRecordingStartAt] = useState<number | null>(
     null,
@@ -229,7 +227,7 @@ export default function SingingAssessmentScreen() {
   const cancelNextStopRef = useRef(false);
   const quitRequestedRef = useRef(false);
   const exitPromptOpenRef = useRef(false);
-  const phaseRef = useRef<Phase>('intro');
+  const phaseRef = useRef<Phase>('instructions');
   const cancelInProgressRef = useRef(false);
   const mountedRef = useRef(false);
 
@@ -365,7 +363,7 @@ export default function SingingAssessmentScreen() {
         if (!pendingSamples || pendingSampleRate <= 0) {
           processingRef.current = false;
           setError('No recording data was available to analyze.');
-          setPhase('intro');
+          setPhase('instructions');
           return;
         }
 
@@ -395,7 +393,7 @@ export default function SingingAssessmentScreen() {
 
           setError(message);
           setResult(null);
-          setPhase('intro');
+          setPhase('instructions');
         } finally {
           processingRef.current = false;
         }
@@ -428,7 +426,7 @@ export default function SingingAssessmentScreen() {
     if (quitRequestedRef.current) return;
 
     const context = new AudioContext({
-      sampleRate: SAMPLE_RATE,
+      sampleRate: AUDIO_SAMPLE_RATE,
     });
 
     beatContextRef.current = context;
@@ -547,7 +545,7 @@ export default function SingingAssessmentScreen() {
 
       if (mountedRef.current && !quitRequestedRef.current) {
         setError('Could not finish the recording. Please try again.');
-        setPhase('intro');
+        setPhase('instructions');
       }
     }
   }, [stopBeatGuide, stopRecording]);
@@ -586,7 +584,7 @@ export default function SingingAssessmentScreen() {
 
       setRecordingStartAt(null);
       recordingStartAtRef.current = null;
-      setPhase('intro');
+      setPhase('instructions');
 
       const message =
         startError instanceof Error
@@ -782,7 +780,7 @@ export default function SingingAssessmentScreen() {
     setLiveFrame(null);
     setElapsed(0);
     setRecordingStartAt(null);
-    setCountdown(COUNTDOWN_SECONDS);
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('countdown');
   }, [clearPendingProcessing]);
 
@@ -808,7 +806,7 @@ export default function SingingAssessmentScreen() {
     finishRequestedRef.current = false;
 
     setIsCancelling(false);
-    setPhase('intro');
+    setPhase('instructions');
   }, [clearPendingProcessing, stopBeatGuide]);
 
   const playReference = useCallback(async () => {
@@ -1115,8 +1113,8 @@ export default function SingingAssessmentScreen() {
   return (
     <>
       <ScrollView
-        style={styles.introScreen}
-        contentContainerStyle={styles.introContent}
+        style={styles.instructionsScreen}
+        contentContainerStyle={styles.instructionsContent}
         showsVerticalScrollIndicator={false}
       >
         <Pressable
@@ -1275,11 +1273,11 @@ function ScoreRow({
 }
 
 const styles = StyleSheet.create({
-  introScreen: {
+  instructionsScreen: {
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  introContent: {
+  instructionsContent: {
     paddingHorizontal: 24,
     paddingTop: 58,
     paddingBottom: 40,
