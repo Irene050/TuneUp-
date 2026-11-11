@@ -6,8 +6,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   SUSTAINED_NOTE_STABILITY_PARAMS,
   type SustainedNoteStabilityParams,
@@ -17,13 +18,13 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+
 import {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal
+  default as ExerciseScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -58,7 +59,14 @@ import {
   EXERCISE_COUNTDOWN_SECONDS,
   EXERCISE_RECORDING_INTERVAL_MS,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
@@ -88,9 +96,10 @@ export default function SustainedNoteStabilityScreen({
     useState<SustainedNoteStabilityParams>(
       SUSTAINED_NOTE_STABILITY_PARAMS[tier ?? 'beginner'],
     );
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+  const [isLoadingParams, setIsLoadingParams] =
     useState(true);
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
+  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentRep, setCurrentRep] = useState(1);
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -99,7 +108,7 @@ export default function SustainedNoteStabilityScreen({
   const [targetNote, setTargetNote] = useState<MusicalNote>(
     () => createMusicalNote(60),
   );
-  const [liveFrame, setLiveFrame] =
+  const [liveAudioFrame, setLiveAudioFrame] =
     useState<LiveAudioFrame | null>(null);
   const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -108,11 +117,10 @@ export default function SustainedNoteStabilityScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('instructions');
 
-  const recordingRef = useRef(false);
+  const isRecordingRef = useRef(false);
   const startingRecordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const recordingStopRequestedRef = useRef(false);
   const stopInFlightRef = useRef(false);
   const processingRef = useRef(false);
   const discardRecordingRef = useRef(false);
@@ -147,11 +155,6 @@ export default function SustainedNoteStabilityScreen({
     useRef<((note: MusicalNote) => Promise<void>) | null>(null);
   const continueExerciseRef = useRef<(() => void) | null>(null);
 
-  const changePhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
-
   const clearCountdownTimer = useCallback(() => {
     if (countdownTimerRef.current !== null) {
       clearInterval(countdownTimerRef.current);
@@ -174,7 +177,7 @@ export default function SustainedNoteStabilityScreen({
   const resetLiveMeasurements = useCallback(() => {
     pitchHistoryRef.current = [];
     setLiveFrequencies([]);
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     elapsedRef.current = 0;
     setElapsedMs(0);
   }, []);
@@ -183,7 +186,7 @@ export default function SustainedNoteStabilityScreen({
     let cancelled = false;
 
     async function loadAdaptiveParams() {
-      setIsLoadingAdaptiveParams(true);
+      setIsLoadingParams(true);
 
       let resolvedTier: Tier = tier ?? 'beginner';
 
@@ -247,10 +250,10 @@ export default function SustainedNoteStabilityScreen({
         if (cancelled) return;
 
         setParams(generatedParams);
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load sustained note adaptive parameters:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
@@ -259,7 +262,7 @@ export default function SustainedNoteStabilityScreen({
         }
       } finally {
         if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
+          setIsLoadingParams(false);
         }
       }
     }
@@ -273,21 +276,21 @@ export default function SustainedNoteStabilityScreen({
 
   const stopAndDiscardRecording = useCallback(async () => {
     discardRecordingRef.current = true;
-    stopRequestedRef.current = true;
+    recordingStopRequestedRef.current = true;
     stopPendingForModalRef.current = true;
 
     clearRecordingTimer();
 
-    if (startingRecordingRef.current && !recordingRef.current) {
+    if (startingRecordingRef.current && !isRecordingRef.current) {
       if (mountedRef.current) {
         setIsStoppingForModal(true);
       }
       return;
     }
 
-    if (!recordingRef.current && !stopInFlightRef.current) {
+    if (!isRecordingRef.current && !stopInFlightRef.current) {
       discardRecordingRef.current = false;
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
       stopPendingForModalRef.current = false;
 
       if (mountedRef.current) {
@@ -313,16 +316,16 @@ export default function SustainedNoteStabilityScreen({
 
     try {
       await stop();
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop interrupted sustained note recording:',
-        error,
+        errorMessage,
       );
 
       stopInFlightRef.current = false;
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       startingRecordingRef.current = false;
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
       discardRecordingRef.current = false;
       stopPendingForModalRef.current = false;
 
@@ -349,7 +352,7 @@ export default function SustainedNoteStabilityScreen({
       if (
         stop &&
         !stopInFlightRef.current &&
-        (recordingRef.current || startingRecordingRef.current)
+        (isRecordingRef.current || startingRecordingRef.current)
       ) {
         stopInFlightRef.current = true;
 
@@ -357,17 +360,17 @@ export default function SustainedNoteStabilityScreen({
           try {
             await recorderStartPromiseRef.current?.catch(() => undefined);
             await stop();
-          } catch (error) {
+          } catch (errorMessage) {
             console.warn(
               'Failed to stop recording during cleanup:',
-              error,
+              errorMessage,
             );
           }
         })();
       }
 
-      void disposeNotePlayer().catch(error => {
-        console.warn('Failed to dispose note player:', error);
+      void disposeNotePlayer().catch(errorMessage => {
+        console.warn('Failed to dispose note player:', errorMessage);
       });
     };
   }, [clearTimers]);
@@ -384,7 +387,7 @@ export default function SustainedNoteStabilityScreen({
       return;
     }
 
-    setLiveFrame(frame);
+    setLiveAudioFrame(frame);
 
     if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
       const nextHistory = [
@@ -403,7 +406,7 @@ export default function SustainedNoteStabilityScreen({
       pausedRef.current ||
       showQuitModalRef.current ||
       navigatingAwayRef.current ||
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       processingRef.current ||
       discardRecordingRef.current
@@ -417,16 +420,16 @@ export default function SustainedNoteStabilityScreen({
       setErrorMessage(
         'The audio recorder is not ready. Please try again.',
       );
-      changePhase('instructions');
+      setPhase('instructions');
       return;
     }
 
     startingRecordingRef.current = true;
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
 
     try {
       resetLiveMeasurements();
-      changePhase('recording');
+      setPhase('recording');
 
       const startPromise = start();
       recorderStartPromiseRef.current = startPromise;
@@ -439,7 +442,7 @@ export default function SustainedNoteStabilityScreen({
         }
       }
 
-      recordingRef.current = true;
+      isRecordingRef.current = true;
       startingRecordingRef.current = false;
 
       if (
@@ -448,7 +451,7 @@ export default function SustainedNoteStabilityScreen({
         showQuitModalRef.current ||
         navigatingAwayRef.current ||
         discardRecordingRef.current ||
-        stopRequestedRef.current
+        recordingStopRequestedRef.current
       ) {
         if (navigatingAwayRef.current) return;
 
@@ -467,48 +470,48 @@ export default function SustainedNoteStabilityScreen({
           pausedRef.current ||
           showQuitModalRef.current ||
           navigatingAwayRef.current ||
-          !recordingRef.current ||
-          stopRequestedRef.current
+          !isRecordingRef.current ||
+          recordingStopRequestedRef.current
         ) {
           return;
         }
 
-        const elapsed = Date.now() - startTime;
-        elapsedRef.current = Math.min(elapsed, durationMs);
+        const elapsedSeconds = Date.now() - startTime;
+        elapsedRef.current = Math.min(elapsedSeconds, durationMs);
         setElapsedMs(elapsedRef.current);
 
-        if (elapsed < durationMs) return;
+        if (elapsedSeconds < durationMs) return;
 
         clearRecordingTimer();
 
-        if (stopRequestedRef.current) return;
+        if (recordingStopRequestedRef.current) return;
 
-        stopRequestedRef.current = true;
+        recordingStopRequestedRef.current = true;
         stopInFlightRef.current = true;
 
         const stop = stopRecordingRef.current;
 
         if (!stop) {
           stopInFlightRef.current = false;
-          recordingRef.current = false;
-          stopRequestedRef.current = false;
+          isRecordingRef.current = false;
+          recordingStopRequestedRef.current = false;
 
           setErrorMessage(
             'The microphone could not be stopped. Please try again.',
           );
-          changePhase('instructions');
+          setPhase('instructions');
           return;
         }
 
-        void stop().catch(error => {
+        void stop().catch(errorMessage => {
           console.error(
             'Failed to stop sustained note recording:',
-            error,
+            errorMessage,
           );
 
           stopInFlightRef.current = false;
-          recordingRef.current = false;
-          stopRequestedRef.current = false;
+          isRecordingRef.current = false;
+          recordingStopRequestedRef.current = false;
           processingRef.current = false;
 
           if (
@@ -519,24 +522,24 @@ export default function SustainedNoteStabilityScreen({
             setErrorMessage(
               'We could not finish the recording. Please try again.',
             );
-            changePhase('instructions');
+            setPhase('instructions');
           }
         });
       }, EXERCISE_RECORDING_INTERVAL_MS);
-    } catch (error) {
+    } catch (errorMessage) {
       startingRecordingRef.current = false;
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       stopInFlightRef.current = false;
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
 
-      console.error('Failed to start sustained note recording:', error);
+      console.error('Failed to start sustained note recording:', errorMessage);
 
       if (
         mountedRef.current &&
         !pausedRef.current &&
         !navigatingAwayRef.current
       ) {
-        changePhase('instructions');
+        setPhase('instructions');
 
         Alert.alert(
           'Microphone Error',
@@ -552,7 +555,7 @@ export default function SustainedNoteStabilityScreen({
       discardRecordingRef.current = false;
     }
   }, [
-    changePhase,
+    setPhase,
     clearRecordingTimer,
     params.durationSec,
     resetLiveMeasurements,
@@ -571,7 +574,7 @@ export default function SustainedNoteStabilityScreen({
       }
 
       try {
-        changePhase('listening');
+        setPhase('listening');
 
         await playSingleNote(note.frequency, 1.5);
 
@@ -585,8 +588,8 @@ export default function SustainedNoteStabilityScreen({
         }
 
         await beginRecording();
-      } catch (error) {
-        console.error('Failed to play target note:', error);
+      } catch (errorMessage) {
+        console.error('Failed to play target note:', errorMessage);
 
         if (
           mountedRef.current &&
@@ -596,11 +599,11 @@ export default function SustainedNoteStabilityScreen({
           setErrorMessage(
             'Unable to play the target note. Please try again.',
           );
-          changePhase('instructions');
+          setPhase('instructions');
         }
       }
     },
-    [beginRecording, changePhase],
+    [beginRecording, setPhase],
   );
 
   useEffect(() => {
@@ -609,14 +612,14 @@ export default function SustainedNoteStabilityScreen({
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       startingRecordingRef.current = false;
       stopInFlightRef.current = false;
       clearRecordingTimer();
 
       if (discardRecordingRef.current) {
         discardRecordingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
         processingRef.current = false;
         stopPendingForModalRef.current = false;
 
@@ -643,16 +646,16 @@ export default function SustainedNoteStabilityScreen({
         navigatingAwayRef.current ||
         processingRef.current
       ) {
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
         return;
       }
 
       if (!hasSufficientRecordedSignal(samples)) {
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
         processingRef.current = false;
         setErrorMessage(null);
         pausedPhaseRef.current = 'recording';
-        changePhase('instructions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
@@ -680,7 +683,7 @@ export default function SustainedNoteStabilityScreen({
           setCurrentRep(nextRep);
           resetLiveMeasurements();
 
-          stopRequestedRef.current = false;
+          recordingStopRequestedRef.current = false;
           processingRef.current = false;
 
           await playTargetAndRecordRef.current?.(
@@ -690,7 +693,7 @@ export default function SustainedNoteStabilityScreen({
           return;
         }
 
-        changePhase('processing');
+        setPhase('processing');
 
         const score = scoreSustainedNoteStabilityRepetitions(
           measurementsRef.current,
@@ -714,9 +717,9 @@ export default function SustainedNoteStabilityScreen({
         }
 
         setResult(score);
-        changePhase('results');
-      } catch (error) {
-        console.error('Sustained note processing error:', error);
+        setPhase('results');
+      } catch (errorMessage) {
+        console.error('Sustained note processing error:', errorMessage);
 
         if (
           mountedRef.current &&
@@ -726,15 +729,15 @@ export default function SustainedNoteStabilityScreen({
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          changePhase('instructions');
+          setPhase('instructions');
         }
       } finally {
         processingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
       }
     },
     [
-      changePhase,
+      setPhase,
       clearRecordingTimer,
       currentTier,
       params,
@@ -763,12 +766,12 @@ export default function SustainedNoteStabilityScreen({
 
   const startCountdown = useCallback(() => {
     if (
-      isLoadingAdaptiveParams ||
+      isLoadingParams ||
       pausedRef.current ||
       showQuitModalRef.current ||
       navigatingAwayRef.current ||
       startingRecordingRef.current ||
-      recordingRef.current ||
+      isRecordingRef.current ||
       stopInFlightRef.current ||
       processingRef.current
     ) {
@@ -791,14 +794,15 @@ export default function SustainedNoteStabilityScreen({
     resetLiveMeasurements();
 
     processingRef.current = false;
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
     discardRecordingRef.current = false;
     stopPendingForModalRef.current = false;
 
     let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     setCountdown(remaining);
-    changePhase('countdown');
+    setIsInitialListening(false);
+    setPhase('countdown');
 
     countdownTimerRef.current = setInterval(() => {
       if (
@@ -823,10 +827,10 @@ export default function SustainedNoteStabilityScreen({
       void playTargetAndRecordRef.current?.(generatedNote);
     }, 1000);
   }, [
-    changePhase,
+    setPhase,
     clearTimers,
     currentTier,
-    isLoadingAdaptiveParams,
+    isLoadingParams,
     resetLiveMeasurements,
   ]);
 
@@ -850,11 +854,11 @@ export default function SustainedNoteStabilityScreen({
     setShowQuitModal(true);
 
     if (
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       isRecording
     ) {
-      if (isRecording) recordingRef.current = true;
+      if (isRecording) isRecordingRef.current = true;
 
       void stopAndDiscardRecording();
     } else {
@@ -868,7 +872,7 @@ export default function SustainedNoteStabilityScreen({
       stopPendingForModalRef.current ||
       stopInFlightRef.current ||
       startingRecordingRef.current ||
-      recordingRef.current
+      isRecordingRef.current
     ) {
       return;
     }
@@ -882,17 +886,17 @@ export default function SustainedNoteStabilityScreen({
     const interruptedPhase = pausedPhaseRef.current;
 
     if (interruptedPhase === 'instructions') {
-      changePhase('instructions');
+      setPhase('instructions');
       return;
     }
 
     if (interruptedPhase === 'processing') {
-      changePhase('processing');
+      setPhase('processing');
       return;
     }
 
     if (interruptedPhase === 'results') {
-      changePhase('results');
+      setPhase('results');
       return;
     }
 
@@ -901,7 +905,7 @@ export default function SustainedNoteStabilityScreen({
     let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     setCountdown(remaining);
-    changePhase('countdown');
+    setPhase('countdown');
     clearCountdownTimer();
 
     countdownTimerRef.current = setInterval(() => {
@@ -927,7 +931,7 @@ export default function SustainedNoteStabilityScreen({
       void playTargetAndRecordRef.current?.(targetNoteRef.current);
     }, 1000);
   }, [
-    changePhase,
+    setPhase,
     clearCountdownTimer,
     resetLiveMeasurements,
   ]);
@@ -943,19 +947,19 @@ export default function SustainedNoteStabilityScreen({
     pausedRef.current = true;
     showQuitModalRef.current = false;
     discardRecordingRef.current = true;
-    stopRequestedRef.current = true;
+    recordingStopRequestedRef.current = true;
     stopPendingForModalRef.current = false;
 
     clearTimers();
     setShowQuitModal(false);
 
     try {
-      await recorderStartPromiseRef.current?.catch(error => {
-        console.warn('Recorder startup ended with an error:', error);
+      await recorderStartPromiseRef.current?.catch(errorMessage => {
+        console.warn('Recorder startup ended with an error:', errorMessage);
       });
 
       if (
-        recordingRef.current ||
+        isRecordingRef.current ||
         startingRecordingRef.current ||
         isRecording
       ) {
@@ -966,21 +970,21 @@ export default function SustainedNoteStabilityScreen({
           await stop();
         }
       }
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop recording when quitting:',
-        error,
+        errorMessage,
       );
     } finally {
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       startingRecordingRef.current = false;
       stopInFlightRef.current = false;
     }
 
     try {
       await disposeNotePlayer();
-    } catch (error) {
-      console.warn('Failed to dispose note player:', error);
+    } catch (errorMessage) {
+      console.warn('Failed to dispose note player:', errorMessage);
     }
 
     if (mountedRef.current) {
@@ -1013,12 +1017,12 @@ export default function SustainedNoteStabilityScreen({
     clearTimers();
 
     if (
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       isRecording
     ) {
       discardRecordingRef.current = true;
-      stopRequestedRef.current = true;
+      recordingStopRequestedRef.current = true;
 
       const stop = stopRecordingRef.current;
 
@@ -1029,14 +1033,14 @@ export default function SustainedNoteStabilityScreen({
       ) {
         stopInFlightRef.current = true;
 
-        void stop().catch(error => {
+        void stop().catch(errorMessage => {
           console.error(
             'Failed to stop recorder before retry:',
-            error,
+            errorMessage,
           );
 
           stopInFlightRef.current = false;
-          recordingRef.current = false;
+          isRecordingRef.current = false;
         });
       }
     }
@@ -1058,9 +1062,9 @@ export default function SustainedNoteStabilityScreen({
     setShowQuitModal(false);
     setIsStoppingForModal(false);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    changePhase('instructions');
+    setPhase('instructions');
   }, [
-    changePhase,
+    setPhase,
     clearTimers,
     isRecording,
     resetLiveMeasurements,
@@ -1071,11 +1075,11 @@ export default function SustainedNoteStabilityScreen({
     durationMs > 0 ? Math.min(1, elapsedMs / durationMs) : 0;
 
   const liveAccuracy =
-    liveFrame && liveFrame.pitch > 0
+    liveAudioFrame && liveAudioFrame.pitch > 0
       ? Math.max(
           0,
           calcPitchAccuracy(
-            liveFrame.pitch,
+            liveAudioFrame.pitch,
             targetNote.frequency,
           ),
         )
@@ -1118,7 +1122,7 @@ export default function SustainedNoteStabilityScreen({
 
   if (
     phase === 'preparing' ||
-    (phase === 'instructions' && isLoadingAdaptiveParams)
+    (phase === 'instructions' && isLoadingParams)
   ) {
     return (
       <>
@@ -1127,7 +1131,7 @@ export default function SustainedNoteStabilityScreen({
           message="Setting up your personalized exercise..."
           icon="musical-notes-outline"
           iconSize={34}
-          containerStyle={styles.centerScreen}
+          containerStyle={exerciseStyles.centerScreenVariant1}
         />
         {quitModal}
       </>
@@ -1137,161 +1141,53 @@ export default function SustainedNoteStabilityScreen({
   if (phase === 'instructions') {
     return (
       <>
-        <View style={styles.screen}>
-          <Pressable
-            style={styles.backButton}
-            onPress={requestPause}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Ionicons name="arrow-back" size={22} color={COLORS.brown} />
-          </Pressable>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.content}
-          >
-            <View style={styles.iconCircle}>
-              <Ionicons
-                name="radio-outline"
-                size={34}
-                color={COLORS.brown}
-              />
-            </View>
-
-            <Text style={styles.title}>
-              Sustained Note Stability
-            </Text>
-
-            <Text style={styles.subtitle}>Pitch</Text>
-
-            <View style={styles.instructionCard}>
-              <Text style={styles.cardTitle}>
-                Exercise Instructions
-              </Text>
-
-              <Text style={styles.instruction}>
-                Listen to the reference note before each recording.
-              </Text>
-
-              <Text style={styles.instruction}>
-                Sing the same comfortable note and hold it steadily
-                for {params.durationSec} seconds.
-              </Text>
-
-              <Text style={styles.instruction}>
-                Complete {params.repetitions} repetitions while
-                keeping your pitch steady without drifting sharp
-                or flat.
-              </Text>
-
-              <View style={styles.prepareCard}>
-                <View style={styles.prepareHeader}>
-                  <Ionicons
-                    name="mic-outline"
-                    size={21}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.prepareTitle}>
-                    Before You Begin
-                  </Text>
-                </View>
-
-                <View style={styles.prepareItem}>
-                  <Ionicons
-                    name="volume-mute-outline"
-                    size={17}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.prepareText}>
-                    Find a quiet room or area with minimal
-                    background noise.
-                  </Text>
-                </View>
-
-                <View style={styles.prepareItem}>
-                  <Ionicons
-                    name="body-outline"
-                    size={17}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.prepareText}>
-                    Sit upright or stand with your back straight
-                    and your shoulders relaxed.
-                  </Text>
-                </View>
-
-                <View style={styles.prepareItem}>
-                  <Ionicons
-                    name="mic-outline"
-                    size={17}
-                    color={COLORS.brown}
-                  />
-                  <Text style={styles.prepareText}>
-                    Sing toward the microphone for clearer
-                    audio capture.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.targetBox}>
-                <Ionicons name="remove" size={25} color={COLORS.brown} />
-                <Text style={styles.targetText}>
-                  Keep the note steady
-                </Text>
-              </View>
-
-              <Text style={styles.helperText}>
-                TuneUp! measures pitch stability across all
-                repetitions.
-              </Text>
-            </View>
-
-            <View style={styles.tipCard}>
-              <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
-              <Text style={styles.tipText}>
-                Avoid intentionally changing pitch. Focus on
-                maintaining one relaxed, consistent note.
-              </Text>
-            </View>
-
-            <View style={styles.difficultyRow}>
-              <Text style={styles.difficultyLabel}>Difficulty</Text>
-              <Text style={styles.difficultyValue}>
-                {currentTier}
-              </Text>
-            </View>
-
-            <Pressable
-              style={[
-                styles.startButton,
-                isLoadingAdaptiveParams && styles.disabledButton,
-              ]}
-              onPress={startCountdown}
-              disabled={isLoadingAdaptiveParams}
-              accessibilityRole="button"
-            >
-              {isLoadingAdaptiveParams ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <>
-                  <Text style={styles.startButtonText}>
-                    Start Exercise
-                  </Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={18}
-                    color={COLORS.white}
-                  />
-                </>
-              )}
-            </Pressable>
-
-            {errorMessage && (
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            )}
-          </ScrollView>
-        </View>
+        <ExerciseScreen
+          title="Sustained Note Stability"
+          category="Pitch"
+          icon="radio-outline"
+          instructions={`Listen to the reference note before each recording. Sing the same comfortable note and hold it steadily for ${params.durationSec} seconds. Complete ${params.repetitions} repetitions while keeping your pitch steady without drifting sharp or flat.`}
+          preparationSteps={[
+            {
+              icon: 'volume-mute-outline',
+              text: 'Find a quiet room or area with minimal background noise.',
+            },
+            {
+              icon: 'body-outline',
+              text: 'Sit upright or stand with your back straight and your shoulders relaxed.',
+            },
+            {
+              icon: 'mic-outline',
+              text: 'Sing toward the microphone for clearer audio capture.',
+            },
+          ]}
+          summary={[
+            {
+              label: 'DURATION',
+              value: `${params.durationSec} seconds`,
+              hint: 'per repetition',
+            },
+            {
+              label: 'REPETITIONS',
+              value: String(params.repetitions),
+            },
+            {
+              label: 'TARGET',
+              value: 'Keep the note steady',
+            },
+          ]}
+          tip="Avoid intentionally changing pitch. Focus on maintaining one relaxed, consistent note."
+          tier={currentTier}
+          onBack={requestPause}
+          onStart={() => {
+            setIsInitialListening(true);
+            setPhase('listening');
+          }}
+          errorMessage={errorMessage}
+          startDisabled={isLoadingParams}
+          startLabel={
+            isLoadingParams ? 'Preparing...' : 'Start Exercise'
+          }
+        />
         {quitModal}
       </>
     );
@@ -1326,13 +1222,18 @@ export default function SustainedNoteStabilityScreen({
           promptTitle="Listen to the reference note"
           prompt="Listen to the reference note, then sing it steadily."
           liveContent={
-            <View style={styles.targetCard}>
-              <Text style={styles.targetLabel}>TARGET NOTE</Text>
-              <Text style={styles.targetNote}>{targetNote.name}</Text>
-              <Text style={styles.targetFrequency}>
+            <View style={exerciseStyles.targetCard}>
+              <Text style={exerciseStyles.targetLabel}>TARGET NOTE</Text>
+              <Text style={exerciseStyles.targetNote}>{targetNote.name}</Text>
+              <Text style={exerciseStyles.repResultDetails}>
                 {Math.round(targetNote.frequency)} Hz
               </Text>
             </View>
+          }
+          onContinue={
+            isInitialListening
+              ? startCountdown
+              : undefined
           }
         />
         {quitModal}
@@ -1344,38 +1245,38 @@ export default function SustainedNoteStabilityScreen({
     return (
       <>
         <ScrollView
-          style={styles.screen}
-          contentContainerStyle={styles.recordingContent}
+          style={exerciseStyles.screen}
+          contentContainerStyle={exerciseStyles.recordingContentVariant3}
           showsVerticalScrollIndicator={false}
         >
 
-          <View style={styles.recordingIcon}>
+          <View style={exerciseStyles.iconCircle}>
             <Ionicons name="mic" size={34} color={COLORS.brown} />
           </View>
 
-          <Text style={styles.phaseTitle}>
+          <Text style={exerciseStyles.phaseTitleVariant1}>
             Sustain {targetNote.name}
           </Text>
 
-          <Text style={styles.phaseSubtitle}>
+          <Text style={exerciseStyles.phaseSubtitleVariant1}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <View style={styles.liveCard}>
-            <View style={styles.liveCardHeader}>
-              <Text style={styles.liveCardTitle}>LIVE PITCH GUIDE</Text>
+          <View style={exerciseStyles.liveCardVariant9}>
+            <View style={exerciseStyles.liveCardHeaderVariant2}>
+              <Text style={exerciseStyles.scoreRowValue}>LIVE PITCH GUIDE</Text>
             </View>
 
-            <View style={styles.pitchComparison}>
-              <View style={styles.pitchColumn}>
-                <Text style={styles.liveLabel}>TARGET NOTE</Text>
-                <Text style={styles.liveTarget}>{targetNote.name}</Text>
-                <Text style={styles.liveFrequency}>
+            <View style={exerciseStyles.pitchComparison}>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.scoreRowLabel}>TARGET NOTE</Text>
+                <Text style={exerciseStyles.liveTarget}>{targetNote.name}</Text>
+                <Text style={exerciseStyles.repResultDetails}>
                   {Math.round(targetNote.frequency)} Hz
                 </Text>
               </View>
 
-              <View style={styles.pitchComparisonDivider}>
+              <View style={exerciseStyles.pitchComparisonDividerVariant1}>
                 <Ionicons
                   name="mic-outline"
                   size={20}
@@ -1383,77 +1284,74 @@ export default function SustainedNoteStabilityScreen({
                 />
               </View>
 
-              <View style={styles.pitchColumn}>
-                <Text style={styles.liveLabel}>YOUR NOTE</Text>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.scoreRowLabel}>YOUR NOTE</Text>
                 <Text
                   style={[
-                    styles.liveNote,
-                    liveFrame?.pitch && liveFrame.pitch > 0
-                      ? styles.liveNoteDetected
-                      : styles.liveNoteWaiting,
+                    exerciseStyles.liveNoteVariant1,
+                    liveAudioFrame?.pitch && liveAudioFrame.pitch > 0
+                      ? exerciseStyles.liveNoteDetected
+                      : exerciseStyles.liveNoteWaiting,
                   ]}
                 >
-                  {liveFrame?.note ?? '--'}
+                  {liveAudioFrame?.note ?? '--'}
                 </Text>
-                <Text style={styles.liveFrequency}>
-                  {liveFrame && liveFrame.pitch > 0
-                    ? `${Math.round(liveFrame.pitch)} Hz`
+                <Text style={exerciseStyles.repResultDetails}>
+                  {liveAudioFrame && liveAudioFrame.pitch > 0
+                    ? `${Math.round(liveAudioFrame.pitch)} Hz`
                     : 'Waiting for voice'}
                 </Text>
               </View>
             </View>
 
-            <LivePitchIndicator
+            <ExerciseLivePitchIndicator
+              targetNote={targetNote.name}
               targetFrequency={targetNote.frequency}
-              detectedFrequency={
-                liveFrame && Number.isFinite(liveFrame.pitch) &&
-                liveFrame.pitch > 0
-                  ? liveFrame.pitch
-                  : null
-              }
+              detectedNote={liveAudioFrame && liveAudioFrame.pitch > 0 ? liveAudioFrame.note : null}
+              detectedFrequency={liveAudioFrame && Number.isFinite(liveAudioFrame.pitch) && liveAudioFrame.pitch > 0 ? liveAudioFrame.pitch : null}
             />
 
-            <View style={styles.liveSectionDivider} />
+            <View style={exerciseStyles.liveSectionDivider} />
 
             <LiveStabilityIndicator
               stability={liveStability}
               hasPitch={liveFrequencies.length >= 2}
             />
 
-            <View style={styles.liveStats}>
-              <View style={styles.liveStat}>
-                <View style={styles.liveStatHeading}>
-                  <Text style={styles.liveStatLabel}>ACCURACY</Text>
+            <View style={exerciseStyles.liveStatsVariant2}>
+              <View style={exerciseStyles.recordingHeader}>
+                <View style={exerciseStyles.liveStatHeading}>
+                  <Text style={exerciseStyles.guideText}>ACCURACY</Text>
                 </View>
-                <Text style={styles.liveStatValue}>
+                <Text style={exerciseStyles.liveStatValueVariant3}>
                   {Math.round(liveAccuracy)}%
                 </Text>
               </View>
 
-              <View style={styles.liveStatsDivider} />
+              <View style={exerciseStyles.liveStatsDivider} />
 
-              <View style={styles.liveStat}>
-                <View style={styles.liveStatHeading}>
-                  <Text style={styles.liveStatLabel}>STABILITY</Text>
+              <View style={exerciseStyles.recordingHeader}>
+                <View style={exerciseStyles.liveStatHeading}>
+                  <Text style={exerciseStyles.guideText}>STABILITY</Text>
                 </View>
-                <Text style={styles.liveStatValue}>
+                <Text style={exerciseStyles.liveStatValueVariant3}>
                   {Math.round(liveStability)}%
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
+          <View style={exerciseStyles.progressContainer}>
+            <View style={exerciseStyles.progressTrackVariant6}>
               <View
                 style={[
-                  styles.progressFill,
+                  exerciseStyles.progressFill,
                   { width: `${progress * 100}%` },
                 ]}
               />
             </View>
 
-            <Text style={styles.progressText}>
+            <Text style={exerciseStyles.targetIntervalText}>
               {(elapsedMs / 1000).toFixed(1)}s / {params.durationSec}s
             </Text>
           </View>
@@ -1478,17 +1376,17 @@ export default function SustainedNoteStabilityScreen({
 
   if (phase === 'results' && result) {
     return (
-      <View style={styles.screen}>
+      <View style={exerciseStyles.screen}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.resultsContent}
+          contentContainerStyle={exerciseStyles.resultsContent}
         >
           <View
             style={[
-              styles.resultIcon,
+              exerciseStyles.resultIcon,
               result.passed
-                ? styles.resultIconPassed
-                : styles.resultIconFailed,
+                ? exerciseStyles.resultIconPassed
+                : exerciseStyles.resultIconFailed,
             ]}
           >
             <Ionicons
@@ -1498,36 +1396,36 @@ export default function SustainedNoteStabilityScreen({
             />
           </View>
 
-          <Text style={styles.resultTitle}>
+          <Text style={exerciseStyles.resultTitle}>
             {result.passed ? 'Great Job!' : 'Keep Practicing!'}
           </Text>
 
-          <Text style={styles.resultSubtitle}>
+          <Text style={exerciseStyles.resultSubtitleVariant1}>
             Sustained Note Stability Result
           </Text>
 
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>Overall Score</Text>
-            <Text style={styles.scoreValue}>{result.score}%</Text>
-            <Text style={styles.scoreDescription}>
+          <View style={exerciseStyles.scoreCard}>
+            <Text style={exerciseStyles.scoreLabel}>Overall Score</Text>
+            <Text style={exerciseStyles.scoreValue}>{result.score}%</Text>
+            <Text style={exerciseStyles.scoreDescriptionVariant2}>
               {result.passed
                 ? 'Your pitch stability reached the target level across all repetitions.'
                 : 'Focus on keeping your pitch steadier and maintaining the required duration across repetitions.'}
             </Text>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>Target Note</Text>
-            <View style={styles.noteDisplay}>
-              <Text style={styles.resultNote}>{targetNote.name}</Text>
-              <Text style={styles.resultFrequency}>
+          <View style={exerciseStyles.resultCard}>
+            <Text style={exerciseStyles.resultCardTitle}>Target Note</Text>
+            <View style={exerciseStyles.noteDisplay}>
+              <Text style={exerciseStyles.resultNote}>{targetNote.name}</Text>
+              <Text style={exerciseStyles.repResultDetails}>
                 {Math.round(targetNote.frequency)} Hz
               </Text>
             </View>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
+          <View style={exerciseStyles.resultCard}>
+            <Text style={exerciseStyles.resultCardTitle}>
               Repetition Results
             </Text>
 
@@ -1553,8 +1451,8 @@ export default function SustainedNoteStabilityScreen({
             />
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
+          <View style={exerciseStyles.resultCard}>
+            <Text style={exerciseStyles.resultCardTitle}>
               Scores by Repetition
             </Text>
 
@@ -1567,27 +1465,27 @@ export default function SustainedNoteStabilityScreen({
             ))}
           </View>
 
-          <View style={styles.tipCard}>
+          <View style={exerciseStyles.tipCard}>
             <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
-            <Text style={styles.tipText}>
+            <Text style={exerciseStyles.tipText}>
               {result.passed
                 ? 'Nice work! Continue practicing sustained notes to build consistent pitch control across repetitions.'
                 : 'Try relaxing your throat and supporting the note with steady breath while avoiding unnecessary pitch movement.'}
             </Text>
           </View>
 
-          <Pressable style={styles.startButton} onPress={retry}>
-            <Text style={styles.startButtonText}>Try Again</Text>
+          <Pressable style={exerciseStyles.startButtonVariant5} onPress={retry}>
+            <Text style={exerciseStyles.startButtonText}>Try Again</Text>
             <Ionicons name="refresh" size={18} color={COLORS.white} />
           </Pressable>
 
           <Pressable
-            style={styles.doneButton}
+            style={exerciseStyles.doneButton}
             onPress={() => {
               void quitExercise();
             }}
           >
-            <Text style={styles.doneButtonText}>Done</Text>
+            <Text style={exerciseStyles.componentScore}>Done</Text>
           </Pressable>
         </ScrollView>
       </View>
@@ -1598,126 +1496,7 @@ export default function SustainedNoteStabilityScreen({
 }
 
 
-function LivePitchIndicator({
-  targetFrequency,
-  detectedFrequency,
-}: {
-  targetFrequency: number;
-  detectedFrequency: number | null;
-}) {
-  const hasPitch =
-    detectedFrequency !== null &&
-    Number.isFinite(detectedFrequency) &&
-    detectedFrequency > 0 &&
-    Number.isFinite(targetFrequency) &&
-    targetFrequency > 0;
 
-  const cents = hasPitch
-    ? 1200 * Math.log2(detectedFrequency / targetFrequency)
-    : null;
-
-  const absoluteCents = cents === null ? null : Math.abs(cents);
-
-  const status =
-    cents === null
-      ? 'LISTENING'
-      : absoluteCents! <= 25
-        ? 'IN TUNE'
-        : cents < 0
-          ? 'TOO LOW'
-          : 'TOO HIGH';
-
-  const statusColor =
-    cents === null
-      ? COLORS.muted
-      : absoluteCents! <= 25
-        ? COLORS.guideGreen
-        : absoluteCents! <= 60
-          ? COLORS.guideYellow
-          : COLORS.guideRed;
-
-  const markerPosition =
-    cents === null
-      ? 50
-      : Math.max(3, Math.min(97, 50 + (cents / 100) * 47));
-
-  return (
-    <View style={styles.pitchIndicator}>
-      <View style={styles.pitchIndicatorHeader}>
-
-        <View
-          style={[
-            styles.pitchStatusBadge,
-            { backgroundColor: `${statusColor}20` },
-          ]}
-        >
-          <View
-            style={[
-              styles.pitchStatusDot,
-              { backgroundColor: statusColor },
-            ]}
-          />
-          <Text
-            style={[
-              styles.pitchStatusText,
-              { color: statusColor },
-            ]}
-          >
-            {status}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.pitchMeterLabels}>
-        <Text style={styles.pitchMeterEndLabel}>← LOW</Text>
-        <Text style={styles.pitchMeterCenterLabel}>TARGET</Text>
-        <Text style={styles.pitchMeterEndLabel}>→ HIGH</Text>
-      </View>
-
-      <View style={styles.pitchMeter}>
-        <View
-          style={[styles.pitchMeterZone, styles.pitchMeterRed]}
-        />
-        <View
-          style={[styles.pitchMeterZone, styles.pitchMeterYellow]}
-        />
-        <View
-          style={[styles.pitchMeterZone, styles.pitchMeterGreen]}
-        />
-        <View
-          style={[styles.pitchMeterZone, styles.pitchMeterYellow]}
-        />
-        <View
-          style={[styles.pitchMeterZone, styles.pitchMeterRed]}
-        />
-
-        <View
-          style={[
-            styles.pitchMeterMarker,
-            { left: `${markerPosition}%` },
-            !hasPitch && styles.pitchMeterMarkerInactive,
-          ]}
-        />
-      </View>
-
-      <View style={styles.centsRow}>
-        <Text style={styles.centsLabel}>Pitch deviation</Text>
-        <Text
-          style={[
-            styles.centsValue,
-            { color: hasPitch ? statusColor : COLORS.muted },
-          ]}
-        >
-          {cents === null
-            ? '-- cents'
-            : cents === 0
-              ? '0 cents'
-              : `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents`}
-        </Text>
-      </View>
-    </View>
-  );
-}
 
 function LiveStabilityIndicator({
   stability,
@@ -1747,15 +1526,15 @@ function LiveStabilityIndicator({
         : COLORS.guideRed;
 
   return (
-    <View style={styles.stabilityIndicator}>
-          <Text style={styles.indicatorTitle}>
+    <View style={exerciseStyles.form_Login_login}>
+          <Text style={exerciseStyles.infoName}>
             Pitch Stability
           </Text>
 
-      <View style={styles.stabilityTrack}>
+      <View style={exerciseStyles.stabilityTrackVariant1}>
         <View
           style={[
-            styles.stabilityFill,
+            exerciseStyles.stabilityFillVariant1,
             {
               width: hasPitch ? `${safeStability}%` : '0%',
               backgroundColor: statusColor,
@@ -1764,19 +1543,19 @@ function LiveStabilityIndicator({
         />
       </View>
 
-      <View style={styles.stabilityFooter}>
-        <Text style={styles.stabilityScaleLabel}>
+      <View style={exerciseStyles.stabilityFooter}>
+        <Text style={exerciseStyles.scaleText}>
           Less steady
         </Text>
         <Text
           style={[
-            styles.stabilityStatus,
+            exerciseStyles.stabilityStatus,
             { color: statusColor },
           ]}
         >
           {status}
         </Text>
-        <Text style={styles.stabilityScaleLabel}>
+        <Text style={exerciseStyles.scaleText}>
           More steady
         </Text>
       </View>
@@ -1817,654 +1596,9 @@ function ResultRow({
   value: string;
 }) {
   return (
-    <View style={styles.resultRow}>
-      <Text style={styles.resultRowLabel}>{label}</Text>
-      <Text style={styles.resultRowValue}>{value}</Text>
+    <View style={exerciseStyles.resultRow}>
+      <Text style={exerciseStyles.resultRowLabel}>{label}</Text>
+      <Text style={exerciseStyles.resultRowValueVariant1}>{value}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  centerScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 60,
-    alignItems: 'center',
-  },
-  recordingContent: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 70,
-    paddingBottom: 40,
-  },
-  resultsContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 24,
-  },
-  instructionCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  prepareCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  prepareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  prepareTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  prepareItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-  },
-  prepareText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginBottom: 14,
-  },
-  instruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  targetBox: {
-    backgroundColor: COLORS.pink,
-    borderRadius: 14,
-    paddingVertical: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginVertical: 8,
-  },
-  targetText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-  },
-  helperText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.pink,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.brown,
-    marginLeft: 10,
-  },
-  difficultyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 20,
-  },
-  difficultyLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  difficultyValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-    textTransform: 'capitalize',
-  },
-  startButton: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  disabledButton: {
-    opacity: 0.7,
-  },
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.white,
-  },
-  errorText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  targetCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    padding: 24,
-    marginTop: 28,
-  },
-  targetLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    letterSpacing: 0.5,
-  },
-  targetNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: COLORS.brown,
-    marginTop: 4,
-  },
-  targetFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  recordingIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  liveCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 20,
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  liveLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  liveTarget: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    marginTop: 3,
-  },
-  liveNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: COLORS.brown,
-    marginTop: 3,
-  },
-  liveFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  liveStats: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 18,
-  },
-  liveStat: {
-    alignItems: 'center',
-  },
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  progressContainer: {
-    width: '100%',
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  progressTrack: {
-    width: '100%',
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 5,
-  },
-  progressText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 7,
-  },
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  resultIconPassed: {
-    backgroundColor: COLORS.pink,
-  },
-  resultIconFailed: {
-    backgroundColor: COLORS.lightGray,
-  },
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 22,
-    textAlign: 'center',
-  },
-  scoreCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: COLORS.brown,
-    marginVertical: 3,
-  },
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  noteDisplay: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  resultNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 31,
-    color: COLORS.brown,
-  },
-  resultFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  resultRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    flex: 1,
-  },
-  resultRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-    marginLeft: 12,
-    flexShrink: 0,
-  },
-  doneButton: {
-    width: '100%',
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  
-  liveCardHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  liveCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  pitchComparison: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
-    borderRadius: 17,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  pitchColumn: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  pitchComparisonDivider: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-  },
-  liveNoteDetected: {
-    color: COLORS.brown,
-  },
-  liveNoteWaiting: {
-    color: COLORS.muted,
-  },
-  pitchIndicator: {
-    width: '100%',
-    marginTop: 22,
-  },
-  pitchIndicatorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  indicatorTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  indicatorSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  pitchStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  pitchStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 5,
-  },
-  pitchStatusText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-  },
-  pitchMeterLabels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 7,
-  },
-  pitchMeterEndLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  pitchMeterCenterLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    color: COLORS.guideGreen,
-  },
-  pitchMeter: {
-    width: '100%',
-    height: 14,
-    flexDirection: 'row',
-    borderRadius: 7,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: COLORS.gray,
-  },
-  pitchMeterZone: {
-    flex: 1,
-    height: '100%',
-  },
-  pitchMeterRed: {
-    backgroundColor: COLORS.guideRed,
-  },
-  pitchMeterYellow: {
-    backgroundColor: COLORS.guideYellow,
-  },
-  pitchMeterGreen: {
-    backgroundColor: COLORS.guideGreen,
-  },
-  pitchMeterMarker: {
-    position: 'absolute',
-    top: -3,
-    width: 5,
-    height: 20,
-    marginLeft: -2.5,
-    borderRadius: 3,
-    backgroundColor: COLORS.brown,
-    borderWidth: 1,
-    borderColor: COLORS.white,
-  },
-  pitchMeterMarkerInactive: {
-    opacity: 0.45,
-  },
-  centsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  centsLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  centsValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-  },
-  liveSectionDivider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 20,
-  },
-  stabilityIndicator: {
-    width: '100%',
-  },
-  stabilityHeadingText: {
-    flex: 1,
-  },
-  stabilityTrack: {
-    height: 10,
-    width: '100%',
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginTop: 10,
-  },
-  stabilityFill: {
-    height: '100%',
-    borderRadius: 5,
-  },
-  stabilityFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 7,
-  },
-  stabilityScaleLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  stabilityStatus: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-  },
-  liveStatHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  liveStatsDivider: {
-    width: 1,
-    backgroundColor: COLORS.border,
-    alignSelf: 'stretch',
-  },
-});

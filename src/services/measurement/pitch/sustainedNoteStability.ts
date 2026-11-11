@@ -2,22 +2,12 @@ import {
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
+import { median } from '@/utils/math';
 
 export interface SustainedNoteStabilityMeasurement {
   stabilityCents: number;
   durationSec: number;
   medianFrequencyHz: number;
-}
-
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
 }
 
 export function measureSustainedNoteStability(

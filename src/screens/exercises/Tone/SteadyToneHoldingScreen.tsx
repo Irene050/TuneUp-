@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
   useCallback,
@@ -7,8 +6,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Text, View } from 'react-native';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   STEADY_TONE_HOLDING_PARAMS,
   type SteadyToneHoldingParams,
@@ -18,13 +18,12 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -52,9 +51,16 @@ import {
   EXERCISE_FFT_SIZE,
   TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 
 interface Props {
@@ -108,9 +114,9 @@ function LiveWaveform({
   );
 
   return (
-    <View style={styles.waveformContainer}>
+    <View style={exerciseStyles.waveformContainer}>
       <View
-        style={styles.waveformBars}
+        style={exerciseStyles.waveformBars}
         accessibilityLabel={
           hasPitch ? 'Voice detected in waveform' : 'Waiting for voice'
         }
@@ -119,7 +125,7 @@ function LiveWaveform({
           <View
             key={index}
             style={[
-              styles.waveformBar,
+              exerciseStyles.waveformBar,
               {
                 height,
                 backgroundColor: waveformColor,
@@ -130,16 +136,16 @@ function LiveWaveform({
         ))}
       </View>
 
-      <View style={styles.waveformStatusRow}>
+      <View style={exerciseStyles.waveformStatusRow}>
         <View
           style={[
-            styles.statusDot,
+            exerciseStyles.statusDot,
             { backgroundColor: waveformColor },
           ]}
         />
         <Text
           style={[
-            styles.waveformStatus,
+            exerciseStyles.waveformStatusVariant1,
             { color: waveformColor },
           ]}
         >
@@ -155,12 +161,12 @@ function LiveWaveform({
 function RecordingScreen({
   elapsedSeconds,
   durationSeconds,
-  liveFrame,
+  liveAudioFrame,
   isRecording,
 }: {
   elapsedSeconds: number;
   durationSeconds: number;
-  liveFrame: LiveAudioFrame | null;
+  liveAudioFrame: LiveAudioFrame | null;
   isRecording: boolean;
 }) {
   const progress =
@@ -174,97 +180,75 @@ function RecordingScreen({
   );
 
   const pitch =
-    liveFrame?.pitch !== undefined &&
-    Number.isFinite(liveFrame.pitch) &&
-    liveFrame.pitch > 0
-      ? liveFrame.pitch
+    liveAudioFrame?.pitch !== undefined &&
+    Number.isFinite(liveAudioFrame.pitch) &&
+    liveAudioFrame.pitch > 0
+      ? liveAudioFrame.pitch
       : null;
 
   const clarity =
-    liveFrame?.clarity !== undefined &&
-    Number.isFinite(liveFrame.clarity)
-      ? clamp(liveFrame.clarity, 0, 1) * 100
+    liveAudioFrame?.clarity !== undefined &&
+    Number.isFinite(liveAudioFrame.clarity)
+      ? clamp(liveAudioFrame.clarity, 0, 1) * 100
       : null;
 
   const detectedNote =
     pitch !== null ? frequencyToNoteName(pitch) : '--';
 
   return (
-    <View style={styles.recordingScreen}>
+    <View style={exerciseStyles.recordingScreenVariant3}>
 
-      <Text style={styles.recordingTitle}>Hold Your Tone</Text>
-      <Text style={styles.repPillText}>
+      <Text style={exerciseStyles.recordingTitleVariant4}>Hold Your Tone</Text>
+      <Text style={exerciseStyles.repPillTextVariant1}>
             STEADY TONE · SINGLE ATTEMPT
           </Text>
-      <View style={styles.recordingBody}>
-        <View style={styles.liveCard}>
-          <View style={styles.liveCardHeader}>
-            <View style={styles.liveMicCircle}>
-              <Ionicons
-                name="mic"
-                size={21}
-                color={COLORS.waveform}
-              />
-            </View>
+      <View style={exerciseStyles.sessionPart}>
+        <LiveToneMonitorCard>
 
-            <View style={styles.liveCardHeading}>
-              <Text style={styles.liveCardTitle}>
-                Live Voice Monitor
-              </Text>
-              <Text style={styles.liveCardSubtitle}>
-                Your microphone feedback
-              </Text>
-            </View>
 
-            <View style={styles.liveIndicatorPill}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.liveIndicatorText}>LIVE</Text>
-            </View>
-          </View>
+          <LiveWaveform frame={liveAudioFrame} />
 
-          <LiveWaveform frame={liveFrame} />
-
-          <View style={styles.liveMetricsRow}>
-            <View style={styles.liveMetric}>
-              <Text style={styles.liveLabel}>DETECTED NOTE</Text>
-              <Text style={styles.liveValue} numberOfLines={1}>
+          <View style={exerciseStyles.liveMetricsRow}>
+            <View style={exerciseStyles.liveMetric}>
+              <Text style={exerciseStyles.liveLabelVariant4}>DETECTED NOTE</Text>
+              <Text style={exerciseStyles.liveValueVariant1} numberOfLines={1}>
                 {detectedNote}
               </Text>
-              <Text style={styles.metricHint}>
+              <Text style={exerciseStyles.metricHint}>
                 {pitch !== null
                   ? `${formatNumber(pitch)} Hz`
                   : 'Waiting for pitch'}
               </Text>
             </View>
 
-            <View style={styles.liveDivider} />
+            <View style={exerciseStyles.liveDivider} />
 
-            <View style={styles.liveMetric}>
-              <Text style={styles.liveLabel}>VOICE CLARITY</Text>
-              <Text style={styles.liveValue}>
+            <View style={exerciseStyles.liveMetric}>
+              <Text style={exerciseStyles.liveLabelVariant4}>VOICE CLARITY</Text>
+              <Text style={exerciseStyles.liveValueVariant1}>
                 {clarity !== null
                   ? `${Math.round(clarity)}%`
                   : '--'}
               </Text>
-              <Text style={styles.metricHint}>
+              <Text style={exerciseStyles.metricHint}>
                 {clarity !== null
                   ? 'Live clarity estimate'
                   : 'Waiting for voice'}
               </Text>
             </View>
           </View>
-        </View>
-        
-        <View style={styles.recordingProgressSection}>
-          <View style={styles.recordingProgressLabels}>
-            <Text style={styles.progressLabel}>RECORDING</Text>
-            <Text style={styles.progressTime}>
+        </LiveToneMonitorCard>
+
+        <View style={exerciseStyles.recordingProgressSectionVariant2}>
+          <View style={exerciseStyles.recordingProgressLabels}>
+            <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
+            <Text style={exerciseStyles.progressTime}>
               {formatNumber(elapsedSeconds)}s / {durationSeconds}s
             </Text>
           </View>
 
           <View
-            style={styles.progressTrack}
+            style={exerciseStyles.progressTrackVariant1}
             accessibilityRole="progressbar"
             accessibilityLabel="Recording progress"
             accessibilityValue={{
@@ -275,13 +259,13 @@ function RecordingScreen({
           >
             <View
               style={[
-                styles.progressFill,
+                exerciseStyles.progressFill,
                 { width: `${progress * 100}%` },
               ]}
             />
           </View>
 
-          <Text style={styles.remainingText}>
+          <Text style={exerciseStyles.remainingText}>
             {Math.ceil(remainingSeconds)} seconds remaining
           </Text>
         </View>
@@ -301,11 +285,11 @@ export default function SteadyToneHoldingScreen({
     useState<SteadyToneHoldingParams>(
       STEADY_TONE_HOLDING_PARAMS[fallbackTier],
     );
-  const [loadingParams, setLoadingParams] = useState(true);
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [liveFrame, setLiveFrame] =
+  const [liveAudioFrame, setLiveAudioFrame] =
     useState<LiveAudioFrame | null>(null);
   const [result, setResult] =
     useState<SteadyToneHoldingScoreResult | null>(null);
@@ -318,7 +302,6 @@ export default function SteadyToneHoldingScreen({
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('instructions');
   const paramsRef = useRef(params);
   const tierRef = useRef(currentTier);
 
@@ -327,8 +310,8 @@ export default function SteadyToneHoldingScreen({
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const recordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const isRecordingRef = useRef(false);
+  const recordingStopRequestedRef = useRef(false);
   const processingRef = useRef(false);
   const savedRef = useRef(false);
   const elapsedRef = useRef(0);
@@ -350,7 +333,7 @@ export default function SteadyToneHoldingScreen({
   const startCountdownRef =
     useRef<(() => void) | null>(null);
 
-  const setCurrentPhase = useCallback((nextPhase: Phase) => {
+  const setExercisePhase = useCallback((nextPhase: Phase) => {
     phaseRef.current = nextPhase;
 
     if (mountedRef.current) {
@@ -383,7 +366,7 @@ export default function SteadyToneHoldingScreen({
 
     const loadParams = async () => {
       try {
-        setLoadingParams(true);
+        setIsLoadingParams(true);
 
         const user = auth.currentUser;
 
@@ -451,10 +434,10 @@ export default function SteadyToneHoldingScreen({
         tierRef.current = resolvedTier;
         setCurrentTier(resolvedTier);
         setParams(generatedParams);
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load steady tone holding parameters:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
@@ -467,7 +450,7 @@ export default function SteadyToneHoldingScreen({
         }
       } finally {
         if (!cancelled) {
-          setLoadingParams(false);
+          setIsLoadingParams(false);
         }
       }
     };
@@ -491,7 +474,7 @@ export default function SteadyToneHoldingScreen({
       return;
     }
 
-    setLiveFrame(frame);
+    setLiveAudioFrame(frame);
   }, []);
 
   const {
@@ -503,8 +486,8 @@ export default function SteadyToneHoldingScreen({
     onStop: async (samples: Float32Array, sampleRate: number) => {
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
-        recordingRef.current = false;
-        stopRequestedRef.current = false;
+        isRecordingRef.current = false;
+        recordingStopRequestedRef.current = false;
         processingRef.current = false;
         return;
       }
@@ -520,14 +503,14 @@ export default function SteadyToneHoldingScreen({
         return;
       }
 
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       processingRef.current = true;
       clearTimers();
-      setCurrentPhase('processing');
+      setExercisePhase('processing');
 
       if (!hasSufficientRecordedSignal(samples)) {
         processingRef.current = false;
-        setCurrentPhase('instructions');
+        setExercisePhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
@@ -602,9 +585,9 @@ export default function SteadyToneHoldingScreen({
           return;
         }
 
-        setCurrentPhase('results');
-      } catch (error) {
-        console.error('Steady tone holding processing error:', error);
+        setExercisePhase('results');
+      } catch (errorMessage) {
+        console.error('Steady tone holding processing error:', errorMessage);
 
         if (
           mountedRef.current &&
@@ -614,11 +597,11 @@ export default function SteadyToneHoldingScreen({
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          setCurrentPhase('instructions');
+          setExercisePhase('instructions');
         }
       } finally {
         processingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
       }
     },
   });
@@ -639,9 +622,9 @@ export default function SteadyToneHoldingScreen({
       pausedRef.current ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
-      recordingRef.current ||
+      isRecordingRef.current ||
       processingRef.current ||
-      loadingParams
+      isLoadingParams
     ) {
       return;
     }
@@ -653,24 +636,24 @@ export default function SteadyToneHoldingScreen({
       setErrorMessage(
         'The audio recorder is not ready. Please try again.',
       );
-      setCurrentPhase('instructions');
+      setExercisePhase('instructions');
       return;
     }
 
     try {
       setErrorMessage(null);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       setMeasurement(null);
       setResult(null);
       processingResultRef.current = null;
 
       elapsedRef.current = 0;
       setElapsedMs(0);
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
       discardNextStopRef.current = false;
       processingRef.current = false;
 
-      setCurrentPhase('recording');
+      setExercisePhase('recording');
       await start();
 
       if (
@@ -681,14 +664,14 @@ export default function SteadyToneHoldingScreen({
         phaseRef.current !== 'recording'
       ) {
         discardNextStopRef.current = true;
-        recordingRef.current = false;
-        void Promise.resolve(stop()).catch(error => {
-          console.warn('Unable to stop interrupted recording:', error);
+        isRecordingRef.current = false;
+        void Promise.resolve(stop()).catch(errorMessage => {
+          console.warn('Unable to stop interrupted recording:', errorMessage);
         });
         return;
       }
 
-      recordingRef.current = true;
+      isRecordingRef.current = true;
 
       const durationMs = paramsRef.current.durationSec * 1000;
       let lastTickAt = Date.now();
@@ -703,8 +686,8 @@ export default function SteadyToneHoldingScreen({
           pausedRef.current ||
           showQuitModalRef.current ||
           quitInProgressRef.current ||
-          !recordingRef.current ||
-          stopRequestedRef.current ||
+          !isRecordingRef.current ||
+          recordingStopRequestedRef.current ||
           phaseRef.current !== 'recording'
         ) {
           return;
@@ -719,15 +702,15 @@ export default function SteadyToneHoldingScreen({
             recordingTimerRef.current = null;
           }
 
-          if (stopRequestedRef.current) return;
+          if (recordingStopRequestedRef.current) return;
 
-          stopRequestedRef.current = true;
+          recordingStopRequestedRef.current = true;
 
-          void Promise.resolve(stop()).catch(error => {
-            console.error('Failed to stop steady tone recording:', error);
+          void Promise.resolve(stop()).catch(errorMessage => {
+            console.error('Failed to stop steady tone recording:', errorMessage);
 
-            recordingRef.current = false;
-            stopRequestedRef.current = false;
+            isRecordingRef.current = false;
+            recordingStopRequestedRef.current = false;
 
             if (
               mountedRef.current &&
@@ -737,23 +720,23 @@ export default function SteadyToneHoldingScreen({
               setErrorMessage(
                 'We could not finish the recording. Please try again.',
               );
-              setCurrentPhase('instructions');
+              setExercisePhase('instructions');
             }
           });
         }
       }, 100);
-    } catch (error) {
-      console.error('Failed to start steady tone recording:', error);
+    } catch (errorMessage) {
+      console.error('Failed to start steady tone recording:', errorMessage);
 
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
 
       if (
         mountedRef.current &&
         !pausedRef.current &&
         !quitInProgressRef.current
       ) {
-        setCurrentPhase('instructions');
+        setExercisePhase('instructions');
 
         Alert.alert(
           'Microphone Error',
@@ -761,7 +744,7 @@ export default function SteadyToneHoldingScreen({
         );
       }
     }
-  }, [loadingParams, setCurrentPhase]);
+  }, [isLoadingParams, setExercisePhase]);
 
   useEffect(() => {
     beginRecordingRef.current = beginRecording;
@@ -773,11 +756,11 @@ export default function SteadyToneHoldingScreen({
 
   const startCountdown = useCallback(() => {
     if (
-      recordingRef.current ||
+      isRecordingRef.current ||
       processingRef.current ||
       pausedRef.current ||
       quitInProgressRef.current ||
-      loadingParams
+      isLoadingParams
     ) {
       return;
     }
@@ -785,21 +768,21 @@ export default function SteadyToneHoldingScreen({
     clearTimers();
 
     setErrorMessage(null);
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setMeasurement(null);
     setResult(null);
     processingResultRef.current = null;
 
     elapsedRef.current = 0;
     setElapsedMs(0);
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
+    isRecordingRef.current = false;
+    recordingStopRequestedRef.current = false;
     processingRef.current = false;
     discardNextStopRef.current = false;
     savedRef.current = false;
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setCurrentPhase('countdown');
+    setExercisePhase('countdown');
 
     let value = EXERCISE_COUNTDOWN_SECONDS;
 
@@ -827,7 +810,7 @@ export default function SteadyToneHoldingScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers, loadingParams, setCurrentPhase]);
+  }, [clearTimers, isLoadingParams, setExercisePhase]);
 
   useEffect(() => {
     startCountdownRef.current = startCountdown;
@@ -854,26 +837,26 @@ export default function SteadyToneHoldingScreen({
 
     clearTimers();
 
-    if (activePhase === 'recording' || recordingRef.current) {
+    if (activePhase === 'recording' || isRecordingRef.current) {
       discardNextStopRef.current = true;
-      stopRequestedRef.current = true;
-      recordingRef.current = false;
+      recordingStopRequestedRef.current = true;
+      isRecordingRef.current = false;
       processingRef.current = false;
 
       const stop = stopRecordingRef.current;
 
       if (stop) {
-        void Promise.resolve(stop()).catch(error => {
+        void Promise.resolve(stop()).catch(errorMessage => {
           console.warn(
             'Unable to stop interrupted steady-tone recording:',
-            error,
+            errorMessage,
           );
         });
       }
 
       elapsedRef.current = 0;
       setElapsedMs(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
     }
 
     if (activePhase === 'countdown') {
@@ -896,14 +879,14 @@ export default function SteadyToneHoldingScreen({
       previousPhase === 'recording' ||
       previousPhase === 'countdown'
     ) {
-      recordingRef.current = false;
+      isRecordingRef.current = false;
       processingRef.current = false;
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
       discardNextStopRef.current = false;
 
       elapsedRef.current = 0;
       setElapsedMs(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
 
       startCountdownRef.current?.();
       return;
@@ -915,16 +898,16 @@ export default function SteadyToneHoldingScreen({
       if (cached && savedRef.current) {
         setMeasurement(cached.measurement);
         setResult(cached.result);
-        setCurrentPhase('results');
+        setExercisePhase('results');
       } else {
-        setCurrentPhase('processing');
+        setExercisePhase('processing');
       }
 
       return;
     }
 
-    setCurrentPhase(previousPhase);
-  }, [setCurrentPhase]);
+    setExercisePhase(previousPhase);
+  }, [setExercisePhase]);
 
   const quitExercise = useCallback(() => {
     if (quitInProgressRef.current) return;
@@ -941,15 +924,15 @@ export default function SteadyToneHoldingScreen({
 
     const stop = stopRecordingRef.current;
 
-    if (recordingRef.current || isRecording) {
-      stopRequestedRef.current = true;
-      recordingRef.current = false;
+    if (isRecordingRef.current || isRecording) {
+      recordingStopRequestedRef.current = true;
+      isRecordingRef.current = false;
 
       if (stop) {
-        void Promise.resolve(stop()).catch(error => {
+        void Promise.resolve(stop()).catch(errorMessage => {
           console.warn(
             'Unable to stop steady-tone recording while quitting:',
-            error,
+            errorMessage,
           );
         });
       }
@@ -966,18 +949,18 @@ export default function SteadyToneHoldingScreen({
     showQuitModalRef.current = false;
     discardNextStopRef.current = true;
 
-    if (recordingRef.current || isRecording) {
+    if (isRecordingRef.current || isRecording) {
       const stop = stopRecordingRef.current;
 
       if (stop) {
-        void Promise.resolve(stop()).catch(error => {
-          console.warn('Unable to stop recording before retry:', error);
+        void Promise.resolve(stop()).catch(errorMessage => {
+          console.warn('Unable to stop recording before retry:', errorMessage);
         });
       }
     }
 
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
+    isRecordingRef.current = false;
+    recordingStopRequestedRef.current = false;
     processingRef.current = false;
     savedRef.current = false;
     processingResultRef.current = null;
@@ -987,12 +970,12 @@ export default function SteadyToneHoldingScreen({
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setMeasurement(null);
     setResult(null);
     setErrorMessage(null);
-    setCurrentPhase('instructions');
-  }, [clearTimers, isRecording, setCurrentPhase]);
+    setExercisePhase('instructions');
+  }, [clearTimers, isRecording, setExercisePhase]);
 
   const goBack = useCallback(() => {
     pauseForExitPrompt();
@@ -1025,7 +1008,7 @@ export default function SteadyToneHoldingScreen({
 
       clearTimers();
 
-      if (recordingRef.current) {
+      if (isRecordingRef.current) {
         const stop = stopRecordingRef.current;
 
         if (stop) {
@@ -1033,8 +1016,8 @@ export default function SteadyToneHoldingScreen({
         }
       }
 
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
     };
   }, [clearTimers]);
 
@@ -1077,7 +1060,7 @@ export default function SteadyToneHoldingScreen({
     />
   );
 
-  if (loadingParams) {
+  if (isLoadingParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1134,8 +1117,8 @@ export default function SteadyToneHoldingScreen({
           tier={currentTier}
           onBack={goBack}
           onStart={startCountdown}
-          error={errorMessage}
-          startDisabled={loadingParams}
+          errorMessage={errorMessage}
+          startDisabled={isLoadingParams}
         />
 
         {quitModal}
@@ -1166,7 +1149,7 @@ export default function SteadyToneHoldingScreen({
         <RecordingScreen
           elapsedSeconds={elapsedSeconds}
           durationSeconds={params.durationSec}
-          liveFrame={liveFrame}
+          liveAudioFrame={liveAudioFrame}
           isRecording={isRecording}
         />
         {quitModal}
@@ -1208,48 +1191,48 @@ export default function SteadyToneHoldingScreen({
           onExit={goBack}
           onBack={goBack}
         >
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>
+          <View style={exerciseStyles.resultCardVariant2}>
+            <Text style={exerciseStyles.resultCardTitle}>
               Your Performance
             </Text>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.resultRowLabel}>
                 Tone smoothness
               </Text>
-              <Text style={styles.resultRowValue}>
+              <Text style={exerciseStyles.resultRowValue}>
                 {formatNumber(measurement.smoothnessPct, 0)}%
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.resultRowLabel}>
                 Loudness stability
               </Text>
-              <Text style={styles.resultRowValue}>
+              <Text style={exerciseStyles.resultRowValue}>
                 {formatNumber(measurement.amplitudeStabilityPct, 0)}%
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.resultRowLabel}>
                 Pitch stability
               </Text>
-              <Text style={styles.resultRowValue}>
+              <Text style={exerciseStyles.resultRowValue}>
                 {formatNumber(measurement.pitchStabilityPct, 0)}%
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Duration</Text>
-              <Text style={styles.resultRowValue}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.resultRowLabel}>Duration</Text>
+              <Text style={exerciseStyles.resultRowValue}>
                 {formatNumber(measurement.durationSec)}s
               </Text>
             </View>
           </View>
 
-          <View style={styles.resultTip}>
-            <Text style={styles.resultTipText}>
+          <View style={exerciseStyles.resultTip}>
+            <Text style={exerciseStyles.resultTipText}>
               {result.passed
                 ? 'Nice work! Keep practicing relaxed, balanced sustained notes to maintain consistent tone quality.'
                 : 'Try using steady breath support and a relaxed throat. Focus on keeping the same vocal quality, loudness, and pitch.'}
@@ -1263,268 +1246,3 @@ export default function SteadyToneHoldingScreen({
 
   return quitModal;
 }
-
-const styles = StyleSheet.create({
-  recordingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 22,
-    paddingTop: 100,
-    paddingBottom: 20,
-  },
-  recordingTitle: {
-    marginTop: 42,
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-    paddingHorizontal: 12,
-  },
-  recordingSubtitle: {
-    width: '100%',
-    maxWidth: 320,
-    marginTop: 6,
-    paddingHorizontal: 8,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.muted,
-    textAlign: 'center',
-    alignSelf: 'center',
-  },
-  recordingBody: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  repPillText: {
-    textAlign: 'center',
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: COLORS.muted,
-  },
-  recordingProgressSection: {
-    width: '100%',
-    marginTop: 24,
-    marginBottom: 18,
-  },
-  recordingProgressLabels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 9,
-  },
-  progressLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-  },
-  progressTime: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 8,
-    overflow: 'hidden',
-    borderRadius: 8,
-    backgroundColor: COLORS.background,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 8,
-    backgroundColor: COLORS.pink,
-  },
-  remainingText: {
-    marginTop: 7,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'right',
-  },
-
-  liveCard: {
-    marginTop: 20,
-    width: '100%',
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  liveMicCircle: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 21,
-    backgroundColor: COLORS.background,
-  },
-  liveCardHeading: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  liveCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  liveCardSubtitle: {
-    marginTop: 2,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  liveIndicatorPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: COLORS.background,
-  },
-  recordingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.guideRed,
-  },
-  liveIndicatorText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.7,
-    color: COLORS.guideRed,
-  },
-  waveformContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingTop: 5,
-    paddingBottom: 15,
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  waveformBars: {
-    width: '100%',
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  waveformBar: {
-    flex: 1,
-    maxWidth: 6,
-    minWidth: 2,
-    borderRadius: 4,
-  },
-  waveformStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  waveformStatus: {
-    flexShrink: 1,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  liveMetricsRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  liveMetric: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  liveDivider: {
-    width: 1,
-    height: 52,
-    backgroundColor: COLORS.border,
-  },
-  liveLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.5,
-    color: COLORS.muted,
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  liveValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-  },
-  metricHint: {
-    marginTop: 3,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-
-  resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 20,
-  },
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  resultRowLabel: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  resultRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-    marginLeft: 12,
-  },
-  resultTip: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-  resultTipText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.brown,
-  },
-
-});

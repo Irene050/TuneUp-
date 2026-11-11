@@ -2,15 +2,10 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import { useAuth } from '@/hooks/useAuth';
 import { useProgress } from '@/hooks/useProgress';
@@ -130,23 +125,23 @@ export default function DashboardScreen() {
   );
 
   return (
-    <View style={styles.screen}>
+    <View style={exerciseStyles.screen}>
       <AppHeader />
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        style={exerciseStyles.infoText}
+        contentContainerStyle={exerciseStyles.content_Dashboard}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.userSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{avatarInitial}</Text>
+        <View style={exerciseStyles.userSection}>
+          <View style={exerciseStyles.avatar_Dashboard}>
+            <Text style={exerciseStyles.liveValueVariant1}>{avatarInitial}</Text>
           </View>
 
           <View>
-            <Text style={styles.userName}>{displayName}</Text>
+            <Text style={exerciseStyles.resultValueVariant1}>{displayName}</Text>
 
-            <Text style={styles.userLevel}>
+            <Text style={exerciseStyles.userLevel}>
               {progressLoading
                 ? 'Loading tier...'
                 : `${formattedTier} tier`}
@@ -154,24 +149,24 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.assessmentCard}>
-          <View style={styles.assessmentIcon}>
+        <View style={exerciseStyles.assessmentCard}>
+          <View style={exerciseStyles.assessmentIcon}>
             <Ionicons name="mic" size={25} color={COLORS.brown} />
           </View>
 
-          <View style={styles.assessmentContent}>
-            <Text style={styles.assessmentTitle}>
+          <View style={exerciseStyles.infoText}>
+            <Text style={exerciseStyles.assessmentTitle}>
               Find your vocal strengths!
             </Text>
 
-            <Text style={styles.assessmentDescription}>
+            <Text style={exerciseStyles.assessmentDescription}>
               Assess your vocal range and personalize your exercises, or
               sing a melody to evaluate your singing performance.
             </Text>
 
-            <View style={styles.assessmentActions}>
+            <View style={exerciseStyles.assessmentActions}>
               <Pressable
-                style={styles.assessmentButton}
+                style={exerciseStyles.assessmentButton}
                 onPress={() =>
                   router.push({
                     pathname: '/dashboard',
@@ -181,13 +176,13 @@ export default function DashboardScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Assess me"
               >
-                <Text style={styles.assessmentButtonText}>
+                <Text style={exerciseStyles.progressActionText}>
                   Assess me!
                 </Text>
               </Pressable>
 
               <Pressable
-                style={styles.singingAssessmentButton}
+                style={exerciseStyles.singingAssessmentButton}
                 onPress={() => router.push({
                   pathname: '/dashboard',
                   params: { tab: 'singing' },
@@ -195,7 +190,7 @@ export default function DashboardScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Singing Assessment"
               >
-                <Text style={styles.singingAssessmentButtonText}>
+                <Text style={exerciseStyles.scoreRowValue}>
                   Singing Assessment
                 </Text>
               </Pressable>
@@ -203,8 +198,8 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.rangeCard}>
-          <View style={styles.rangeIcon}>
+        <View style={exerciseStyles.rangeCard_Dashboard}>
+          <View style={exerciseStyles.rangeIcon}>
             <Ionicons
               name="musical-notes"
               size={24}
@@ -212,13 +207,13 @@ export default function DashboardScreen() {
             />
           </View>
 
-          <View style={styles.rangeContent}>
-            <Text style={styles.rangeLabel}>Your Vocal Range</Text>
+          <View style={exerciseStyles.infoText}>
+            <Text style={exerciseStyles.rangeLabel}>Your Vocal Range</Text>
 
             {assessmentLoading ? (
-              <Text style={styles.rangeText}>Loading...</Text>
+              <Text style={exerciseStyles.rangeText_Dashboard}>Loading...</Text>
             ) : latestAssessment ? (
-              <Text style={styles.rangeText}>
+              <Text style={exerciseStyles.rangeText_Dashboard}>
                 {frequencyToNoteName(
                   latestAssessment.vocalRangeLowHz,
                 )}
@@ -228,45 +223,45 @@ export default function DashboardScreen() {
                 )}
               </Text>
             ) : (
-              <Text style={styles.rangeEmptyText}>
+              <Text style={exerciseStyles.rangeEmptyText}>
                 Complete an assessment to discover your range.
               </Text>
             )}
 
             {latestAssessment && (
-              <Text style={styles.rangeSubtext}>
+              <Text style={exerciseStyles.comparisonFrequency}>
                 Based on your latest assessment
               </Text>
             )}
           </View>
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Vocal Components</Text>
+        <View style={exerciseStyles.sectionHeader_Dashboard}>
+          <Text style={exerciseStyles.liveValueVariant1}>Vocal Components</Text>
 
           <Pressable
             onPress={() => router.setParams({ tab: 'exercises' })}
             accessibilityRole="button"
             accessibilityLabel="View more exercises"
           >
-            <Text style={styles.viewMore}>view more</Text>
+            <Text style={exerciseStyles.scoreLabel}>view more</Text>
           </Pressable>
         </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.exerciseScroll}
+          contentContainerStyle={exerciseStyles.exerciseScroll_Dashboard}
         >
           {VOCAL_COMPONENTS.map((component) => (
             <Pressable
               key={component.id}
               onPress={() => router.push(component.route)}
-              style={styles.exerciseCard}
+              style={exerciseStyles.exerciseCard_Dashboard}
               accessibilityRole="button"
               accessibilityLabel={`Open ${component.name} exercises`}
             >
-              <View style={styles.exerciseImage}>
+              <View style={exerciseStyles.exerciseImage}>
                 <Ionicons
                   name={component.icon}
                   size={76}
@@ -274,18 +269,18 @@ export default function DashboardScreen() {
                 />
               </View>
 
-              <View style={styles.exerciseBottom}>
-                <View style={styles.exerciseText}>
-                  <Text style={styles.exerciseName}>
+              <View style={exerciseStyles.summaryRow}>
+                <View style={exerciseStyles.infoText}>
+                  <Text style={exerciseStyles.exerciseName_Dashboard}>
                     {component.name}
                   </Text>
 
-                  <Text style={styles.exerciseDescription}>
+                  <Text style={exerciseStyles.exerciseDescription}>
                     {component.description}
                   </Text>
                 </View>
 
-                <View style={styles.playButton}>
+                <View style={exerciseStyles.playButton_Dashboard}>
                   <Ionicons
                     name="play"
                     size={20}
@@ -297,22 +292,22 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.progressHeader}>
+        <View style={exerciseStyles.sectionHeader_Dashboard}>
           <View>
-            <Text style={styles.sectionTitle}>My Progress</Text>
+            <Text style={exerciseStyles.liveValueVariant1}>My Progress</Text>
 
-            <Text style={styles.progressSectionSubtitle}>
+            <Text style={exerciseStyles.progressSectionSubtitle}>
               Every practice session counts!
             </Text>
           </View>
 
           <Pressable
-            style={styles.viewProgressButton}
+            style={exerciseStyles.viewProgressButton}
             onPress={() => router.push('/progress')}
             accessibilityRole="button"
             accessibilityLabel="View all progress"
           >
-            <Text style={styles.viewProgressText}>View all</Text>
+            <Text style={exerciseStyles.scoreRowValue}>View all</Text>
 
             <Ionicons
               name="chevron-forward"
@@ -322,9 +317,9 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.progressCard}>
-          <View style={styles.progressIntro}>
-            <View style={styles.progressIconCircle}>
+        <View style={exerciseStyles.progressCard}>
+          <View style={exerciseStyles.summaryRow}>
+            <View style={exerciseStyles.progressIconCircle}>
               <Ionicons
                 name="trending-up"
                 size={30}
@@ -332,8 +327,8 @@ export default function DashboardScreen() {
               />
             </View>
 
-            <View style={styles.progressIntroText}>
-              <Text style={styles.progressTitle}>
+            <View style={exerciseStyles.infoText}>
+              <Text style={exerciseStyles.progressTitle}>
                 {progressLoading
                   ? 'Loading your progress...'
                   : totalExercisesCompleted === 0
@@ -341,7 +336,7 @@ export default function DashboardScreen() {
                     : 'Look how far you’ve come!'}
               </Text>
 
-              <Text style={styles.progressSubtitle}>
+              <Text style={exerciseStyles.progressSubtitle}>
                 {progressLoading
                   ? 'Getting your latest practice records.'
                   : totalExercisesCompleted === 0
@@ -351,32 +346,32 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.progressSummaryRow}>
-            <View style={styles.progressSummaryItem}>
-              <Text style={styles.progressSummaryValue}>
+          <View style={exerciseStyles.progressSummaryRow}>
+            <View style={exerciseStyles.progressSummaryItem}>
+              <Text style={exerciseStyles.liveValueVariant1}>
                 {progressLoading ? '—' : totalExercisesCompleted}
               </Text>
 
-              <Text style={styles.progressSummaryLabel}>
+              <Text style={exerciseStyles.metricHint}>
                 Total exercises
               </Text>
             </View>
 
-            <View style={styles.progressSummaryDivider} />
+            <View style={exerciseStyles.progressSummaryDivider} />
 
-            <View style={styles.progressSummaryItem}>
-              <Text style={styles.progressSummaryValue}>
+            <View style={exerciseStyles.progressSummaryItem}>
+              <Text style={exerciseStyles.liveValueVariant1}>
                 {progressLoading ? '—' : practiceDays}
               </Text>
 
-              <Text style={styles.progressSummaryLabel}>
+              <Text style={exerciseStyles.metricHint}>
                 Practice days
               </Text>
             </View>
           </View>
 
-          <View style={styles.progressComponents}>
-            <Text style={styles.progressComponentsTitle}>
+          <View style={exerciseStyles.progressComponents}>
+            <Text style={exerciseStyles.progressComponentsTitle}>
               Your vocal components
             </Text>
 
@@ -400,22 +395,22 @@ export default function DashboardScreen() {
               return (
                 <View
                   key={component.id}
-                  style={styles.dashboardComponent}
+                  style={exerciseStyles.dashboardComponent}
                 >
-                  <View style={styles.dashboardComponentTop}>
-                    <View style={styles.dashboardComponentNameRow}>
+                  <View style={exerciseStyles.dashboardComponentTop}>
+                    <View style={exerciseStyles.componentNameRow}>
                       <Ionicons
                         name={component.icon}
                         size={17}
                         color={COLORS.brown}
                       />
 
-                      <Text style={styles.dashboardComponentName}>
+                      <Text style={exerciseStyles.dashboardComponentName}>
                         {component.name}
                       </Text>
                     </View>
 
-                    <Text style={styles.dashboardComponentCount}>
+                    <Text style={exerciseStyles.guideText}>
                       {progressLoading
                         ? '—'
                         : `${completed} exercises · ${percentage}%`}
@@ -427,12 +422,12 @@ export default function DashboardScreen() {
           </View>
 
           <Pressable
-            style={styles.progressAction}
+            style={exerciseStyles.progressAction}
             onPress={() => router.push('/progress')}
             accessibilityRole="button"
             accessibilityLabel="Explore my progress"
           >
-            <Text style={styles.progressActionText}>
+            <Text style={exerciseStyles.progressActionText}>
               Explore my progress
             </Text>
 
@@ -447,381 +442,3 @@ export default function DashboardScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 150,
-  },
-  userSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  avatarText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-  },
-  userName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-  },
-  userLevel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: COLORS.brown,
-    marginTop: -2,
-  },
-  assessmentCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 18,
-    elevation: 4,
-  },
-  assessmentIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  assessmentContent: {
-    flex: 1,
-  },
-  assessmentTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginBottom: 5,
-  },
-  assessmentDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 15,
-    color: COLORS.brown,
-    marginBottom: 14,
-  },
-  assessmentActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  assessmentButton: {
-    minHeight: 34,
-    paddingHorizontal: 14,
-    borderRadius: 17,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assessmentButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.white,
-  },
-  singingAssessmentButton: {
-    minHeight: 34,
-    paddingHorizontal: 14,
-    borderRadius: 17,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  singingAssessmentButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  rangeCard: {
-    width: '100%',
-    minHeight: 86,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: COLORS.background,
-  },
-  rangeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  rangeContent: {
-    flex: 1,
-  },
-  rangeLabel: {
-    fontFamily: 'FredokaMedium',
-    fontSize: 13,
-    color: COLORS.muted,
-    marginBottom: 1,
-  },
-  rangeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-  },
-  rangeSubtext: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 1,
-  },
-  rangeEmptyText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 17,
-    color: COLORS.brown,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-  },
-  viewMore: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  exerciseScroll: {
-    paddingBottom: 35,
-  },
-  exerciseCard: {
-    width: 320,
-    height: 300,
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    padding: 14,
-    marginRight: 18,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 5,
-  },
-  exerciseImage: {
-    height: 195,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    marginBottom: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exerciseBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  exerciseText: {
-    flex: 1,
-  },
-  exerciseName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginBottom: 4,
-  },
-  exerciseDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.brown,
-  },
-  playButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 3,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  progressSectionSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  viewProgressButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 8,
-    paddingLeft: 8,
-  },
-  viewProgressText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  progressCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.background,
-    marginBottom: 20,
-  },
-  progressIntro: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  progressIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  progressIntroText: {
-    flex: 1,
-  },
-  progressTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-  },
-  progressSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  progressSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-    paddingVertical: 16,
-    backgroundColor: COLORS.white,
-    borderRadius: 15,
-  },
-  progressSummaryItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 5,
-  },
-  progressSummaryValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-  },
-  progressSummaryLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 3,
-  },
-  progressSummaryDivider: {
-    width: 1,
-    height: 34,
-    backgroundColor: COLORS.border,
-  },
-  progressComponents: {
-    marginTop: 20,
-  },
-  progressComponentsTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-    marginBottom: 15,
-  },
-  dashboardComponent: {
-    marginBottom: 15,
-  },
-  dashboardComponentTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 7,
-  },
-  dashboardComponentNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 1,
-  },
-  dashboardComponentName: {
-    fontFamily: 'FredokaMedium',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  dashboardComponentCount: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  progressAction: {
-    backgroundColor: COLORS.brown,
-    minHeight: 45,
-    borderRadius: 23,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  progressActionText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.white,
-  },
-});

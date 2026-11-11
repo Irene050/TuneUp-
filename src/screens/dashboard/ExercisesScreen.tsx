@@ -1,23 +1,17 @@
 import AppHeader from '@/components/appheader';
 import { COLORS } from '@/constants/appConstants';
-import { clampPercentage } from '@/utils/math';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { auth } from '@/services/firebase/config';
 import type {
   ComponentId,
   ComponentProgressSummary,
 } from '@/services/progress/progressModule';
 import { fetchAllProgress } from '@/services/progress/progressRepo';
+import { clampPercentage } from '@/utils/math';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 const categories = [
   'All',
@@ -352,7 +346,7 @@ export default function ExercisesScreen() {
 
     return recommendations.slice(0, 5);
   }, [progressSummaries, recommendationsLoading]);
-  
+
   const handleExercisePress = (exercise: Exercise) => {
     if (exercise.mode === 'free') {
       const freeModeRoutes: Record<string, string> = {
@@ -423,16 +417,16 @@ export default function ExercisesScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={exerciseStyles.screen}>
       <AppHeader />
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        style={exerciseStyles.infoText}
+        contentContainerStyle={exerciseStyles.content_Exercises}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.searchRow}>
-          <View style={styles.searchContainer}>
+        <View style={exerciseStyles.searchRow}>
+          <View style={exerciseStyles.searchContainer}>
             <Ionicons
               name="search-outline"
               size={21}
@@ -440,7 +434,7 @@ export default function ExercisesScreen() {
             />
 
             <TextInput
-              style={styles.searchInput}
+              style={exerciseStyles.searchInput}
               placeholder="Search exercises..."
               placeholderTextColor={COLORS.muted}
               value={search}
@@ -449,15 +443,15 @@ export default function ExercisesScreen() {
           </View>
         </View>
 
-        <Text style={styles.title}>Vocal Exercises</Text>
+        <Text style={exerciseStyles.title_Exercises}>Vocal Exercises</Text>
 
-        <View style={styles.recommendedHeader}>
+        <View style={exerciseStyles.recommendedHeader}>
           <View>
-            <Text style={styles.recommendedTitle}>
+            <Text style={exerciseStyles.recommendedTitle}>
               Recommended For You
             </Text>
 
-            <Text style={styles.recommendedSubtitle}>
+            <Text style={exerciseStyles.recommendedSubtitle}>
               {recommendationsLoading
                 ? 'Loading your exercise scores...'
                 : 'Based on your component scores'}
@@ -468,14 +462,14 @@ export default function ExercisesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recommendedScroll}
+          contentContainerStyle={exerciseStyles.recommendedScroll}
         >
           {recommendedExercises.map((exercise) => (
             <View
               key={`${exercise.category}-${exercise.name}`}
-              style={styles.recommendedCard}
+              style={exerciseStyles.recommendedCard}
             >
-              <View style={styles.recommendedImage}>
+              <View style={exerciseStyles.recommendedImage}>
                 <Ionicons
                   name={
                     exercise.category === 'Breath Control'
@@ -492,17 +486,17 @@ export default function ExercisesScreen() {
                   color={COLORS.brown}
                 />
 
-                <View style={styles.recommendedDifficulty}>
-                  <Text style={styles.difficultyText}>
+                <View style={exerciseStyles.recommendedDifficulty}>
+                  <Text style={exerciseStyles.difficultyText}>
                     {exercise.category}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.recommendedBottom}>
-                <View style={styles.recommendedExerciseText}>
+              <View style={exerciseStyles.genderRow}>
+                <View style={exerciseStyles.recommendedExerciseText}>
                   <Text
-                    style={styles.categoryText}
+                    style={exerciseStyles.scoreRowValue}
                     numberOfLines={2}
                   >
                     {exercise.name}
@@ -510,7 +504,7 @@ export default function ExercisesScreen() {
                 </View>
 
                 <Pressable
-                  style={styles.smallPlayButton}
+                  style={exerciseStyles.smallPlayButton}
                   onPress={() => handleExercisePress(exercise)}
                   accessibilityRole="button"
                   accessibilityLabel={`Start ${exercise.name}`}
@@ -526,17 +520,17 @@ export default function ExercisesScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.exerciseHeader}>
-          <Text style={styles.exerciseTitle}>Exercises</Text>
+        <View style={exerciseStyles.exerciseHeader_Exercises}>
+          <Text style={exerciseStyles.exerciseTitle_Exercises}>Exercises</Text>
 
-          <View style={styles.dropdownWrapper}>
+          <View style={exerciseStyles.dropdownWrapper}>
             <Pressable
-              style={styles.dropdown}
+              style={exerciseStyles.dropdown_Exercises}
               onPress={() => setFilterOpen(!filterOpen)}
               accessibilityRole="button"
               accessibilityLabel="Filter exercises by category"
             >
-              <Text style={styles.dropdownText}>
+              <Text style={exerciseStyles.dropdownText_Exercises}>
                 {selectedCategory}
               </Text>
 
@@ -548,14 +542,14 @@ export default function ExercisesScreen() {
             </Pressable>
 
             {filterOpen && (
-              <View style={styles.dropdownMenu}>
+              <View style={exerciseStyles.dropdownMenu}>
                 {categories.map((category) => (
                   <Pressable
                     key={category}
                     style={[
-                      styles.dropdownItem,
+                      exerciseStyles.dropdownItem,
                       selectedCategory === category &&
-                        styles.selectedDropdownItem,
+                        exerciseStyles.selectedDropdownItem,
                     ]}
                     onPress={() => {
                       setSelectedCategory(category);
@@ -565,9 +559,9 @@ export default function ExercisesScreen() {
                   >
                     <Text
                       style={[
-                        styles.dropdownItemText,
+                        exerciseStyles.dropdownItemText,
                         selectedCategory === category &&
-                          styles.selectedDropdownText,
+                          exerciseStyles.selectedDropdownText,
                       ]}
                     >
                       {category}
@@ -579,48 +573,48 @@ export default function ExercisesScreen() {
           </View>
         </View>
 
-        <Text style={styles.resultCount}>
+        <Text style={exerciseStyles.resultCount}>
           {filteredExercises.length}{' '}
           {filteredExercises.length === 1
             ? 'exercise'
             : 'exercises'}
         </Text>
 
-        <View style={styles.exerciseList}>
+        <View style={exerciseStyles.exerciseList_Exercises}>
           {filteredExercises.map((exercise) => (
             <Pressable
               key={exercise.name}
               style={({ pressed }) => [
-                styles.exerciseCard,
-                pressed && styles.exercisePressed,
+                exerciseStyles.exerciseCard_Exercises,
+                pressed && exerciseStyles.disabledButton,
               ]}
               onPress={() => handleExercisePress(exercise)}
               accessibilityRole="button"
               accessibilityLabel={`Open ${exercise.name}`}
             >
-              <View style={styles.exerciseNameContainer}>
+              <View style={exerciseStyles.exerciseNameContainer}>
                 <Text
-                  style={styles.exerciseName}
+                  style={exerciseStyles.exerciseName_Exercises}
                   numberOfLines={2}
                 >
                   {exercise.name}
                 </Text>
               </View>
 
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>
+              <View style={exerciseStyles.levelBadge_Exercises}>
+                <Text style={exerciseStyles.levelText}>
                   {getExerciseDifficulty(exercise)}
                 </Text>
               </View>
 
               <Text
-                style={styles.exerciseCategory}
+                style={exerciseStyles.exerciseCategory}
                 numberOfLines={1}
               >
                 {exercise.category}
               </Text>
 
-              <View style={styles.listPlayButton}>
+              <View style={exerciseStyles.listPlayButton_Exercises}>
                 <Ionicons
                   name="play"
                   size={16}
@@ -631,18 +625,18 @@ export default function ExercisesScreen() {
           ))}
 
           {filteredExercises.length === 0 && (
-            <View style={styles.noResults}>
+            <View style={exerciseStyles.noResults}>
               <Ionicons
                 name="search-outline"
                 size={32}
                 color={COLORS.muted}
               />
 
-              <Text style={styles.noResultsTitle}>
+              <Text style={exerciseStyles.noResultsTitle}>
                 No exercises found
               </Text>
 
-              <Text style={styles.noResultsText}>
+              <Text style={exerciseStyles.noResultsText}>
                 Try another search or category.
               </Text>
             </View>
@@ -652,287 +646,3 @@ export default function ExercisesScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 140,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginBottom: 14,
-  },
-  searchContainer: {
-    flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    backgroundColor: COLORS.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 9,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: COLORS.brown,
-    padding: 0,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: COLORS.brown,
-    marginBottom: 20,
-  },
-  recommendedHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  recommendedTitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-  recommendedSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  recommendedScroll: {
-    paddingBottom: 26,
-  },
-  recommendedCard: {
-    width: 180,
-    height: 193,
-    backgroundColor: COLORS.pink,
-    borderRadius: 10,
-    padding: 14,
-    marginRight: 14,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    elevation: 4,
-  },
-  recommendedImage: {
-    height: 111,
-    backgroundColor: COLORS.white,
-    borderRadius: 7,
-    position: 'relative',
-    marginBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recommendedDifficulty: {
-    position: 'absolute',
-    right: 7,
-    bottom: 7,
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  difficultyText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    color: COLORS.brown,
-  },
-  recommendedBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  recommendedExerciseText: {
-    flex: 1,
-    marginRight: 6,
-  },
-  categoryText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  smallPlayButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 3,
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  exerciseTitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 31,
-    color: COLORS.brown,
-  },
-  dropdownWrapper: {
-    position: 'relative',
-    zIndex: 100,
-  },
-  dropdown: {
-    width: 125,
-    height: 32,
-    backgroundColor: COLORS.pink,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dropdownText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.brown,
-    maxWidth: 90,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 37,
-    right: 0,
-    width: 145,
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    paddingVertical: 5,
-    zIndex: 100,
-    elevation: 8,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  selectedDropdownItem: {
-    backgroundColor: COLORS.background,
-  },
-  dropdownItemText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.brown,
-  },
-  selectedDropdownText: {
-    fontFamily: 'FredokaBold',
-  },
-  resultCount: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginBottom: 8,
-  },
-  exerciseList: {
-    gap: 7,
-  },
-  exerciseCard: {
-    minHeight: 64,
-    backgroundColor: COLORS.background,
-    borderRadius: 9,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  exercisePressed: {
-    opacity: 0.7,
-  },
-  exerciseNameContainer: {
-    width: 108,
-  },
-  exerciseName: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 17,
-    color: COLORS.brown,
-  },
-  levelBadge: {
-    width: 61,
-    backgroundColor: COLORS.pink,
-    borderRadius: 10,
-    paddingVertical: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  levelText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 8,
-    color: COLORS.brown,
-  },
-  exerciseCategory: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 12,
-    color: COLORS.brown,
-  },
-  listPlayButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 2,
-  },
-  noResults: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-  },
-  noResultsTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginTop: 10,
-  },
-  noResultsText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 4,
-  },
-});

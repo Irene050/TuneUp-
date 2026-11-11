@@ -10,7 +10,44 @@ const ATTACK_SEC = 0.03;
 const RELEASE_SEC = 0.08;
 const GAP_SEC = 0.12;
 
+export const AGILITY_NOTE_START_DELAY_MS = 1000;
+
 let audioContext: AudioContext | null = null;
+
+export function getActiveSequenceNoteIndex(
+  elapsedSeconds: number,
+  noteCount: number,
+  noteDurationSec: number,
+  gapSec = 0,
+): number | null {
+  if (
+    !Number.isFinite(elapsedSeconds) ||
+    elapsedSeconds < 0 ||
+    !Number.isInteger(noteCount) ||
+    noteCount <= 0 ||
+    !Number.isFinite(noteDurationSec) ||
+    noteDurationSec <= 0 ||
+    !Number.isFinite(gapSec) ||
+    gapSec < 0
+  ) {
+    return null;
+  }
+
+  const noteIntervalSec = noteDurationSec + gapSec;
+  if (!Number.isFinite(noteIntervalSec)) {
+    return null;
+  }
+
+  const timingEpsilonSec = 1e-9;
+  const noteIndex = Math.floor(
+    (elapsedSeconds + timingEpsilonSec) / noteIntervalSec,
+  );
+  const elapsedWithinNote = elapsedSeconds - noteIndex * noteIntervalSec;
+
+  return noteIndex < noteCount && elapsedWithinNote < noteDurationSec
+    ? noteIndex
+    : null;
+}
 
 async function getAudioContext(): Promise<AudioContext> {
   if (!audioContext || audioContext.state === 'closed') {
@@ -61,7 +98,7 @@ export async function playSingleNote(
   oscillator.connect(gain);
   gain.connect(context.destination);
 
-  const startTime = context.currentTime + 0.01;
+  const startTime = context.currentTime;
   const endTime = startTime + durationSec;
   const attackEnd = Math.min(startTime + ATTACK_SEC, endTime);
   const releaseStart = Math.max(attackEnd, endTime - RELEASE_SEC);
@@ -82,10 +119,6 @@ export async function playSingleNote(
       onPlaybackEnd?.();
       resolve();
     }, durationSec * 1000);
-  });
-
-  await new Promise<void>(resolve => {
-    setTimeout(resolve, 100);
   });
 
   console.log('⏹️ Note playback finished');

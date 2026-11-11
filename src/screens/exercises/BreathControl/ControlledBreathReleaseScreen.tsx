@@ -1,54 +1,29 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
-
-import {
-  CONTROLLED_BREATH_RELEASE_PARAMS,
-  type ControlledBreathReleaseParams,
-  type Tier,
-} from '@/constants/params';
+import { CONTROLLED_BREATH_RELEASE_PARAMS, type ControlledBreathReleaseParams, type Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import {
-  measureControlledBreathRelease,
-  type ControlledBreathReleaseMeasurement,
-} from '@/services/measurement/breathControl/controlledBreathRelease';
+import { measureControlledBreathRelease, type ControlledBreathReleaseMeasurement } from '@/services/measurement/breathControl/controlledBreathRelease';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
+import { scoreControlledBreathRelease, type ControlledBreathReleaseScoreResult } from '@/services/scoring/breathControl/controlledBreathRelease';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric, ResultStat } from '../ExerciseScreen';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-import {
-  scoreControlledBreathRelease,
-  type ControlledBreathReleaseScoreResult,
-} from '@/services/scoring/breathControl/controlledBreathRelease';
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseNoAudioModal,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen,
-  Metric,
-  ResultStat,
-} from '../ExerciseScreen';
+  getLiveVoiceDetection,
+  hasSufficientRecordedSignal,
+} from '@/utils/audioSignal';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-} from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-
-const EXTRA_RECORDING_TIME_SEC = 1;
-const GUIDE_TOLERANCE_SEC = 0.35;
+const EXTRA_RECORDING_TIME_SECONDS = 1;
+const GUIDE_TOLERANCE_SECONDS = 0.35;
 const PROCESSING_DELAY_MS = 700;
 
 type Phase =
@@ -63,7 +38,7 @@ interface Props {
   tier?: Tier;
 }
 
-interface RepResult {
+interface RepetitionResult {
   rep: number;
   measurement: ControlledBreathReleaseMeasurement;
   score: ControlledBreathReleaseScoreResult;
@@ -80,21 +55,20 @@ export default function ControlledBreathReleaseScreen({
   );
   const [paramsReady, setParamsReady] = useState(false);
 
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [targetRecordingDuration, setTargetRecordingDuration] =
     useState(0);
   const [volume, setVolume] = useState<number | null>(null);
+  const [isVoiceDetected, setIsVoiceDetected] = useState(false);
   const [guidedPulse, setGuidedPulse] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
-  const [repResults, setRepResults] = useState<RepResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const phaseRef = useRef<Phase>('instructions');
+  const [repetitionResults, setRepetitionResults] = useState<RepetitionResult[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const tierRef = useRef<Tier>(defaultTier);
   const paramsRef = useRef<ControlledBreathReleaseParams>(
     CONTROLLED_BREATH_RELEASE_PARAMS[defaultTier],
@@ -113,7 +87,7 @@ export default function ControlledBreathReleaseScreen({
   const discardNextStopRef = useRef(false);
 
   const currentRepRef = useRef(1);
-  const repResultsRef = useRef<RepResult[]>([]);
+  const repetitionResultsRef = useRef<RepetitionResult[]>([]);
   const guidedPulseRef = useRef(0);
 
   const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
@@ -128,11 +102,6 @@ export default function ControlledBreathReleaseScreen({
     useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const setCurrentPhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -152,19 +121,20 @@ export default function ControlledBreathReleaseScreen({
   }, []);
 
   const resetLiveRecordingState = useCallback(() => {
-    setElapsed(0);
+    setElapsedSeconds(0);
     setTargetRecordingDuration(0);
     setVolume(null);
+    setIsVoiceDetected(false);
     setGuidedPulse(0);
     guidedPulseRef.current = 0;
   }, []);
 
   const resetRepetitionResults = useCallback(() => {
-    repResultsRef.current = [];
+    repetitionResultsRef.current = [];
     currentRepRef.current = 1;
     guidedPulseRef.current = 0;
 
-    setRepResults([]);
+    setRepetitionResults([]);
     setCurrentRep(1);
     resetLiveRecordingState();
   }, [resetLiveRecordingState]);
@@ -267,7 +237,9 @@ export default function ControlledBreathReleaseScreen({
         currentRepRef.current += 1;
         setCurrentRep(currentRepRef.current);
         startCountdownRef.current?.();
-      }, PROCESSING_DELAY_MS);
+      }, currentRepRef.current >= paramsRef.current.repetitions
+        ? EXERCISE_FINAL_RESULT_DELAY_MS
+        : PROCESSING_DELAY_MS);
 
       return;
     }
@@ -449,7 +421,7 @@ export default function ControlledBreathReleaseScreen({
     clearTimers();
     processingRef.current = true;
 
-    const finalResults = repResultsRef.current;
+    const finalResults = repetitionResultsRef.current;
     const finalScore =
       finalResults.length > 0
         ? Math.round(
@@ -489,8 +461,8 @@ export default function ControlledBreathReleaseScreen({
     finishingRef.current = false;
 
     resetLiveRecordingState();
-    setCurrentPhase('results');
-  }, [clearTimers, resetLiveRecordingState, setCurrentPhase]);
+    setPhase('results');
+  }, [clearTimers, resetLiveRecordingState, setPhase]);
 
   useEffect(() => {
     finishExerciseRef.current = finishExercise;
@@ -543,14 +515,14 @@ export default function ControlledBreathReleaseScreen({
         startingRef.current = false;
         finishingRef.current = false;
         processingRef.current = false;
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
 
       processingRef.current = true;
 
-      setCurrentPhase('processing');
+      setPhase('processing');
       resetLiveRecordingState();
 
       const adaptiveParams = paramsRef.current;
@@ -568,19 +540,19 @@ export default function ControlledBreathReleaseScreen({
           adaptiveParams,
         );
 
-        const result: RepResult = {
+        const result: RepetitionResult = {
           rep: currentRepRef.current,
           measurement,
           score,
         };
 
         const updatedResults = [
-          ...repResultsRef.current,
+          ...repetitionResultsRef.current,
           result,
         ];
 
-        repResultsRef.current = updatedResults;
-        setRepResults(updatedResults);
+        repetitionResultsRef.current = updatedResults;
+        setRepetitionResults(updatedResults);
 
         transitionTimerRef.current = setTimeout(() => {
           transitionTimerRef.current = null;
@@ -608,7 +580,9 @@ export default function ControlledBreathReleaseScreen({
           currentRepRef.current += 1;
           setCurrentRep(currentRepRef.current);
           startCountdownRef.current?.();
-        }, PROCESSING_DELAY_MS);
+        }, currentRepRef.current >= adaptiveParams.repetitions
+          ? EXERCISE_FINAL_RESULT_DELAY_MS
+          : PROCESSING_DELAY_MS);
       } catch (analysisError) {
         console.error(
           'Failed to analyze Controlled Breath Release:',
@@ -631,16 +605,16 @@ export default function ControlledBreathReleaseScreen({
 
         clearTimers();
 
-        setError(
+        setErrorMessage(
           'We could not analyze this recording. Please try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
       }
     },
     [
       clearTimers,
       resetLiveRecordingState,
-      setCurrentPhase,
+      setPhase,
     ],
   );
 
@@ -658,13 +632,9 @@ export default function ControlledBreathReleaseScreen({
         return;
       }
 
-      const volumeDb = frame.volume;
-
-      setVolume(
-        Number.isFinite(volumeDb)
-          ? Math.max(0, Math.min(1, (volumeDb + 45) / 45))
-          : 0,
-      );
+      const detection = getLiveVoiceDetection(frame.volume);
+      setVolume(detection.level);
+      setIsVoiceDetected(detection.detected);
     },
     onStop: handleRecordingStop,
   });
@@ -691,25 +661,26 @@ export default function ControlledBreathReleaseScreen({
     const stop = stopRecordingRef.current;
 
     if (!start || !stop) {
-      setError('Audio recorder is not ready. Please try again.');
-      setCurrentPhase('instructions');
+      setErrorMessage('Audio recorder is not ready. Please try again.');
+      setPhase('instructions');
       return;
     }
 
     const guideDuration =
       adaptiveParams.pulseCount * adaptiveParams.intervalSec;
     const recordingDuration =
-      guideDuration + EXTRA_RECORDING_TIME_SEC;
+      guideDuration + EXTRA_RECORDING_TIME_SECONDS;
 
     startingRef.current = true;
     finishingRef.current = false;
     processingRef.current = false;
 
     clearTimers();
-    setError(null);
-    setElapsed(0);
+    setErrorMessage(null);
+    setElapsedSeconds(0);
     setTargetRecordingDuration(guideDuration);
     setVolume(null);
+    setIsVoiceDetected(false);
 
     discardNextStopRef.current = false;
     restartCurrentRepRef.current = false;
@@ -719,7 +690,7 @@ export default function ControlledBreathReleaseScreen({
 
     guidedPulseRef.current = firstPulse;
     setGuidedPulse(firstPulse);
-    setCurrentPhase('recording');
+    setPhase('recording');
 
     void (async () => {
       try {
@@ -756,7 +727,7 @@ export default function ControlledBreathReleaseScreen({
 
           const seconds = (Date.now() - startedAt) / 1000;
 
-          setElapsed(Math.min(seconds, guideDuration));
+          setElapsedSeconds(Math.min(seconds, guideDuration));
 
           const nextPulse =
             adaptiveParams.pulseCount > 0
@@ -780,14 +751,14 @@ export default function ControlledBreathReleaseScreen({
             seconds >= guideDuration &&
             phaseRef.current === 'recording'
           ) {
-            setElapsed(guideDuration);
+            setElapsedSeconds(guideDuration);
             finishingRef.current = true;
-            setCurrentPhase('finishing');
+            setPhase('finishing');
           }
 
           if (seconds >= recordingDuration) {
             clearTimers();
-            setElapsed(guideDuration);
+            setElapsedSeconds(guideDuration);
             finishingRef.current = true;
 
             try {
@@ -800,10 +771,10 @@ export default function ControlledBreathReleaseScreen({
 
               finishingRef.current = false;
               processingRef.current = false;
-              setError(
+              setErrorMessage(
                 'Recording could not be stopped. Please try again.',
               );
-              setCurrentPhase('instructions');
+              setPhase('instructions');
             }
           }
         }, 50);
@@ -828,13 +799,13 @@ export default function ControlledBreathReleaseScreen({
         finishingRef.current = false;
         resetLiveRecordingState();
 
-        setError(
+        setErrorMessage(
           'Microphone access or recording failed. Please try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
       }
     })();
-  }, [clearTimers, resetLiveRecordingState, setCurrentPhase]);
+  }, [clearTimers, resetLiveRecordingState, setPhase]);
 
   useEffect(() => {
     startRecordingPhaseRef.current = startRecordingPhase;
@@ -853,9 +824,9 @@ export default function ControlledBreathReleaseScreen({
 
     clearTimers();
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setError(null);
+    setErrorMessage(null);
     resetLiveRecordingState();
-    setCurrentPhase('countdown');
+    setPhase('countdown');
 
     let value = EXERCISE_COUNTDOWN_SECONDS;
 
@@ -884,7 +855,7 @@ export default function ControlledBreathReleaseScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers, resetLiveRecordingState, setCurrentPhase]);
+  }, [clearTimers, resetLiveRecordingState, setPhase]);
 
   useEffect(() => {
     startCountdownRef.current = startCountdown;
@@ -932,7 +903,7 @@ export default function ControlledBreathReleaseScreen({
 
     clearTimers();
     resetRepetitionResults();
-    setError(null);
+    setErrorMessage(null);
 
     startCountdown();
   }, [
@@ -964,56 +935,56 @@ export default function ControlledBreathReleaseScreen({
     processingRef.current = false;
 
     resetRepetitionResults();
-    setError(null);
+    setErrorMessage(null);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setCurrentPhase('instructions');
+    setPhase('instructions');
 
     cancellingRef.current = false;
-  }, [clearTimers, resetRepetitionResults, setCurrentPhase]);
+  }, [clearTimers, resetRepetitionResults, setPhase]);
 
   const averageScore =
-    repResults.length > 0
+    repetitionResults.length > 0
       ? Math.round(
-          repResults.reduce(
+          repetitionResults.reduce(
             (sum, item) => sum + item.score.score,
             0,
-          ) / repResults.length,
+          ) / repetitionResults.length,
         )
       : 0;
 
   const averagePulseConsistency =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, item) =>
             sum + item.measurement.pulseConsistencyPct,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
   const averageIntervalAccuracy =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, item) =>
             sum + item.measurement.intervalAccuracyPct,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
   const averageDetectedPulses =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, item) => sum + item.measurement.peaks.length,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
-  const passedReps = repResults.filter(
+  const passedReps = repetitionResults.filter(
     item => item.score.passed,
   ).length;
 
   const durationProgress =
     targetRecordingDuration > 0
-      ? Math.min(elapsed / targetRecordingDuration, 1)
+      ? Math.min(elapsedSeconds / targetRecordingDuration, 1)
       : 0;
 
   const pulseGuideProgress =
@@ -1026,23 +997,23 @@ export default function ControlledBreathReleaseScreen({
 
   const currentPulseElapsed =
     guidedPulse > 0
-      ? elapsed - (guidedPulse - 1) * params.intervalSec
+      ? elapsedSeconds - (guidedPulse - 1) * params.intervalSec
       : 0;
 
   const currentPulseIsDue =
     phase === 'recording' &&
     guidedPulse > 0 &&
     currentPulseElapsed >= 0 &&
-    currentPulseElapsed <= GUIDE_TOLERANCE_SEC;
+    currentPulseElapsed <= GUIDE_TOLERANCE_SECONDS;
 
   const nextPulseIn =
     guidedPulse > 0 && !isFinalPulse
-      ? Math.max(0, guidedPulse * params.intervalSec - elapsed)
+      ? Math.max(0, guidedPulse * params.intervalSec - elapsedSeconds)
       : 0;
 
   const secondsRemaining = Math.max(
     0,
-    targetRecordingDuration - elapsed,
+    targetRecordingDuration - elapsedSeconds,
   );
 
   const quitConfirmationModal = (
@@ -1073,7 +1044,7 @@ export default function ControlledBreathReleaseScreen({
         finishingRef.current = false;
         processingRef.current = false;
         restartCurrentRepRef.current = false;
-        setError(null);
+        setErrorMessage(null);
         resetLiveRecordingState();
         startCountdownRef.current?.();
       }}
@@ -1132,7 +1103,7 @@ export default function ControlledBreathReleaseScreen({
           repetitions={params.repetitions}
           tip="Focus on control rather than releasing your breath too quickly. The microphone measures acoustic changes associated with your breath; it does not directly measure airflow."
           tier={tier}
-          error={error}
+          errorMessage={errorMessage}
           onBack={openQuitModal}
           onStart={startExercise}
           startDisabled={!paramsReady}
@@ -1191,26 +1162,26 @@ export default function ControlledBreathReleaseScreen({
   if (phase === 'recording') {
     return (
       <>
-        <View style={styles.container}>
+        <View style={exerciseStyles.container}>
           <ScrollView
-            contentContainerStyle={styles.recordingContent}
+            contentContainerStyle={exerciseStyles.instructionsContent}
             showsVerticalScrollIndicator={false}
           >
 
-            <View style={styles.recordingHeader}>
-              <Text style={styles.recordingTitle}>
+            <View style={exerciseStyles.recordingHeader}>
+              <Text style={exerciseStyles.recordingTitleVariant1}>
                 Release Gently
               </Text>
 
-              <Text style={styles.repLabel}>
+              <Text style={exerciseStyles.repLabel}>
                 Repetition {currentRep} of {params.repetitions}
               </Text>
             </View>
 
-            <View style={styles.recordingVisual}>
+            <View style={exerciseStyles.recordingVisualVariant1}>
               <View
                 style={[
-                  styles.recordingOuterCircle,
+                  exerciseStyles.recordingOuterCircleVariant1,
                   {
                     transform: [
                       { scale: 1 + durationProgress * 0.08 },
@@ -1218,7 +1189,7 @@ export default function ControlledBreathReleaseScreen({
                   },
                 ]}
               >
-                <View style={styles.recordingInnerCircle}>
+                <View style={exerciseStyles.recordingInnerCircleVariant1}>
                   <Ionicons
                     name="pulse-outline"
                     size={52}
@@ -1228,26 +1199,26 @@ export default function ControlledBreathReleaseScreen({
               </View>
             </View>
 
-            <View style={styles.recordingBadge}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingBadgeText}>
+            <View style={exerciseStyles.recordingBadgeVariant1}>
+              <View style={exerciseStyles.recordingDot} />
+              <Text style={exerciseStyles.recordingBadgeText}>
                 RECORDING
               </Text>
             </View>
 
-            <View style={styles.pulseGuideCard}>
-              <Text style={styles.pulseGuideLabel}>
+            <View style={exerciseStyles.pulseGuideCard}>
+              <Text style={exerciseStyles.volumeLabel}>
                 PULSE GUIDE
               </Text>
 
-              <Text style={styles.pulseGuideValue}>
+              <Text style={exerciseStyles.pulseGuideValue}>
                 {guidedPulse}
-                <Text style={styles.pulseGuideTotal}>
+                <Text style={exerciseStyles.pulseGuideTotal}>
                   {' '}/ {params.pulseCount}
                 </Text>
               </Text>
 
-              <Text style={styles.pulseGuideInstruction}>
+              <Text style={exerciseStyles.pulseGuideInstruction}>
                 {currentPulseIsDue
                   ? 'Release one short, gentle breath pulse now.'
                   : isFinalPulse
@@ -1257,16 +1228,16 @@ export default function ControlledBreathReleaseScreen({
                       : `Next pulse in ${nextPulseIn.toFixed(1)} seconds.`}
               </Text>
 
-              <View style={styles.pulseProgressTrack}>
+              <View style={exerciseStyles.pulseProgressTrack}>
                 <View
                   style={[
-                    styles.pulseProgressFill,
+                    exerciseStyles.pulseProgressFill,
                     { width: `${pulseGuideProgress * 100}%` },
                   ]}
                 />
               </View>
 
-              <View style={styles.pulseDots}>
+              <View style={exerciseStyles.pulseDots}>
                 {Array.from({ length: params.pulseCount }).map(
                   (_, index) => {
                     const pulseNumber = index + 1;
@@ -1277,9 +1248,9 @@ export default function ControlledBreathReleaseScreen({
                       <View
                         key={pulseNumber}
                         style={[
-                          styles.pulseDot,
-                          completed && styles.pulseDotCompleted,
-                          active && styles.pulseDotActive,
+                          exerciseStyles.pulseDot,
+                          completed && exerciseStyles.pulseDotCompleted,
+                          active && exerciseStyles.pulseDotActive,
                         ]}
                       />
                     );
@@ -1288,36 +1259,29 @@ export default function ControlledBreathReleaseScreen({
               </View>
             </View>
 
-             <View style={styles.progressTrack}>
+             <View style={exerciseStyles.progressTrackVariant3}>
               <View
                 style={[
-                  styles.progressFill,
+                  exerciseStyles.progressFill,
                   { width: `${durationProgress * 100}%` },
                 ]}
               />
             </View>
 
-            <View style={styles.rangeRow}>
-              <Text style={styles.rangeText}>0s</Text>
-              <Text style={styles.rangeTarget}>
+            <View style={exerciseStyles.rangeRow}>
+              <Text style={exerciseStyles.scoreRowLabel}>0s</Text>
+              <Text style={exerciseStyles.rangeTarget}>
                 Guide: {targetRecordingDuration.toFixed(1)}s
               </Text>
-              <Text style={styles.rangeText}>
+              <Text style={exerciseStyles.scoreRowLabel}>
                 {targetRecordingDuration.toFixed(1)}s
               </Text>
             </View>
 
-            <View style={styles.liveCard}>
-                <Text style={styles.liveLabel}>
-                  RELATIVE MIC LEVEL
-                </Text>
-
-                <Text style={styles.liveValue}>
-                  {volume !== null
-                    ? volume.toFixed(2)
-                    : 'Listening...'}
-                </Text>
-            </View>
+            <LiveVoiceDetectionVisualizer
+              detected={isVoiceDetected}
+              level={volume ?? 0}
+            />
           </ScrollView>
         </View>
         {quitConfirmationModal}
@@ -1349,7 +1313,7 @@ export default function ControlledBreathReleaseScreen({
         onExit={exitExercise}
       >
         <View>
-          <View style={styles.statsGrid}>
+          <View style={exerciseStyles.statsGrid}>
             <ResultStat
               label="Pulse Consistency"
               value={`${Math.round(averagePulseConsistency)}%`}
@@ -1370,29 +1334,29 @@ export default function ControlledBreathReleaseScreen({
 
             <ResultStat
               label="Passed"
-              value={`${passedReps}/${repResults.length}`}
+              value={`${passedReps}/${repetitionResults.length}`}
               labelFontSize={11}
             />
           </View>
 
-          <Text style={styles.resultsSectionTitle}>
+          <Text style={exerciseStyles.resultsSectionTitle}>
             Repetition Results
           </Text>
 
-          {repResults.map(item => (
-            <View key={item.rep} style={styles.repCard}>
-              <View style={styles.repHeader}>
-                <Text style={styles.repTitle}>
+          {repetitionResults.map(item => (
+            <View key={item.rep} style={exerciseStyles.repCard}>
+              <View style={exerciseStyles.rowBetween}>
+                <Text style={exerciseStyles.cardTitle}>
                   Repetition {item.rep}
                 </Text>
 
                 <View
                   style={[
-                    styles.passBadge,
-                    !item.score.passed && styles.failBadge,
+                    exerciseStyles.passBadge,
+                    !item.score.passed && exerciseStyles.resultIconFailed,
                   ]}
                 >
-                  <Text style={styles.passBadgeText}>
+                  <Text style={exerciseStyles.passBadgeText}>
                     {item.score.passed
                       ? 'PASS'
                       : 'KEEP PRACTICING'}
@@ -1400,7 +1364,7 @@ export default function ControlledBreathReleaseScreen({
                 </View>
               </View>
 
-              <View style={styles.repMetrics}>
+              <View style={exerciseStyles.repMetrics}>
                 <Metric
                   label="Pulses"
                   value={`${item.measurement.peaks.length}/${params.pulseCount}`}
@@ -1422,8 +1386,8 @@ export default function ControlledBreathReleaseScreen({
                 />
               </View>
 
-              <View style={styles.intervalsCard}>
-                <Text style={styles.intervalsTitle}>
+              <View style={exerciseStyles.intervalsCard}>
+                <Text style={exerciseStyles.intervalsTitle}>
                   Detected Pulse Intervals
                 </Text>
 
@@ -1436,13 +1400,13 @@ export default function ControlledBreathReleaseScreen({
                       return (
                         <View
                           key={`${item.rep}-${index}`}
-                          style={styles.intervalRow}
+                          style={exerciseStyles.intervalRow}
                         >
-                          <Text style={styles.intervalLabel}>
+                          <Text style={exerciseStyles.sessionLabel}>
                             Pulse {index + 1} → {index + 2}
                           </Text>
 
-                          <Text style={styles.intervalValue}>
+                          <Text style={exerciseStyles.referenceButtonText}>
                             {(
                               peak.timestamp - previousPeak.timestamp
                             ).toFixed(2)}{' '}
@@ -1453,13 +1417,13 @@ export default function ControlledBreathReleaseScreen({
                     },
                   )
                 ) : (
-                  <Text style={styles.noIntervalsText}>
+                  <Text style={exerciseStyles.referenceInstruction}>
                     Not enough detected pulses to calculate intervals.
                   </Text>
                 )}
 
                 {item.measurement.peaks.length >= 2 && (
-                  <Text style={styles.targetIntervalText}>
+                  <Text style={exerciseStyles.targetIntervalText}>
                     Target interval: {params.intervalSec.toFixed(2)}s
                   </Text>
                 )}
@@ -1474,306 +1438,3 @@ export default function ControlledBreathReleaseScreen({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    paddingTop: 20,
-  },
-  recordingContent: {
-    paddingHorizontal: 24,
-    paddingTop: 58,
-    paddingBottom: 40,
-  },
-  recordingHeader: {
-    alignItems: 'center',
-  },
-  repLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.muted,
-    letterSpacing: 0.7,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 29,
-    color: COLORS.brown,
-    marginTop: 7,
-    textAlign: 'center',
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  recordingVisual: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  recordingOuterCircle: {
-    width: 164,
-    height: 164,
-    borderRadius: 82,
-    backgroundColor:COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingInnerCircle: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingBadge: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor:COLORS.background,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 15,
-    marginTop: 20,
-  },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.brown,
-    marginRight: 7,
-  },
-  recordingBadgeText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: COLORS.brown,
-    letterSpacing: 0.5,
-  },
-  timerText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 38,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  progressTrack: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 14,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 5,
-  },
-  rangeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  rangeText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  rangeTarget: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: COLORS.brown,
-  },
-  pulseGuideCard: {
-    backgroundColor:COLORS.background,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 17,
-    alignItems: 'center',
-    marginTop: 23,
-  },
-  pulseGuideLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 1,
-    color: COLORS.muted,
-  },
-  pulseGuideValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 32,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  pulseGuideTotal: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 18,
-    color: COLORS.muted,
-  },
-  pulseGuideInstruction: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 3,
-  },
-  pulseProgressTrack: {
-    height: 6,
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 13,
-  },
-  pulseProgressFill: {
-    height: '100%',
-    backgroundColor: COLORS.accent,
-    borderRadius: 3,
-  },
-  pulseDots: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 13,
-  },
-  pulseDot: {
-    width: 25,
-    height: 25,
-    borderRadius: 100,
-    backgroundColor: COLORS.lightGray,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  pulseDotCompleted: {
-    backgroundColor: COLORS.pink,
-    borderColor: COLORS.brown,
-  },
-  pulseDotActive: {
-    width: 29,
-    height: 29,
-    borderRadius: 100,
-    backgroundColor: COLORS.brown,
-    borderColor: COLORS.brown,
-    marginTop: -2,
-  },
-  liveCard: {
-    alignItems: 'center',
-    backgroundColor:COLORS.background,
-    borderRadius: 18,
-    padding: 14,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: COLORS.muted,
-    letterSpacing: 0.5,
-  },
-  liveValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 12,
-  },
-  resultsSectionTitle: {
-    marginTop: 24,
-    marginBottom: 10,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 17,
-    color: COLORS.brown,
-  },
-  repCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    padding: 15,
-    marginBottom: 10,
-  },
-  repHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  repTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  passBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: COLORS.pink,
-  },
-  failBadge: {
-    backgroundColor: COLORS.lightGray,
-  },
-  passBadgeText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    color: COLORS.brown,
-  },
-  repMetrics: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 13,
-    gap: 8,
-  },
-  intervalsCard: {
-    marginTop: 14,
-    paddingTop: 13,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  intervalsTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-    color: COLORS.brown,
-    marginBottom: 7,
-  },
-  intervalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  intervalLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  intervalValue: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  targetIntervalText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 7,
-  },
-  noIntervalsText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
-});

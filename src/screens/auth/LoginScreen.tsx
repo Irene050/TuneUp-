@@ -1,18 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
 import {
   loginUser,
@@ -21,6 +10,7 @@ import {
 } from '@/services/firebase/authService';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
   closeAlert,
   type AlertDetails,
@@ -49,13 +39,13 @@ function TuneUpAlertModal({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={alertStyles.backdrop}>
-        <View style={alertStyles.card}>
+      <View style={exerciseStyles.backdrop}>
+        <View style={exerciseStyles.card_Login_alert}>
           <View
             style={[
-              alertStyles.iconCircle,
-              type === 'error' && alertStyles.errorIconCircle,
-              type === 'success' && alertStyles.successIconCircle,
+              exerciseStyles.deleteIconCircle,
+              type === 'error' && exerciseStyles.selectedDropdownItem,
+              type === 'success' && exerciseStyles.resultIconPassed,
             ]}
           >
             <Ionicons
@@ -65,18 +55,18 @@ function TuneUpAlertModal({
             />
           </View>
 
-          <Text style={alertStyles.title}>{alert?.title}</Text>
-          <Text style={alertStyles.message}>{alert?.message}</Text>
+          <Text style={exerciseStyles.title_Login_alert}>{alert?.title}</Text>
+          <Text style={exerciseStyles.message_Login_alert}>{alert?.message}</Text>
 
           <Pressable
             style={[
-              alertStyles.button,
-              type === 'error' && alertStyles.errorButton,
+              exerciseStyles.button_Login_alert,
+              type === 'error' && exerciseStyles.errorButton,
             ]}
             onPress={onClose}
             accessibilityRole="button"
           >
-            <Text style={alertStyles.buttonText}>
+            <Text style={exerciseStyles.saveProfileButtonText}>
               {alert?.buttonLabel ?? 'Got it'}
             </Text>
           </Pressable>
@@ -134,20 +124,20 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={loginStyles.container}
+      style={exerciseStyles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={loginStyles.content}>
+      <View style={exerciseStyles.content_Login_forgotPassword}>
         <Image
           source={require('@/assets/images/tabIcons/tuneup-logo.png')}
-          style={loginStyles.logo}
+          style={exerciseStyles.logo_Login_login}
           resizeMode="contain"
         />
 
-        <View style={loginStyles.form}>
-          <Text style={loginStyles.label}>Email Address</Text>
+        <View style={exerciseStyles.form_Login_login}>
+          <Text style={exerciseStyles.label_Login_login}>Email Address</Text>
           <TextInput
-            style={loginStyles.input}
+            style={exerciseStyles.input_Login_login}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -156,10 +146,10 @@ export function LoginScreen() {
             editable={!loading}
           />
 
-          <Text style={loginStyles.label}>Password</Text>
-          <View style={loginStyles.passwordContainer}>
+          <Text style={exerciseStyles.label_Login_login}>Password</Text>
+          <View style={exerciseStyles.passwordContainer_Register}>
             <TextInput
-              style={loginStyles.passwordInput}
+              style={exerciseStyles.passwordInput_Login_login}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -168,38 +158,38 @@ export function LoginScreen() {
               editable={!loading}
             />
             <Pressable
-              style={loginStyles.eyeButton}
+              style={exerciseStyles.eyeButton}
               onPress={() => setShowPassword(previous => !previous)}
               disabled={loading}
               accessibilityRole="button"
               accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
             >
-              <Text style={loginStyles.eyeText}>{showPassword ? '◉' : '◌'}</Text>
+              <Text style={exerciseStyles.eyeText_Register}>{showPassword ? '◉' : '◌'}</Text>
             </Pressable>
           </View>
 
           <Pressable
-            style={loginStyles.forgotButton}
+            style={exerciseStyles.forgotButton}
             onPress={() => router.push('/forgot-password')}
             disabled={loading}
           >
-            <Text style={loginStyles.forgotText}>Forgot Password?</Text>
+            <Text style={exerciseStyles.forgotText}>Forgot Password?</Text>
           </Pressable>
 
           <Pressable
-            style={[loginStyles.loginButton, loading && loginStyles.disabledButton]}
+            style={[exerciseStyles.loginButton, loading && exerciseStyles.disabled]}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.brown} />
             ) : (
-              <Text style={loginStyles.buttonText}>Log in</Text>
+              <Text style={exerciseStyles.buttonText_Login_forgotPassword}>Log in</Text>
             )}
           </Pressable>
 
           <Pressable onPress={() => router.push('/register')} disabled={loading}>
-            <Text style={loginStyles.signupText}>Create Account</Text>
+            <Text style={exerciseStyles.signupText}>Create Account</Text>
           </Pressable>
         </View>
       </View>
@@ -210,40 +200,6 @@ export function LoginScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const loginStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  content: { flex: 1, paddingHorizontal: 26, justifyContent: 'center' },
-  logo: { width: 125, height: 125, alignSelf: 'center', marginBottom: 72 },
-  form: { width: '100%' },
-  label: { fontSize: 10, color: COLORS.brown, marginBottom: 6 },
-  input: {
-    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
-    paddingHorizontal: 12, fontSize: 13, color: COLORS.text, marginBottom: 14,
-  },
-  passwordContainer: { position: 'relative', width: '100%' },
-  passwordInput: {
-    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
-    paddingHorizontal: 12, paddingRight: 42, fontSize: 13,
-    color: 'COLORS.text', marginBottom: 14,
-  },
-  eyeButton: {
-    position: 'absolute', right: 8, top: 0, width: 34, height: 42,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  eyeText: { fontSize: 16, color: COLORS.muted },
-  forgotButton: { alignSelf: 'flex-end', marginTop: -5, marginBottom: 38 },
-  forgotText: { fontSize: 8, color: COLORS.muted, textDecorationLine: 'underline' },
-  loginButton: {
-    width: 68, height: 34, borderRadius: 18, backgroundColor: COLORS.pink,
-    alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-  },
-  disabledButton: { opacity: 0.6 },
-  buttonText: { fontSize: 11, fontFamily: 'FredokaBold', color: '#4A302F' },
-  signupText: {
-    textAlign: 'center', fontSize: 8, color: COLORS.muted, textDecorationLine: 'underline',
-  },
-});
 
 export function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -297,24 +253,24 @@ export function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={forgotPasswordStyles.container}
+      style={exerciseStyles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={forgotPasswordStyles.content}>
+      <View style={exerciseStyles.content_Login_forgotPassword}>
         <Pressable
-          style={forgotPasswordStyles.backButton}
+          style={exerciseStyles.backButton_Login_forgotPassword}
           onPress={() => router.back()}
           disabled={loading}
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Text style={forgotPasswordStyles.backArrow}>‹</Text>
+          <Text style={exerciseStyles.backArrow}>‹</Text>
         </Pressable>
 
-        <Text style={forgotPasswordStyles.title}>Forgot Password?</Text>
-        <Text style={forgotPasswordStyles.label}>Email Address</Text>
+        <Text style={exerciseStyles.title_Login_forgotPassword}>Forgot Password?</Text>
+        <Text style={exerciseStyles.label_Login_forgotPassword}>Email Address</Text>
         <TextInput
-          style={forgotPasswordStyles.input}
+          style={exerciseStyles.input_Login_forgotPassword}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -326,14 +282,14 @@ export function ForgotPasswordScreen() {
         />
 
         <Pressable
-          style={[forgotPasswordStyles.sendButton, loading && forgotPasswordStyles.disabledButton]}
+          style={[exerciseStyles.sendButton, loading && exerciseStyles.disabled]}
           onPress={handleSendCode}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color={COLORS.brown} />
           ) : (
-            <Text style={forgotPasswordStyles.buttonText}>Send</Text>
+            <Text style={exerciseStyles.buttonText_Login_forgotPassword}>Send</Text>
           )}
         </Pressable>
       </View>
@@ -344,31 +300,6 @@ export function ForgotPasswordScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const forgotPasswordStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  content: { flex: 1, paddingHorizontal: 26, justifyContent: 'center' },
-  backButton: {
-    position: 'absolute', top: 45, left: 20, width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center', zIndex: 10,
-  },
-  backArrow: { fontSize: 32, fontFamily: 'FredokaLight', color: '#4A302F' },
-  title: {
-    textAlign: 'center', fontSize: 22, fontFamily: 'FredokaBold', color: '#4A302F', marginBottom: 12,
-  },
-  description: { textAlign: 'center', fontSize: 11, lineHeight: 17, color: COLORS.muted, marginBottom: 35 },
-  label: { fontSize: 10, color: '#4A302F', marginBottom: 6 },
-  input: {
-    height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
-    paddingHorizontal: 12, fontSize: 13, color: 'COLORS.text', marginBottom: 28,
-  },
-  sendButton: {
-    width: 80, height: 36, borderRadius: 18, backgroundColor: COLORS.pink,
-    alignSelf: 'center', alignItems: 'center', justifyContent: 'center',
-  },
-  disabledButton: { opacity: 0.6 },
-  buttonText: { fontSize: 11, fontFamily: 'FredokaBold', color: '#4A302F' },
-});
 
 export function ResetPasswordScreen() {
   const params = useLocalSearchParams<{ code?: string }>();
@@ -453,21 +384,21 @@ export function ResetPasswordScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={resetPasswordStyles.container}
+      style={exerciseStyles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={resetPasswordStyles.content}>
+      <View style={exerciseStyles.content_Login_resetPassword}>
         <Image
           source={require('@/assets/images/tabIcons/tuneup-logo.png')}
-          style={resetPasswordStyles.logo}
+          style={exerciseStyles.logo_Login_resetPassword}
           resizeMode="contain"
         />
 
-        <View style={resetPasswordStyles.form}>
-          <Text style={resetPasswordStyles.label}>Set New Password</Text>
-          <View style={resetPasswordStyles.passwordContainer}>
+        <View style={exerciseStyles.form_Login_login}>
+          <Text style={exerciseStyles.label_Login_resetPassword}>Set New Password</Text>
+          <View style={exerciseStyles.passwordContainer_Login_resetPassword}>
             <TextInput
-              style={resetPasswordStyles.input}
+              style={exerciseStyles.input_Login_resetPassword}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -478,20 +409,20 @@ export function ResetPasswordScreen() {
               placeholderTextColor="#A99C9A"
             />
             <Pressable
-              style={resetPasswordStyles.eyeButton}
+              style={exerciseStyles.eyeButton}
               onPress={() => setShowPassword(previous => !previous)}
               disabled={loading}
               accessibilityRole="button"
               accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
             >
-              <Text style={resetPasswordStyles.eyeText}>{showPassword ? '◉' : '◌'}</Text>
+              <Text style={exerciseStyles.eyeText_Login_resetPassword}>{showPassword ? '◉' : '◌'}</Text>
             </Pressable>
           </View>
 
-          <Text style={resetPasswordStyles.label}>Confirm New Password</Text>
-          <View style={resetPasswordStyles.passwordContainer}>
+          <Text style={exerciseStyles.label_Login_resetPassword}>Confirm New Password</Text>
+          <View style={exerciseStyles.passwordContainer_Login_resetPassword}>
             <TextInput
-              style={resetPasswordStyles.input}
+              style={exerciseStyles.input_Login_resetPassword}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
@@ -502,25 +433,25 @@ export function ResetPasswordScreen() {
               placeholderTextColor="#A99C9A"
             />
             <Pressable
-              style={resetPasswordStyles.eyeButton}
+              style={exerciseStyles.eyeButton}
               onPress={() => setShowConfirmPassword(previous => !previous)}
               disabled={loading}
               accessibilityRole="button"
               accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
             >
-              <Text style={resetPasswordStyles.eyeText}>{showConfirmPassword ? '◉' : '◌'}</Text>
+              <Text style={exerciseStyles.eyeText_Login_resetPassword}>{showConfirmPassword ? '◉' : '◌'}</Text>
             </Pressable>
           </View>
 
           <Pressable
-            style={[resetPasswordStyles.resetButton, loading && resetPasswordStyles.disabledButton]}
+            style={[exerciseStyles.resetButton, loading && exerciseStyles.disabled]}
             onPress={handleResetPassword}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.brown} />
             ) : (
-              <Text style={resetPasswordStyles.buttonText}>Reset Password</Text>
+              <Text style={exerciseStyles.difficultyText}>Reset Password</Text>
             )}
           </Pressable>
         </View>
@@ -532,87 +463,3 @@ export function ResetPasswordScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const resetPasswordStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  content: { flex: 1, paddingHorizontal: 22, justifyContent: 'center' },
-  logo: { width: 125, height: 125, alignSelf: 'center', marginBottom: 70 },
-  form: { width: '100%' },
-  label: { fontSize: 9, color: COLORS.brown, marginBottom: 6 },
-  passwordContainer: { position: 'relative', width: '100%', marginBottom: 12 },
-  input: {
-    width: '100%', height: 42, backgroundColor: COLORS.lightGray, borderRadius: 3,
-    paddingHorizontal: 12, paddingRight: 42, fontSize: 12, color: 'COLORS.text',
-  },
-  eyeButton: {
-    position: 'absolute', right: 8, top: 0, width: 34, height: 42,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  eyeText: { fontSize: 15, color: COLORS.muted },
-  resetButton: {
-    width: 110, height: 34, borderRadius: 18, backgroundColor: COLORS.pink,
-    alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginTop: 20,
-  },
-  disabledButton: { opacity: 0.6 },
-  buttonText: { fontSize: 9, fontFamily: 'FredokaBold', color: COLORS.brown },
-});
-
-const alertStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  iconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  errorIconCircle: { backgroundColor: COLORS.background },
-  successIconCircle: { backgroundColor: COLORS.pink },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  message: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  button: {
-    width: '100%',
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorButton: { backgroundColor: COLORS.error },
-  buttonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
-});

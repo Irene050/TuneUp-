@@ -11,21 +11,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 
 function ModalHeader({
@@ -36,9 +25,9 @@ function ModalHeader({
   onBack: () => void;
 }) {
   return (
-    <View style={styles.modalHeader}>
+    <View style={exerciseStyles.modalHeader}>
       <Pressable
-        style={styles.backButton}
+        style={exerciseStyles.backButton_Profile}
         onPress={onBack}
         accessibilityRole="button"
         accessibilityLabel={`Back from ${title}`}
@@ -47,7 +36,7 @@ function ModalHeader({
         <Ionicons name="arrow-back" size={22} color={COLORS.brown} />
       </Pressable>
 
-      <Text style={styles.modalTitle}>{title}</Text>
+      <Text style={exerciseStyles.modalTitle_Profile}>{title}</Text>
     </View>
   );
 }
@@ -273,47 +262,47 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={exerciseStyles.screen}>
       <AppHeader />
 
-      <View style={styles.content}>
-        <View style={styles.profileSection}>
+      <View style={exerciseStyles.content_Profile}>
+        <View style={exerciseStyles.profileSection}>
           {userPhotoURL ? (
             <Image
               source={{ uri: userPhotoURL }}
-              style={styles.avatar}
+              style={exerciseStyles.avatar_Profile}
             />
           ) : (
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{avatarInitial}</Text>
+            <View style={exerciseStyles.avatar_Profile}>
+              <Text style={exerciseStyles.noteValue}>{avatarInitial}</Text>
             </View>
           )}
 
-          <Text style={styles.name}>{profileName}</Text>
+          <Text style={exerciseStyles.name}>{profileName}</Text>
 
-          <Text style={styles.tier}>
+          <Text style={exerciseStyles.tier}>
             {progressLoading
               ? 'Loading tier...'
               : `${formattedTier} tier`}
           </Text>
 
           <Pressable
-            style={styles.editButton}
+            style={exerciseStyles.editButton}
             onPress={openEditProfile}
           >
-            <Text style={styles.editText}>Edit Profile</Text>
+            <Text style={exerciseStyles.levelText}>Edit Profile</Text>
           </Pressable>
         </View>
 
-        <View style={styles.optionsContainer}>
+        <View style={exerciseStyles.optionsContainer}>
           <Pressable
-            style={styles.optionCard}
+            style={exerciseStyles.optionCard}
             onPress={() => {
               setError(null);
               setSettingsVisible(true);
             }}
           >
-            <View style={styles.optionIcon}>
+            <View style={exerciseStyles.optionIcon}>
               <Ionicons
                 name="settings"
                 size={28}
@@ -321,7 +310,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.optionText}>Account Settings</Text>
+            <Text style={exerciseStyles.optionText}>Account Settings</Text>
 
             <Ionicons
               name="chevron-forward"
@@ -331,7 +320,7 @@ export default function ProfileScreen() {
           </Pressable>
 
           <Pressable
-            style={styles.optionCard}
+            style={exerciseStyles.optionCard}
             onPress={() =>
               router.push({
                 pathname: '/dashboard',
@@ -339,7 +328,7 @@ export default function ProfileScreen() {
               })
             }
           >
-            <View style={styles.progressIcon}>
+            <View style={exerciseStyles.optionIcon}>
               <Ionicons
                 name="bar-chart"
                 size={28}
@@ -347,7 +336,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.optionText}>View Progress</Text>
+            <Text style={exerciseStyles.optionText}>View Progress</Text>
 
             <Ionicons
               name="chevron-forward"
@@ -358,10 +347,10 @@ export default function ProfileScreen() {
         </View>
 
         <Pressable
-          style={styles.logoutButton}
+          style={exerciseStyles.logoutButton}
           onPress={handleLogout}
         >
-          <Text style={styles.logoutText}>Log out</Text>
+          <Text style={exerciseStyles.logoutText}>Log out</Text>
         </Pressable>
       </View>
 
@@ -372,17 +361,17 @@ export default function ProfileScreen() {
         onRequestClose={closeEditProfile}
       >
         <KeyboardAvoidingView
-          style={styles.modalBackdrop}
+          style={exerciseStyles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={styles.modalCard}>
+          <View style={exerciseStyles.modalCard_Profile}>
             <ModalHeader
               title="Edit Profile"
               onBack={closeEditProfile}
             />
 
             <Pressable
-              style={styles.photoPicker}
+              style={exerciseStyles.photoPicker}
               onPress={pickPhoto}
               disabled={saving}
               accessibilityRole="button"
@@ -391,23 +380,23 @@ export default function ProfileScreen() {
               {photoDraft ? (
                 <Image
                   source={{ uri: photoDraft }}
-                  style={styles.changePhotoAvatar}
+                  style={exerciseStyles.changePhotoAvatar}
                 />
               ) : (
-                <View style={styles.changePhotoAvatar}>
-                  <Text style={styles.changePhotoAvatarText}>
+                <View style={exerciseStyles.changePhotoAvatar}>
+                  <Text style={exerciseStyles.changePhotoAvatarText}>
                     {draftInitial}
                   </Text>
                 </View>
               )}
 
-              <Text style={styles.photoPickerText}>
+              <Text style={exerciseStyles.progressTime}>
                 Change photo
               </Text>
             </Pressable>
 
             <TextInput
-              style={styles.input}
+              style={exerciseStyles.input_Profile}
               value={nameDraft}
               onChangeText={setNameDraft}
               placeholder="Your name"
@@ -417,27 +406,27 @@ export default function ProfileScreen() {
             />
 
             {error && (
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={exerciseStyles.errorText_Profile}>{error}</Text>
             )}
 
-            <View style={styles.modalActions}>
+            <View style={exerciseStyles.modalActions}>
               <Pressable
-                style={styles.cancelButton}
+                style={exerciseStyles.cancelButton}
                 onPress={closeEditProfile}
                 disabled={saving}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={exerciseStyles.repResultTitle}>Cancel</Text>
               </Pressable>
 
               <Pressable
-                style={styles.saveProfileButton}
+                style={exerciseStyles.saveProfileButton}
                 onPress={saveProfile}
                 disabled={saving}
               >
                 {saving ? (
                   <ActivityIndicator color={COLORS.white} />
                 ) : (
-                  <Text style={styles.saveProfileButtonText}>
+                  <Text style={exerciseStyles.saveProfileButtonText}>
                     Save
                   </Text>
                 )}
@@ -454,19 +443,19 @@ export default function ProfileScreen() {
         onRequestClose={closeSettings}
       >
         <KeyboardAvoidingView
-          style={styles.modalBackdrop}
+          style={exerciseStyles.modalBackdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={styles.modalCard}>
+          <View style={exerciseStyles.modalCard_Profile}>
             <ModalHeader
               title="Account Settings"
               onBack={closeSettings}
             />
 
-            <Text style={styles.fieldLabel}>Change password</Text>
+            <Text style={exerciseStyles.fieldLabel}>Change password</Text>
 
             <TextInput
-              style={styles.input}
+              style={exerciseStyles.input_Profile}
               value={currentPassword}
               onChangeText={setCurrentPassword}
               placeholder="Current password"
@@ -477,7 +466,7 @@ export default function ProfileScreen() {
             />
 
             <TextInput
-              style={styles.input}
+              style={exerciseStyles.input_Profile}
               value={newPassword}
               onChangeText={setNewPassword}
               placeholder="New password"
@@ -488,39 +477,39 @@ export default function ProfileScreen() {
             />
 
             {error && (
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={exerciseStyles.errorText_Profile}>{error}</Text>
             )}
 
             <Pressable
-              style={styles.primaryModalButton}
+              style={exerciseStyles.primaryModalButton}
               onPress={updatePassword}
               disabled={saving}
             >
               {saving ? (
                 <ActivityIndicator color={COLORS.white} />
               ) : (
-                <Text style={styles.primaryModalText}>
+                <Text style={exerciseStyles.primaryModalText}>
                   Update password
                 </Text>
               )}
             </Pressable>
 
             <Pressable
-              style={styles.deleteButton}
+              style={exerciseStyles.deleteButton}
               onPress={confirmDeleteAccount}
               disabled={saving}
             >
-              <Text style={styles.deleteButtonText}>
+              <Text style={exerciseStyles.deleteButtonText}>
                 Delete account
               </Text>
             </Pressable>
 
             <Pressable
-              style={styles.closeButton}
+              style={exerciseStyles.closeButton}
               onPress={closeSettings}
               disabled={saving}
             >
-              <Text style={styles.cancelButtonText}>Close</Text>
+              <Text style={exerciseStyles.repResultTitle}>Close</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -538,9 +527,9 @@ export default function ProfileScreen() {
           }
         }}
       >
-        <View style={styles.deleteBackdrop}>
-          <View style={styles.deleteConfirmCard}>
-            <View style={styles.deleteIconCircle}>
+        <View style={exerciseStyles.deleteBackdrop}>
+          <View style={exerciseStyles.card_Login_alert}>
+            <View style={exerciseStyles.deleteIconCircle}>
               <Ionicons
                 name="warning-outline"
                 size={30}
@@ -548,17 +537,17 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.deleteConfirmTitle}>
+            <Text style={exerciseStyles.title_Login_alert}>
               Delete account?
             </Text>
 
-            <Text style={styles.deleteConfirmMessage}>
+            <Text style={exerciseStyles.message_Login_alert}>
               This will permanently delete your account and progress.
               This action cannot be undone.
             </Text>
 
             <TextInput
-              style={styles.deleteInput}
+              style={exerciseStyles.deleteInput}
               value={deletePassword}
               onChangeText={(value) => {
                 setDeletePassword(value);
@@ -573,12 +562,12 @@ export default function ProfileScreen() {
             />
 
             {error && (
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={exerciseStyles.errorText_Profile}>{error}</Text>
             )}
 
-            <View style={styles.deleteConfirmActions}>
+            <View style={exerciseStyles.deleteConfirmActions}>
               <Pressable
-                style={styles.deleteCancelButton}
+                style={exerciseStyles.deleteCancelButton}
                 onPress={() => {
                   setDeleteConfirmVisible(false);
                   setDeletePassword('');
@@ -586,18 +575,18 @@ export default function ProfileScreen() {
                 }}
                 disabled={saving}
               >
-                <Text style={styles.deleteCancelText}>Cancel</Text>
+                <Text style={exerciseStyles.repResultTitle}>Cancel</Text>
               </Pressable>
 
               <Pressable
-                style={styles.deleteConfirmButton}
+                style={exerciseStyles.deleteConfirmButton}
                 onPress={deleteAccount}
                 disabled={saving}
               >
                 {saving ? (
                   <ActivityIndicator color={COLORS.white} />
                 ) : (
-                  <Text style={styles.deleteConfirmButtonText}>
+                  <Text style={exerciseStyles.saveProfileButtonText}>
                     Delete
                   </Text>
                 )}
@@ -609,366 +598,3 @@ export default function ProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 70,
-    paddingBottom: 120,
-  },
-  profileSection: {
-    alignItems: 'center',
-    marginBottom: 36,
-  },
-  avatar: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  avatarText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 36,
-    color: COLORS.brown,
-  },
-  name: {
-    fontFamily: 'FredokaBold',
-    fontSize: 21,
-    color: COLORS.brown,
-    marginBottom: 8,
-  },
-  tier: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginBottom: 8,
-  },
-  editButton: {
-    minWidth: 84,
-    height: 22,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  editText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 8,
-    color: COLORS.brown,
-  },
-  optionsContainer: {
-    width: '100%',
-    gap: 18,
-  },
-  optionCard: {
-    width: '100%',
-    height: 75,
-    marginBottom: -6,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 17,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    shadowColor: COLORS.gray,
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    elevation: 4,
-  },
-  optionIcon: {
-    width: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 20,
-  },
-  progressIcon: {
-    width: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 20,
-  },
-  optionText: {
-    flex: 1,
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-  },
-  logoutButton: {
-    width: 107,
-    height: 38,
-    borderRadius: 20,
-    backgroundColor: COLORS.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 70,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  logoutText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: COLORS.gray,
-  },
-  modalCard: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 34,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.lightGray,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  modalTitle: {
-    flex: 1,
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-  },
-  photoPicker: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  changePhotoAvatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 7,
-  },
-  changePhotoAvatarText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-    color: COLORS.brown,
-  },
-  photoPickerText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  fieldLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-    color: COLORS.brown,
-    marginBottom: 8,
-  },
-  input: {
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.brown,
-    marginBottom: 8,
-    backgroundColor: COLORS.white,
-  },
-  deleteInput: {
-    height: 46,
-    width: 300,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.brown,
-    marginBottom: 20,
-    backgroundColor: COLORS.white,
-  },
-  errorText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.error,
-    marginBottom: 10,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.lightGray,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  saveProfileButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveProfileButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  primaryModalButton: {
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  primaryModalText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  closeButton: {
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.lightGray,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  deleteButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.error,
-  },
-  deleteBackdrop: {
-    flex: 1,
-    backgroundColor: COLORS.gray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  deleteConfirmCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  deleteIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  deleteConfirmTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  deleteConfirmMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  deleteConfirmActions: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  deleteCancelButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.lightGray,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteCancelText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  deleteConfirmButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteConfirmButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.white,
-  },
-});

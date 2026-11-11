@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   useCallback,
@@ -7,24 +7,22 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  BackHandler,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
+import {
+  AssessmentCompletionModal,
+  AssessmentProgressActions,
+} from '@/components/assessment/AssessmentProgress';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+
 import {
   ExerciseCountdownScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
@@ -41,13 +39,17 @@ import {
 } from '@/utils/music/notes';
 
 import { AUDIO_SAMPLE_RATE, COLORS, EXERCISE_COUNTDOWN_SECONDS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+
+import {
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 const BEAT_MS = 60_000 / SINGING_ASSESSMENT_BPM;
 const BEAT_SECONDS = BEAT_MS / 1000;
 const GUIDE_START_DELAY_SECONDS = 0.12;
 const RECORDING_START_DELAY_SECONDS = 0.08;
 const RECORDING_END_PADDING_MS = 500;
-const PROCESSING_DELAY_MS = 250;
 
 const SCHEDULER_INTERVAL_MS = 25;
 const SCHEDULER_LOOKAHEAD_SECONDS = 0.12;
@@ -203,33 +205,34 @@ function playBeatClick(
 }
 
 export default function SingingAssessmentScreen() {
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
-  const [elapsed, setElapsed] = useState(0);
-  const [recordingStartAt, setRecordingStartAt] = useState<number | null>(
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(
     null,
   );
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [result, setResult] = useState<SingingAssessmentResult | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [guidePlaying, setGuidePlaying] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGuidePlaying, setIsGuidePlaying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const beatContextRef = useRef<AudioContext | null>(null);
   const beatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nextBeatIndexRef = useRef(0);
-  const recordingStartAtRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const processingRef = useRef(false);
   const finishRequestedRef = useRef(false);
   const cancelNextStopRef = useRef(false);
   const quitRequestedRef = useRef(false);
   const exitPromptOpenRef = useRef(false);
-  const phaseRef = useRef<Phase>('instructions');
   const cancelInProgressRef = useRef(false);
   const mountedRef = useRef(false);
+  const backgroundNavigationRef = useRef(false);
 
   const processingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -239,9 +242,12 @@ export default function SingingAssessmentScreen() {
 
   const cancelRecordingRef = useRef<(() => Promise<void>) | null>(null);
 
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+  useFocusEffect(
+    useCallback(() => {
+      backgroundNavigationRef.current = false;
+    }, []),
+  );
+
 
   const clearPendingProcessing = useCallback(() => {
     if (processingTimerRef.current) {
@@ -342,7 +348,7 @@ export default function SingingAssessmentScreen() {
       pendingSampleRateRef.current = sampleRate;
       setPhase('processing');
 
-      processingTimerRef.current = setTimeout(() => {
+      processingTimerRef.current = setTimeout(async () => {
         processingTimerRef.current = null;
 
         if (
@@ -362,13 +368,13 @@ export default function SingingAssessmentScreen() {
 
         if (!pendingSamples || pendingSampleRate <= 0) {
           processingRef.current = false;
-          setError('No recording data was available to analyze.');
+          setErrorMessage('No recording data was available to analyze.');
           setPhase('instructions');
           return;
         }
 
         try {
-          const assessment = calculateSingingAssessmentScore(
+          const assessment = await calculateSingingAssessmentScore(
             pendingSamples,
             pendingSampleRate,
           );
@@ -379,8 +385,9 @@ export default function SingingAssessmentScreen() {
           }
 
           setResult(assessment);
-          setError(null);
+          setErrorMessage(null);
           setPhase('results');
+          setShowCompletionModal(true);
 
           void saveResult(assessment);
         } catch (processingError) {
@@ -391,20 +398,25 @@ export default function SingingAssessmentScreen() {
               ? processingError.message
               : 'We could not analyze this recording. Please try again.';
 
-          setError(message);
+          setErrorMessage(message);
           setResult(null);
           setPhase('instructions');
+
+          if (backgroundNavigationRef.current) {
+            backgroundNavigationRef.current = false;
+            router.back();
+          }
         } finally {
           processingRef.current = false;
         }
-      }, PROCESSING_DELAY_MS);
+      }, 0);
     },
     [clearPendingProcessing, saveResult],
   );
 
   const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
     if (quitRequestedRef.current || !mountedRef.current) return;
-    setLiveFrame(frame);
+    setLiveAudioFrame(frame);
   }, []);
 
   const {
@@ -452,9 +464,9 @@ export default function SingingAssessmentScreen() {
       const firstBeatWallTime =
         Date.now() + RECORDING_START_DELAY_SECONDS * 1000;
 
-      recordingStartAtRef.current = firstBeatWallTime;
-      setRecordingStartAt(firstBeatWallTime);
-      setElapsed(0);
+      recordingStartedAtRef.current = firstBeatWallTime;
+      setRecordingStartedAt(firstBeatWallTime);
+      setElapsedSeconds(0);
 
       nextBeatIndexRef.current = 0;
 
@@ -544,7 +556,7 @@ export default function SingingAssessmentScreen() {
       );
 
       if (mountedRef.current && !quitRequestedRef.current) {
-        setError('Could not finish the recording. Please try again.');
+        setErrorMessage('Could not finish the recording. Please try again.');
         setPhase('instructions');
       }
     }
@@ -553,11 +565,11 @@ export default function SingingAssessmentScreen() {
   const beginRecording = useCallback(async () => {
     if (quitRequestedRef.current) return;
 
-    setError(null);
-    setLiveFrame(null);
-    setElapsed(0);
-    setRecordingStartAt(null);
-    recordingStartAtRef.current = null;
+    setErrorMessage(null);
+    setLiveAudioFrame(null);
+    setElapsedSeconds(0);
+    setRecordingStartedAt(null);
+    recordingStartedAtRef.current = null;
 
     finishRequestedRef.current = false;
     cancelNextStopRef.current = false;
@@ -582,8 +594,8 @@ export default function SingingAssessmentScreen() {
 
       if (quitRequestedRef.current || !mountedRef.current) return;
 
-      setRecordingStartAt(null);
-      recordingStartAtRef.current = null;
+      setRecordingStartedAt(null);
+      recordingStartedAtRef.current = null;
       setPhase('instructions');
 
       const message =
@@ -591,7 +603,7 @@ export default function SingingAssessmentScreen() {
           ? startError.message
           : 'Could not start microphone recording.';
 
-      setError(message);
+      setErrorMessage(message);
     }
   }, [
     startRecording,
@@ -618,7 +630,7 @@ export default function SingingAssessmentScreen() {
   useEffect(() => {
     if (
       phase !== 'recording' ||
-      recordingStartAt === null ||
+      recordingStartedAt === null ||
       quitRequestedRef.current
     ) {
       return;
@@ -627,13 +639,13 @@ export default function SingingAssessmentScreen() {
     const updateRecordingClock = () => {
       if (quitRequestedRef.current) return;
 
-      const elapsedMs = Math.max(0, Date.now() - recordingStartAt);
+      const elapsedMs = Math.max(0, Date.now() - recordingStartedAt);
       const elapsedSeconds = Math.min(
         elapsedMs / 1000,
         RECORDING_DURATION_SECONDS,
       );
 
-      setElapsed(elapsedSeconds);
+      setElapsedSeconds(elapsedSeconds);
 
       if (elapsedMs >= RECORDING_DURATION_MS) {
         void finishRecording();
@@ -645,7 +657,7 @@ export default function SingingAssessmentScreen() {
     const interval = setInterval(updateRecordingClock, 30);
 
     return () => clearInterval(interval);
-  }, [phase, recordingStartAt, finishRecording]);
+  }, [phase, recordingStartedAt, finishRecording]);
 
   const requestQuitAssessment = useCallback(() => {
     if (cancelInProgressRef.current || exitPromptOpenRef.current) {
@@ -674,13 +686,13 @@ export default function SingingAssessmentScreen() {
     clearPendingProcessing();
 
     setIsCancelling(true);
-    setElapsed(0);
-    setRecordingStartAt(null);
-    recordingStartAtRef.current = null;
-    setLiveFrame(null);
+    setElapsedSeconds(0);
+    setRecordingStartedAt(null);
+    recordingStartedAtRef.current = null;
+    setLiveAudioFrame(null);
     setResult(null);
     setSaveMessage(null);
-    setError(null);
+    setErrorMessage(null);
 
     try {
       await stopBeatGuide();
@@ -706,7 +718,6 @@ export default function SingingAssessmentScreen() {
       continueLabel="Continue Assessment"
       quitLabel="Quit Assessment"
       quittingLabel="Leaving…"
-      variant="assessment"
     />
   );
 
@@ -765,21 +776,23 @@ export default function SingingAssessmentScreen() {
     clearPendingProcessing();
 
     quitRequestedRef.current = false;
+    backgroundNavigationRef.current = false;
     exitPromptOpenRef.current = false;
     cancelNextStopRef.current = false;
     finishRequestedRef.current = false;
     processingRef.current = false;
     cancelInProgressRef.current = false;
-    recordingStartAtRef.current = null;
+    recordingStartedAtRef.current = null;
 
     setShowQuitModal(false);
+    setShowCompletionModal(false);
     setIsCancelling(false);
-    setError(null);
+    setErrorMessage(null);
     setResult(null);
     setSaveMessage(null);
-    setLiveFrame(null);
-    setElapsed(0);
-    setRecordingStartAt(null);
+    setLiveAudioFrame(null);
+    setElapsedSeconds(0);
+    setRecordingStartedAt(null);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('countdown');
   }, [clearPendingProcessing]);
@@ -788,19 +801,21 @@ export default function SingingAssessmentScreen() {
     clearPendingProcessing();
 
     quitRequestedRef.current = false;
+    backgroundNavigationRef.current = false;
     exitPromptOpenRef.current = false;
     cancelNextStopRef.current = false;
-    recordingStartAtRef.current = null;
+    recordingStartedAtRef.current = null;
 
     await stopBeatGuide();
 
     setShowQuitModal(false);
+    setShowCompletionModal(false);
     setResult(null);
     setSaveMessage(null);
-    setError(null);
-    setElapsed(0);
-    setRecordingStartAt(null);
-    setLiveFrame(null);
+    setErrorMessage(null);
+    setElapsedSeconds(0);
+    setRecordingStartedAt(null);
+    setLiveAudioFrame(null);
 
     processingRef.current = false;
     finishRequestedRef.current = false;
@@ -809,10 +824,34 @@ export default function SingingAssessmentScreen() {
     setPhase('instructions');
   }, [clearPendingProcessing, stopBeatGuide]);
 
-  const playReference = useCallback(async () => {
-    if (guidePlaying) return;
+  const openBackgroundRoute = useCallback(
+    (tab: 'index' | 'exercises') => {
+      if (backgroundNavigationRef.current) {
+        return;
+      }
 
-    setGuidePlaying(true);
+      backgroundNavigationRef.current = true;
+      router.push({
+        pathname: '/dashboard',
+        params: { tab },
+      });
+    },
+    [],
+  );
+
+  const checkAssessmentResults = useCallback(() => {
+    setShowCompletionModal(false);
+
+    if (backgroundNavigationRef.current) {
+      backgroundNavigationRef.current = false;
+      router.back();
+    }
+  }, []);
+
+  const playReference = useCallback(async () => {
+    if (isGuidePlaying) return;
+
+    setIsGuidePlaying(true);
 
     try {
       await playMelodyGuide();
@@ -823,10 +862,10 @@ export default function SingingAssessmentScreen() {
       );
     } finally {
       if (mountedRef.current) {
-        setGuidePlaying(false);
+        setIsGuidePlaying(false);
       }
     }
-  }, [guidePlaying]);
+  }, [isGuidePlaying]);
 
   if (phase === 'countdown') {
     return (
@@ -846,92 +885,92 @@ export default function SingingAssessmentScreen() {
   }
 
   if (phase === 'recording') {
-    const currentMelodyIndex = getCurrentMelodyNoteIndex(elapsed);
+    const currentMelodyIndex = getCurrentMelodyNoteIndex(elapsedSeconds);
     const currentMelodyNote = MARY_MELODY[currentMelodyIndex];
-    const activeBeatDot = getCurrentBeatDot(elapsed);
+    const activeBeatDot = getCurrentBeatDot(elapsedSeconds);
 
     const detectedPitch =
-      liveFrame?.pitch && liveFrame.pitch > 0
-        ? liveFrame.note
+      liveAudioFrame?.pitch && liveAudioFrame.pitch > 0
+        ? liveAudioFrame.note
         : 'Listening…';
 
     const remainingSeconds = Math.max(
       0,
-      Math.ceil(RECORDING_DURATION_SECONDS - elapsed),
+      Math.ceil(RECORDING_DURATION_SECONDS - elapsedSeconds),
     );
 
     const progressPercent = Math.min(
       100,
-      (elapsed / RECORDING_DURATION_SECONDS) * 100,
+      (elapsedSeconds / RECORDING_DURATION_SECONDS) * 100,
     );
 
     return (
-      <View style={styles.recordingScreen}>
+      <View style={exerciseStyles.recordingScreen_SingingAssessment}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
-          style={styles.backButton}
+          style={exerciseStyles.backButton_SingingAssessment}
           disabled={isCancelling}
           onPress={requestQuitAssessment}
         >
           <Ionicons name="chevron-back" size={25} color={COLORS.brown} />
         </Pressable>
 
-        <View style={styles.recordingHeader}>
-          <View style={styles.recordingIconCircle}>
+        <View style={exerciseStyles.recordingHeader_SingingAssessment}>
+          <View style={exerciseStyles.recordingIconCircle}>
             <Ionicons name="musical-notes" size={28} color={COLORS.brown} />
           </View>
 
-          <Text style={styles.recordingTitle}>Your Turn to Sing!</Text>
-          <Text style={styles.recordingSubtitle}>
+          <Text style={exerciseStyles.recordingTitle_SingingAssessment}>Your Turn to Sing!</Text>
+          <Text style={exerciseStyles.liveFrequency}>
             Follow the highlighted words as you sing.
           </Text>
         </View>
 
         <View
-          style={styles.activeLyricCard}
+          style={exerciseStyles.activeLyricCard}
           accessibilityLiveRegion="polite"
           accessibilityLabel={`Sing ${formatMelodyLyric(
             currentMelodyNote.lyric,
           )}. Target note ${midiToNoteName(currentMelodyNote.midi)}.`}
         >
-          <View style={styles.activeLyricBadge}>
-            <View style={styles.activeLyricBadgeDot} />
-            <Text style={styles.activeLyricBadgeText}>
+          <View style={exerciseStyles.activeLyricBadge}>
+            <View style={exerciseStyles.activeLyricBadgeDot} />
+            <Text style={exerciseStyles.activeLyricBadgeText}>
               SING THIS NOW
             </Text>
           </View>
 
-          <Text style={styles.activeLyric}>
+          <Text style={exerciseStyles.activeLyric}>
             {formatMelodyLyric(currentMelodyNote.lyric)}
           </Text>
 
-          <View style={styles.activeLyricDivider} />
+          <View style={exerciseStyles.activeLyricDivider} />
 
-          <View style={styles.targetNoteRow}>
+          <View style={exerciseStyles.targetNoteRow}>
             <Ionicons name="musical-note" size={21} color={COLORS.brown} />
 
-            <View style={styles.targetNoteTextWrap}>
-              <Text style={styles.targetNoteCaption}>TARGET NOTE</Text>
-              <Text style={styles.targetNoteName}>
+            <View style={exerciseStyles.targetNoteTextWrap}>
+              <Text style={exerciseStyles.targetNoteCaption}>TARGET NOTE</Text>
+              <Text style={exerciseStyles.targetNoteName}>
                 {midiToNoteName(currentMelodyNote.midi)}
               </Text>
             </View>
           </View>
 
-          <Text style={styles.activeLyricProgress}>
+          <Text style={exerciseStyles.activeLyricProgress}>
             SYLLABLE {currentMelodyIndex + 1} OF {MARY_MELODY.length}
           </Text>
         </View>
 
-        <View style={styles.lyricStripCard}>
-          <View style={styles.lyricStripHeader}>
-            <Text style={styles.lyricStripTitle}>FOLLOW THE LYRICS</Text>
-            <Text style={styles.lyricStripHint}>Keep going!</Text>
+        <View style={exerciseStyles.lyricStripCard}>
+          <View style={exerciseStyles.lyricStripHeader}>
+            <Text style={exerciseStyles.lyricStripTitle}>FOLLOW THE LYRICS</Text>
+            <Text style={exerciseStyles.guideText}>Keep going!</Text>
           </View>
 
-          <View style={styles.lyricStripContent}>
-            <View style={styles.lyricStrip}>
+          <View style={exerciseStyles.lyricStripContent}>
+            <View style={exerciseStyles.lyricStrip}>
               {MARY_MELODY.map((note, index) => {
                 const isCurrent = index === currentMelodyIndex;
                 const isPast = index < currentMelodyIndex;
@@ -940,9 +979,9 @@ export default function SingingAssessmentScreen() {
                   <View
                     key={`${index}-${note.lyric}`}
                     style={[
-                      styles.lyricChip,
-                      isCurrent && styles.lyricChipActive,
-                      isPast && styles.lyricChipPast,
+                      exerciseStyles.lyricChip,
+                      isCurrent && exerciseStyles.lyricChipActive,
+                      isPast && exerciseStyles.lyricChipPast,
                     ]}
                   >
                     {isCurrent ? (
@@ -950,15 +989,15 @@ export default function SingingAssessmentScreen() {
                         name="arrow-up"
                         size={12}
                         color={COLORS.white}
-                        style={styles.currentChipIcon}
+                        style={exerciseStyles.currentChipIcon}
                       />
                     ) : null}
 
                     <Text
                       style={[
-                        styles.lyricChipText,
-                        isCurrent && styles.lyricChipTextActive,
-                        isPast && styles.lyricChipTextPast,
+                        exerciseStyles.lyricChipText,
+                        isCurrent && exerciseStyles.lyricChipTextActive,
+                        isPast && exerciseStyles.liveNoteWaiting,
                       ]}
                     >
                       {formatMelodyLyric(note.lyric)}
@@ -970,59 +1009,59 @@ export default function SingingAssessmentScreen() {
           </View>
         </View>
 
-        <View style={styles.liveCard}>
-          <View style={styles.liveCardHeader}>
-            <View style={styles.liveIndicator} />
-            <Text style={styles.liveLabel}>YOUR VOICE</Text>
+        <View style={exerciseStyles.liveCard_SingingAssessment}>
+          <View style={exerciseStyles.liveCardHeader_SingingAssessment}>
+            <View style={exerciseStyles.liveIndicator} />
+            <Text style={exerciseStyles.targetNoteCaption}>YOUR VOICE</Text>
           </View>
 
-          <Text style={styles.liveNote}>{detectedPitch}</Text>
+          <Text style={exerciseStyles.liveNote_SingingAssessment}>{detectedPitch}</Text>
 
-          <Text style={styles.liveHint}>
-            {liveFrame?.pitch && liveFrame.pitch > 0
+          <Text style={exerciseStyles.liveHint}>
+            {liveAudioFrame?.pitch && liveAudioFrame.pitch > 0
               ? `Target: ${midiToNoteName(currentMelodyNote.midi)}`
               : 'Sing clearly into the microphone'}
           </Text>
 
           <View
-            style={styles.beatRow}
+            style={exerciseStyles.beatRow}
             accessibilityLabel={`Beat ${activeBeatDot + 1} of 4`}
           >
             {[0, 1, 2, 3].map((beat) => (
               <View
                 key={beat}
                 style={[
-                  styles.beatDot,
-                  beat === activeBeatDot && styles.beatDotActive,
-                  beat === 0 && styles.firstBeatDot,
+                  exerciseStyles.beatDot,
+                  beat === activeBeatDot && exerciseStyles.beatDotActive,
+                  beat === 0 && exerciseStyles.firstBeatDot,
                   beat === activeBeatDot &&
                     beat === 0 &&
-                    styles.firstBeatDotActive,
+                    exerciseStyles.firstBeatDotActive,
                 ]}
               />
             ))}
           </View>
 
-          <Text style={styles.beatLabel}>
+          <Text style={exerciseStyles.beatLabel}>
             {SINGING_ASSESSMENT_BPM} BPM · Beat guide active
           </Text>
         </View>
 
-        <View style={styles.timerWrap}>
-          <Text style={styles.timer}>
+        <View style={exerciseStyles.timerWrap}>
+          <Text style={exerciseStyles.timer}>
             {`0:${String(remainingSeconds).padStart(2, '0')}`}
           </Text>
 
-          <View style={styles.progressTrack}>
+          <View style={exerciseStyles.progressTrack_SingingAssessment}>
             <View
               style={[
-                styles.progressFill,
+                exerciseStyles.progressFill_SingingAssessment,
                 { width: `${progressPercent}%` },
               ]}
             />
           </View>
 
-          <Text style={styles.footerHint}>
+          <Text style={exerciseStyles.footerHint}>
             Recording stops automatically when the song finishes.
           </Text>
         </View>
@@ -1034,12 +1073,17 @@ export default function SingingAssessmentScreen() {
 
   if (phase === 'processing') {
     return (
-      <View style={styles.processingScreen}>
+      <View style={exerciseStyles.processingScreen}>
         <ExerciseProcessingScreen
           icon="analytics"
           title="Analyzing Your Singing"
           message="Checking your pitch accuracy, pitch stability, and vocal consistency…"
-        />
+        >
+          <AssessmentProgressActions
+            onOpenDashboard={() => openBackgroundRoute('index')}
+            onOpenExerciseLibrary={() => openBackgroundRoute('exercises')}
+          />
+        </ExerciseProcessingScreen>
 
         {quitAssessmentModal}
       </View>
@@ -1058,7 +1102,7 @@ export default function SingingAssessmentScreen() {
           onRetry={() => void handleRetry()}
           onExit={requestQuitAssessment}
         >
-          <View style={styles.resultList}>
+          <View style={exerciseStyles.resultList}>
             <ScoreRow
               label="Pitch Accuracy"
               score={result.pitchAccuracy}
@@ -1076,12 +1120,12 @@ export default function SingingAssessmentScreen() {
             />
           </View>
 
-          <View style={styles.feedbackCard}>
-            <Text style={styles.feedbackTitle}>Your Feedback</Text>
+          <View style={exerciseStyles.feedbackCard}>
+            <Text style={exerciseStyles.feedbackTitle}>Your Feedback</Text>
 
             {result.feedback.map((item, index) => (
               <View
-                style={styles.feedbackRow}
+                style={exerciseStyles.feedbackRow}
                 key={`${index}-${item}`}
               >
                 <Ionicons
@@ -1089,11 +1133,11 @@ export default function SingingAssessmentScreen() {
                   size={19}
                   color={COLORS.brown}
                 />
-                <Text style={styles.feedbackText}>{item}</Text>
+                <Text style={exerciseStyles.feedbackText}>{item}</Text>
               </View>
             ))}
 
-            <Text style={styles.disclaimer}>
+            <Text style={exerciseStyles.disclaimer}>
               Vocal consistency uses relative microphone-level measurements.
               It is not calibrated sound-pressure level (dB SPL) or a direct
               measure of vocal technique.
@@ -1101,11 +1145,18 @@ export default function SingingAssessmentScreen() {
           </View>
 
           {saveMessage ? (
-            <Text style={styles.saveMessage}>{saveMessage}</Text>
+            <Text style={exerciseStyles.saveMessage}>{saveMessage}</Text>
           ) : null}
         </ExerciseResultsScreen>
 
         {quitAssessmentModal}
+        <AssessmentCompletionModal
+          visible={showCompletionModal}
+          title="Assessment is done!"
+          message="Your singing assessment is ready. You can close this message or view your results."
+          onClose={() => setShowCompletionModal(false)}
+          onCheckResults={checkAssessmentResults}
+        />
       </>
     );
   }
@@ -1113,107 +1164,107 @@ export default function SingingAssessmentScreen() {
   return (
     <>
       <ScrollView
-        style={styles.instructionsScreen}
-        contentContainerStyle={styles.instructionsContent}
+        style={exerciseStyles.screen}
+        contentContainerStyle={exerciseStyles.instructionsContent}
         showsVerticalScrollIndicator={false}
       >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
-          style={styles.backButton}
+          style={exerciseStyles.backButton_SingingAssessment}
           disabled={isCancelling}
           onPress={requestQuitAssessment}
         >
           <Ionicons name="chevron-back" size={25} color={COLORS.brown} />
         </Pressable>
 
-        <View style={styles.hero}>
-          <View style={styles.iconCircle}>
+        <View style={exerciseStyles.hero}>
+          <View style={exerciseStyles.iconCircle_SingingAssessment}>
             <Ionicons name="musical-notes" size={38} color={COLORS.brown} />
           </View>
 
-          <Text style={styles.title}>Singing Assessment</Text>
-          <Text style={styles.subtitle}>
+          <Text style={exerciseStyles.resultTitle}>Singing Assessment</Text>
+          <Text style={exerciseStyles.subtitle_SingingAssessment}>
             Check your singing performance
           </Text>
         </View>
 
-        <View style={styles.instructionCard}>
-          <Text style={styles.cardTitle}>Your Singing Task</Text>
+        <View style={exerciseStyles.instructionCard}>
+          <Text style={exerciseStyles.cardTitle_SingingAssessment}>Your Singing Task</Text>
 
-          <Text style={styles.bodyText}>
+          <Text style={exerciseStyles.bodyText}>
             Sing “Mary Had a Little Lamb” while following a steady beat.
             The beat is there to guide you; your rhythm will not affect
             your score.
           </Text>
 
-          <View style={styles.lyricsCard}>
-            <Text style={styles.lyricsLabel}>LYRICS</Text>
-            <Text style={styles.lyrics}>Mary had a little lamb,</Text>
-            <Text style={styles.lyrics}>Little lamb, little lamb,</Text>
-            <Text style={styles.lyrics}>Mary had a little lamb,</Text>
-            <Text style={styles.lyrics}>Its fleece was white as snow.</Text>
+          <View style={exerciseStyles.lyricsCard}>
+            <Text style={exerciseStyles.lyricsLabel}>LYRICS</Text>
+            <Text style={exerciseStyles.lyrics}>Mary had a little lamb,</Text>
+            <Text style={exerciseStyles.lyrics}>Little lamb, little lamb,</Text>
+            <Text style={exerciseStyles.lyrics}>Mary had a little lamb,</Text>
+            <Text style={exerciseStyles.lyrics}>Its fleece was white as snow.</Text>
           </View>
 
-          <View style={styles.infoRow}>
+          <View style={exerciseStyles.infoRow_SingingAssessment}>
             <Ionicons name="headset-outline" size={19} color={COLORS.brown} />
-            <Text style={styles.infoText}>
+            <Text style={exerciseStyles.infoText_SingingAssessment}>
               Listen to the reference melody before starting.
             </Text>
           </View>
 
-          <View style={styles.infoRow}>
+          <View style={exerciseStyles.infoRow_SingingAssessment}>
             <Ionicons name="musical-notes" size={19} color={COLORS.brown} />
-            <Text style={styles.infoText}>
+            <Text style={exerciseStyles.infoText_SingingAssessment}>
               A steady {SINGING_ASSESSMENT_BPM} BPM beat will play while
               you sing.
             </Text>
           </View>
 
-          <View style={styles.infoRow}>
+          <View style={exerciseStyles.infoRow_SingingAssessment}>
             <Ionicons name="analytics-outline" size={19} color={COLORS.brown} />
-            <Text style={styles.infoText}>
+            <Text style={exerciseStyles.infoText_SingingAssessment}>
               Your score uses pitch accuracy, pitch stability, and vocal
               consistency.
             </Text>
           </View>
 
-          <View style={styles.tipCard}>
+          <View style={exerciseStyles.tipCard_SingingAssessment}>
             <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
-            <Text style={styles.tipText}>
+            <Text style={exerciseStyles.tipText_SingingAssessment}>
               Keep your phone a comfortable, consistent distance away.
               Sing naturally; you do not need to know music theory.
             </Text>
           </View>
         </View>
 
-        {error ? (
-          <View style={styles.errorCard}>
+        {errorMessage ? (
+          <View style={exerciseStyles.errorCard_SingingAssessment}>
             <Ionicons
               name="alert-circle-outline"
               size={20}
               color="#A33A3A"
             />
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={exerciseStyles.errorText_SingingAssessment}>{errorMessage}</Text>
           </View>
         ) : null}
 
         <Pressable
           accessibilityRole="button"
-          disabled={guidePlaying || isCancelling}
+          disabled={isGuidePlaying || isCancelling}
           style={[
-            styles.secondaryButton,
-            (guidePlaying || isCancelling) && styles.disabledButton,
+            exerciseStyles.secondaryButton_SingingAssessment,
+            (isGuidePlaying || isCancelling) && exerciseStyles.disabled,
           ]}
           onPress={() => void playReference()}
         >
           <Ionicons
-            name={guidePlaying ? 'volume-high' : 'play-circle-outline'}
+            name={isGuidePlaying ? 'volume-high' : 'play-circle-outline'}
             size={21}
             color={COLORS.brown}
           />
-          <Text style={styles.secondaryButtonText}>
-            {guidePlaying
+          <Text style={exerciseStyles.repResultTitle}>
+            {isGuidePlaying
               ? 'Playing Reference Melody…'
               : 'Play Reference Melody + Beat'}
           </Text>
@@ -1223,13 +1274,13 @@ export default function SingingAssessmentScreen() {
           accessibilityRole="button"
           disabled={isCancelling}
           style={[
-            styles.startButton,
-            isCancelling && styles.disabledButton,
+            exerciseStyles.startButton_SingingAssessment,
+            isCancelling && exerciseStyles.disabled,
           ]}
           onPress={handleStart}
         >
           <Ionicons name="mic" size={20} color={COLORS.white} />
-          <Text style={styles.startButtonText}>Start Assessment</Text>
+          <Text style={exerciseStyles.startButtonText_SingingAssessment}>Start Assessment</Text>
         </Pressable>
       </ScrollView>
 
@@ -1248,20 +1299,20 @@ function ScoreRow({
   weight: string;
 }) {
   return (
-    <View style={styles.scoreRow}>
-      <View style={styles.scoreRowHeader}>
-        <View style={styles.scoreRowLabelWrap}>
-          <Text style={styles.scoreRowLabel}>{label}</Text>
-          <Text style={styles.scoreRowWeight}>{weight}</Text>
+    <View style={exerciseStyles.scoreRow_SingingAssessment}>
+      <View style={exerciseStyles.scoreRowHeader_SingingAssessment}>
+        <View style={exerciseStyles.infoText}>
+          <Text style={exerciseStyles.cardTitle}>{label}</Text>
+          <Text style={exerciseStyles.repResultDetails}>{weight}</Text>
         </View>
 
-        <Text style={styles.scoreRowValue}>{score.toFixed(1)}%</Text>
+        <Text style={exerciseStyles.resultDetailValue}>{score.toFixed(1)}%</Text>
       </View>
 
-      <View style={styles.progressTrack}>
+      <View style={exerciseStyles.progressTrack_SingingAssessment}>
         <View
           style={[
-            styles.progressFill,
+            exerciseStyles.progressFill_SingingAssessment,
             {
               width: `${Math.max(0, Math.min(100, score))}%`,
             },
@@ -1271,570 +1322,3 @@ function ScoreRow({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  instructionsScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  instructionsContent: {
-    paddingHorizontal: 24,
-    paddingTop: 58,
-    paddingBottom: 40,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  hero: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  iconCircle: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  instructionCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginBottom: 9,
-  },
-  bodyText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 22,
-    color: COLORS.muted,
-  },
-  lyricsCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    padding: 15,
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  lyricsLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: COLORS.muted,
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  lyrics: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 15,
-    gap: 10,
-  },
-  infoText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.brown,
-  },
-  tipCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 15,
-    padding: 13,
-    marginTop: 17,
-    gap: 10,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    marginTop: 20,
-    paddingHorizontal: 12,
-  },
-  secondaryButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  startButton: {
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    marginTop: 12,
-  },
-  startButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 16,
-    color: COLORS.white,
-  },
-  errorCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 14,
-    padding: 13,
-    marginTop: 17,
-    gap: 9,
-  },
-  errorText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.error,
-  },
-  recordingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 20,
-    paddingTop: 42,
-    paddingBottom: 18,
-    justifyContent: 'space-between',
-  },
-  recordingHeader: {
-    alignItems: 'center',
-    marginTop: -5,
-    marginBottom: 10,
-  },
-  recordingIconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.pink,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 7,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    lineHeight: 29,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 3,
-  },
-  activeLyricCard: {
-    width: '100%',
-    backgroundColor: '#FFF0F4',
-    borderColor: COLORS.waveform,
-    borderWidth: 2,
-    borderRadius: 23,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.waveform,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.16,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  activeLyricBadge: {
-    minHeight: 27,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    backgroundColor: COLORS.waveform,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  activeLyricBadgeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.white,
-  },
-  activeLyricBadgeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.white,
-  },
-  activeLyric: {
-    fontFamily: 'FredokaBold',
-    fontSize: 38,
-    lineHeight: 46,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 5,
-    paddingHorizontal: 4,
-  },
-  activeLyricDivider: {
-    width: '72%',
-    height: 1,
-    backgroundColor: COLORS.pink,
-    marginTop: 2,
-    marginBottom: 7,
-  },
-  targetNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  targetNoteTextWrap: {
-    alignItems: 'flex-start',
-  },
-  targetNoteCaption: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 0.9,
-    color: COLORS.muted,
-  },
-  targetNoteName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 21,
-    lineHeight: 25,
-    color: COLORS.brown,
-  },
-  activeLyricProgress: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-    marginTop: 6,
-  },
-  lyricStripCard: {
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 7,
-    marginTop: 9,
-    marginBottom: 8,
-  },
-  lyricStripHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  lyricStripTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: COLORS.brown,
-  },
-  lyricStripHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  lyricStripContent: {
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-  },
-  lyricStrip: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  lyricChip: {
-    minHeight: 28,
-    minWidth: 34,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lyricChipActive: {
-    minHeight: 34,
-    minWidth: 40,
-    paddingHorizontal: 9,
-    backgroundColor: COLORS.waveform,
-    borderColor: COLORS.waveform,
-    borderWidth: 2,
-    borderRadius: 10,
-    transform: [{ scale: 1.04 }],
-    shadowColor: COLORS.waveform,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  lyricChipPast: {
-    backgroundColor: COLORS.completedPink,
-    borderColor: '#F0E2E6',
-    opacity: 0.62,
-  },
-  currentChipIcon: {
-    marginBottom: 1,
-  },
-  lyricChipText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  lyricChipTextActive: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.white,
-  },
-  lyricChipTextPast: {
-    color: COLORS.muted,
-  },
-  liveCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  liveCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  liveIndicator: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.waveform,
-  },
-  liveLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    color: COLORS.muted,
-    letterSpacing: 0.9,
-  },
-  liveNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    lineHeight: 32,
-    color: COLORS.brown,
-    marginTop: 1,
-  },
-  liveHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 1,
-    textAlign: 'center',
-  },
-  beatRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  beatDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.background,
-  },
-  firstBeatDot: {
-    borderWidth: 1,
-    borderColor: COLORS.pink,
-  },
-  beatDotActive: {
-    backgroundColor: COLORS.waveform,
-    transform: [{ scale: 1.4 }],
-  },
-  firstBeatDotActive: {
-    backgroundColor: COLORS.brown,
-    borderColor: COLORS.brown,
-  },
-  beatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 6,
-  },
-
-  timerWrap: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  timer: {
-    fontFamily: 'FredokaBold',
-    fontSize: 21,
-    color: COLORS.brown,
-    marginBottom: 6,
-  },
-  progressTrack: {
-    height: 7,
-    width: '100%',
-    borderRadius: 4,
-    backgroundColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.waveform,
-    borderRadius: 4,
-  },
-  footerHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-
-  processingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-  },
-  resultList: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    gap: 18,
-    marginBottom: 16,
-  },
-  scoreRow: {
-    gap: 8,
-  },
-  scoreRowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  scoreRowLabelWrap: {
-    flex: 1,
-  },
-  scoreRowLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  scoreRowWeight: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  scoreRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-  feedbackCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    marginBottom: 12,
-  },
-  feedbackTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  feedbackRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 9,
-    marginTop: 8,
-  },
-  feedbackText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.muted,
-  },
-  disclaimer: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 14,
-  },
-  saveMessage: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-});

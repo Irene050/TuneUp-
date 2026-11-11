@@ -37,6 +37,7 @@ import {
 
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
 import { average, clampPercentage } from '@/utils/math';
+import { sleep } from '@/utils/async';
 
 export type ComponentId =
   | 'breathControl'
@@ -1792,10 +1793,10 @@ function safeMetric(
   }
 }
 
-export function runAssessment(
+export async function runAssessment(
   audio: AssessmentAudioBundle,
   precomputedRange?: VocalRange,
-): AssessmentResult {
+): Promise<AssessmentResult> {
   console.log('🧪 RUNNING VOICE ASSESSMENT...');
 
   if (!audio) {
@@ -1844,6 +1845,7 @@ export function runAssessment(
     ),
   });
 
+  await sleep(0);
   const breathScore = safeMetric(
     'Breath control',
     () =>
@@ -1854,6 +1856,7 @@ export function runAssessment(
       ),
   );
 
+  await sleep(0);
   const pitchScore = safeMetric(
     'Pitch',
     () =>
@@ -1864,16 +1867,19 @@ export function runAssessment(
       ),
   );
 
+  await sleep(0);
   const toneScore = safeMetric(
     'Tone',
     () => measureTone(audio.toneSamples, audio.sampleRate),
   );
 
+  await sleep(0);
   const volumeScore = safeMetric(
     'Volume',
     () => measureVolume(audio.volumeSamples, audio.sampleRate),
   );
 
+  await sleep(0);
   const agilityScore = safeMetric(
     'Agility',
     () =>

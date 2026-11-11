@@ -1,36 +1,25 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import {
-  COLORS
-} from '@/constants/appConstants';
-import {
-  type LiveAudioFrame,
-  useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
+import { COLORS, VOLUME_DBFS_MIN } from '@/constants/appConstants';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
-import { ExerciseQuitModal } from '@/screens/exercises/ExerciseScreen';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import { usePhaseState } from '@/hooks/usePhaseState';
+
 type Phase = 'ready' | 'exercise';
 
-const BAR_COUNT = 20;
-const MIN_VOLUME_DB = -60;
+const FLOW_HISTORY_BAR_COUNT = 20;
 
 export default function BreathControlFreeModeScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontalPadding = Math.min(22, width * 0.055);
 
-  const [phase, setPhase] = useState<Phase>('ready');
+  const { phase, setPhase } = usePhaseState<Phase>('ready');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -38,12 +27,12 @@ export default function BreathControlFreeModeScreen() {
   const [isQuitting, setIsQuitting] = useState(false);
   const [volumeDb, setVolumeDb] = useState(-100);
   const [flowHistory, setFlowHistory] = useState<number[]>(
-    () => Array(BAR_COUNT).fill(0),
+    () => Array(FLOW_HISTORY_BAR_COUNT).fill(0),
   );
 
   const mountedRef = useRef(false);
   const startInProgressRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const recordingStopRequestedRef = useRef(false);
   const leaveRequestedRef = useRef(false);
   const showQuitModalRef = useRef(false);
 
@@ -55,7 +44,7 @@ export default function BreathControlFreeModeScreen() {
   >(null);
 
   const handleAudioFrame = useCallback((frame: LiveAudioFrame) => {
-    if (!mountedRef.current || stopRequestedRef.current) {
+    if (!mountedRef.current || recordingStopRequestedRef.current) {
       return;
     }
 
@@ -68,11 +57,11 @@ export default function BreathControlFreeModeScreen() {
 
     const normalizedFlow = Math.max(
       0,
-      Math.min(1, (reading.volumeDb - MIN_VOLUME_DB) / 60),
+      Math.min(1, (reading.volumeDb - VOLUME_DBFS_MIN) / 60),
     );
 
     setFlowHistory(previous => [
-      ...previous.slice(-(BAR_COUNT - 1)),
+      ...previous.slice(-(FLOW_HISTORY_BAR_COUNT - 1)),
       normalizedFlow,
     ]);
   }, []);
@@ -93,7 +82,7 @@ export default function BreathControlFreeModeScreen() {
   const resetExercise = useCallback(() => {
     setElapsedSeconds(0);
     setVolumeDb(-100);
-    setFlowHistory(Array(BAR_COUNT).fill(0));
+    setFlowHistory(Array(FLOW_HISTORY_BAR_COUNT).fill(0));
   }, []);
 
   const stopRecorder = useCallback((): Promise<void> => {
@@ -152,7 +141,7 @@ export default function BreathControlFreeModeScreen() {
       isRecording ||
       startTaskRef.current ||
       stopTaskRef.current ||
-      stopRequestedRef.current ||
+      recordingStopRequestedRef.current ||
       leaveRequestedRef.current ||
       !mountedRef.current
     ) {
@@ -160,7 +149,7 @@ export default function BreathControlFreeModeScreen() {
     }
 
     startInProgressRef.current = true;
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
 
     setIsStarting(true);
     resetExercise();
@@ -171,7 +160,7 @@ export default function BreathControlFreeModeScreen() {
 
         if (
           !mountedRef.current ||
-          stopRequestedRef.current ||
+          recordingStopRequestedRef.current ||
           leaveRequestedRef.current
         ) {
           await stopRecorder();
@@ -179,10 +168,10 @@ export default function BreathControlFreeModeScreen() {
         }
 
         setPhase('exercise');
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to start Breath Control Free Mode:',
-          error,
+          errorMessage,
         );
 
         if (
@@ -221,21 +210,21 @@ export default function BreathControlFreeModeScreen() {
 
   const stopFreeMode = useCallback(async () => {
     if (
-      stopRequestedRef.current ||
+      recordingStopRequestedRef.current ||
       leaveRequestedRef.current
     ) {
       return;
     }
 
-    stopRequestedRef.current = true;
+    recordingStopRequestedRef.current = true;
     setIsStopping(true);
 
     try {
       await waitForStartAndStop();
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop Breath Control Free Mode:',
-        error,
+        errorMessage,
       );
     } finally {
       if (
@@ -246,7 +235,7 @@ export default function BreathControlFreeModeScreen() {
         setPhase('ready');
         setIsStarting(false);
         setIsStopping(false);
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
       }
     }
   }, [resetExercise, waitForStartAndStop]);
@@ -278,7 +267,7 @@ export default function BreathControlFreeModeScreen() {
     }
 
     leaveRequestedRef.current = true;
-    stopRequestedRef.current = true;
+    recordingStopRequestedRef.current = true;
     showQuitModalRef.current = false;
 
     setIsQuitting(true);
@@ -287,10 +276,10 @@ export default function BreathControlFreeModeScreen() {
 
     try {
       await waitForStartAndStop();
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop recording before leaving Breath Control Free Mode:',
-        error,
+        errorMessage,
       );
     } finally {
       router.back();
@@ -321,19 +310,19 @@ export default function BreathControlFreeModeScreen() {
 
     return () => {
       mountedRef.current = false;
-      stopRequestedRef.current = true;
+      recordingStopRequestedRef.current = true;
 
-      void waitForStartAndStop().catch(error => {
+      void waitForStartAndStop().catch(errorMessage => {
         console.error(
           'Failed to stop Breath Control Free Mode on unmount:',
-          error,
+          errorMessage,
         );
       });
     };
   }, [waitForStartAndStop]);
 
   useEffect(() => {
-    if (phase !== 'exercise' || stopRequestedRef.current) {
+    if (phase !== 'exercise' || recordingStopRequestedRef.current) {
       return;
     }
 
@@ -357,12 +346,12 @@ export default function BreathControlFreeModeScreen() {
   const renderHeader = (onBack: () => void) => (
     <View
       style={[
-        styles.header,
+        exerciseStyles.header,
         { paddingHorizontal: horizontalPadding },
       ]}
     >
       <Pressable
-        style={styles.backButton}
+        style={exerciseStyles.backButtonVariant1}
         onPress={onBack}
         accessibilityRole="button"
         accessibilityLabel="Go back"
@@ -371,14 +360,14 @@ export default function BreathControlFreeModeScreen() {
         <Ionicons name="arrow-back" size={20} color={COLORS.brown} />
       </Pressable>
 
-      <View style={styles.headerSpacer} />
+      <View style={exerciseStyles.headerSpacer} />
     </View>
   );
 
   const renderBottomAction = (button: ReactNode) => (
     <View
       style={[
-        styles.bottomAction,
+        exerciseStyles.bottomAction,
         {
           paddingHorizontal: horizontalPadding,
           paddingBottom: Math.max(8, insets.bottom),
@@ -410,7 +399,7 @@ export default function BreathControlFreeModeScreen() {
       <>
         <SafeAreaView
           style={[
-            styles.screen,
+            exerciseStyles.screen,
             { paddingBottom: insets.bottom },
           ]}
         >
@@ -418,11 +407,11 @@ export default function BreathControlFreeModeScreen() {
 
           <View
             style={[
-              styles.readyContent,
+              exerciseStyles.readyContent,
               { paddingHorizontal: horizontalPadding },
             ]}
           >
-            <View style={styles.modeIcon}>
+            <View style={exerciseStyles.modeIcon}>
               <Ionicons
                 name="water-outline"
                 size={36}
@@ -430,22 +419,22 @@ export default function BreathControlFreeModeScreen() {
               />
             </View>
 
-            <Text style={styles.pageTitle}>
+            <Text style={exerciseStyles.pageTitle}>
               Breath Control Free Mode
             </Text>
 
-            <Text style={styles.pageDescription}>
+            <Text style={exerciseStyles.pageDescription}>
               Practice your breathing naturally without a set
               drill or target range.
             </Text>
 
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>
+            <View style={exerciseStyles.infoCard}>
+              <Text style={exerciseStyles.infoTitle}>
                 LIVE FEEDBACK
               </Text>
 
-              <View style={styles.infoRow}>
-                <View style={styles.infoIcon}>
+              <View style={exerciseStyles.summaryRow}>
+                <View style={exerciseStyles.infoIcon}>
                   <Ionicons
                     name="pulse-outline"
                     size={20}
@@ -453,12 +442,12 @@ export default function BreathControlFreeModeScreen() {
                   />
                 </View>
 
-                <View style={styles.infoText}>
-                  <Text style={styles.infoName}>
+                <View style={exerciseStyles.infoText}>
+                  <Text style={exerciseStyles.infoName}>
                     Breath Flow
                   </Text>
 
-                  <Text style={styles.infoDescription}>
+                  <Text style={exerciseStyles.infoDescription}>
                     Track the rhythm and consistency of your
                     breath.
                   </Text>
@@ -466,14 +455,14 @@ export default function BreathControlFreeModeScreen() {
               </View>
             </View>
 
-            <View style={styles.noTargetCard}>
+            <View style={exerciseStyles.noTargetCard}>
               <Ionicons
                 name="information-circle-outline"
                 size={20}
                 color={COLORS.accent}
               />
 
-              <Text style={styles.noTargetText}>
+              <Text style={exerciseStyles.noTargetText}>
                 There is no target pattern in Free Mode. Focus
                 on comfortable, controlled breathing.
               </Text>
@@ -483,9 +472,9 @@ export default function BreathControlFreeModeScreen() {
           {renderBottomAction(
             <Pressable
               style={[
-                styles.startButton,
+                exerciseStyles.startButtonVariant3,
                 (isStarting || isStopping || isQuitting) &&
-                  styles.disabledButton,
+                  exerciseStyles.disabledButton,
               ]}
               onPress={() => {
                 void startFreeMode();
@@ -507,7 +496,7 @@ export default function BreathControlFreeModeScreen() {
                     color={COLORS.white}
                   />
 
-                  <Text style={styles.startButtonText}>
+                  <Text style={exerciseStyles.startButtonText}>
                     Start Free Mode
                   </Text>
                 </>
@@ -522,14 +511,14 @@ export default function BreathControlFreeModeScreen() {
   }
 
   const flowPercentage =
-    volumeDb <= MIN_VOLUME_DB
+    volumeDb <= VOLUME_DBFS_MIN
       ? null
       : Math.round(
           Math.max(
             0,
             Math.min(
               100,
-              ((volumeDb - MIN_VOLUME_DB) / 60) * 100,
+              ((volumeDb - VOLUME_DBFS_MIN) / 60) * 100,
             ),
           ),
         );
@@ -538,7 +527,7 @@ export default function BreathControlFreeModeScreen() {
     <>
       <SafeAreaView
         style={[
-          styles.screen,
+          exerciseStyles.screen,
           { paddingBottom: insets.bottom },
         ]}
       >
@@ -546,51 +535,51 @@ export default function BreathControlFreeModeScreen() {
 
         <View
           style={[
-            styles.exerciseContent,
+            exerciseStyles.exerciseContent,
             { paddingHorizontal: horizontalPadding },
           ]}
         >
-          <View style={styles.exerciseTopRow}>
+          <View style={exerciseStyles.exerciseTopRowVariant1}>
             <View>
-              <Text style={styles.modeLabel}>
+              <Text style={exerciseStyles.modeLabel}>
                 FREE PRACTICE
               </Text>
 
-              <Text style={styles.exerciseSubtitle}>
+              <Text style={exerciseStyles.exerciseSubtitle}>
                 Explore your natural breath
               </Text>
             </View>
 
-            <View style={styles.timeBadge}>
+            <View style={exerciseStyles.timeBadge}>
               <Ionicons
                 name="time-outline"
                 size={16}
                 color={COLORS.accent}
               />
 
-              <Text style={styles.timeText}>
+              <Text style={exerciseStyles.timeText}>
                 {formattedTime}
               </Text>
             </View>
           </View>
 
-          <View style={styles.liveCard}>
-            <Text style={styles.cardLabel}>
+          <View style={exerciseStyles.liveCardVariant6}>
+            <Text style={exerciseStyles.cardLabel}>
               CURRENT BREATH FLOW
             </Text>
 
-            <Text style={styles.valueText}>
+            <Text style={exerciseStyles.valueText}>
               {flowPercentage === null
                 ? '--'
                 : `${flowPercentage}%`}
             </Text>
 
-            <View style={styles.barRow}>
+            <View style={exerciseStyles.barRow}>
               {flowHistory.map((value, index) => (
                 <View
                   key={index}
                   style={[
-                    styles.bar,
+                    exerciseStyles.bar,
                     {
                       height: `${Math.max(12, value * 100)}%`,
                       opacity:
@@ -602,14 +591,14 @@ export default function BreathControlFreeModeScreen() {
             </View>
           </View>
 
-          <View style={styles.noteCard}>
+          <View style={exerciseStyles.noteCardVariant1}>
             <Ionicons
               name="flower-outline"
               size={18}
               color={COLORS.accent}
             />
 
-            <Text style={styles.noteText}>
+            <Text style={exerciseStyles.noteText}>
               Stay relaxed, keep your breaths smooth and
               steady, and let the pattern guide you naturally.
             </Text>
@@ -619,8 +608,8 @@ export default function BreathControlFreeModeScreen() {
         {renderBottomAction(
           <Pressable
             style={[
-              styles.stopButton,
-              isStopping && styles.disabledButton,
+              exerciseStyles.stopButtonVariant1,
+              isStopping && exerciseStyles.disabledButton,
             ]}
             onPress={() => {
               void stopFreeMode();
@@ -638,7 +627,7 @@ export default function BreathControlFreeModeScreen() {
                   color={COLORS.white}
                 />
 
-                <Text style={styles.startButtonText}>
+                <Text style={exerciseStyles.startButtonText}>
                   Stop Free Mode
                 </Text>
               </>
@@ -651,239 +640,3 @@ export default function BreathControlFreeModeScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  header: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    marginTop: 120,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerSpacer: {
-    width: 34,
-  },
-  readyContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  modeIcon: {
-    width: 92,
-    height: 92,
-    borderRadius: 28,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 18,
-  },
-  pageTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  pageDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  infoCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
-    marginTop: 24,
-  },
-  infoTitle: {
-    fontFamily: 'FredokaBold',
-    color: COLORS.brown,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    marginBottom: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  infoIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  infoText: {
-    flex: 1,
-  },
-  infoName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  infoDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  noTargetCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginTop: 18,
-  },
-  noTargetText: {
-    flex: 1,
-    marginLeft: 10,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-  },
-  bottomAction: {
-    paddingTop: 12,
-  },
-  startButton: {
-    marginBottom: 50,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  disabledButton: {
-    opacity: 0.7,
-  },
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.white,
-  },
-  exerciseContent: {
-    flex: 1,
-    justifyContent: 'space-between',
-    paddingTop: 12,
-  },
-  exerciseTopRow: {
-    marginTop: 90,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  modeLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: COLORS.accent,
-    letterSpacing: 1.4,
-  },
-  exerciseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 5,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  timeText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  liveCard: {
-    marginTop: -80,
-    backgroundColor: COLORS.background,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
-  },
-  cardLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: COLORS.brown,
-    letterSpacing: 1.3,
-  },
-  valueText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 32,
-    color: COLORS.brown,
-    marginTop: 8,
-  },
-  barRow: {
-    height: 150,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  bar: {
-    width: 10,
-    borderRadius: 8,
-    backgroundColor: COLORS.accent,
-    minHeight: 12,
-  },
-  noteCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 50,
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  noteText: {
-    flex: 1,
-    marginLeft: 10,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.dark,
-  },
-  stopButton: {
-    height: 52,
-    marginTop: -55,
-    marginBottom: 50,
-    borderRadius: 16,
-    backgroundColor: COLORS.dark,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-});

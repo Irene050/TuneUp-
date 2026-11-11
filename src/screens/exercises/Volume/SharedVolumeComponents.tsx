@@ -1,6 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollView, Text, View } from 'react-native';
 
-import { COLORS } from '@/constants/appConstants';
+import { COLORS, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { clamp } from '@/utils/math';
 
 type VolumeVisualizerVariant =
   | 'crescendo'
@@ -24,12 +27,12 @@ export function VolumeVisualizer({
 
   if (variant === 'freeMode') {
     return (
-      <View style={styles.freeModeWaveRow}>
+      <View style={exerciseStyles.freeModeWaveRow}>
         {actualBars.map((value, index) => (
           <View
             key={`volume-wave-${index}`}
             style={[
-              styles.freeModeWave,
+              exerciseStyles.freeModeWave,
               {
                 height:
                   value > 0
@@ -45,20 +48,13 @@ export function VolumeVisualizer({
   }
 
   return (
-    <View
-      style={[
-        styles.visualizer,
-        variant === 'crescendo' && styles.crescendoBars,
-        variant === 'decrescendo' && styles.decrescendoBars,
-      ]}
-    >
-      <View style={styles.actualBars}>
+    <View style={exerciseStyles.visualizer_SharedVolumeComponents}>
+      <View style={exerciseStyles.actualBars_SharedVolumeComponents}>
         {actualBars.map((height, index) => (
           <View
             key={`actual-${index}`}
             style={[
-              styles.actualBar,
-              variant === 'decrescendo' && styles.decrescendoBar,
+              exerciseStyles.actualBar_SharedVolumeComponents,
               {
                 height:
                   height > 0
@@ -69,6 +65,202 @@ export function VolumeVisualizer({
           />
         ))}
       </View>
+    </View>
+  );
+}
+
+export function VolumeRampRecordingContent({
+  direction,
+  instruction,
+  liveHistory,
+  seconds,
+  guideElapsed,
+  durationSeconds,
+  currentRep,
+  repetitions,
+  liveSmoothness,
+}: {
+  direction: 'crescendo' | 'decrescendo';
+  instruction: { title: string; subtitle: string };
+  liveHistory: number[];
+  seconds: number;
+  guideElapsed: number;
+  durationSeconds: number;
+  currentRep: number;
+  repetitions: number;
+  liveSmoothness: number;
+}) {
+  const progress = clamp(
+    durationSeconds > 0 ? seconds / durationSeconds : 0,
+    0,
+    1,
+  );
+  const guideProgress = clamp(
+    durationSeconds > 0 ? guideElapsed / durationSeconds : 0,
+    0,
+    1,
+  );
+  const activeGuideBar = Math.min(
+    VOLUME_RAMP_BAR_COUNT - 1,
+    Math.floor(guideProgress * VOLUME_RAMP_BAR_COUNT),
+  );
+  const directionLabel =
+    direction === 'crescendo'
+      ? { start: 'SOFT', end: 'LOUD' }
+      : { start: 'LOUD', end: 'SOFT' };
+
+  return (
+    <View style={exerciseStyles.screenVariant1}>
+      <View style={exerciseStyles.exercisePrompt}>
+        <Text style={exerciseStyles.exercisePromptTitle}>
+          {instruction.title}
+        </Text>
+        <Text style={exerciseStyles.exercisePromptSubtitle}>
+          {instruction.subtitle}
+        </Text>
+      </View>
+
+      <ScrollView
+        style={exerciseStyles.infoText}
+        contentContainerStyle={exerciseStyles.exerciseScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={exerciseStyles.liveContent}>
+          <View style={exerciseStyles.guideCard}>
+            <Text style={exerciseStyles.cardTitle}>Follow this pattern</Text>
+
+            <View style={exerciseStyles.guideBars}>
+              {Array.from(
+                { length: VOLUME_RAMP_BAR_COUNT },
+                (_, index) => {
+                  const rampProgress =
+                    index / Math.max(1, VOLUME_RAMP_BAR_COUNT - 1);
+                  const height = direction === 'crescendo'
+                    ? 0.08 + Math.pow(rampProgress, 0.75) * 0.92
+                    : 0.83 - rampProgress * 0.65;
+
+                  return (
+                    <View
+                      key={`target-guide-${direction}-${index}`}
+                      style={[
+                        exerciseStyles.guideBar,
+                        {
+                          height: `${height * 100}%`,
+                          backgroundColor:
+                            index === activeGuideBar
+                              ? COLORS.accent
+                              : index < activeGuideBar
+                                ? COLORS.otherpink
+                                : COLORS.border,
+                        },
+                      ]}
+                    />
+                  );
+                },
+              )}
+
+              <View
+                pointerEvents="none"
+                style={[
+                  exerciseStyles.guideIndicator,
+                  { left: `${Math.min(guideProgress * 100, 98.5)}%` },
+                ]}
+              />
+            </View>
+
+            <View style={exerciseStyles.guideLabels}>
+              <Text style={exerciseStyles.guideLabel}>
+                {directionLabel.start}
+              </Text>
+              <Text style={exerciseStyles.guideLabel}>
+                {directionLabel.end}
+              </Text>
+            </View>
+
+            <View style={exerciseStyles.guideProgressTrack}>
+              <View
+                style={[
+                  exerciseStyles.guideProgressFill,
+                  { width: `${guideProgress * 100}%` },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={exerciseStyles.visualizerCard}>
+            <View style={exerciseStyles.resultDetailRow}>
+              <View>
+                <Text style={exerciseStyles.resultStatValue}>
+                  Your Performance
+                </Text>
+                <Text style={exerciseStyles.exerciseHeaderSubtitle}>
+                  Match the target {direction}
+                </Text>
+              </View>
+
+              <View style={exerciseStyles.micCircle}>
+                <Ionicons name="mic" size={18} color={COLORS.brown} />
+              </View>
+            </View>
+
+            <View style={exerciseStyles.visualizerLegend}>
+              <View style={exerciseStyles.legendDot} />
+              <Text style={exerciseStyles.legendText}>Your voice</Text>
+            </View>
+
+            <VolumeVisualizer
+              liveHistory={liveHistory}
+              barCount={VOLUME_RAMP_BAR_COUNT}
+              variant={direction}
+            />
+
+            <View style={exerciseStyles.rangeRow}>
+              <Text style={exerciseStyles.visualizerLabel}>
+                {directionLabel.start}
+              </Text>
+              <Text style={exerciseStyles.visualizerLabel}>
+                {directionLabel.end}
+              </Text>
+            </View>
+          </View>
+
+          <View style={exerciseStyles.sessionRow}>
+            <View style={exerciseStyles.sessionPart}>
+              <Text style={exerciseStyles.sessionLabel}>REPETITION</Text>
+              <Text style={exerciseStyles.sessionValue}>
+                {currentRep} / {repetitions}
+              </Text>
+            </View>
+
+            <View style={exerciseStyles.sessionDivider} />
+
+            <View style={exerciseStyles.sessionPart}>
+              <Text style={exerciseStyles.sessionLabel}>TIME</Text>
+              <Text style={exerciseStyles.sessionValue}>
+                0:{String(seconds).padStart(2, '0')}
+              </Text>
+            </View>
+
+            <View style={exerciseStyles.sessionDivider} />
+
+            <View style={exerciseStyles.sessionPart}>
+              <Text style={exerciseStyles.sessionLabel}>SMOOTHNESS</Text>
+              <Text style={exerciseStyles.sessionValue}>
+                {liveSmoothness}%
+              </Text>
+            </View>
+          </View>
+
+          <View style={exerciseStyles.exerciseProgressTrack}>
+            <View
+              style={[
+                exerciseStyles.exerciseProgressFill,
+                { width: `${progress * 100}%` },
+              ]}
+            />
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -85,103 +277,20 @@ export function ResultItem({
   return (
     <View
       style={[
-        styles.resultItem,
-        variant === 'crescendo' && styles.crescendoResultItem,
-        variant === 'decrescendo' && styles.decrescendoResultItem,
+        exerciseStyles.resultItem,
+        variant === 'crescendo' && exerciseStyles.crescendoResultItem,
+        variant === 'decrescendo' && exerciseStyles.decrescendoResultItem,
       ]}
     >
       <Text
         style={[
-          styles.resultItemLabel,
-          variant === 'decrescendo' && styles.decrescendoResultItemLabel,
+          exerciseStyles.resultItemLabel,
+          variant === 'decrescendo' && exerciseStyles.decrescendoResultItemLabel,
         ]}
       >
         {label}
       </Text>
-      <Text style={styles.resultItemValue}>{value}</Text>
+      <Text style={exerciseStyles.resultItemValue}>{value}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  visualizer: {
-    height: 76,
-    marginTop: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  actualBars: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actualBar: {
-    flex: 1,
-    maxWidth: 8,
-    backgroundColor: COLORS.waveform,
-    borderRadius: 5,
-  },
-  crescendoBars: {
-    gap: 3,
-  },
-  decrescendoBars: {
-    gap: 0,
-  },
-  decrescendoBar: {
-    marginHorizontal: 1,
-  },
-  resultItem: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  crescendoResultItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.background,
-    gap: 12,
-  },
-  decrescendoResultItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    paddingVertical: 7,
-  },
-  decrescendoResultItemLabel: {
-    marginRight: 12,
-  },
-  freeModeWaveRow: {
-    height: 86,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 2,
-  },
-  freeModeWave: {
-    width: 5,
-    borderRadius: 999,
-    backgroundColor: COLORS.accent,
-    minHeight: 5,
-  },
-  resultItemLabel: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  resultItemValue: {
-    flexShrink: 1,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: COLORS.brown,
-    textAlign: 'right',
-  },
-});

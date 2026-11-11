@@ -1,17 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  BackHandler,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   AGILITY_CLOSE_NOTE_SEMITONES,
   AGILITY_GOOD_NOTE_SEMITONES,
@@ -19,18 +12,19 @@ import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
   QUICK_INTERVAL_JUMP_PARAMS,
   type Tier,
 } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
+
 import ExerciseScreen, {
+  ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
   ExerciseRecordingScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
@@ -49,6 +43,15 @@ import {
   frequencyToNoteName,
   getSemitoneDistance,
 } from '@/utils/music/notes';
+import {
+  AGILITY_NOTE_START_DELAY_MS,
+  getActiveSequenceNoteIndex,
+} from '@/utils/music/notePlayer';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 const MAX_RECORDING_SECONDS = 15;
 
@@ -106,11 +109,11 @@ const initialAdaptiveConfig: AdaptiveConfig = {
 
 export default function QuickIntervalJumpScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
-  const [tierLoading, setTierLoading] = useState(true);
+  const [isLoadingTier, setIsLoadingTier] = useState(true);
 
   const [adaptiveConfig, setAdaptiveConfig] =
     useState<AdaptiveConfig>(initialAdaptiveConfig);
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+  const [isLoadingParams, setIsLoadingParams] =
     useState(true);
 
   const [vocalRangeMessage, setVocalRangeMessage] = useState(
@@ -121,11 +124,11 @@ export default function QuickIntervalJumpScreen() {
 
   const [isPreparingResume, setIsPreparingResume] = useState(false);
 
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(
     EXERCISE_COUNTDOWN_SECONDS,
   );
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
 
   const [isPlayingReference, setIsPlayingReference] = useState(false);
@@ -147,10 +150,9 @@ export default function QuickIntervalJumpScreen() {
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
-  const phaseRef = useRef<Phase>('instructions');
   const audioContextRef = useRef<AudioContext | null>(null);
   const completedAudioChunksRef = useRef<Float32Array[]>([]);
-  const recordingStartRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -189,7 +191,7 @@ export default function QuickIntervalJumpScreen() {
     [],
   );
 
-  const changePhase = useCallback((nextPhase: Phase) => {
+  const setExercisePhase = useCallback((nextPhase: Phase) => {
     phaseRef.current = nextPhase;
 
     if (mountedRef.current) {
@@ -203,7 +205,7 @@ export default function QuickIntervalJumpScreen() {
       recordingTimerRef.current = null;
     }
 
-    recordingStartRef.current = null;
+    recordingStartedAtRef.current = null;
   }, []);
 
   const resetLivePitch = useCallback(() => {
@@ -275,7 +277,7 @@ export default function QuickIntervalJumpScreen() {
 
       if (!user) {
         setTier('beginner');
-        setTierLoading(false);
+        setIsLoadingTier(false);
         return;
       }
 
@@ -297,10 +299,10 @@ export default function QuickIntervalJumpScreen() {
             : 'beginner';
 
         setTier(validTier);
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Failed to load agility component tier:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
@@ -308,7 +310,7 @@ export default function QuickIntervalJumpScreen() {
         }
       } finally {
         if (!cancelled) {
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
       }
     };
@@ -321,12 +323,12 @@ export default function QuickIntervalJumpScreen() {
   }, []);
 
   useEffect(() => {
-    if (tierLoading) return;
+    if (isLoadingTier) return;
 
     let cancelled = false;
 
     const loadAdaptiveParameters = async () => {
-      setIsLoadingAdaptiveParams(true);
+      setIsLoadingParams(true);
       setHasUsableVocalRange(false);
       setVocalRangeMessage('Loading your saved vocal range…');
 
@@ -346,7 +348,7 @@ export default function QuickIntervalJumpScreen() {
           'Sign in to the account where you completed your vocal range assessment.',
         );
 
-        setIsLoadingAdaptiveParams(false);
+        setIsLoadingParams(false);
         return;
       }
 
@@ -369,10 +371,10 @@ export default function QuickIntervalJumpScreen() {
           .slice(-5)
           .map((record) => record.scorePct)
           .filter((score) => Number.isFinite(score));
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Could not load Quick Interval Jump score history:',
-          error,
+          errorMessage,
         );
       }
 
@@ -404,10 +406,10 @@ export default function QuickIntervalJumpScreen() {
         ) {
           vocalRange = { lowHz, highHz };
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Could not load the latest assessment vocal range:',
-          error,
+          errorMessage,
         );
       }
 
@@ -441,13 +443,13 @@ export default function QuickIntervalJumpScreen() {
         );
       }
 
-      setIsLoadingAdaptiveParams(false);
+      setIsLoadingParams(false);
     };
 
-    void loadAdaptiveParameters().catch((error) => {
+    void loadAdaptiveParameters().catch((errorMessage) => {
       console.warn(
         'Failed to generate Quick Interval Jump parameters:',
-        error,
+        errorMessage,
       );
 
       if (!cancelled) {
@@ -464,14 +466,14 @@ export default function QuickIntervalJumpScreen() {
         setVocalRangeMessage(
           'Unable to load your vocal range. Check your connection and try again.',
         );
-        setIsLoadingAdaptiveParams(false);
+        setIsLoadingParams(false);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [tier, tierLoading, accuracyTarget]);
+  }, [tier, isLoadingTier, accuracyTarget]);
 
   const processCombinedRecording = useCallback(
     async (
@@ -488,7 +490,7 @@ export default function QuickIntervalJumpScreen() {
       }
 
       processingRef.current = true;
-      changePhase('processing');
+      setExercisePhase('processing');
 
       try {
         const totalSamples = audioChunks.reduce(
@@ -497,7 +499,7 @@ export default function QuickIntervalJumpScreen() {
         );
 
         if (totalSamples === 0) {
-          changePhase('listening');
+          setExercisePhase('listening');
           setShowNoAudioModal(true);
           return;
         }
@@ -518,7 +520,7 @@ export default function QuickIntervalJumpScreen() {
         });
 
         if (!hasSufficientRecordedSignal(combinedSamples)) {
-          changePhase('listening');
+          setExercisePhase('listening');
           setShowNoAudioModal(true);
           return;
         }
@@ -566,10 +568,10 @@ export default function QuickIntervalJumpScreen() {
               scorePct: finalScore,
             },
           );
-        } catch (error) {
+        } catch (errorMessage) {
           console.error(
             'Failed to save Quick Interval Jump progress:',
-            error,
+            errorMessage,
           );
         }
 
@@ -592,15 +594,15 @@ export default function QuickIntervalJumpScreen() {
           durationMs: measurement.durationMs,
         });
 
-        changePhase('results');
-      } catch (error) {
+        setExercisePhase('results');
+      } catch (errorMessage) {
         console.warn(
           'Quick Interval Jump processing failed:',
-          error,
+          errorMessage,
         );
 
         if (mountedRef.current) {
-          changePhase('instructions');
+          setExercisePhase('instructions');
         }
       } finally {
         processingRef.current = false;
@@ -609,7 +611,7 @@ export default function QuickIntervalJumpScreen() {
     [
       accuracyTarget,
       adaptiveConfig.frequencies,
-      changePhase,
+      setExercisePhase,
       repetitions,
       tier,
     ],
@@ -640,8 +642,8 @@ export default function QuickIntervalJumpScreen() {
       });
 
       if (!hasSufficientRecordedSignal(samples)) {
-        changePhase('listening');
-        setRecordingTime(0);
+        setExercisePhase('listening');
+        setElapsedSeconds(0);
         resetLivePitch();
         setShowNoAudioModal(true);
         return;
@@ -651,9 +653,9 @@ export default function QuickIntervalJumpScreen() {
 
       if (currentRep < repetitions) {
         setCurrentRep((previous) => previous + 1);
-        setRecordingTime(0);
+        setElapsedSeconds(0);
         resetLivePitch();
-        changePhase('listening');
+        setExercisePhase('listening');
         return;
       }
 
@@ -663,7 +665,7 @@ export default function QuickIntervalJumpScreen() {
       );
     },
     [
-      changePhase,
+      setExercisePhase,
       clearRecordingTimer,
       currentRep,
       processCombinedRecording,
@@ -690,10 +692,10 @@ export default function QuickIntervalJumpScreen() {
 
     try {
       await stopAudioRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       console.warn(
         'Quick Interval Jump recording stop failed:',
-        error,
+        errorMessage,
       );
 
       recordingStopRequestedRef.current = false;
@@ -702,11 +704,11 @@ export default function QuickIntervalJumpScreen() {
         mountedRef.current &&
         !quitInProgressRef.current
       ) {
-        changePhase('listening');
+        setExercisePhase('listening');
       }
     }
   }, [
-    changePhase,
+    setExercisePhase,
     clearRecordingTimer,
     stopAudioRecording,
   ]);
@@ -717,10 +719,10 @@ export default function QuickIntervalJumpScreen() {
 
     try {
       await cancelAudioRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       console.warn(
         'Quick Interval Jump recording cancellation failed:',
-        error,
+        errorMessage,
       );
     }
   }, [cancelAudioRecording, clearRecordingTimer]);
@@ -758,7 +760,7 @@ export default function QuickIntervalJumpScreen() {
       phaseRef.current !== 'listening' ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
-      isLoadingAdaptiveParams ||
+      isLoadingParams ||
       !hasUsableVocalRange ||
       notesPerRepetition < 2
     ) {
@@ -826,8 +828,8 @@ export default function QuickIntervalJumpScreen() {
           await sleep(gapSec * 1000);
         }
       }
-    } catch (error) {
-      console.warn('Reference playback failed:', error);
+    } catch (errorMessage) {
+      console.warn('Reference playback failed:', errorMessage);
     } finally {
       if (playbackToken === playbackTokenRef.current) {
         referencePlayingRef.current = false;
@@ -842,8 +844,8 @@ export default function QuickIntervalJumpScreen() {
 
   const beginExercise = () => {
     if (
-      tierLoading ||
-      isLoadingAdaptiveParams ||
+      isLoadingTier ||
+      isLoadingParams ||
       !hasUsableVocalRange ||
       notesPerRepetition < 2 ||
       showQuitModalRef.current ||
@@ -858,10 +860,10 @@ export default function QuickIntervalJumpScreen() {
 
     setResult(null);
     setCurrentRep(1);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     resetLivePitch();
 
-    changePhase('listening');
+    setExercisePhase('listening');
   };
 
   const startRecording = async (countdownToken: number) => {
@@ -878,8 +880,8 @@ export default function QuickIntervalJumpScreen() {
       processingRef.current = false;
       recordingStopRequestedRef.current = false;
       resetLivePitch();
-      setRecordingTime(0);
-      changePhase('recording');
+      setElapsedSeconds(0);
+      setExercisePhase('recording');
 
       await startAudioRecording();
 
@@ -894,10 +896,10 @@ export default function QuickIntervalJumpScreen() {
         return;
       }
 
-      recordingStartRef.current = Date.now();
+      recordingStartedAtRef.current = Date.now();
 
       recordingTimerRef.current = setInterval(() => {
-        const start = recordingStartRef.current;
+        const start = recordingStartedAtRef.current;
 
         if (
           start === null ||
@@ -909,29 +911,29 @@ export default function QuickIntervalJumpScreen() {
           return;
         }
 
-        const elapsed = (Date.now() - start) / 1000;
+        const elapsedSeconds = (Date.now() - start) / 1000;
 
-        setRecordingTime(
-          Math.min(elapsed, repetitionDurationSec),
+        setElapsedSeconds(
+          Math.min(elapsedSeconds, repetitionDurationSec),
         );
 
         if (
-          elapsed >= repetitionDurationSec ||
-          elapsed >= MAX_RECORDING_SECONDS
+          elapsedSeconds >= repetitionDurationSec ||
+          elapsedSeconds >= MAX_RECORDING_SECONDS
         ) {
           void stopActiveRecording();
         }
-      }, 100);
-    } catch (error) {
+      }, 20);
+    } catch (errorMessage) {
       console.warn(
         'Quick Interval Jump recording failed to start:',
-        error,
+        errorMessage,
       );
 
       clearRecordingTimer();
 
       if (mountedRef.current) {
-        changePhase('listening');
+        setExercisePhase('listening');
         setVocalRangeMessage(
           'Unable to start microphone recording. Check microphone permission and try again.',
         );
@@ -944,7 +946,7 @@ export default function QuickIntervalJumpScreen() {
       phaseRef.current !== 'listening' ||
       referencePlayingRef.current ||
       isPlayingReference ||
-      isLoadingAdaptiveParams ||
+      isLoadingParams ||
       !hasUsableVocalRange ||
       showQuitModalRef.current ||
       quitInProgressRef.current
@@ -957,14 +959,14 @@ export default function QuickIntervalJumpScreen() {
     playbackTokenRef.current += 1;
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setResult(null);
     resetLivePitch();
 
     processingRef.current = false;
     recordingStopRequestedRef.current = false;
 
-    changePhase('countdown');
+    setExercisePhase('countdown');
 
     for (
       let value = EXERCISE_COUNTDOWN_SECONDS;
@@ -984,6 +986,18 @@ export default function QuickIntervalJumpScreen() {
 
       await sleep(1000);
     }
+
+    if (
+      !mountedRef.current ||
+      countdownToken !== countdownTokenRef.current ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
+    setCountdown(0);
+    await sleep(AGILITY_NOTE_START_DELAY_MS);
 
     if (
       !mountedRef.current ||
@@ -1016,14 +1030,14 @@ export default function QuickIntervalJumpScreen() {
     completedAudioChunksRef.current = [];
 
     setResult(null);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setCurrentRep(1);
 
     resetLivePitch();
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
-    changePhase('instructions');
+    setExercisePhase('instructions');
   };
 
   const pauseForExitPrompt = useCallback(async () => {
@@ -1054,21 +1068,21 @@ export default function QuickIntervalJumpScreen() {
     if (currentPhase === 'recording') {
       await cancelActiveRecording();
 
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       resetLivePitch();
-      changePhase('listening');
+      setExercisePhase('listening');
     } else if (currentPhase === 'countdown') {
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-      changePhase('listening');
+      setExercisePhase('listening');
     } else if (currentPhase === 'listening') {
-      changePhase('listening');
+      setExercisePhase('listening');
     }
   }, [
     cancelActiveRecording,
     confirmation,
     currentRep,
-    changePhase,
+    setExercisePhase,
     resetLivePitch,
     updateQuitModalVisibility,
   ]);
@@ -1095,7 +1109,7 @@ export default function QuickIntervalJumpScreen() {
       }
 
       setCurrentRep(pausedRepetitionRef.current);
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       resetLivePitch();
@@ -1103,7 +1117,7 @@ export default function QuickIntervalJumpScreen() {
       processingRef.current = false;
       recordingStopRequestedRef.current = false;
 
-      changePhase('listening');
+      setExercisePhase('listening');
 
       setIsPreparingResume(true);
 
@@ -1116,10 +1130,10 @@ export default function QuickIntervalJumpScreen() {
       return;
     }
 
-    changePhase(previouslyPausedPhase);
+    setExercisePhase(previouslyPausedPhase);
   }, [
     cancelActiveRecording,
-    changePhase,
+    setExercisePhase,
     resetLivePitch,
     updateQuitModalVisibility,
   ]);
@@ -1150,10 +1164,10 @@ export default function QuickIntervalJumpScreen() {
     if (context) {
       try {
         await context.close();
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Could not close audio context while quitting:',
-          error,
+          errorMessage,
         );
       }
     }
@@ -1230,13 +1244,13 @@ export default function QuickIntervalJumpScreen() {
       tip={vocalRangeMessage}
       tier={tier}
       startDisabled={
-        tierLoading ||
-        isLoadingAdaptiveParams ||
+        isLoadingTier ||
+        isLoadingParams ||
         !hasUsableVocalRange ||
         notesPerRepetition < 2
       }
       startLabel={
-        tierLoading || isLoadingAdaptiveParams
+        isLoadingTier || isLoadingParams
           ? 'Preparing Exercise...'
           : !hasUsableVocalRange
             ? 'Vocal Assessment Required'
@@ -1261,7 +1275,9 @@ export default function QuickIntervalJumpScreen() {
             frequencyToNoteName,
           )}
           activeIndex={activeReferenceNoteIndex}
-          caption="The pink highlight follows the note being played."
+          noteDurationSec={noteDurationSec}
+          gapSec={gapSec}
+          caption="The highlight follows each note while it plays."
         />
       }
       isPlayingReference={isPlayingReference}
@@ -1272,46 +1288,30 @@ export default function QuickIntervalJumpScreen() {
   );
 
   const renderCountdown = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={COLORS.brown}
-        />
-      </View>
-
-      <Text style={styles.phaseTitle}>Get Ready</Text>
-
-      <Text style={styles.countdownText}>{countdown}</Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Prepare for repetition {currentRep} of {repetitions}.
-      </Text>
-    </View>
+    <ExerciseCountdownScreen
+      icon="flash-outline"
+      title="Get Ready"
+      currentRep={currentRep}
+      repetitions={repetitions}
+      countdown={countdown}
+      promptTitle="Prepare to sing"
+      prompt={`Get ready for repetition ${currentRep} of ${repetitions}.`}
+      onBack={() => void pauseForExitPrompt()}
+    />
   );
 
   const renderRecording = () => {
     const progress = Math.min(
-      recordingTime / repetitionDurationSec,
+      elapsedSeconds / repetitionDurationSec,
       1,
     );
 
-    const noteSlotDurationSec = noteDurationSec + gapSec;
-
-    const noteIndexByTime = Math.floor(
-      recordingTime / noteSlotDurationSec,
+    const activeRecordingNoteIndex = getActiveSequenceNoteIndex(
+      elapsedSeconds,
+      notesPerRepetition,
+      noteDurationSec,
+      gapSec,
     );
-
-    const timeWithinNoteSlot =
-      recordingTime -
-      noteIndexByTime * noteSlotDurationSec;
-
-    const activeRecordingNoteIndex =
-      noteIndexByTime < notesPerRepetition &&
-      timeWithinNoteSlot < noteDurationSec
-        ? noteIndexByTime
-        : null;
 
     const activeTargetFrequency =
       activeRecordingNoteIndex !== null
@@ -1349,6 +1349,8 @@ export default function QuickIntervalJumpScreen() {
             frequencyToNoteName,
           )}
           activeIndex={activeRecordingNoteIndex}
+          noteDurationSec={noteDurationSec}
+          gapSec={gapSec}
           liveNote={
             livePitchHz === null
               ? undefined
@@ -1360,35 +1362,35 @@ export default function QuickIntervalJumpScreen() {
 
         <View
           style={[
-            styles.liveCard,
+            exerciseStyles.liveCardVariant3,
             { borderColor: COLORS.border },
           ]}
         >
-          <Text style={styles.liveLabel}>
+          <Text style={exerciseStyles.liveLabel}>
             CURRENT NOTE
           </Text>
 
-          <Text style={styles.liveCurrentNote}>
+          <Text style={exerciseStyles.liveCurrentNote}>
             {liveDetectedNote ?? '--'}
           </Text>
 
-          <Text style={styles.liveStatValue}>
+          <Text style={exerciseStyles.detectedPitchTextSub}>
             {livePitchHz !== null
               ? `${livePitchHz.toFixed(1)} Hz`
               : '--'}
           </Text>
         </View>
 
-        <View style={styles.timerTrack}>
+        <View style={exerciseStyles.timerTrackVariant1}>
           <View
             style={[
-              styles.timerFill,
+              exerciseStyles.timerFill,
               { width: `${progress * 100}%` },
             ]}
           />
         </View>
-        <Text style={styles.timerText}>
-          Recording Time: {recordingTime.toFixed(1)}s /{' '}
+        <Text style={exerciseStyles.timerText}>
+          Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
           {repetitionDurationSec.toFixed(1)}s
         </Text>
       </ExerciseRecordingScreen>
@@ -1408,18 +1410,18 @@ export default function QuickIntervalJumpScreen() {
     score: number,
     isLast = false,
   ) => (
-    <View style={isLast ? styles.scoreRowLast : styles.scoreRow}>
-      <View style={styles.scoreRowHeader}>
-        <Text style={styles.scoreRowLabel}>{label}</Text>
-        <Text style={styles.scoreRowValue}>
+    <View style={isLast ? exerciseStyles.scoreRowLast : exerciseStyles.scoreRow}>
+      <View style={exerciseStyles.scoreRowHeader}>
+        <Text style={exerciseStyles.scoreRowLabel}>{label}</Text>
+        <Text style={exerciseStyles.scoreRowValue}>
           {Math.round(score)}%
         </Text>
       </View>
 
-      <View style={styles.progressBackground}>
+      <View style={exerciseStyles.progressBackground}>
         <View
           style={[
-            styles.progressFill,
+            exerciseStyles.progressFill,
             {
               width: `${Math.min(
                 100,
@@ -1439,12 +1441,12 @@ export default function QuickIntervalJumpScreen() {
   ) => (
     <View
       style={[
-        styles.metricRow,
-        isLast && styles.metricRowLast,
+        exerciseStyles.metricRow,
+        isLast && exerciseStyles.metricRowLast,
       ]}
     >
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={exerciseStyles.resultRowLabel}>{label}</Text>
+      <Text style={exerciseStyles.metricValue}>{value}</Text>
     </View>
   );
 
@@ -1452,12 +1454,12 @@ export default function QuickIntervalJumpScreen() {
     if (!result) return null;
 
     return (
-      <View style={styles.resultsContent}>
+      <View style={exerciseStyles.resultsContentVariant2}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to exercises"
           hitSlop={10}
-          style={styles.quitButtonTop}
+          style={exerciseStyles.quitButtonTop}
           onPress={() => void pauseForExitPrompt()}
         >
           <Ionicons
@@ -1469,10 +1471,10 @@ export default function QuickIntervalJumpScreen() {
 
         <View
           style={[
-            styles.resultIcon,
+            exerciseStyles.resultIcon,
             result.passed
-              ? styles.resultIconPassed
-              : styles.resultIconFailed,
+              ? exerciseStyles.resultIconPassed
+              : exerciseStyles.resultIconFailed,
           ]}
         >
           <Ionicons
@@ -1482,28 +1484,28 @@ export default function QuickIntervalJumpScreen() {
           />
         </View>
 
-        <Text style={styles.resultTitle}>
+        <Text style={exerciseStyles.resultTitle}>
           {result.passed ? 'Great Job!' : 'Keep Practicing!'}
         </Text>
 
-        <Text style={styles.resultSubtitle}>
+        <Text style={exerciseStyles.resultSubtitle}>
           Quick Interval Jump Result
         </Text>
 
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>OVERALL SCORE</Text>
+        <View style={exerciseStyles.scoreCard}>
+          <Text style={exerciseStyles.scoreLabel}>OVERALL SCORE</Text>
 
-          <Text style={styles.scoreValue}>
+          <Text style={exerciseStyles.scoreValue}>
             {Math.round(result.overall)}
           </Text>
 
-          <Text style={styles.scoreDescription}>
+          <Text style={exerciseStyles.scoreDescriptionVariant1}>
             out of 100
           </Text>
         </View>
 
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
+        <View style={exerciseStyles.resultCard}>
+          <Text style={exerciseStyles.resultCardTitle}>
             Performance Breakdown
           </Text>
 
@@ -1519,8 +1521,8 @@ export default function QuickIntervalJumpScreen() {
           )}
         </View>
 
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
+        <View style={exerciseStyles.resultCard}>
+          <Text style={exerciseStyles.resultCardTitle}>
             Performance Metrics
           </Text>
 
@@ -1550,17 +1552,17 @@ export default function QuickIntervalJumpScreen() {
           )}
         </View>
 
-        <View style={styles.tipCard}>
+        <View style={exerciseStyles.tipCardVariant1}>
           <Ionicons
             name="bulb-outline"
             size={20}
             color={COLORS.brown}
           />
-          <Text style={styles.tipText}>{result.feedback}</Text>
+          <Text style={exerciseStyles.tipTextVariant1}>{result.feedback}</Text>
         </View>
 
         <Pressable
-          style={styles.startButton}
+          style={exerciseStyles.startButtonVariant2}
           onPress={() => setConfirmation('tryAgain')}
           accessibilityRole="button"
           accessibilityLabel="Try the exercise again"
@@ -1570,11 +1572,11 @@ export default function QuickIntervalJumpScreen() {
             size={18}
             color={COLORS.white}
           />
-          <Text style={styles.startButtonText}>Try Again</Text>
+          <Text style={exerciseStyles.startButtonText}>Try Again</Text>
         </Pressable>
 
         <Pressable
-          style={styles.doneButton}
+          style={exerciseStyles.doneButtonVariant2}
           onPress={() => void pauseForExitPrompt()}
           accessibilityRole="button"
           accessibilityLabel="Back to exercises"
@@ -1584,7 +1586,7 @@ export default function QuickIntervalJumpScreen() {
             size={15}
             color={COLORS.brown}
           />
-          <Text style={styles.doneButtonText}>
+          <Text style={exerciseStyles.infoName}>
             Back to Exercises
           </Text>
         </Pressable>
@@ -1593,8 +1595,8 @@ export default function QuickIntervalJumpScreen() {
   };
 
   if (
-    tierLoading ||
-    isLoadingAdaptiveParams ||
+    isLoadingTier ||
+    isLoadingParams ||
     isPreparingResume
   ) {
     return (
@@ -1619,14 +1621,14 @@ export default function QuickIntervalJumpScreen() {
     <>
       {phase === 'results' ? (
         <ScrollView
-          style={styles.screen}
-          contentContainerStyle={styles.resultsWrapper}
+          style={exerciseStyles.screen}
+          contentContainerStyle={exerciseStyles.resultsWrapper}
           showsVerticalScrollIndicator={false}
         >
           {renderResults()}
         </ScrollView>
       ) : (
-        <View style={styles.screen}>
+        <View style={exerciseStyles.screen}>
           {phase === 'instructions' && renderInstructions()}
           {phase === 'listening' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
@@ -1660,7 +1662,7 @@ export default function QuickIntervalJumpScreen() {
         onRedo={() => {
           setShowNoAudioModal(false);
 
-          setRecordingTime(0);
+          setElapsedSeconds(0);
           setResult(null);
 
           resetLivePitch();
@@ -1668,7 +1670,7 @@ export default function QuickIntervalJumpScreen() {
           processingRef.current = false;
           recordingStopRequestedRef.current = false;
 
-          changePhase('listening');
+          setExercisePhase('listening');
 
           void startCountdown();
         }}
@@ -1686,9 +1688,9 @@ export default function QuickIntervalJumpScreen() {
         statusBarTranslucent
         onRequestClose={closeTryAgainConfirmation}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIcon}>
+        <View style={exerciseStyles.modalOverlay}>
+          <View style={exerciseStyles.modalCard}>
+            <View style={exerciseStyles.modalIcon}>
               <Ionicons
                 name="refresh"
                 size={30}
@@ -1696,9 +1698,9 @@ export default function QuickIntervalJumpScreen() {
               />
             </View>
 
-            <Text style={styles.modalTitle}>Try again?</Text>
+            <Text style={exerciseStyles.modalTitle}>Try again?</Text>
 
-            <Text style={styles.modalMessage}>
+            <Text style={exerciseStyles.modalMessage}>
               Are you sure you want to repeat this exercise? Your
               current result will be cleared.
             </Text>
@@ -1708,11 +1710,11 @@ export default function QuickIntervalJumpScreen() {
               accessibilityLabel="Cancel try again"
               onPress={closeTryAgainConfirmation}
               style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.buttonPressed,
+                exerciseStyles.continueButton,
+                pressed && exerciseStyles.disabledButton,
               ]}
             >
-              <Text style={styles.continueButtonText}>
+              <Text style={exerciseStyles.cardTitle}>
                 Cancel
               </Text>
             </Pressable>
@@ -1722,11 +1724,11 @@ export default function QuickIntervalJumpScreen() {
               accessibilityLabel="Confirm try again"
               onPress={handleTryAgainConfirmation}
               style={({ pressed }) => [
-                styles.quitButton,
-                pressed && styles.buttonPressed,
+                exerciseStyles.quitButton,
+                pressed && exerciseStyles.disabledButton,
               ]}
             >
-              <Text style={styles.quitButtonText}>
+              <Text style={exerciseStyles.quitButtonText}>
                 Try Again
               </Text>
             </Pressable>
@@ -1736,396 +1738,3 @@ export default function QuickIntervalJumpScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonTop: {
-    alignSelf: 'flex-end',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 8,
-  },
-  resultsContent: {
-    flexGrow: 1,
-    width: '100%',
-    paddingHorizontal: 24,
-    paddingTop: 52,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-  resultsWrapper: {
-    flexGrow: 1,
-    width: '100%',
-  },
-  centerScreen: {
-    flexGrow: 1,
-    minHeight: 650,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-  },
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
-  },
-  tipCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 15,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.brown,
-    marginLeft: 9,
-  },
-  startButton: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.white,
-  },
-  doneButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.lightGray,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 8,
-  },
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: COLORS.brown,
-    marginTop: 20,
-  },
-  liveCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  liveLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-  },
-  liveCurrentNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: COLORS.brown,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  liveDivider: {
-    height: 1,
-    alignSelf: 'stretch',
-    backgroundColor: COLORS.border,
-    marginVertical: 14,
-  },
-  liveStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  liveStatusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  liveStatLabel: {
-    flexShrink: 1,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-  },
-  timerText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  timerTrack: {
-    marginTop: 10,
-    width: '100%',
-    height: 7,
-    backgroundColor: COLORS.background,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  timerFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-  },
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  resultIconPassed: {
-    backgroundColor: COLORS.pink,
-  },
-  resultIconFailed: {
-    backgroundColor: COLORS.lightGray,
-  },
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 22,
-  },
-  scoreCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: COLORS.brown,
-    marginVertical: 3,
-  },
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginBottom: 14,
-  },
-  scoreRow: {
-    marginBottom: 14,
-  },
-  scoreRowLast: {
-    marginBottom: 0,
-  },
-  scoreRowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 7,
-  },
-  scoreRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  scoreRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  progressBackground: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: COLORS.pink,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  metricRowLast: {
-    borderBottomWidth: 0,
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    flex: 1,
-  },
-  metricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'right',
-    marginLeft: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    backgroundColor: COLORS.transparentbrown,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  modalMessage: {
-    marginTop: 10,
-    marginBottom: 23,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  continueButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-  },
-  continueButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  quitButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  quitButtonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.muted,
-  },
-  buttonPressed: {
-    opacity: 0.7,
-  },
-});

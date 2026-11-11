@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { noteNameToMidi } from '@/utils/music/notes';
 
 function getFeedbackColor(
@@ -34,12 +35,16 @@ export function AgilitySequenceGuide({
   names,
   caption = 'Follow the notes from left to right',
   activeIndex = null,
+  noteDurationSec,
+  gapSec,
   liveNote,
   showFeedback = false,
 }: {
   names: string[];
   caption?: string;
   activeIndex?: number | null;
+  noteDurationSec?: number;
+  gapSec?: number;
   liveNote?: string;
   showFeedback?: boolean;
 }) {
@@ -74,33 +79,43 @@ export function AgilitySequenceGuide({
   const staffWidth = Math.max(210, names.length * itemWidth + 42);
 
   return (
-    <View style={styles.card}>
-      <View style={styles.heading}>
+    <View style={exerciseStyles.card}>
+      <View style={exerciseStyles.referenceReadyRow}>
         <Ionicons
           name="musical-notes-outline"
           size={18}
           color={COLORS.brown}
         />
-        <Text style={styles.title}>Your note path</Text>
+        <Text style={exerciseStyles.infoName}>Your note path</Text>
       </View>
 
-      <Text style={styles.caption}>{caption}</Text>
+      <Text style={exerciseStyles.caption}>{caption}</Text>
+      {typeof noteDurationSec === 'number' &&
+      Number.isFinite(noteDurationSec) &&
+      noteDurationSec > 0 &&
+      typeof gapSec === 'number' &&
+      Number.isFinite(gapSec) &&
+      gapSec >= 0 ? (
+        <Text style={exerciseStyles.caption}>
+          {`Note ${noteDurationSec.toFixed(2)}s · Gap ${gapSec.toFixed(2)}s · Interval ${(noteDurationSec + gapSec).toFixed(2)}s`}
+        </Text>
+      ) : null}
 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={exerciseStyles.scrollContent}
       >
-        <View style={[styles.canvas, { width: staffWidth }]}>
+        <View style={[exerciseStyles.canvas, { width: staffWidth }]}>
           {[0, 1, 2, 3, 4].map(line => (
             <View
               key={`staff-line-${line}`}
-              style={[styles.line, { top: 12 + line * 10 }]}
+              style={[exerciseStyles.line, { top: 12 + line * 10 }]}
             />
           ))}
 
-          <View style={styles.treble}>
-            <Text style={styles.trebleClef}>𝄞</Text>
+          <View style={exerciseStyles.treble}>
+            <Text style={exerciseStyles.trebleClef}>𝄞</Text>
           </View>
 
           {names.map((name, index) => {
@@ -128,7 +143,7 @@ export function AgilitySequenceGuide({
               <View key={`${name}-${index}`}>
                 <View
                   style={[
-                    styles.halo,
+                    exerciseStyles.halo,
                     {
                       left: left - 5,
                       top: top - 5,
@@ -143,7 +158,7 @@ export function AgilitySequenceGuide({
 
                 <View
                   style={[
-                    styles.noteHead,
+                    exerciseStyles.noteHead,
                     {
                       left,
                       top,
@@ -155,7 +170,7 @@ export function AgilitySequenceGuide({
 
                 <View
                   style={[
-                    styles.noteStem,
+                    exerciseStyles.noteStem,
                     {
                       left: left + 9,
                       top: top - 15,
@@ -166,7 +181,7 @@ export function AgilitySequenceGuide({
 
                 <Text
                   style={[
-                    styles.noteNumber,
+                    exerciseStyles.noteNumber,
                     {
                       left: left - 5,
                       color: active
@@ -180,7 +195,7 @@ export function AgilitySequenceGuide({
 
                 <Text
                   style={[
-                    styles.noteName,
+                    exerciseStyles.noteName,
                     {
                       left: left - 10,
                       color: active
@@ -197,7 +212,7 @@ export function AgilitySequenceGuide({
         </View>
       </ScrollView>
 
-      <View style={styles.legend}>
+      <View style={exerciseStyles.legend}>
         {[
           {
             color: COLORS.waveform,
@@ -208,10 +223,10 @@ export function AgilitySequenceGuide({
           { color: COLORS.guideYellow, label: 'Close' },
           { color: COLORS.guideRed, label: 'Off pitch' },
         ].map(item => (
-          <View key={item.label} style={styles.legendItem}>
+          <View key={item.label} style={exerciseStyles.legendItem}>
             <View
               style={[
-                styles.legendDot,
+                exerciseStyles.liveStatusDot,
                 {
                   backgroundColor: item.color,
                   borderColor: item.border
@@ -221,7 +236,7 @@ export function AgilitySequenceGuide({
                 },
               ]}
             />
-            <Text style={styles.legendText}>
+            <Text style={exerciseStyles.scaleText}>
               {item.label}
             </Text>
           </View>
@@ -230,134 +245,3 @@ export function AgilitySequenceGuide({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 10,
-    paddingHorizontal: 11,
-    marginTop: 10,
-  },
-  heading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  caption: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 4,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    minWidth: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 2,
-  },
-  canvas: {
-    height: 86,
-    marginTop: 2,
-    alignSelf: 'center',
-  },
-  line: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    height: 1,
-    backgroundColor: COLORS.pink,
-  },
-  treble: {
-    position: 'absolute',
-    left: 0,
-    top: 3,
-    width: 24,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  trebleClef: {
-    fontSize: 32,
-    lineHeight: 38,
-    color: COLORS.brown,
-    fontFamily: 'serif',
-    includeFontPadding: false,
-  },
-  halo: {
-    position: 'absolute',
-    width: 23,
-    height: 18,
-    borderRadius: 10,
-    zIndex: 0,
-  },
-  noteHead: {
-    position: 'absolute',
-    width: 12,
-    height: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    transform: [{ rotate: '-20deg' }],
-    zIndex: 1,
-  },
-  noteStem: {
-    position: 'absolute',
-    width: 1.5,
-    height: 18,
-    zIndex: 1,
-  },
-  noteNumber: {
-    position: 'absolute',
-    top: 57,
-    width: 24,
-    textAlign: 'center',
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  noteName: {
-    position: 'absolute',
-    top: 70,
-    width: 32,
-    textAlign: 'center',
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    color: COLORS.brown,
-  },
-  legend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    marginTop: 4,
-    gap: 6,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.brown,
-  },
-  legendText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-});

@@ -1,49 +1,26 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
-
-import {
-  type SustainedExhaleParams,
-  type Tier,
-} from '@/constants/params';
+import type { SustainedExhaleParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { generateSustainedExhaleParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import {
-  measureSustainedExhale,
-  type SustainedExhaleMeasurement,
-} from '@/services/measurement/breathControl/sustainedExhale';
+import { measureSustainedExhale, type SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
+import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
+import { scoreSustainedExhale, type SustainedExhaleScoreResult } from '@/services/scoring/breathControl/sustainedExhale';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-import {
-  scoreSustainedExhale,
-  type SustainedExhaleScoreResult,
-} from '@/services/scoring/breathControl/sustainedExhale';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-} from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseNoAudioModal,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen,
-  MetricCard,
-} from '../ExerciseScreen';
+  getLiveVoiceDetection,
+  hasSufficientRecordedSignal,
+} from '@/utils/audioSignal';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '../ExerciseScreen';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 const PROCESSING_DELAY_MS = 1200;
 
@@ -54,7 +31,7 @@ type Phase =
   | 'processing'
   | 'results';
 
-interface RepResult {
+interface RepetitionResult {
   rep: number;
   measurement: SustainedExhaleMeasurement;
   score: SustainedExhaleScoreResult;
@@ -72,23 +49,23 @@ export default function SustainedExhaleScreen({
   );
   const [params, setParams] =
     useState<SustainedExhaleParams | null>(null);
-  const [loadingParams, setLoadingParams] = useState(true);
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [currentRep, setCurrentRep] = useState(1);
   const [countdown, setCountdown] = useState(
     EXERCISE_COUNTDOWN_SECONDS,
   );
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [volume, setVolume] = useState<number | null>(null);
-  const [repResults, setRepResults] = useState<RepResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [isVoiceDetected, setIsVoiceDetected] = useState(false);
+  const [repetitionResults, setRepetitionResults] = useState<RepetitionResult[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const paramsRef = useRef<SustainedExhaleParams | null>(null);
   const tierRef = useRef<Tier | null>(initialTier ?? null);
-  const phaseRef = useRef<Phase>('instructions');
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -100,7 +77,7 @@ export default function SustainedExhaleScreen({
   const mountedRef = useRef(true);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
-  const repResultsRef = useRef<RepResult[]>([]);
+  const repetitionResultsRef = useRef<RepetitionResult[]>([]);
   const currentRepRef = useRef(1);
 
   const showQuitModalRef = useRef(false);
@@ -115,11 +92,6 @@ export default function SustainedExhaleScreen({
     useRef<(() => void | Promise<void>) | null>(null);
   const beginCountdownRef = useRef<(() => void) | null>(null);
   const resumeProcessingRef = useRef<(() => void) | null>(null);
-
-  const setCurrentPhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -150,16 +122,25 @@ export default function SustainedExhaleScreen({
         return;
       }
 
-      setVolume(frame.volume);
+      const detection = getLiveVoiceDetection(frame.volume);
+      setVolume(detection.level);
+      setIsVoiceDetected(detection.detected);
     },
     [],
   );
 
   useEffect(() => {
+    if (phase !== 'recording') {
+      setVolume(null);
+      setIsVoiceDetected(false);
+    }
+  }, [phase]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function initializeAdaptiveExercise() {
-      setLoadingParams(true);
+      setIsLoadingParams(true);
 
       try {
         let currentTier: Tier = initialTier ?? 'beginner';
@@ -244,7 +225,7 @@ export default function SustainedExhaleScreen({
         setTier(fallbackTier);
       } finally {
         if (!cancelled) {
-          setLoadingParams(false);
+          setIsLoadingParams(false);
         }
       }
     }
@@ -270,10 +251,10 @@ export default function SustainedExhaleScreen({
     const currentTier = tierRef.current;
 
     if (!adaptiveParams || !currentTier) {
-      setError(
+      setErrorMessage(
         'Exercise parameters are unavailable. Please try again.',
       );
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       return;
     }
 
@@ -296,7 +277,7 @@ export default function SustainedExhaleScreen({
 
         currentRepRef.current = nextRep;
         setCurrentRep(nextRep);
-        setElapsed(0);
+        setElapsedSeconds(0);
         setVolume(null);
 
         startingRef.current = false;
@@ -311,7 +292,7 @@ export default function SustainedExhaleScreen({
       finishingRef.current = true;
 
       void (async () => {
-        const finalResults = repResultsRef.current;
+        const finalResults = repetitionResultsRef.current;
         const finalScore =
           finalResults.length > 0
             ? Math.round(
@@ -346,13 +327,15 @@ export default function SustainedExhaleScreen({
           return;
         }
 
-        setRepResults(finalResults);
-        setCurrentPhase('results');
+        setRepetitionResults(finalResults);
+        setPhase('results');
         startingRef.current = false;
         finishingRef.current = false;
       })();
-    }, PROCESSING_DELAY_MS);
-  }, [clearTimers, setCurrentPhase]);
+    }, currentRepRef.current >= adaptiveParams.repetitions
+      ? EXERCISE_FINAL_RESULT_DELAY_MS
+      : PROCESSING_DELAY_MS);
+  }, [clearTimers, setPhase]);
 
   useEffect(() => {
     resumeProcessingRef.current = scheduleAfterProcessing;
@@ -381,10 +364,10 @@ export default function SustainedExhaleScreen({
       const currentTier = tierRef.current;
 
       if (!adaptiveParams || !currentTier) {
-        setError(
+        setErrorMessage(
           'Exercise parameters are unavailable. Please try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         startingRef.current = false;
         finishingRef.current = false;
         return;
@@ -393,13 +376,13 @@ export default function SustainedExhaleScreen({
       if (!hasSufficientRecordedSignal(samples)) {
         startingRef.current = false;
         finishingRef.current = false;
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
 
-      setCurrentPhase('processing');
-      setElapsed(0);
+      setPhase('processing');
+      setElapsedSeconds(0);
       setVolume(null);
 
       startingRef.current = false;
@@ -417,19 +400,19 @@ export default function SustainedExhaleScreen({
           adaptiveParams,
         );
 
-        const result: RepResult = {
+        const result: RepetitionResult = {
           rep: currentRepRef.current,
           measurement,
           score,
         };
 
         const updatedResults = [
-          ...repResultsRef.current,
+          ...repetitionResultsRef.current,
           result,
         ];
 
-        repResultsRef.current = updatedResults;
-        setRepResults(updatedResults);
+        repetitionResultsRef.current = updatedResults;
+        setRepetitionResults(updatedResults);
 
         scheduleAfterProcessing();
       } catch (analysisError) {
@@ -441,15 +424,15 @@ export default function SustainedExhaleScreen({
         if (!mountedRef.current) return;
 
         clearTimers();
-        setError(
+        setErrorMessage(
           'We could not analyze your recording. Please try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         startingRef.current = false;
         finishingRef.current = false;
       }
     },
-    [clearTimers, scheduleAfterProcessing, setCurrentPhase],
+    [clearTimers, scheduleAfterProcessing, setPhase],
   );
 
   const {
@@ -480,10 +463,10 @@ export default function SustainedExhaleScreen({
     const adaptiveParams = paramsRef.current;
 
     if (!adaptiveParams) {
-      setError(
+      setErrorMessage(
         'Exercise parameters are not ready. Please try again.',
       );
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       return;
     }
 
@@ -491,10 +474,10 @@ export default function SustainedExhaleScreen({
     const stop = stopRecordingRef.current;
 
     if (!start || !stop) {
-      setError(
+      setErrorMessage(
         'Audio recorder is not ready. Please try again.',
       );
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       return;
     }
 
@@ -502,10 +485,10 @@ export default function SustainedExhaleScreen({
     finishingRef.current = false;
 
     clearTimers();
-    setElapsed(0);
+    setElapsedSeconds(0);
     setVolume(null);
-    setError(null);
-    setCurrentPhase('recording');
+    setErrorMessage(null);
+    setPhase('recording');
 
     discardNextStopRef.current = false;
 
@@ -537,7 +520,7 @@ export default function SustainedExhaleScreen({
         }
 
         const seconds = (Date.now() - startTime) / 1000;
-        setElapsed(seconds);
+        setElapsedSeconds(seconds);
 
         if (seconds >= adaptiveParams.durationRangeSec[1]) {
           if (recordingTimerRef.current) {
@@ -565,14 +548,14 @@ export default function SustainedExhaleScreen({
       if (!mountedRef.current) return;
 
       clearTimers();
-      setError(
+      setErrorMessage(
         'Microphone access or recording failed. Please try again.',
       );
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       startingRef.current = false;
       finishingRef.current = false;
     }
-  }, [clearTimers, setCurrentPhase]);
+  }, [clearTimers, setPhase]);
 
   const beginCountdown = useCallback(() => {
     if (
@@ -587,9 +570,9 @@ export default function SustainedExhaleScreen({
 
     clearTimers();
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setElapsed(0);
+    setElapsedSeconds(0);
     setVolume(null);
-    setCurrentPhase('countdown');
+    setPhase('countdown');
 
     let value = EXERCISE_COUNTDOWN_SECONDS;
 
@@ -613,7 +596,7 @@ export default function SustainedExhaleScreen({
 
       setCountdown(value);
     }, 1000);
-  }, [clearTimers, setCurrentPhase, startRecordingPhase]);
+  }, [clearTimers, setPhase, startRecordingPhase]);
 
   useEffect(() => {
     beginCountdownRef.current = beginCountdown;
@@ -640,7 +623,7 @@ export default function SustainedExhaleScreen({
       discardNextStopRef.current = true;
       startingRef.current = false;
       finishingRef.current = true;
-      setElapsed(0);
+      setElapsedSeconds(0);
       setVolume(null);
 
       try {
@@ -682,7 +665,7 @@ export default function SustainedExhaleScreen({
       startingRef.current = false;
       finishingRef.current = false;
       discardNextStopRef.current = false;
-      setElapsed(0);
+      setElapsedSeconds(0);
       setVolume(null);
       beginCountdownRef.current?.();
       return;
@@ -698,7 +681,7 @@ export default function SustainedExhaleScreen({
     if (startingRef.current) return;
 
     if (!paramsRef.current || !tierRef.current) {
-      setError(
+      setErrorMessage(
         'Exercise parameters are still loading. Please try again.',
       );
       return;
@@ -714,14 +697,14 @@ export default function SustainedExhaleScreen({
     startingRef.current = false;
     finishingRef.current = false;
 
-    repResultsRef.current = [];
+    repetitionResultsRef.current = [];
     currentRepRef.current = 1;
 
-    setRepResults([]);
+    setRepetitionResults([]);
     setCurrentRep(1);
-    setElapsed(0);
+    setElapsedSeconds(0);
     setVolume(null);
-    setError(null);
+    setErrorMessage(null);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setShowQuitModal(false);
 
@@ -754,18 +737,18 @@ export default function SustainedExhaleScreen({
     startingRef.current = false;
     finishingRef.current = false;
 
-    repResultsRef.current = [];
+    repetitionResultsRef.current = [];
     currentRepRef.current = 1;
 
-    setRepResults([]);
+    setRepetitionResults([]);
     setCurrentRep(1);
-    setElapsed(0);
+    setElapsedSeconds(0);
     setVolume(null);
-    setError(null);
+    setErrorMessage(null);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setShowQuitModal(false);
-    setCurrentPhase('instructions');
-  }, [clearTimers, setCurrentPhase]);
+    setPhase('instructions');
+  }, [clearTimers, setPhase]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
@@ -884,7 +867,7 @@ export default function SustainedExhaleScreen({
     />
   );
 
-  if (loadingParams || !params || !tier) {
+  if (isLoadingParams || !params || !tier) {
     return (
       <>
         <ExercisePreparingScreen
@@ -892,7 +875,7 @@ export default function SustainedExhaleScreen({
           message="Adjusting the exercise to your current difficulty level."
           icon="options-outline"
           iconSize={44}
-          containerStyle={styles.centerScreen}
+          containerStyle={exerciseStyles.centerScreen}
         />
         {quitModal}
         {noAudioModal}
@@ -901,39 +884,39 @@ export default function SustainedExhaleScreen({
   }
 
   const averageDuration =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, result) =>
             sum + result.measurement.actualDurationSec,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
   const averageConsistency =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, result) =>
             sum + result.measurement.consistencyPct,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
   const averageScore =
-    repResults.length > 0
+    repetitionResults.length > 0
       ? Math.round(
-          repResults.reduce(
+          repetitionResults.reduce(
             (sum, result) => sum + result.score.score,
             0,
-          ) / repResults.length,
+          ) / repetitionResults.length,
         )
       : 0;
 
-  const passedReps = repResults.filter(
+  const passedReps = repetitionResults.filter(
     result => result.score.passed,
   ).length;
 
   const durationProgress = Math.min(
-    elapsed / params.durationRangeSec[1],
+    elapsedSeconds / params.durationRangeSec[1],
     1,
   );
 
@@ -973,7 +956,7 @@ export default function SustainedExhaleScreen({
           repetitions={params.repetitions}
           tip="Focus on keeping your airflow steady rather than trying to force a longer exhale."
           tier={tier}
-          error={error}
+          errorMessage={errorMessage}
           onBack={handleBack}
           onStart={startExercise}
         />
@@ -1004,25 +987,25 @@ export default function SustainedExhaleScreen({
 
   if (phase === 'recording') {
     return (
-      <View style={styles.container}>
+      <View style={exerciseStyles.screen}>
         <ScrollView
-          contentContainerStyle={styles.recordingContent}
+          contentContainerStyle={exerciseStyles.recordingContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.recordingHeader}>
-            <Text style={styles.recordingTitle}>
+          <View style={exerciseStyles.recordingHeader}>
+            <Text style={exerciseStyles.recordingTitle}>
               Exhale Slowly
             </Text>
 
-            <Text style={styles.repLabel}>
+            <Text style={exerciseStyles.repLabel}>
               Repetition {currentRep} of {params.repetitions}
             </Text>
           </View>
 
-          <View style={styles.recordingVisual}>
+          <View style={exerciseStyles.recordingVisual}>
             <View
               style={[
-                styles.recordingOuterCircle,
+                exerciseStyles.recordingOuterCircle,
                 {
                   transform: [
                     { scale: 1 + durationProgress * 0.08 },
@@ -1030,7 +1013,7 @@ export default function SustainedExhaleScreen({
                 },
               ]}
             >
-              <View style={styles.recordingInnerCircle}>
+              <View style={exerciseStyles.recordingInnerCircle}>
                 <Ionicons
                   name="mic"
                   size={52}
@@ -1040,48 +1023,44 @@ export default function SustainedExhaleScreen({
             </View>
           </View>
 
-          <View style={styles.recordingBadge}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingBadgeText}>
+          <View style={exerciseStyles.recordingBadge}>
+            <View style={exerciseStyles.recordingDot} />
+            <Text style={exerciseStyles.recordingBadgeText}>
               RECORDING
             </Text>
           </View>
 
-          <Text style={styles.timerText}>
-            {elapsed.toFixed(1)}s
+          <Text style={exerciseStyles.timerTextVariant1}>
+            {elapsedSeconds.toFixed(1)}s
           </Text>
 
-          <View style={styles.progressTrack}>
+          <View style={exerciseStyles.progressTrack}>
             <View
               style={[
-                styles.progressFill,
+                exerciseStyles.progressFill,
                 { width: `${durationProgress * 100}%` },
               ]}
             />
           </View>
 
-          <View style={styles.rangeRow}>
-            <Text style={styles.rangeText}>
+          <View style={exerciseStyles.rangeRow}>
+            <Text style={exerciseStyles.sessionLabel}>
               {params.durationRangeSec[0]}s
             </Text>
 
-            <Text style={styles.rangeTarget}>
+            <Text style={exerciseStyles.progressTime}>
               Target: {targetDuration.toFixed(1)}s
             </Text>
 
-            <Text style={styles.rangeText}>
+            <Text style={exerciseStyles.sessionLabel}>
               {params.durationRangeSec[1]}s
             </Text>
           </View>
 
-          <View style={styles.liveCard}>
-              <Text style={styles.liveLabel}>RELATIVE MIC LEVEL</Text>
-              <Text style={styles.liveValue}>
-                {volume !== null
-                  ? volume.toFixed(2)
-                  : 'Listening...'}
-              </Text>
-            </View>
+          <LiveVoiceDetectionVisualizer
+            detected={isVoiceDetected}
+            level={volume ?? 0}
+          />
         </ScrollView>
         {quitModal}
         {noAudioModal}
@@ -1121,10 +1100,10 @@ export default function SustainedExhaleScreen({
         score={averageScore}
         resultIcon="checkmark"
         scoreDetails={
-          <View style={styles.scoreBar}>
+          <View style={exerciseStyles.scoreBar}>
             <View
               style={[
-                styles.scoreBarFill,
+                exerciseStyles.progressFill,
                 { width: `${averageScore}%` },
               ]}
             />
@@ -1133,13 +1112,13 @@ export default function SustainedExhaleScreen({
         onRetry={retryExercise}
         onExit={handleBack}
       >
-        <View style={styles.resultsContent}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.sectionTitle}>
+        <View style={exerciseStyles.infoText}>
+          <View style={exerciseStyles.summaryCard}>
+            <Text style={exerciseStyles.sectionTitle}>
               Your Performance
             </Text>
 
-            <View style={styles.metricsGrid}>
+            <View style={exerciseStyles.metricsGrid}>
               <MetricCard
                 variant="breathControl"
                 icon="time-outline"
@@ -1158,45 +1137,45 @@ export default function SustainedExhaleScreen({
                 variant="breathControl"
                 icon="repeat-outline"
                 label="Repetitions"
-                value={`${repResults.length}/${params.repetitions}`}
+                value={`${repetitionResults.length}/${params.repetitions}`}
               />
 
               <MetricCard
                 variant="breathControl"
                 icon="checkmark-circle-outline"
                 label="Passed"
-                value={`${passedReps}/${repResults.length}`}
+                value={`${passedReps}/${repetitionResults.length}`}
               />
             </View>
           </View>
 
-          <View style={styles.repResultsCard}>
-            <Text style={styles.sectionTitle}>
+          <View style={exerciseStyles.repResultsCard}>
+            <Text style={exerciseStyles.sectionTitle}>
               Repetition Results
             </Text>
 
-            {repResults.map(result => (
+            {repetitionResults.map(result => (
               <View
                 key={`rep-${result.rep}`}
-                style={styles.repResultRow}
+                style={exerciseStyles.repResultRow}
               >
                 <View
                   style={[
-                    styles.repNumber,
-                    result.score.passed && styles.repNumberPassed,
+                    exerciseStyles.repNumber,
+                    result.score.passed && exerciseStyles.resultIconPassed,
                   ]}
                 >
-                  <Text style={styles.repNumberText}>
+                  <Text style={exerciseStyles.componentScore}>
                     {result.rep}
                   </Text>
                 </View>
 
-                <View style={styles.repResultInfo}>
-                  <Text style={styles.repResultTitle}>
+                <View style={exerciseStyles.repResultInfo}>
+                  <Text style={exerciseStyles.repResultTitle}>
                     Repetition {result.rep}
                   </Text>
 
-                  <Text style={styles.repResultDetails}>
+                  <Text style={exerciseStyles.repResultDetails}>
                     {result.measurement.actualDurationSec.toFixed(1)}s
                     {' • '}
                     {Math.round(result.measurement.consistencyPct)}%
@@ -1204,26 +1183,26 @@ export default function SustainedExhaleScreen({
                   </Text>
                 </View>
 
-                <Text style={styles.repResultScore}>
+                <Text style={exerciseStyles.resultStatValue}>
                   {result.score.score}
                 </Text>
               </View>
             ))}
           </View>
 
-          <View style={styles.feedbackCard}>
+          <View style={exerciseStyles.feedbackCardVariant1}>
             <Ionicons
               name="bulb-outline"
               size={23}
               color={COLORS.brown}
             />
 
-            <View style={styles.feedbackContent}>
-              <Text style={styles.feedbackTitle}>
+            <View style={exerciseStyles.repResultInfo}>
+              <Text style={exerciseStyles.cardTitle}>
                 Feedback
               </Text>
 
-              <Text style={styles.feedbackText}>
+              <Text style={exerciseStyles.feedbackBodyText}>
                 {averageScore >= 85
                   ? 'Excellent control! Your exhale was sustained with strong consistency.'
                   : averageScore >= 70
@@ -1241,258 +1220,3 @@ export default function SustainedExhaleScreen({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  centerScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  recordingContent: {
-    paddingHorizontal: 24,
-    paddingTop: 76,
-    paddingBottom: 40,
-  },
-  resultsContent: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 19,
-    color: COLORS.brown,
-    marginBottom: 12,
-  },
-  recordingHeader: {
-    alignItems: 'center',
-  },
-  repLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.muted,
-    letterSpacing: 0.7,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 29,
-    color: COLORS.brown,
-    marginTop: 7,
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  recordingVisual: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 48,
-  },
-  recordingOuterCircle: {
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingInnerCircle: {
-    width: 135,
-    height: 135,
-    borderRadius: 68,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingBadge: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 15,
-    marginTop: 24,
-  },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.brown,
-    marginRight: 7,
-  },
-  recordingBadgeText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: COLORS.brown,
-    letterSpacing: 0.5,
-  },
-  timerText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 18,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 5,
-  },
-  rangeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  rangeText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  rangeTarget: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  liveCard: {
-    alignItems: 'center',
-    backgroundColor:COLORS.background,
-    borderRadius: 18,
-    padding: 14,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveTextContainer: {
-    marginLeft: 13,
-  },
-  liveLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    color: COLORS.muted,
-    letterSpacing: 0.5,
-  },
-  liveValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  scoreBar: {
-    width: '100%',
-    height: 10,
-    backgroundColor: COLORS.white,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginTop: 17,
-  },
-  scoreBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 5,
-  },
-  summaryCard: {
-    backgroundColor: COLORS.white,
-    marginTop: 22,
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  repResultsCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  repResultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 11,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  repNumber: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  repNumberPassed: {
-    backgroundColor: COLORS.pink,
-  },
-  repNumberText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  repResultInfo: {
-    flex: 1,
-    marginLeft: 11,
-  },
-  repResultTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  repResultDetails: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  repResultScore: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-  },
-  feedbackCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-  },
-  feedbackContent: {
-    flex: 1,
-    marginLeft: 11,
-  },
-  feedbackTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  feedbackText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.brown,
-    marginTop: 4,
-  },
-});

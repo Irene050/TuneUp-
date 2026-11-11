@@ -7,15 +7,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  BackHandler,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
@@ -32,12 +26,12 @@ import {
 } from '@/hooks/useAudioRecorder';
 
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
+
 import ExerciseScreen, {
+  ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
   ExerciseRecordingScreen,
 } from '@/screens/exercises/ExerciseScreen';
 
@@ -55,16 +49,26 @@ import {
 } from '@/services/progress/progressRepo';
 import { scoreArpeggioSpeed } from '@/services/scoring/agility/arpeggioSpeedDrill';
 
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
-import { playNoteSequence } from '@/utils/music/notePlayer';
+import {
+  AGILITY_NOTE_START_DELAY_MS,
+  getActiveSequenceNoteIndex,
+  playNoteSequence,
+} from '@/utils/music/notePlayer';
 import {
   frequencyToMidi,
   frequencyToNoteName,
   getSemitoneDistance,
   midiToFrequency,
 } from '@/utils/music/notes';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 type Phase =
   | 'instructions'
@@ -83,7 +87,7 @@ type ArpeggioExerciseConfig = {
   pitchTolerancePercent: number;
 };
 
-type Result = {
+type ExerciseResult = {
   overall: number;
   pitchScore: number;
   sequenceScore: number;
@@ -119,9 +123,9 @@ const findClosestTarget = (
 };
 
 const buildFinalResult = (
-  attempts: Result[],
+  attempts: ExerciseResult[],
   repetitionCount: number,
-): Result => {
+): ExerciseResult => {
   const passed =
     attempts.length === repetitionCount &&
     attempts.every((attempt) => attempt.passed);
@@ -219,18 +223,18 @@ export default function ArpeggioSpeedDrillScreen() {
   const currentUserId = auth.currentUser?.uid ?? null;
 
   const [tier, setTier] = useState<Tier | null>(null);
-  const [tierLoading, setTierLoading] = useState(true);
+  const [isLoadingTier, setIsLoadingTier] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadCurrentTier = async () => {
-      setTierLoading(true);
+      setIsLoadingTier(true);
 
       if (!currentUserId) {
         if (!cancelled) {
           setTier('beginner');
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
         return;
       }
@@ -243,17 +247,17 @@ export default function ArpeggioSpeedDrillScreen() {
 
         if (!cancelled) {
           setTier(progress?.currentTier ?? 'beginner');
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load current Agility tier:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
           setTier('beginner');
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
       }
     };
@@ -295,13 +299,13 @@ export default function ArpeggioSpeedDrillScreen() {
     'Checking your saved vocal assessment.',
   );
 
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
 
   const [countdown, setCountdown] = useState(
     EXERCISE_COUNTDOWN_SECONDS,
   );
 
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const [livePitchHz, setLivePitchHz] =
     useState<number | null>(null);
@@ -314,23 +318,21 @@ export default function ArpeggioSpeedDrillScreen() {
 
   const [currentRep, setCurrentRep] = useState(1);
 
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<ExerciseResult | null>(null);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] =
     useState(false);
 
-  const attemptResultsRef = useRef<Result[]>([]);
+  const attemptResultsRef = useRef<ExerciseResult[]>([]);
 
-  const recordingStartRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
   const processingRef = useRef(false);
-
-  const phaseRef = useRef<Phase>('instructions');
 
   const pausedPhaseRef = useRef<Phase>('instructions');
 
@@ -340,37 +342,25 @@ export default function ArpeggioSpeedDrillScreen() {
 
   const mountedRef = useRef(true);
 
-  const changePhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
-
-const noteCycleDuration =
-  config.noteDurationSec + config.gapSec;
-
-const elapsedInCycle =
-  noteCycleDuration > 0
-    ? recordingTime % noteCycleDuration
+const noteCycleDuration = config.noteDurationSec + config.gapSec;
+const sequenceCycleDuration =
+  noteCycleDuration * config.frequencies.length;
+const elapsedInSequence =
+  sequenceCycleDuration > 0
+    ? elapsedSeconds % sequenceCycleDuration
     : 0;
-
-const timedNoteIndex =
-  config.frequencies.length > 0 &&
-  noteCycleDuration > 0
-    ? Math.floor(recordingTime / noteCycleDuration) %
-      config.frequencies.length
-    : null;
-
-const isNoteWindowActive =
-  phase === 'recording' &&
-  timedNoteIndex !== null &&
-  elapsedInCycle < config.noteDurationSec;
-
+const timedNoteIndex = getActiveSequenceNoteIndex(
+  elapsedInSequence,
+  config.frequencies.length,
+  config.noteDurationSec,
+  config.gapSec,
+);
 const timedReferenceNoteIndex =
-  isNoteWindowActive ? timedNoteIndex : null;
+  phase === 'recording' ? timedNoteIndex : null;
 
 const expectedNote =
-  timedNoteIndex !== null
-    ? config.notes[timedNoteIndex]
+  timedReferenceNoteIndex !== null
+    ? config.notes[timedReferenceNoteIndex]
     : null;
 
   const clearRecordingTimer = useCallback(() => {
@@ -379,7 +369,7 @@ const expectedNote =
       recordingTimerRef.current = null;
     }
 
-    recordingStartRef.current = null;
+    recordingStartedAtRef.current = null;
   }, []);
 
   const processRecordedSamples = useCallback(
@@ -392,7 +382,7 @@ const expectedNote =
         return;
       }
 
-      changePhase('processing');
+      setPhase('processing');
       setLivePitchHz(null);
 
       try {
@@ -408,7 +398,7 @@ const expectedNote =
         if (!hasSufficientRecordedSignal(samples)) {
           processingRef.current = false;
 
-          changePhase('listening');
+          setPhase('listening');
           setShowNoAudioModal(true);
 
           return;
@@ -427,7 +417,7 @@ const expectedNote =
 
         const scored = scoreArpeggioSpeed(measurement);
 
-        const repetitionResult: Result = {
+        const repetitionResult: ExerciseResult = {
           overall: scored.overall,
           pitchScore: scored.pitchScore,
           sequenceScore: scored.sequenceScore,
@@ -456,14 +446,14 @@ const expectedNote =
           if (!mountedRef.current) return;
 
           setCurrentRep((previous) => previous + 1);
-          setRecordingTime(0);
+          setElapsedSeconds(0);
           setCountdown(EXERCISE_COUNTDOWN_SECONDS);
           setReferenceNoteIndex(null);
           setLivePitchHz(null);
 
           processingRef.current = false;
 
-          changePhase('listening');
+          setPhase('listening');
 
           return;
         }
@@ -497,11 +487,11 @@ const expectedNote =
         }
 
         setResult(finalResult);
-        changePhase('results');
-      } catch (error) {
+        setPhase('results');
+      } catch (errorMessage) {
         console.warn(
           'Arpeggio Speed Drill processing failed:',
-          error,
+          errorMessage,
         );
 
         if (!mountedRef.current) return;
@@ -509,12 +499,12 @@ const expectedNote =
         processingRef.current = false;
         attemptResultsRef.current = [];
         setCurrentRep(1);
-        changePhase('instructions');
+        setPhase('instructions');
       }
     },
     [
       activeTier,
-      changePhase,
+      setPhase,
       config,
       currentRep,
       repetitionCount,
@@ -571,10 +561,10 @@ const expectedNote =
 
     try {
       await stopAudioRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       console.warn(
         'Failed to stop Arpeggio Speed Drill recorder:',
-        error,
+        errorMessage,
       );
     }
   }, [clearRecordingTimer, stopAudioRecording]);
@@ -584,10 +574,10 @@ const expectedNote =
 
     try {
       await cancelAudioRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       console.warn(
         'Failed to cancel Arpeggio Speed Drill recorder:',
-        error,
+        errorMessage,
       );
     }
   }, [clearRecordingTimer, cancelAudioRecording]);
@@ -616,7 +606,7 @@ const expectedNote =
       processingRef.current = false;
 
       setLivePitchHz(null);
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
       setReferenceNoteIndex(null);
     }
@@ -634,7 +624,7 @@ const expectedNote =
     const runId = ++countdownRunIdRef.current;
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    changePhase('countdown');
+    setPhase('countdown');
 
     for (
       let value = EXERCISE_COUNTDOWN_SECONDS;
@@ -660,12 +650,22 @@ const expectedNote =
       return;
     }
 
+    setCountdown(0);
+    await sleep(AGILITY_NOTE_START_DELAY_MS);
+
+    if (
+      runId !== countdownRunIdRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
     try {
       processingRef.current = false;
 
       setLivePitchHz(null);
-      setRecordingTime(0);
-      changePhase('recording');
+      setElapsedSeconds(0);
+      setPhase('recording');
 
       await startAudioRecording();
 
@@ -678,11 +678,11 @@ const expectedNote =
         return;
       }
 
-  recordingStartRef.current = Date.now();
-  setRecordingTime(0);
+  recordingStartedAtRef.current = Date.now();
+  setElapsedSeconds(0);
 
   recordingTimerRef.current = setInterval(() => {
-    const start = recordingStartRef.current;
+    const start = recordingStartedAtRef.current;
 
     if (
       start === null ||
@@ -692,26 +692,26 @@ const expectedNote =
       return;
     }
 
-    const elapsed = (Date.now() - start) / 1000;
+    const elapsedSeconds = (Date.now() - start) / 1000;
 
-    setRecordingTime(
-      Math.min(elapsed, EXERCISE_MAX_RECORDING_SECONDS),
+    setElapsedSeconds(
+      Math.min(elapsedSeconds, EXERCISE_MAX_RECORDING_SECONDS),
     );
 
-    if (elapsed >= EXERCISE_MAX_RECORDING_SECONDS) {
+    if (elapsedSeconds >= EXERCISE_MAX_RECORDING_SECONDS) {
       processingRef.current = true;
 
       clearRecordingTimer();
 
-      changePhase('processing');
+      setPhase('processing');
       setLivePitchHz(null);
       void stopActiveRecording();
     }
-  }, 30);
-    } catch (error) {
+  }, 20);
+    } catch (errorMessage) {
       console.error(
         'Arpeggio Speed Drill recording failed:',
-        error,
+        errorMessage,
       );
 
       clearRecordingTimer();
@@ -719,13 +719,13 @@ const expectedNote =
       processingRef.current = false;
 
       if (mountedRef.current && !quitInProgressRef.current) {
-        changePhase('listening');
+        setPhase('listening');
         setShowNoAudioModal(true);
       }
     }
   }, [
     cancelActiveRecording,
-    changePhase,
+    setPhase,
     clearRecordingTimer,
     isPlayingReference,
     startAudioRecording,
@@ -744,7 +744,7 @@ const expectedNote =
       pausedPhase === 'countdown'
     ) {
       setLivePitchHz(null);
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
       setReferenceNoteIndex(null);
 
@@ -755,8 +755,8 @@ const expectedNote =
       return;
     }
 
-    changePhase(pausedPhase);
-  }, [changePhase, startCountdown]);
+    setPhase(pausedPhase);
+  }, [setPhase, startCountdown]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
@@ -774,10 +774,10 @@ const expectedNote =
 
     try {
       router.replace('/exercises/agility');
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to leave Arpeggio Speed Drill:',
-        error,
+        errorMessage,
       );
 
       quitInProgressRef.current = false;
@@ -806,7 +806,7 @@ const expectedNote =
     let cancelled = false;
 
     const loadAdaptiveParameters = async () => {
-      if (tierLoading || !tier) return;
+      if (isLoadingTier || !tier) return;
 
       setParamsReady(false);
       setVocalRangeAvailable(false);
@@ -931,10 +931,10 @@ const expectedNote =
         }
 
         setParamsReady(true);
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load Arpeggio Speed Drill adaptive parameters:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
@@ -960,7 +960,7 @@ const expectedNote =
     return () => {
       cancelled = true;
     };
-  }, [tier, tierLoading, baseConfig]);
+  }, [tier, isLoadingTier, baseConfig]);
 
   const playReference = useCallback(async () => {
     if (
@@ -986,10 +986,10 @@ const expectedNote =
         config.gapSec,
         setReferenceNoteIndex,
       );
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Reference playback failed:',
-        error,
+        errorMessage,
       );
     } finally {
       setReferenceNoteIndex(null);
@@ -1006,11 +1006,11 @@ const expectedNote =
     processingRef.current = false;
 
     setLivePitchHz(null);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
-    changePhase('listening');
-  }, [changePhase]);
+    setPhase('listening');
+  }, [setPhase]);
 
   const resetExercise = useCallback(() => {
     countdownRunIdRef.current += 1;
@@ -1027,12 +1027,12 @@ const expectedNote =
     setCurrentRep(1);
     setLivePitchHz(null);
     setResult(null);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setReferenceNoteIndex(null);
 
-    changePhase('instructions');
-  }, [cancelActiveRecording, changePhase]);
+    setPhase('instructions');
+  }, [cancelActiveRecording, setPhase]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1102,13 +1102,13 @@ const expectedNote =
         }
         tier={tier}
         startDisabled={
-          tierLoading ||
+          isLoadingTier ||
           !paramsReady ||
           !vocalRangeAvailable ||
           !config.frequencies.length
         }
         startLabel={
-          tierLoading || !paramsReady
+          isLoadingTier || !paramsReady
             ? 'Preparing Exercise...'
             : vocalRangeAvailable
               ? 'Start Exercise'
@@ -1138,7 +1138,8 @@ const expectedNote =
             frequencyToNoteName,
           )}
           activeIndex={referenceNoteIndex}
-          caption={`Note duration: ${config.noteDurationSec.toFixed(2)} s | Gap: ${config.gapSec.toFixed(2)} s`}
+          noteDurationSec={config.noteDurationSec}
+          gapSec={config.gapSec}
         />
       }
       isPlayingReference={isPlayingReference}
@@ -1149,34 +1150,21 @@ const expectedNote =
   );
 
   const renderCountdown = () => (
-    <View style={styles.centerScreen}>
-      <View style={styles.iconCircle}>
-        <Ionicons
-          name="flash-outline"
-          size={34}
-          color={COLORS.brown}
-        />
-      </View>
-
-      <Text style={styles.phaseTitle}>Get Ready</Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Repetitions {currentRep} of {repetitionCount}
-      </Text>
-
-      <Text style={styles.countdownText}>
-        {countdown}
-      </Text>
-
-      <Text style={styles.phaseSubtitle}>
-        Prepare to sing the arpeggio in sequence.
-      </Text>
-    </View>
+    <ExerciseCountdownScreen
+      icon="flash-outline"
+      title="Get Ready"
+      currentRep={currentRep}
+      repetitions={repetitionCount}
+      countdown={countdown}
+      promptTitle="Prepare to sing"
+      prompt="Sing the arpeggio in sequence."
+      onBack={pauseForExitPrompt}
+    />
   );
 
 const renderRecording = () => {
   const progress = Math.min(
-    recordingTime / EXERCISE_MAX_RECORDING_SECONDS,
+    elapsedSeconds / EXERCISE_MAX_RECORDING_SECONDS,
     1,
   );
 
@@ -1195,7 +1183,7 @@ const renderRecording = () => {
       : null;
 
   const isSingingWindow =
-    isNoteWindowActive && expectedNote !== null;
+    timedReferenceNoteIndex !== null && expectedNote !== null;
 
   return (
     <ExerciseRecordingScreen
@@ -1207,6 +1195,8 @@ const renderRecording = () => {
       <AgilitySequenceGuide
         names={config.notes}
         activeIndex={timedReferenceNoteIndex}
+        noteDurationSec={config.noteDurationSec}
+        gapSec={config.gapSec}
         liveNote={liveDetectedNote ?? undefined}
         showFeedback
         caption={
@@ -1217,36 +1207,36 @@ const renderRecording = () => {
               : 'Follow the highlighted notes.'
         }
       />
-      <View style={styles.liveCard}>
-        <Text style={styles.liveLabel}>
+      <View style={exerciseStyles.liveCardVariant2}>
+        <Text style={exerciseStyles.liveLabel}>
           DETECTED NOTE
         </Text>
 
-        <Text style={styles.liveCurrentNote}>
+        <Text style={exerciseStyles.targetNote}>
           {liveDetectedNote ??
             (livePitchHz === null
               ? '--'
               : 'Unmatched')}
         </Text>
 
-        <Text style={styles.liveStatValue}>
+        <Text style={exerciseStyles.liveStatValue}>
           {livePitchHz !== null
             ? `${livePitchHz.toFixed(1)} Hz`
             : 'Listening...'}
         </Text>
       </View>
 
-      <View style={styles.timerTrack}>
+      <View style={exerciseStyles.timerTrack}>
         <View
           style={[
-            styles.timerFill,
+            exerciseStyles.timerFill,
             { width: `${progress * 100}%` },
           ]}
         />
       </View>
 
-      <Text style={styles.timerText}>
-        Recording Time: {recordingTime.toFixed(1)}s
+      <Text style={exerciseStyles.timerTextVariant2}>
+        Recording Time: {elapsedSeconds.toFixed(1)}s
       </Text>
     </ExerciseRecordingScreen>
   );
@@ -1264,13 +1254,13 @@ const renderRecording = () => {
     if (!result) return null;
 
     return (
-      <View style={styles.resultsContent}>
+      <View style={exerciseStyles.resultsContentVariant1}>
         <View
           style={[
-            styles.resultIcon,
+            exerciseStyles.resultIcon,
             result.passed
-              ? styles.resultIconPassed
-              : styles.resultIconFailed,
+              ? exerciseStyles.resultIconPassed
+              : exerciseStyles.resultIconFailed,
           ]}
         >
           <Ionicons
@@ -1280,50 +1270,50 @@ const renderRecording = () => {
           />
         </View>
 
-        <Text style={styles.resultTitle}>
+        <Text style={exerciseStyles.resultTitle}>
           {result.passed
             ? 'Great Job!'
             : 'Keep Practicing!'}
         </Text>
 
-        <Text style={styles.resultSubtitle}>
+        <Text style={exerciseStyles.resultSubtitle}>
           Arpeggio Speed Drill Result
         </Text>
 
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>
+        <View style={exerciseStyles.scoreCard}>
+          <Text style={exerciseStyles.scoreLabel}>
             OVERALL SCORE
           </Text>
 
-          <Text style={styles.scoreValue}>
+          <Text style={exerciseStyles.scoreValue}>
             {result.overall}
           </Text>
 
-          <Text style={styles.scoreDescription}>
+          <Text style={exerciseStyles.scoreDescriptionVariant1}>
             out of 100 · Average across {repetitionCount} repetitions
           </Text>
         </View>
 
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
+        <View style={exerciseStyles.resultCard}>
+          <Text style={exerciseStyles.resultCardTitle}>
             Performance Breakdown
           </Text>
 
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
+          <View style={exerciseStyles.scoreRow}>
+            <View style={exerciseStyles.scoreRowHeader}>
+              <Text style={exerciseStyles.scoreRowLabel}>
                 Pitch Accuracy
               </Text>
 
-              <Text style={styles.scoreRowValue}>
+              <Text style={exerciseStyles.scoreRowValue}>
                 {result.pitchScore}%
               </Text>
             </View>
 
-            <View style={styles.progressBackground}>
+            <View style={exerciseStyles.progressBackground}>
               <View
                 style={[
-                  styles.progressFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${Math.min(
                       Math.max(result.pitchScore, 0),
@@ -1335,21 +1325,21 @@ const renderRecording = () => {
             </View>
           </View>
 
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
+          <View style={exerciseStyles.scoreRow}>
+            <View style={exerciseStyles.scoreRowHeader}>
+              <Text style={exerciseStyles.scoreRowLabel}>
                 Sequence Accuracy
               </Text>
 
-              <Text style={styles.scoreRowValue}>
+              <Text style={exerciseStyles.scoreRowValue}>
                 {result.sequenceScore}%
               </Text>
             </View>
 
-            <View style={styles.progressBackground}>
+            <View style={exerciseStyles.progressBackground}>
               <View
                 style={[
-                  styles.progressFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${Math.min(
                       Math.max(result.sequenceScore, 0),
@@ -1361,21 +1351,21 @@ const renderRecording = () => {
             </View>
           </View>
 
-          <View style={styles.scoreRowLast}>
-            <View style={styles.scoreRowHeader}>
-              <Text style={styles.scoreRowLabel}>
+          <View style={exerciseStyles.scoreRowLast}>
+            <View style={exerciseStyles.scoreRowHeader}>
+              <Text style={exerciseStyles.scoreRowLabel}>
                 Speed Score
               </Text>
 
-              <Text style={styles.scoreRowValue}>
+              <Text style={exerciseStyles.scoreRowValue}>
                 {result.speedScore}%
               </Text>
             </View>
 
-            <View style={styles.progressBackground}>
+            <View style={exerciseStyles.progressBackground}>
               <View
                 style={[
-                  styles.progressFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${Math.min(
                       Math.max(result.speedScore, 0),
@@ -1388,37 +1378,37 @@ const renderRecording = () => {
           </View>
         </View>
 
-        <View style={styles.resultCard}>
-          <Text style={styles.resultCardTitle}>
+        <View style={exerciseStyles.resultCard}>
+          <Text style={exerciseStyles.resultCardTitle}>
             Performance Metrics
           </Text>
 
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
+          <View style={exerciseStyles.metricRow}>
+            <Text style={exerciseStyles.resultRowLabel}>
               Correct Notes
             </Text>
 
-            <Text style={styles.metricValue}>
+            <Text style={exerciseStyles.metricValue}>
               {result.correctNoteCount}/{result.noteCount}
             </Text>
           </View>
 
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
+          <View style={exerciseStyles.metricRow}>
+            <Text style={exerciseStyles.resultRowLabel}>
               Notes per Second
             </Text>
 
-            <Text style={styles.metricValue}>
+            <Text style={exerciseStyles.metricValue}>
               {result.notesPerSecond.toFixed(2)}
             </Text>
           </View>
 
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>
+          <View style={exerciseStyles.metricRow}>
+            <Text style={exerciseStyles.resultRowLabel}>
               Average Note Duration
             </Text>
 
-            <Text style={styles.metricValue}>
+            <Text style={exerciseStyles.metricValue}>
               {result.averageNoteDurationMs > 0
                 ? result.averageNoteDurationMs.toFixed(0)
                 : '0'}{' '}
@@ -1428,22 +1418,22 @@ const renderRecording = () => {
 
           <View
             style={[
-              styles.metricRow,
-              styles.metricRowLast,
+              exerciseStyles.metricRow,
+              exerciseStyles.metricRowLast,
             ]}
           >
-            <Text style={styles.metricLabel}>
+            <Text style={exerciseStyles.resultRowLabel}>
               Duration
             </Text>
 
-            <Text style={styles.metricValue}>
+            <Text style={exerciseStyles.metricValue}>
               {(result.durationMs / 1000).toFixed(1)}s
             </Text>
           </View>
         </View>
 
         <Pressable
-          style={styles.startButton}
+          style={exerciseStyles.startButtonVariant1}
           onPress={resetExercise}
         >
           <Ionicons
@@ -1452,16 +1442,16 @@ const renderRecording = () => {
             color={COLORS.white}
           />
 
-          <Text style={styles.startButtonText}>
+          <Text style={exerciseStyles.startButtonText}>
             Try Again
           </Text>
         </Pressable>
 
         <Pressable
-          style={styles.doneButton}
+          style={exerciseStyles.doneButtonVariant1}
           onPress={pauseForExitPrompt}
         >
-          <Text style={styles.doneButtonText}>
+          <Text style={exerciseStyles.infoName}>
             Back to Exercises
           </Text>
         </Pressable>
@@ -1469,7 +1459,7 @@ const renderRecording = () => {
     );
   };
 
-  if (tierLoading || !paramsReady) {
+  if (isLoadingTier || !paramsReady) {
     return (
       <ExercisePreparingScreen
         title="Preparing Your Exercise"
@@ -1494,11 +1484,11 @@ const renderRecording = () => {
               : null;
 
   return (
-    <View style={styles.screen}>
+    <View style={exerciseStyles.screen}>
       {phase === 'results' ? (
         <ScrollView
-          style={styles.screen}
-          contentContainerStyle={styles.resultsWrapper}
+          style={exerciseStyles.screen}
+          contentContainerStyle={exerciseStyles.resultsWrapper}
           showsVerticalScrollIndicator={false}
         >
           {renderResults()}
@@ -1541,7 +1531,7 @@ const renderRecording = () => {
           setCountdown(EXERCISE_COUNTDOWN_SECONDS);
           setReferenceNoteIndex(null);
           setLivePitchHz(null);
-          setRecordingTime(0);
+          setElapsedSeconds(0);
 
           void startCountdown();
         }}
@@ -1554,298 +1544,3 @@ const renderRecording = () => {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-
-  resultsContent: {
-    flexGrow: 1,
-    width: '100%',
-    paddingHorizontal: 24,
-    paddingTop: 92,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-
-  resultsWrapper: {
-    flexGrow: 1,
-    width: '100%',
-  },
-
-  centerScreen: {
-    flexGrow: 1,
-    minHeight: 700,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  phaseTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-
-  phaseSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 320,
-  },
-  startButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-
-  startButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.white,
-  },
-
-  doneButton: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-
-  doneButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-
-  countdownText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 72,
-    color: COLORS.brown,
-    marginTop: 20,
-  },
-
-  liveCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-
-  liveLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-  },
-
-  liveCurrentNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 42,
-    color: COLORS.brown,
-    marginTop: 4,
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-
-  timerText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 7,
-  },
-
-  timerTrack: {
-    width: '100%',
-    height: 7,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginTop: 12,
-  },
-
-  timerFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-  },
-
-  resultIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-
-  resultIconPassed: {
-    backgroundColor: COLORS.pink,
-  },
-
-  resultIconFailed: {
-    backgroundColor: COLORS.lightGray,
-  },
-
-  resultTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-
-  resultSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 22,
-  },
-
-  scoreCard: {
-    width: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-
-  scoreLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-
-  scoreValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 52,
-    color: COLORS.brown,
-    marginVertical: 3,
-  },
-
-  scoreDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-
-  resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginBottom: 14,
-  },
-
-  scoreRow: {
-    marginBottom: 14,
-  },
-
-  scoreRowLast: {
-    marginBottom: 0,
-  },
-
-  scoreRowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 7,
-  },
-
-  scoreRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-
-  scoreRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-
-  progressBackground: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-  },
-
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: COLORS.pink,
-  },
-
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  metricRowLast: {
-    borderBottomWidth: 0,
-  },
-  metricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    flex: 1,
-  },
-  metricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'right',
-    marginLeft: 12,
-  },
-});

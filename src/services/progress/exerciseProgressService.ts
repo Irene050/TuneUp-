@@ -14,7 +14,7 @@ import {
 
 import type { Tier } from '@/constants/params';
 
-export async function saveCompletedExercise(
+export function saveCompletedExercise(
   componentId: ComponentId,
   templateId: string,
   tier: Tier,
@@ -28,7 +28,7 @@ export async function saveCompletedExercise(
       '⚠️ No authenticated user. Exercise result was not saved.'
     );
 
-    return;
+    return Promise.resolve();
   }
 
   const safeScore =
@@ -51,15 +51,13 @@ export async function saveCompletedExercise(
         Date.now(),
     };
 
-  try {
-    await saveExerciseAndUpdateProgress(
-      user.uid,
-      record
-    );
-  } catch (error) {
+  // Keep result screens responsive while still reporting background save failures.
+  void saveExerciseAndUpdateProgress(user.uid, record).catch(error => {
     console.error(
       '❌ Failed to save exercise progress:',
       error
     );
-  }
+  });
+
+  return Promise.resolve();
 }

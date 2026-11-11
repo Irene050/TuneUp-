@@ -2,13 +2,7 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type {
   SavedAssessmentResult,
@@ -37,6 +31,7 @@ import {
 } from '@/services/progress/progressRepo';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { clampPercentage } from '@/utils/math';
 
 type ComponentInfo = {
@@ -162,10 +157,10 @@ function DeltaBadge({
         : 'remove';
 
   return (
-    <View style={styles.deltaBadge}>
+    <View style={exerciseStyles.deltaBadge}>
       <Ionicons name={icon} size={11} color={color} />
 
-      <Text style={[styles.deltaText, { color }]}>
+      <Text style={[exerciseStyles.deltaText, { color }]}>
         {rounded > 0 ? '+' : ''}
         {rounded}
         {suffix}
@@ -383,11 +378,11 @@ export default function ProgressScreen() {
   );
 
   return (
-    <View style={styles.screen}>
+    <View style={exerciseStyles.screen}>
       <AppHeader />
 
       <Pressable
-        style={styles.backButton}
+        style={exerciseStyles.backButton_Progress}
         onPress={() => router.back()}
         accessibilityRole="button"
         accessibilityLabel="Go back"
@@ -397,21 +392,21 @@ export default function ProgressScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={exerciseStyles.content_Progress}
       >
-        <Text style={styles.title}>My Progress</Text>
+        <Text style={exerciseStyles.title_Progress}>My Progress</Text>
 
-        <Text style={styles.subtitle}>
+        <Text style={exerciseStyles.subtitle_Progress}>
           Track your vocal improvement.
         </Text>
 
-        <View style={styles.periodSelector}>
+        <View style={exerciseStyles.periodSelector}>
           {periods.map(({ value, label }) => (
             <Pressable
               key={value}
               style={[
-                styles.periodButton,
-                period === value && styles.periodButtonActive,
+                exerciseStyles.periodButton,
+                period === value && exerciseStyles.resultIconPassed,
               ]}
               onPress={() => setPeriod(value)}
               accessibilityRole="button"
@@ -419,8 +414,8 @@ export default function ProgressScreen() {
             >
               <Text
                 style={[
-                  styles.periodText,
-                  period === value && styles.periodTextActive,
+                  exerciseStyles.scoreRowLabel,
+                  period === value && exerciseStyles.periodTextActive,
                 ]}
               >
                 {label}
@@ -429,33 +424,33 @@ export default function ProgressScreen() {
           ))}
         </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>{periodLabel}</Text>
+        <View style={exerciseStyles.summaryCard_Progress}>
+          <Text style={exerciseStyles.summaryTitle}>{periodLabel}</Text>
 
           {progressLoading ? (
-            <Text style={styles.loadingText}>
+            <Text style={exerciseStyles.sessionLabel}>
               Loading exercise history...
             </Text>
           ) : (
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
+            <View style={exerciseStyles.summaryRow}>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.summaryValue}>
                   {totalExercises}
                 </Text>
 
-                <Text style={styles.summaryLabel}>
+                <Text style={exerciseStyles.summaryLabel}>
                   Exercises completed
                 </Text>
               </View>
 
-              <View style={styles.divider} />
+              <View style={exerciseStyles.divider} />
 
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.summaryValue}>
                   {overallExerciseAverage}%
                 </Text>
 
-                <Text style={styles.summaryLabel}>
+                <Text style={exerciseStyles.summaryLabel}>
                   Average score
                 </Text>
               </View>
@@ -463,77 +458,77 @@ export default function ProgressScreen() {
           )}
 
           {!progressLoading && progressError && (
-            <Text style={styles.warningText}>
+            <Text style={exerciseStyles.warningText}>
               Some exercise history could not be loaded.
             </Text>
           )}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Latest Assessment</Text>
+        <View style={exerciseStyles.sectionHeader_Progress}>
+          <Text style={exerciseStyles.sectionTitle_Progress}>Latest Assessment</Text>
 
-          <Text style={styles.sectionSubtitle}>
+          <Text style={exerciseStyles.sectionSubtitle}>
             Your most recent vocal assessment scores.
           </Text>
         </View>
 
         {assessmentLoading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>
+          <View style={exerciseStyles.emptyCard}>
+            <Text style={exerciseStyles.emptyText}>
               Loading your assessment...
             </Text>
           </View>
         ) : assessmentError ? (
-          <View style={styles.emptyCard}>
+          <View style={exerciseStyles.emptyCard}>
             <Ionicons
               name="alert-circle-outline"
               size={28}
               color={COLORS.brown}
             />
 
-            <Text style={styles.emptyTitle}>
+            <Text style={exerciseStyles.emptyTitle}>
               Assessment Unavailable
             </Text>
 
-            <Text style={styles.emptyText}>
+            <Text style={exerciseStyles.emptyText}>
               We couldn't load your assessment records. Please check
               your connection and try again.
             </Text>
           </View>
         ) : latestAssessment ? (
           <>
-            <View style={styles.assessmentSummaryCard}>
-              <View style={styles.assessmentSummaryLeft}>
-                <Text style={styles.assessmentSummaryLabel}>
+            <View style={exerciseStyles.assessmentSummaryCard}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.assessmentSummaryLabel}>
                   Overall Assessment
                 </Text>
 
-                <View style={styles.deltaRow}>
-                  <Text style={styles.assessmentAverage}>
+                <View style={exerciseStyles.deltaRow}>
+                  <Text style={exerciseStyles.assessmentAverage}>
                     {assessmentAverage}%
                   </Text>
 
                   <DeltaBadge delta={overallAssessmentDelta} />
                 </View>
 
-                <Text style={styles.assessmentDate}>
+                <Text style={exerciseStyles.assessmentDate}>
                   Assessed on{' '}
                   {formatAssessmentDate(latestAssessment.timestamp)}
                 </Text>
 
                 {previousAssessment && (
-                  <Text style={styles.comparisonHint}>
+                  <Text style={exerciseStyles.comparisonHint}>
                     CompaCOLORS.error with your previous assessment
                   </Text>
                 )}
               </View>
 
-              <View style={styles.assessmentIconCircle}>
+              <View style={exerciseStyles.assessmentIconCircle}>
                 <Ionicons name="mic" size={25} color={COLORS.brown} />
               </View>
             </View>
 
-            <View style={styles.assessmentScoresCard}>
+            <View style={exerciseStyles.assessmentScoresCard}>
               {components.map((component, index) => {
                 const score = getAssessmentComponentScore(
                   latestAssessment,
@@ -554,26 +549,26 @@ export default function ProgressScreen() {
                   <View
                     key={component.id}
                     style={[
-                      styles.assessmentScoreItem,
+                      exerciseStyles.assessmentScoreItem,
                       index === components.length - 1 &&
-                        styles.assessmentScoreItemLast,
+                        exerciseStyles.metricRowLast,
                     ]}
                   >
-                    <View style={styles.componentHeader}>
-                      <View style={styles.componentNameRow}>
+                    <View style={exerciseStyles.componentHeader}>
+                      <View style={exerciseStyles.componentNameRow}>
                         <Ionicons
                           name={component.icon}
                           size={18}
                           color={COLORS.brown}
                         />
 
-                        <Text style={styles.componentName}>
+                        <Text style={exerciseStyles.componentName}>
                           {component.name}
                         </Text>
                       </View>
 
-                      <View style={styles.deltaRow}>
-                        <Text style={styles.componentScore}>
+                      <View style={exerciseStyles.deltaRow}>
+                        <Text style={exerciseStyles.componentScore}>
                           {score === null ? '—' : `${score}%`}
                         </Text>
 
@@ -581,10 +576,10 @@ export default function ProgressScreen() {
                       </View>
                     </View>
 
-                    <View style={styles.progressBackground}>
+                    <View style={exerciseStyles.progressBackground_Progress}>
                       <View
                         style={[
-                          styles.progressFill,
+                          exerciseStyles.progressFill_Assessment,
                           { width: `${score ?? 0}%` },
                         ]}
                       />
@@ -595,7 +590,7 @@ export default function ProgressScreen() {
             </View>
 
             <Pressable
-              style={styles.outlineButton}
+              style={exerciseStyles.outlineButton}
               onPress={() =>
                 router.push({
                   pathname: '/dashboard',
@@ -605,7 +600,7 @@ export default function ProgressScreen() {
               accessibilityRole="button"
               accessibilityLabel="Retake assessment"
             >
-              <Text style={styles.outlineButtonText}>
+              <Text style={exerciseStyles.timeText}>
                 Retake Assessment
               </Text>
 
@@ -617,8 +612,8 @@ export default function ProgressScreen() {
             </Pressable>
           </>
         ) : (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIconCircle}>
+          <View style={exerciseStyles.emptyCard}>
+            <View style={exerciseStyles.emptyIconCircle}>
               <Ionicons
                 name="mic-outline"
                 size={25}
@@ -626,15 +621,15 @@ export default function ProgressScreen() {
               />
             </View>
 
-            <Text style={styles.emptyTitle}>No Assessment Yet</Text>
+            <Text style={exerciseStyles.emptyTitle}>No Assessment Yet</Text>
 
-            <Text style={styles.emptyText}>
+            <Text style={exerciseStyles.emptyText}>
               Complete a vocal assessment to see your Breath Control,
               Pitch, Tone, Volume, and Agility scores.
             </Text>
 
             <Pressable
-              style={styles.primaryButton}
+              style={exerciseStyles.primaryButton_Progress}
               onPress={() =>
                 router.push({
                   pathname: '/dashboard',
@@ -644,7 +639,7 @@ export default function ProgressScreen() {
               accessibilityRole="button"
               accessibilityLabel="Take assessment"
             >
-              <Text style={styles.primaryButtonText}>
+              <Text style={exerciseStyles.lyricChipTextActive}>
                 Take Assessment
               </Text>
 
@@ -657,60 +652,60 @@ export default function ProgressScreen() {
           </View>
         )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Singing Assessment</Text>
+        <View style={exerciseStyles.sectionHeader_Progress}>
+          <Text style={exerciseStyles.sectionTitle_Progress}>Singing Assessment</Text>
 
-          <Text style={styles.sectionSubtitle}>
+          <Text style={exerciseStyles.sectionSubtitle}>
             Your latest singing performance and pitch measurements.
           </Text>
         </View>
 
         {singingAssessmentLoading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>
+          <View style={exerciseStyles.emptyCard}>
+            <Text style={exerciseStyles.emptyText}>
               Loading your singing assessment...
             </Text>
           </View>
         ) : singingAssessmentError ? (
-          <View style={styles.emptyCard}>
+          <View style={exerciseStyles.emptyCard}>
             <Ionicons
               name="alert-circle-outline"
               size={28}
               color={COLORS.brown}
             />
 
-            <Text style={styles.emptyTitle}>
+            <Text style={exerciseStyles.emptyTitle}>
               Singing Assessment Unavailable
             </Text>
 
-            <Text style={styles.emptyText}>
+            <Text style={exerciseStyles.emptyText}>
               We couldn't load your singing results. Please check
               your connection and try again.
             </Text>
           </View>
         ) : latestSingingAssessment ? (
           <>
-            <View style={styles.assessmentSummaryCard}>
-              <View style={styles.assessmentSummaryLeft}>
-                <Text style={styles.assessmentSummaryLabel}>
+            <View style={exerciseStyles.assessmentSummaryCard}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.assessmentSummaryLabel}>
                   Overall Singing Score
                 </Text>
 
-                <Text style={styles.assessmentAverage}>
+                <Text style={exerciseStyles.assessmentAverage}>
                   {clampPercentage(
                     latestSingingAssessment.overallScore,
                   )}
                   %
                 </Text>
 
-                <Text style={styles.assessmentDate}>
+                <Text style={exerciseStyles.assessmentDate}>
                   Assessed on{' '}
                   {formatAssessmentDate(
                     latestSingingAssessment.timestamp,
                   )}
                 </Text>
 
-                <Text style={styles.comparisonHint}>
+                <Text style={exerciseStyles.comparisonHint}>
                   {latestSingingAssessment.detectedNoteCount} notes
                   detected
                   {' · '}
@@ -719,7 +714,7 @@ export default function ProgressScreen() {
                 </Text>
               </View>
 
-              <View style={styles.assessmentIconCircle}>
+              <View style={exerciseStyles.assessmentIconCircle}>
                 <Ionicons
                   name="musical-notes"
                   size={25}
@@ -728,7 +723,7 @@ export default function ProgressScreen() {
               </View>
             </View>
 
-            <View style={styles.assessmentScoresCard}>
+            <View style={exerciseStyles.assessmentScoresCard}>
               {[
                 {
                   label: 'Pitch Accuracy',
@@ -749,25 +744,25 @@ export default function ProgressScreen() {
                   <View
                     key={metric.label}
                     style={[
-                      styles.assessmentScoreItem,
+                      exerciseStyles.assessmentScoreItem,
                       index === metrics.length - 1 &&
-                        styles.assessmentScoreItemLast,
+                        exerciseStyles.metricRowLast,
                     ]}
                   >
-                    <View style={styles.componentHeader}>
-                      <Text style={styles.componentName}>
+                    <View style={exerciseStyles.componentHeader}>
+                      <Text style={exerciseStyles.componentName}>
                         {metric.label}
                       </Text>
 
-                      <Text style={styles.componentScore}>
+                      <Text style={exerciseStyles.componentScore}>
                         {score}%
                       </Text>
                     </View>
 
-                    <View style={styles.progressBackground}>
+                    <View style={exerciseStyles.progressBackground_Progress}>
                       <View
                         style={[
-                          styles.progressFill,
+                          exerciseStyles.progressFill_Assessment,
                           { width: `${score}%` },
                         ]}
                       />
@@ -778,8 +773,8 @@ export default function ProgressScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIconCircle}>
+          <View style={exerciseStyles.emptyCard}>
+            <View style={exerciseStyles.emptyIconCircle}>
               <Ionicons
                 name="musical-notes-outline"
                 size={25}
@@ -787,11 +782,11 @@ export default function ProgressScreen() {
               />
             </View>
 
-            <Text style={styles.emptyTitle}>
+            <Text style={exerciseStyles.emptyTitle}>
               No Singing Assessment Yet
             </Text>
 
-            <Text style={styles.emptyText}>
+            <Text style={exerciseStyles.emptyText}>
               Complete the Mary Had a Little Lamb singing assessment
               to see your score, pitch accuracy, pitch stability,
               and vocal consistency here.
@@ -799,10 +794,10 @@ export default function ProgressScreen() {
           </View>
         )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Exercise Progress</Text>
+        <View style={exerciseStyles.sectionHeader_Progress}>
+          <Text style={exerciseStyles.sectionTitle_Progress}>Exercise Progress</Text>
 
-          <Text style={styles.sectionSubtitle}>
+          <Text style={exerciseStyles.sectionSubtitle}>
             Completed exercises during the selected period and your
             overall progress by component.
           </Text>
@@ -819,37 +814,37 @@ export default function ProgressScreen() {
           return (
             <View
               key={`progress-${component.id}`}
-              style={styles.componentCard}
+              style={exerciseStyles.componentCard}
             >
-              <View style={styles.componentHeader}>
-                <View style={styles.componentNameRow}>
+              <View style={exerciseStyles.componentHeader}>
+                <View style={exerciseStyles.componentNameRow}>
                   <Ionicons
                     name={component.icon}
                     size={18}
                     color={COLORS.brown}
                   />
 
-                  <Text style={styles.componentName}>
+                  <Text style={exerciseStyles.componentName}>
                     {component.name}
                   </Text>
                 </View>
 
-                <Text style={styles.componentScore}>
+                <Text style={exerciseStyles.componentScore}>
                   {recentScore}%
                 </Text>
               </View>
 
-              <View style={styles.progressBackground}>
+              <View style={exerciseStyles.progressBackground_Progress}>
                 <View
                   style={[
-                    styles.progressFill,
+                    exerciseStyles.progressFill_Assessment,
                     { width: `${recentScore}%` },
                   ]}
                 />
               </View>
 
-              <View style={styles.componentMeta}>
-                <Text style={styles.componentMetaText}>
+              <View style={exerciseStyles.pitchDisplay}>
+                <Text style={exerciseStyles.componentMetaText}>
                   {progress.exercisesCompleted}{' '}
                   {progress.exercisesCompleted === 1
                     ? 'exercise'
@@ -857,7 +852,7 @@ export default function ProgressScreen() {
                   total
                 </Text>
 
-                <Text style={styles.componentMetaText}>
+                <Text style={exerciseStyles.componentMetaText}>
                   {formatTier(progress.currentTier)}
                 </Text>
               </View>
@@ -868,18 +863,18 @@ export default function ProgressScreen() {
         {!progressLoading &&
           !progressError &&
           attempts.length === 0 && (
-            <View style={styles.emptyCard}>
+            <View style={exerciseStyles.emptyCard}>
               <Ionicons
                 name="bar-chart-outline"
                 size={28}
                 color={COLORS.brown}
               />
 
-              <Text style={styles.emptyTitle}>
+              <Text style={exerciseStyles.emptyTitle}>
                 No Exercise History Yet
               </Text>
 
-              <Text style={styles.emptyText}>
+              <Text style={exerciseStyles.emptyText}>
                 Complete an exercise to start tracking your scores and
                 progress here.
               </Text>
@@ -887,8 +882,8 @@ export default function ProgressScreen() {
           )}
 
         {progressLoading && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>
+          <View style={exerciseStyles.emptyCard}>
+            <Text style={exerciseStyles.emptyText}>
               Loading your exercise progress...
             </Text>
           </View>
@@ -897,346 +892,3 @@ export default function ProgressScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 25,
-    paddingBottom: 140,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 24,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-    color: COLORS.brown,
-    marginTop: 30,
-  },
-  subtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 20,
-  },
-  periodSelector: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 20,
-  },
-  periodButton: {
-    flex: 1,
-    height: 36,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  periodButtonActive: {
-    backgroundColor: COLORS.pink,
-  },
-  periodText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  periodTextActive: {
-    fontFamily: 'FredokaBold',
-    color: COLORS.brown,
-  },
-  summaryCard: {
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 30,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  summaryTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginBottom: 15,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-    color: COLORS.brown,
-  },
-  summaryLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  divider: {
-    width: 1,
-    height: 42,
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  warningText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.error,
-    marginTop: 12,
-  },
-  sectionHeader: {
-    marginTop: 10,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-  },
-  sectionSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 3,
-    marginBottom: 14,
-  },
-  assessmentSummaryCard: {
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  assessmentSummaryLeft: {
-    flex: 1,
-  },
-  assessmentSummaryLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginBottom: 2,
-  },
-  assessmentAverage: {
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: COLORS.brown,
-  },
-  assessmentDate: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  assessmentIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  assessmentScoresCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    paddingHorizontal: 17,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 12,
-  },
-  assessmentScoreItem: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  assessmentScoreItemLast: {
-    borderBottomWidth: 0,
-  },
-  componentCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: COLORS.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  componentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 10,
-  },
-  componentName: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-    flexShrink: 1,
-  },
-  componentNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 1,
-  },
-  componentScore: {
-    fontFamily: 'FredokaBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  progressBackground: {
-    height: 9,
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.brown,
-    borderRadius: 10,
-  },
-  componentMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  componentMetaText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textTransform: 'capitalize',
-  },
-  comparisonHint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 15,
-    color: COLORS.muted,
-    marginTop: 5,
-  },
-  deltaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  deltaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
-    backgroundColor: COLORS.white,
-  },
-  deltaText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-  },
-  outlineButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginBottom: 30,
-  },
-  outlineButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  primaryButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.brown,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  primaryButtonText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.white,
-  },
-  emptyCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    padding: 22,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 30,
-  },
-  emptyIconCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginTop: 10,
-    marginBottom: 6,
-  },
-  emptyText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 15,
-  },
-});

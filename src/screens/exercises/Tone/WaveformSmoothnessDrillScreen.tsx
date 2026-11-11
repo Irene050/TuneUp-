@@ -7,8 +7,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { BackHandler, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Text, View } from 'react-native';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   type Tier,
   WAVEFORM_SMOOTHNESS_PARAMS,
@@ -18,14 +19,13 @@ import {
   type LiveAudioFrame,
   useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
   generateWaveformSmoothnessParams,
@@ -71,9 +71,16 @@ import {
   EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
   TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 interface Props {
   tier?: Tier;
@@ -139,9 +146,9 @@ function LiveWaveform({
   );
 
   return (
-    <View style={styles.waveformContainer}>
+    <View style={exerciseStyles.waveformContainer}>
       <View
-        style={styles.waveformBars}
+        style={exerciseStyles.waveformBars}
         accessibilityLabel={
           !hasPitch
             ? 'No pitch detected'
@@ -154,7 +161,7 @@ function LiveWaveform({
           <View
             key={index}
             style={[
-              styles.waveformBar,
+              exerciseStyles.waveformBar,
               {
                 height,
                 backgroundColor: waveformColor,
@@ -165,16 +172,16 @@ function LiveWaveform({
         ))}
       </View>
 
-      <View style={styles.waveformStatusRow}>
+      <View style={exerciseStyles.waveformStatusRow}>
         <View
           style={[
-            styles.statusDot,
+            exerciseStyles.statusDot,
             { backgroundColor: waveformColor },
           ]}
         />
         <Text
           style={[
-            styles.waveformStatus,
+            exerciseStyles.waveformStatus,
             { color: waveformColor },
           ]}
         >
@@ -197,7 +204,7 @@ function RecordingScreen({
   targetNote,
   targetFrequency,
   detectedNote,
-  liveFrame,
+  liveAudioFrame,
 }: {
   currentRep: number;
   repetitions: number;
@@ -206,7 +213,7 @@ function RecordingScreen({
   targetNote: string;
   targetFrequency?: number;
   detectedNote: string;
-  liveFrame: LiveAudioFrame | null;
+  liveAudioFrame: LiveAudioFrame | null;
 }) {
   const progress =
     durationSeconds > 0
@@ -219,76 +226,56 @@ function RecordingScreen({
   );
 
   return (
-    <View style={styles.recordingScreen}>
+    <View style={exerciseStyles.recordingScreenVariant6}>
 
-        <Text style={styles.recordingTitle}>Sustain Smoothly</Text>
-        <Text style={styles.repPillText}>
+        <Text style={exerciseStyles.recordingTitleVariant6}>Sustain Smoothly</Text>
+        <Text style={exerciseStyles.repPillTextVariant3}>
               Repetition {currentRep} of {repetitions}
         </Text>
-        <View style={styles.recordingBody}>
-        <View style={styles.liveCard}>
-          <View style={styles.liveCardHeader}>
-            <View style={styles.liveMicCircle}>
-              <Ionicons
-                name="mic"
-                size={21}
-                color={COLORS.waveform}
-              />
-            </View>
-            <View style={styles.liveCardHeading}>
-              <Text style={styles.liveCardTitle}>
-                Live Voice Monitor
-              </Text>
-              <Text style={styles.liveCardSubtitle}>
-                Your microphone feedback
-              </Text>
-            </View>
-            <View style={styles.liveIndicatorPill}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.liveIndicatorText}>LIVE</Text>
-            </View>
-          </View>
+        <View style={exerciseStyles.recordingBodyVariant1}>
+        <LiveToneMonitorCard>
+
 
           <LiveWaveform
-            frame={liveFrame}
+            frame={liveAudioFrame}
             targetFrequency={targetFrequency}
           />
 
-          <View style={styles.liveMetricsRow}>
-            <View style={styles.liveMetric}>
-              <Text style={styles.liveLabel}>TARGET NOTE</Text>
-              <Text style={styles.liveValue}>{targetNote}</Text>
-              <Text style={styles.metricHint}>Sing this note</Text>
+          <View style={exerciseStyles.liveMetricsRow}>
+            <View style={exerciseStyles.sessionPart}>
+              <Text style={exerciseStyles.liveLabelVariant2}>TARGET NOTE</Text>
+              <Text style={exerciseStyles.liveValueVariant1}>{targetNote}</Text>
+              <Text style={exerciseStyles.metricHintVariant1}>Sing this note</Text>
             </View>
 
-            <View style={styles.liveDivider} />
+            <View style={exerciseStyles.liveDivider} />
 
-            <View style={styles.liveMetric}>
-              <Text style={styles.liveLabel}>DETECTED NOTE</Text>
-              <Text style={styles.liveValue}>{detectedNote}</Text>
-              <Text style={styles.metricHint}>Current pitch</Text>
+            <View style={exerciseStyles.sessionPart}>
+              <Text style={exerciseStyles.liveLabelVariant2}>DETECTED NOTE</Text>
+              <Text style={exerciseStyles.liveValueVariant1}>{detectedNote}</Text>
+              <Text style={exerciseStyles.metricHintVariant1}>Current pitch</Text>
             </View>
           </View>
-        </View>
+        </LiveToneMonitorCard>
 
-        <View style={styles.recordingProgressSection}>
-          <View style={styles.recordingProgressLabels}>
-            <Text style={styles.progressLabel}>RECORDING</Text>
-            <Text style={styles.progressTime}>
+        <View style={exerciseStyles.recordingProgressSection}>
+          <View style={exerciseStyles.recordingProgressLabels}>
+            <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
+            <Text style={exerciseStyles.progressTime}>
               {formatNumber(elapsedSeconds)}s / {durationSeconds}s
             </Text>
           </View>
 
-          <View style={styles.progressTrack}>
+          <View style={exerciseStyles.progressTrackVariant1}>
             <View
               style={[
-                styles.progressFill,
+                exerciseStyles.progressFill,
                 { width: `${progress * 100}%` },
               ]}
             />
           </View>
 
-          <Text style={styles.remainingText}>
+          <Text style={exerciseStyles.remainingText}>
             {formatNumber(remainingSeconds)} seconds remaining
           </Text>
         </View>
@@ -306,18 +293,19 @@ export default function WaveformSmoothnessDrillScreen({
   const [params, setParams] = useState<WaveformSmoothnessParams>(
     WAVEFORM_SMOOTHNESS_PARAMS[initialTier],
   );
-  const [loadingParams, setLoadingParams] = useState(true);
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
+  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [countdownCycle, setCountdownCycle] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [repetitionResults, setRepetitionResults] = useState<
     RepetitionResult[]
   >([]);
-  const [finalResult, setFinalResult] =
+  const [result, setResult] =
     useState<WaveformSmoothnessScoreResult | null>(null);
   const [averageCentroidSmoothness, setAverageCentroidSmoothness] =
     useState(0);
@@ -331,19 +319,18 @@ export default function WaveformSmoothnessDrillScreen({
 
   const mountedRef = useRef(true);
   const leavingRef = useRef(false);
-  const phaseRef = useRef<Phase>('instructions');
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const recordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const isRecordingRef = useRef(false);
+  const recordingStopRequestedRef = useRef(false);
   const processingRef = useRef(false);
   const elapsedRef = useRef(0);
   const currentRepRef = useRef(1);
-  const resultsRef = useRef<RepetitionResult[]>([]);
+  const repetitionResultsRef = useRef<RepetitionResult[]>([]);
 
   const showQuitModalRef = useRef(false);
   const pausedRef = useRef(false);
@@ -370,11 +357,6 @@ export default function WaveformSmoothnessDrillScreen({
 
   const currentTarget = targetNote;
 
-  const setCurrentPhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
-
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -398,13 +380,13 @@ export default function WaveformSmoothnessDrillScreen({
           const fallbackTier = tier ?? 'beginner';
           setCurrentTier(fallbackTier);
           setParams(WAVEFORM_SMOOTHNESS_PARAMS[fallbackTier]);
-          setLoadingParams(false);
+          setIsLoadingParams(false);
         }
         return;
       }
 
       try {
-        setLoadingParams(true);
+        setIsLoadingParams(true);
 
         const assessment = await getLatestAssessment();
 
@@ -456,8 +438,8 @@ export default function WaveformSmoothnessDrillScreen({
 
         setCurrentTier(resolvedTier);
         setParams(generatedParams);
-      } catch (error) {
-        console.error('Failed to load waveform smoothness data:', error);
+      } catch (errorMessage) {
+        console.error('Failed to load waveform smoothness data:', errorMessage);
 
         if (!cancelled) {
           const fallbackTier = tier ?? 'beginner';
@@ -466,7 +448,7 @@ export default function WaveformSmoothnessDrillScreen({
         }
       } finally {
         if (!cancelled) {
-          setLoadingParams(false);
+          setIsLoadingParams(false);
         }
       }
     };
@@ -490,15 +472,15 @@ export default function WaveformSmoothnessDrillScreen({
       return;
     }
 
-    setLiveFrame(frame);
+    setLiveAudioFrame(frame);
   }, []);
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
       if (discardNextStopRef.current) {
         discardNextStopRef.current = false;
-        recordingRef.current = false;
-        stopRequestedRef.current = false;
+        isRecordingRef.current = false;
+        recordingStopRequestedRef.current = false;
         return;
       }
 
@@ -515,18 +497,18 @@ export default function WaveformSmoothnessDrillScreen({
       }
 
       processingRef.current = true;
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
       clearTimers();
 
       setElapsedMs(0);
       elapsedRef.current = 0;
-      setLiveFrame(null);
-      setCurrentPhase('processing');
+      setLiveAudioFrame(null);
+      setPhase('processing');
 
       if (!hasSufficientRecordedSignal(samples)) {
         processingRef.current = false;
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
@@ -562,8 +544,8 @@ export default function WaveformSmoothnessDrillScreen({
           score: scored,
         };
 
-        const nextResults = [...resultsRef.current, nextResult];
-        resultsRef.current = nextResults;
+        const nextResults = [...repetitionResultsRef.current, nextResult];
+        repetitionResultsRef.current = nextResults;
 
         if (!mountedRef.current || leavingRef.current) {
           processingRef.current = false;
@@ -614,7 +596,7 @@ export default function WaveformSmoothnessDrillScreen({
           setAverageCentroidSmoothness(centroidSmoothness);
           setAverageAmplitudeStability(amplitudeStability);
           setAverageCentroid(averageCentroidHz);
-          setFinalResult(aggregatedResult);
+          setResult(aggregatedResult);
 
           await saveCompletedExercise(
             'tone',
@@ -635,7 +617,7 @@ export default function WaveformSmoothnessDrillScreen({
           }
 
           processingRef.current = false;
-          setCurrentPhase('results');
+          setPhase('results');
           return;
         }
 
@@ -653,9 +635,9 @@ export default function WaveformSmoothnessDrillScreen({
         setCurrentRep(nextRep);
         processingRef.current = false;
         setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-        setCurrentPhase('countdown');
-      } catch (error) {
-        console.error('Waveform smoothness processing error:', error);
+        setPhase('countdown');
+      } catch (errorMessage) {
+        console.error('Waveform smoothness processing error:', errorMessage);
         processingRef.current = false;
 
         if (
@@ -666,11 +648,11 @@ export default function WaveformSmoothnessDrillScreen({
           setErrorMessage(
             'We could not analyze your recording. Please try again.',
           );
-          setCurrentPhase('instructions');
+          setPhase('instructions');
         }
       }
     },
-    [clearTimers, currentTier, params, setCurrentPhase],
+    [clearTimers, currentTier, params, setPhase],
   );
 
   const { startRecording, stopRecording } = useAudioRecorder({
@@ -690,7 +672,7 @@ export default function WaveformSmoothnessDrillScreen({
       pausedRef.current ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
-      recordingRef.current ||
+      isRecordingRef.current ||
       processingRef.current
     ) {
       return;
@@ -701,22 +683,22 @@ export default function WaveformSmoothnessDrillScreen({
 
     if (!start || !stop) {
       setErrorMessage('The audio recorder is not ready. Please try again.');
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       return;
     }
 
     try {
       setErrorMessage(null);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       elapsedRef.current = 0;
       setElapsedMs(0);
 
-      recordingRef.current = true;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = true;
+      recordingStopRequestedRef.current = false;
       processingRef.current = false;
       discardNextStopRef.current = false;
 
-      setCurrentPhase('recording');
+      setPhase('recording');
 
       await start();
 
@@ -745,8 +727,8 @@ export default function WaveformSmoothnessDrillScreen({
           pausedRef.current ||
           showQuitModalRef.current ||
           quitInProgressRef.current ||
-          !recordingRef.current ||
-          stopRequestedRef.current ||
+          !isRecordingRef.current ||
+          recordingStopRequestedRef.current ||
           phaseRef.current !== 'recording'
         ) {
           return;
@@ -758,14 +740,14 @@ export default function WaveformSmoothnessDrillScreen({
         if (elapsedRef.current >= durationMs) {
           clearTimers();
 
-          if (stopRequestedRef.current) return;
-          stopRequestedRef.current = true;
+          if (recordingStopRequestedRef.current) return;
+          recordingStopRequestedRef.current = true;
 
-          void Promise.resolve(stop()).catch(error => {
-            console.error('Failed to stop waveform recording:', error);
+          void Promise.resolve(stop()).catch(errorMessage => {
+            console.error('Failed to stop waveform recording:', errorMessage);
 
-            recordingRef.current = false;
-            stopRequestedRef.current = false;
+            isRecordingRef.current = false;
+            recordingStopRequestedRef.current = false;
             processingRef.current = false;
 
             if (
@@ -776,16 +758,16 @@ export default function WaveformSmoothnessDrillScreen({
               setErrorMessage(
                 'We could not finish the recording. Please try again.',
               );
-              setCurrentPhase('instructions');
+              setPhase('instructions');
             }
           });
         }
       }, 100);
-    } catch (error) {
-      console.error('Failed to start waveform recording:', error);
+    } catch (errorMessage) {
+      console.error('Failed to start waveform recording:', errorMessage);
 
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
       processingRef.current = false;
 
       if (
@@ -796,10 +778,10 @@ export default function WaveformSmoothnessDrillScreen({
         setErrorMessage(
           'Unable to start the microphone. Please check your microphone permission and try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
       }
     }
-  }, [clearTimers, params.durationSec, setCurrentPhase]);
+  }, [clearTimers, params.durationSec, setPhase]);
 
   const playCurrentReference = useCallback(async () => {
     const target = targetNoteRef.current;
@@ -817,7 +799,7 @@ export default function WaveformSmoothnessDrillScreen({
 
     try {
       setErrorMessage(null);
-      setCurrentPhase('listening');
+      setPhase('listening');
 
       await playSingleNote(
         target.frequency,
@@ -835,7 +817,7 @@ export default function WaveformSmoothnessDrillScreen({
       }
 
       await beginRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       if (
         pausedRef.current ||
         showQuitModalRef.current ||
@@ -845,16 +827,16 @@ export default function WaveformSmoothnessDrillScreen({
         return;
       }
 
-      console.error('Failed to play waveform reference note:', error);
+      console.error('Failed to play waveform reference note:', errorMessage);
 
       if (mountedRef.current) {
         setErrorMessage(
           'We could not play the reference note. Please try again.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
       }
     }
-  }, [beginRecording, setCurrentPhase]);
+  }, [beginRecording, setPhase]);
 
   useEffect(() => {
     if (phase !== 'countdown') return;
@@ -901,7 +883,7 @@ export default function WaveformSmoothnessDrillScreen({
   }, [phase, countdownCycle, playCurrentReference]);
 
   const startExercise = useCallback(() => {
-    if (loadingParams || !targetNote) return;
+    if (isLoadingParams || !targetNote) return;
 
     clearTimers();
 
@@ -911,9 +893,9 @@ export default function WaveformSmoothnessDrillScreen({
     discardNextStopRef.current = false;
     leavingRef.current = false;
 
-    resultsRef.current = [];
+    repetitionResultsRef.current = [];
     setRepetitionResults([]);
-    setFinalResult(null);
+    setResult(null);
     setAverageCentroidSmoothness(0);
     setAverageAmplitudeStability(0);
     setAverageCentroid(0);
@@ -924,16 +906,17 @@ export default function WaveformSmoothnessDrillScreen({
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
 
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
+    isRecordingRef.current = false;
+    recordingStopRequestedRef.current = false;
     processingRef.current = false;
+    setIsInitialListening(false);
 
     setIsQuitting(false);
     setShowQuitModal(false);
-    setCurrentPhase('countdown');
-  }, [clearTimers, loadingParams, setCurrentPhase, targetNote]);
+    setPhase('countdown');
+  }, [clearTimers, isLoadingParams, setPhase, targetNote]);
 
   const retryExercise = useCallback(() => {
     clearTimers();
@@ -942,29 +925,29 @@ export default function WaveformSmoothnessDrillScreen({
     showQuitModalRef.current = false;
     discardNextStopRef.current = true;
 
-    recordingRef.current = false;
-    stopRequestedRef.current = true;
+    isRecordingRef.current = false;
+    recordingStopRequestedRef.current = true;
     processingRef.current = false;
 
     try {
-      void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+      void Promise.resolve(stopRecordingRef.current?.()).catch(errorMessage => {
         console.error(
           'Failed to stop waveform recording before retry:',
-          error,
+          errorMessage,
         );
       });
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop waveform recording before retry:',
-        error,
+        errorMessage,
       );
     }
 
     disposeNotePlayer();
 
-    resultsRef.current = [];
+    repetitionResultsRef.current = [];
     setRepetitionResults([]);
-    setFinalResult(null);
+    setResult(null);
     setAverageCentroidSmoothness(0);
     setAverageAmplitudeStability(0);
     setAverageCentroid(0);
@@ -975,13 +958,13 @@ export default function WaveformSmoothnessDrillScreen({
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setElapsedMs(0);
     elapsedRef.current = 0;
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
 
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
     setShowQuitModal(false);
     setIsQuitting(false);
-    setCurrentPhase('countdown');
-  }, [clearTimers, setCurrentPhase]);
+    setPhase('countdown');
+  }, [clearTimers, setPhase]);
 
   const pauseForExitPrompt = useCallback(() => {
     if (
@@ -1002,25 +985,25 @@ export default function WaveformSmoothnessDrillScreen({
 
     if (currentPhase === 'recording') {
       discardNextStopRef.current = true;
-      recordingRef.current = false;
-      stopRequestedRef.current = true;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = true;
       processingRef.current = false;
 
       elapsedRef.current = 0;
       setElapsedMs(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
 
       try {
-        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+        void Promise.resolve(stopRecordingRef.current?.()).catch(errorMessage => {
           console.error(
             'Failed to stop waveform recording while paused:',
-            error,
+            errorMessage,
           );
         });
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to stop waveform recording while paused:',
-          error,
+          errorMessage,
         );
       }
     } else if (currentPhase === 'countdown') {
@@ -1046,19 +1029,19 @@ export default function WaveformSmoothnessDrillScreen({
       pausedPhase === 'recording' ||
       pausedPhase === 'listening'
     ) {
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
       processingRef.current = false;
 
       setElapsedMs(0);
       elapsedRef.current = 0;
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       if (phaseRef.current === 'countdown') {
         setCountdownCycle(value => value + 1);
       } else {
-        setCurrentPhase('countdown');
+        setPhase('countdown');
       }
 
       return;
@@ -1067,13 +1050,13 @@ export default function WaveformSmoothnessDrillScreen({
     if (pausedPhase === 'processing') {
       processingRef.current = false;
 
-      if (finalResult !== null) {
-        setCurrentPhase('results');
+      if (result !== null) {
+        setPhase('results');
       } else {
-        setCurrentPhase('countdown');
+        setPhase('countdown');
       }
     }
-  }, [finalResult, setCurrentPhase]);
+  }, [result, setPhase]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
@@ -1088,18 +1071,18 @@ export default function WaveformSmoothnessDrillScreen({
     setShowQuitModal(false);
 
     clearTimers();
-    recordingRef.current = false;
-    stopRequestedRef.current = true;
+    isRecordingRef.current = false;
+    recordingStopRequestedRef.current = true;
     processingRef.current = false;
 
     disposeNotePlayer();
 
     try {
       await Promise.resolve(stopRecordingRef.current?.());
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop waveform recording before leaving:',
-        error,
+        errorMessage,
       );
     } finally {
       if (mountedRef.current) {
@@ -1136,23 +1119,23 @@ export default function WaveformSmoothnessDrillScreen({
       discardNextStopRef.current = true;
 
       clearTimers();
-      recordingRef.current = false;
-      stopRequestedRef.current = true;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = true;
       processingRef.current = false;
 
       disposeNotePlayer();
 
       try {
-        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
+        void Promise.resolve(stopRecordingRef.current?.()).catch(errorMessage => {
           console.error(
             'Failed to stop waveform recording during cleanup:',
-            error,
+            errorMessage,
           );
         });
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to stop waveform recording during cleanup:',
-          error,
+          errorMessage,
         );
       }
     };
@@ -1187,7 +1170,7 @@ export default function WaveformSmoothnessDrillScreen({
         setShowNoAudioModal(false);
         setErrorMessage(null);
         setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-        setCurrentPhase('countdown');
+        setPhase('countdown');
       }}
       onQuit={() => {
         setShowNoAudioModal(false);
@@ -1197,7 +1180,7 @@ export default function WaveformSmoothnessDrillScreen({
     />
   );
 
-  if (loadingParams) {
+  if (isLoadingParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1260,10 +1243,13 @@ export default function WaveformSmoothnessDrillScreen({
           tip="Focus on keeping your tone smooth and your vocal output steady rather than changing your pitch."
           tier={currentTier}
           onBack={handleBack}
-          onStart={startExercise}
-          startDisabled={loadingParams || !targetNote}
-          startLabel={loadingParams ? 'Loading...' : 'Start Exercise'}
-          error={errorMessage}
+          onStart={() => {
+            setIsInitialListening(true);
+            setPhase('listening');
+          }}
+          startDisabled={isLoadingParams || !targetNote}
+          startLabel={isLoadingParams ? 'Loading...' : 'Start Exercise'}
+          errorMessage={errorMessage}
         />
 
         {quitModal}
@@ -1305,14 +1291,14 @@ export default function WaveformSmoothnessDrillScreen({
           promptTitle="Listen to the Reference"
           prompt="Listen carefully to the note, then sustain the same note smoothly."
           liveContent={
-            <View style={styles.referenceCard}>
-              <Text style={styles.referenceLabel}>SING THIS NOTE</Text>
+            <View style={exerciseStyles.referenceCardVariant2}>
+              <Text style={exerciseStyles.referenceLabel}>SING THIS NOTE</Text>
 
-              <Text style={styles.referenceNote}>
+              <Text style={exerciseStyles.resultTargetLarge}>
                 {currentTarget?.name ?? '--'}
               </Text>
 
-              <Text style={styles.referenceFrequency}>
+              <Text style={exerciseStyles.frequencyText}>
                 {currentTarget
                   ? `${formatNumber(currentTarget.frequency, 1)} Hz`
                   : '--'}
@@ -1320,6 +1306,11 @@ export default function WaveformSmoothnessDrillScreen({
             </View>
           }
           onBack={handleBack}
+          onContinue={
+            isInitialListening
+              ? startExercise
+              : undefined
+          }
         />
         {quitModal}
       </>
@@ -1330,10 +1321,10 @@ export default function WaveformSmoothnessDrillScreen({
     const elapsedSeconds = elapsedMs / 1000;
 
     const detectedNote =
-      liveFrame &&
-      Number.isFinite(liveFrame.pitch) &&
-      liveFrame.pitch > 0
-        ? frequencyToNoteName(liveFrame.pitch)
+      liveAudioFrame &&
+      Number.isFinite(liveAudioFrame.pitch) &&
+      liveAudioFrame.pitch > 0
+        ? frequencyToNoteName(liveAudioFrame.pitch)
         : '--';
 
     return (
@@ -1346,7 +1337,7 @@ export default function WaveformSmoothnessDrillScreen({
           targetNote={currentTarget?.name ?? '--'}
           targetFrequency={currentTarget?.frequency}
           detectedNote={detectedNote}
-          liveFrame={liveFrame}
+          liveAudioFrame={liveAudioFrame}
         />
         {quitModal}
       </>
@@ -1376,8 +1367,8 @@ export default function WaveformSmoothnessDrillScreen({
     );
   }
 
-  const score = finalResult?.score ?? 0;
-  const passed = finalResult?.passed ?? false;
+  const score = result?.score ?? 0;
+  const passed = result?.passed ?? false;
 
   return (
     <>
@@ -1392,30 +1383,30 @@ export default function WaveformSmoothnessDrillScreen({
             : 'Keep practicing. Focus on maintaining an even tone and steady vocal output throughout each sustained note.'
         }
         scoreDetails={
-          <View style={styles.scoreDetails}>
-            <View style={styles.scoreMetric}>
-              <Text style={styles.scoreMetricLabel}>
+          <View style={exerciseStyles.scoreDetailsVariant1}>
+            <View style={exerciseStyles.scoreMetric}>
+              <Text style={exerciseStyles.scoreMetricLabel}>
                 Spectral Smoothness
               </Text>
-              <Text style={styles.scoreMetricValue}>
+              <Text style={exerciseStyles.infoName}>
                 {formatNumber(averageCentroidSmoothness)}%
               </Text>
             </View>
 
-            <View style={styles.scoreMetric}>
-              <Text style={styles.scoreMetricLabel}>
+            <View style={exerciseStyles.scoreMetric}>
+              <Text style={exerciseStyles.scoreMetricLabel}>
                 Amplitude Stability
               </Text>
-              <Text style={styles.scoreMetricValue}>
+              <Text style={exerciseStyles.infoName}>
                 {formatNumber(averageAmplitudeStability)}%
               </Text>
             </View>
 
-            <View style={styles.scoreMetric}>
-              <Text style={styles.scoreMetricLabel}>
+            <View style={exerciseStyles.scoreMetric}>
+              <Text style={exerciseStyles.scoreMetricLabel}>
                 Average Centroid
               </Text>
-              <Text style={styles.scoreMetricValue}>
+              <Text style={exerciseStyles.infoName}>
                 {formatNumber(averageCentroid)} Hz
               </Text>
             </View>
@@ -1424,45 +1415,45 @@ export default function WaveformSmoothnessDrillScreen({
         onRetry={retryExercise}
         onExit={handleBack}
       >
-        <View style={styles.resultsSection}>
-          <Text style={styles.resultsSectionTitle}>
+        <View style={exerciseStyles.restIndicator}>
+          <Text style={exerciseStyles.feedbackTitle}>
             Repetition Results
           </Text>
 
           {repetitionResults.map((item, index) => (
             <View
               key={`${item.targetNote}-${index}`}
-              style={styles.repetitionCard}
+              style={exerciseStyles.repetitionCard}
             >
-              <View style={styles.repetitionHeader}>
-                <Text style={styles.repetitionTitle}>
+              <View style={exerciseStyles.repetitionHeader}>
+                <Text style={exerciseStyles.infoName}>
                   Repetition {index + 1}
                 </Text>
-                <Text style={styles.repetitionScore}>
+                <Text style={exerciseStyles.resultDetailValue}>
                   {item.score.score}%
                 </Text>
               </View>
 
-              <View style={styles.repetitionNoteRow}>
+              <View style={exerciseStyles.repetitionNoteRow}>
                 <Ionicons
                   name="musical-note-outline"
                   size={18}
                   color={COLORS.brown}
                 />
-                <Text style={styles.repetitionNote}>
+                <Text style={exerciseStyles.resultDetailValue}>
                   {item.targetNote}
                 </Text>
               </View>
 
-              <View style={styles.repetitionMetrics}>
-                <Text style={styles.repetitionMetric}>
+              <View style={exerciseStyles.repetitionMetrics}>
+                <Text style={exerciseStyles.detailLabel}>
                   Smoothness:{' '}
                   {formatNumber(
                     item.measurement.centroidSmoothnessPct,
                   )}
                   %
                 </Text>
-                <Text style={styles.repetitionMetric}>
+                <Text style={exerciseStyles.detailLabel}>
                   Stability:{' '}
                   {formatNumber(
                     item.measurement.amplitudeStabilityPct,
@@ -1478,317 +1469,3 @@ export default function WaveformSmoothnessDrillScreen({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  referenceCard: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  referenceLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    letterSpacing: 1,
-    color: COLORS.muted,
-    marginBottom: 6,
-  },
-  referenceNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 38,
-    color: COLORS.brown,
-  },
-  referenceFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-
-  recordingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 22,
-    paddingTop: 150,
-    paddingBottom: 20,
-  },
-  recordingBody: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 22,
-    paddingTop: 2,
-  },
-  repPillText: {
-    textAlign: 'center',
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    letterSpacing: 0.6,
-    color: COLORS.muted,
-  },
-  recordingTitle: {
-    marginTop: 18,
-    fontFamily: 'FredokaBold',
-    fontSize: 27,
-    color: COLORS.brown,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  recordingProgressSection: {
-    width: '100%',
-    marginTop: 26,
-    marginBottom: 20,
-  },
-  recordingProgressLabels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 9,
-  },
-  progressLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: COLORS.muted,
-  },
-  progressTime: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 8,
-    overflow: 'hidden',
-    borderRadius: 8,
-    backgroundColor: COLORS.background,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 8,
-    backgroundColor: COLORS.pink,
-  },
-  remainingText: {
-    marginTop: 7,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'right',
-  },
-  liveCard: {
-    marginTop: 20,
-    width: '110%',
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  liveMicCircle: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 21,
-    backgroundColor: COLORS.background,
-  },
-  liveCardHeading: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  liveCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  liveCardSubtitle: {
-    marginTop: 2,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  liveIndicatorPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: COLORS.background,
-  },
-  recordingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.guideRed,
-  },
-  liveIndicatorText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.7,
-    color: COLORS.guideRed,
-  },
-  waveformContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingTop: 5,
-    paddingBottom: 15,
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  waveformBars: {
-    width: '100%',
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  waveformBar: {
-    flex: 1,
-    maxWidth: 6,
-    minWidth: 2,
-    borderRadius: 4,
-  },
-  waveformStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  waveformStatus: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  liveMetricsRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  liveMetric: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  liveDivider: {
-    width: 1,
-    height: 52,
-    backgroundColor: COLORS.border,
-  },
-  liveLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: COLORS.muted,
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  liveValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 24,
-    color: COLORS.brown,
-  },
-  metricHint: {
-    marginTop: 3,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-
-  scoreDetails: {
-    width: '100%',
-    marginTop: 18,
-    gap: 10,
-  },
-  scoreMetric: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-  },
-  scoreMetricLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  scoreMetricValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  resultsSection: {
-    marginTop: 18,
-  },
-  resultsSectionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  repetitionCard: {
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  repetitionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  repetitionTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  repetitionScore: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-  repetitionNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 8,
-  },
-  repetitionNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-  repetitionMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  repetitionMetric: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-
-});

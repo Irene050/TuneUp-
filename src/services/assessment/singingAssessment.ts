@@ -2,7 +2,8 @@
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
 import { frequencyToMidi } from '@/utils/music/notes';
-import { average, clampFinite } from '@/utils/math';
+import { average, clampFinite, median } from '@/utils/math';
+import { sleep } from '@/utils/async';
 
 export const SINGING_ASSESSMENT_BPM = 100;
 export const SINGING_ASSESSMENT_SAMPLE_RATE = 44100;
@@ -100,30 +101,25 @@ function centsDistance(a: number, b: number): number {
   return Math.abs(a - b) * 100;
 }
 
-function median(values: number[]): number {
-  if (!values.length) return 0;
-
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-
-  return sorted.length % 2 === 1
-    ? sorted[middle]
-    : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function getPitchFrames(
+async function getPitchFrames(
   samples: Float32Array,
   sampleRate: number,
-): PitchFrame[] {
+): Promise<PitchFrame[]> {
   const frames: PitchFrame[] = [];
   const frameSize = SINGING_ASSESSMENT_BUFFER_SIZE;
   const hopSize = Math.floor(frameSize / 2);
+  let frameIndex = 0;
 
   for (
     let offset = 0;
     offset + frameSize <= samples.length;
     offset += hopSize
   ) {
+    if (frameIndex > 0 && frameIndex % 32 === 0) {
+      await sleep(0);
+    }
+
+    frameIndex += 1;
     const chunk = samples.subarray(offset, offset + frameSize);
     const rms = calcRMS(chunk);
 
@@ -487,10 +483,10 @@ function createFeedback(
   return feedback;
 }
 
-export function calculateSingingAssessmentScore(
+export async function calculateSingingAssessmentScore(
   samples: Float32Array,
   sampleRate = SINGING_ASSESSMENT_SAMPLE_RATE,
-): SingingAssessmentResult {
+): Promise<SingingAssessmentResult> {
   if (
     !Number.isFinite(sampleRate) ||
     sampleRate <= 0 ||
@@ -513,7 +509,8 @@ export function calculateSingingAssessmentScore(
     );
   }
 
-  const frames = getPitchFrames(samples, sampleRate);
+  const frames = await getPitchFrames(samples, sampleRate);
+  await sleep(0);
   const events = segmentNotes(frames);
 
   const hopSize = Math.floor(

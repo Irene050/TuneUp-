@@ -3,7 +3,7 @@ import {
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
-import { average } from '@/utils/math';
+import { average, median } from '@/utils/math';
 
 export interface ScaleAccuracyMeasurement {
   detectedFreqs: number[];
@@ -134,25 +134,7 @@ export function measureScaleAccuracyDrill(
       continue;
     }
 
-    const sorted = [...validFrequencies].sort(
-      (a, b) => a - b
-    );
-
-    const middle = Math.floor(
-      sorted.length / 2
-    );
-
-    const median =
-      sorted.length % 2 === 0
-        ? (
-            sorted[middle - 1] +
-            sorted[middle]
-          ) / 2
-        : sorted[middle];
-
-    detectedFreqs.push(
-      Number.isFinite(median) ? median : 0
-    );
+    detectedFreqs.push(median(validFrequencies));
 
     for (const frame of voicedFrames) {
       if (

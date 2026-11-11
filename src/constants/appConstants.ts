@@ -27,9 +27,13 @@ export const COLORS = {
 } as const;
 
 export const EXERCISE_COUNTDOWN_SECONDS = 3;
+export const EXERCISE_FINAL_RESULT_DELAY_MS = 100;
+export const EXERCISE_RECORDING_BUFFER_SECONDS = 0.8;
 export const EXERCISE_RECORDING_INTERVAL_MS = 100;
 export const EXERCISE_FFT_SIZE = 1024;
 export const EXERCISE_FFT_HOP_SIZE = 512;
+export const VOLUME_HISTORY_BAR_COUNT = 32;
+export const VOLUME_RAMP_BAR_COUNT = 28;
 export const TONE_WAVEFORM_BAR_COUNT = 30;
 export const AUDIO_SAMPLE_RATE = 44100;
 export const AUDIO_BUFFER_SIZE = 4410;
@@ -38,5 +42,7 @@ export const EXERCISE_REFERENCE_NOTE_DURATION_SECONDS = 1.5;
 export const VOLUME_ANALYSIS_WINDOW_MS = 50;
 export const VOLUME_DBFS_MIN = -60;
 export const VOLUME_DBFS_MAX = -10;
+export const LIVE_VOICE_DETECTION_THRESHOLD_DB = -45;
 export const AGILITY_GOOD_NOTE_SEMITONES = 0.5;
 export const AGILITY_CLOSE_NOTE_SEMITONES = 1.5;
+export const PITCH_GUIDE_MAX_CENTS = 100;

@@ -3,23 +3,12 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { registerUser } from '@/services/firebase/authService';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
   closeAlert,
   type AlertDetails,
@@ -143,27 +132,27 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={exerciseStyles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={exerciseStyles.scrollContent_Register}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.content}>
+        <View style={exerciseStyles.content_Register}>
           <Image
             source={require('@/assets/images/tabIcons/tuneup-logo.png')}
-            style={styles.logo}
+            style={exerciseStyles.logo_Register}
             resizeMode="contain"
           />
 
-          <View style={styles.form}>
-            <View style={styles.row}>
-              <View style={styles.halfInput}>
-                <Text style={styles.label}>First Name</Text>
+          <View style={exerciseStyles.form_Login_login}>
+            <View style={exerciseStyles.row}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.label_Register}>First Name</Text>
 
                 <TextInput
-                  style={styles.input}
+                  style={exerciseStyles.input_Register}
                   value={firstName}
                   onChangeText={setFirstName}
                   autoCapitalize="words"
@@ -171,11 +160,11 @@ export default function RegisterScreen() {
                 />
               </View>
 
-              <View style={styles.halfInput}>
-                <Text style={styles.label}>Last Name</Text>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.label_Register}>Last Name</Text>
 
                 <TextInput
-                  style={styles.input}
+                  style={exerciseStyles.input_Register}
                   value={lastName}
                   onChangeText={setLastName}
                   autoCapitalize="words"
@@ -184,10 +173,10 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <Text style={styles.label}>Email Address</Text>
+            <Text style={exerciseStyles.label_Register}>Email Address</Text>
 
             <TextInput
-              style={styles.input}
+              style={exerciseStyles.input_Register}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -196,20 +185,20 @@ export default function RegisterScreen() {
               editable={!loading}
             />
 
-            <View style={styles.row}>
-              <View style={styles.halfInput}>
-                <Text style={styles.label}>Birthdate</Text>
+            <View style={exerciseStyles.row}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.label_Register}>Birthdate</Text>
 
                 <Pressable
-                  style={styles.input}
+                  style={exerciseStyles.input_Register}
                   onPress={() => setShowDatePicker(true)}
                   disabled={loading}
                 >
                   <Text
                     style={
                       birthdate
-                        ? styles.selectedText
-                        : styles.placeholderText
+                        ? exerciseStyles.selectedText
+                        : exerciseStyles.placeholderText
                     }
                   >
                     {birthdate || 'MM/DD/YYYY'}
@@ -217,43 +206,43 @@ export default function RegisterScreen() {
                 </Pressable>
               </View>
 
-              <View style={styles.halfInput}>
-                <Text style={styles.label}>Gender</Text>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.label_Register}>Gender</Text>
 
                 <Pressable
-                  style={styles.input}
+                  style={exerciseStyles.input_Register}
                   onPress={() =>
                     setShowGenderDropdown((previous) => !previous)
                   }
                   disabled={loading}
                 >
-                  <View style={styles.genderRow}>
+                  <View style={exerciseStyles.genderRow}>
                     <Text
                       style={
                         gender
-                          ? styles.selectedText
-                          : styles.placeholderText
+                          ? exerciseStyles.selectedText
+                          : exerciseStyles.placeholderText
                       }
                     >
                       {gender || 'Select Gender'}
                     </Text>
 
-                    <Text style={styles.dropdownArrow}>▾</Text>
+                    <Text style={exerciseStyles.dropdownArrow}>▾</Text>
                   </View>
                 </Pressable>
 
                 {showGenderDropdown && (
-                  <View style={styles.dropdown}>
+                  <View style={exerciseStyles.dropdown_Register}>
                     {['Male', 'Female', 'Non-binary'].map((option) => (
                       <Pressable
                         key={option}
-                        style={styles.dropdownOption}
+                        style={exerciseStyles.dropdownOption}
                         onPress={() => {
                           setGender(option);
                           setShowGenderDropdown(false);
                         }}
                       >
-                        <Text style={styles.dropdownText}>{option}</Text>
+                        <Text style={exerciseStyles.dropdownText_Register}>{option}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -261,11 +250,11 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <Text style={styles.label}>Password</Text>
+            <Text style={exerciseStyles.label_Register}>Password</Text>
 
-            <View style={styles.passwordContainer}>
+            <View style={exerciseStyles.passwordContainer_Register}>
               <TextInput
-                style={styles.passwordInput}
+                style={exerciseStyles.passwordInput_Register}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -275,7 +264,7 @@ export default function RegisterScreen() {
               />
 
               <Pressable
-                style={styles.eyeButton}
+                style={exerciseStyles.eyeButton}
                 onPress={() =>
                   setShowPassword((previous) => !previous)
                 }
@@ -285,19 +274,19 @@ export default function RegisterScreen() {
                   showPassword ? 'Hide password' : 'Show password'
                 }
               >
-                <Text style={styles.eyeText}>
+                <Text style={exerciseStyles.eyeText_Register}>
                   {showPassword ? '◉' : '◌'}
                 </Text>
               </Pressable>
             </View>
 
-            <Text style={styles.label}>Confirm Password</Text>
+            <Text style={exerciseStyles.label_Register}>Confirm Password</Text>
 
-            <View style={styles.passwordContainer}>
+            <View style={exerciseStyles.passwordContainer_Register}>
               <TextInput
                 style={[
-                  styles.passwordInput,
-                  passwordsMismatch && styles.passwordInputError,
+                  exerciseStyles.passwordInput_Register,
+                  passwordsMismatch && exerciseStyles.passwordInputError,
                 ]}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -310,7 +299,7 @@ export default function RegisterScreen() {
               />
 
               <Pressable
-                style={styles.eyeButton}
+                style={exerciseStyles.eyeButton}
                 onPress={() =>
                   setShowConfirmPassword((previous) => !previous)
                 }
@@ -322,22 +311,22 @@ export default function RegisterScreen() {
                     : 'Show confirm password'
                 }
               >
-                <Text style={styles.eyeText}>
+                <Text style={exerciseStyles.eyeText_Register}>
                   {showConfirmPassword ? '◉' : '◌'}
                 </Text>
               </Pressable>
             </View>
 
             {passwordsMismatch && (
-              <Text style={styles.passwordErrorText}>
+              <Text style={exerciseStyles.passwordErrorText}>
                 Passwords do not match.
               </Text>
             )}
 
             <Pressable
               style={[
-                styles.registerButton,
-                loading && styles.disabledButton,
+                exerciseStyles.registerButton,
+                loading && exerciseStyles.disabled,
               ]}
               onPress={handleRegister}
               disabled={loading}
@@ -345,7 +334,7 @@ export default function RegisterScreen() {
               {loading ? (
                 <ActivityIndicator color={COLORS.brown} />
               ) : (
-                <Text style={styles.buttonText}>Create Account</Text>
+                <Text style={exerciseStyles.buttonText_Register}>Create Account</Text>
               )}
             </Pressable>
           </View>
@@ -396,21 +385,21 @@ function TuneUpAlertModal({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={alertStyles.overlay}>
-        <View style={alertStyles.card}>
+      <View style={exerciseStyles.modalOverlay}>
+        <View style={exerciseStyles.card_Register_alert}>
           {type === 'info' ? (
             <Ionicons
               name={iconName}
               size={38}
               color={COLORS.brown}
-              style={alertStyles.standaloneIcon}
+              style={exerciseStyles.standaloneIcon}
             />
           ) : (
             <View
               style={[
-                alertStyles.iconCircle,
-                type === 'error' && alertStyles.errorIconCircle,
-                type === 'success' && alertStyles.successIconCircle,
+                exerciseStyles.iconCircle_Register_alert,
+                type === 'error' && exerciseStyles.selectedDropdownItem,
+                type === 'success' && exerciseStyles.resultIconPassed,
               ]}
             >
               <Ionicons
@@ -421,240 +410,21 @@ function TuneUpAlertModal({
             </View>
           )}
 
-          <Text style={alertStyles.title}>{title}</Text>
+          <Text style={exerciseStyles.title_Login_alert}>{title}</Text>
 
-          <Text style={alertStyles.message}>{message}</Text>
+          <Text style={exerciseStyles.message_Register_alert}>{message}</Text>
 
           <Pressable
             style={({ pressed }) => [
-              alertStyles.button,
-              pressed && alertStyles.buttonPressed,
+              exerciseStyles.button_Register_alert,
+              pressed && exerciseStyles.buttonPressed,
             ]}
             onPress={onClose}
           >
-            <Text style={alertStyles.buttonText}>{buttonLabel}</Text>
+            <Text style={exerciseStyles.buttonText_Register_alert}>{buttonLabel}</Text>
           </Pressable>
         </View>
       </View>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  content: {
-    marginTop: 50,
-    flex: 1,
-    paddingHorizontal: 26,
-  },
-  logo: {
-    width: 75,
-    height: 75,
-    alignSelf: 'center',
-    marginTop: 28,
-    marginBottom: 35,
-  },
-  form: {
-    width: '100%',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  halfInput: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 10,
-    color: COLORS.dark,
-    marginBottom: 6,
-  },
-  input: {
-    height: 42,
-    backgroundColor: COLORS.background,
-    borderRadius: 3,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: COLORS.text,
-    marginBottom: 14,
-    justifyContent: 'center',
-  },
-  selectedText: {
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  placeholderText: {
-    fontSize: 13,
-    color: COLORS.gray,
-  },
-  genderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  dropdownArrow: {
-    fontSize: 10,
-    color: COLORS.text,
-  },
-  dropdown: {
-    position: 'absolute',
-    top: 48,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.white,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    zIndex: 100,
-    elevation: 5,
-  },
-  dropdownOption: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.white,
-  },
-  dropdownText: {
-    fontSize: 12,
-    color: COLORS.text,
-  },
-  passwordContainer: {
-    position: 'relative',
-    width: '100%',
-  },
-  passwordInput: {
-    height: 42,
-    backgroundColor: COLORS.background,
-    borderRadius: 3,
-    paddingHorizontal: 12,
-    paddingRight: 42,
-    fontSize: 13,
-    color: COLORS.text,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  passwordInputError: {
-    borderColor: COLORS.error,
-  },
-  passwordErrorText: {
-    color: COLORS.error,
-    fontSize: 11,
-    marginTop: -8,
-    marginBottom: 10,
-  },
-  eyeButton: {
-    position: 'absolute',
-    right: 8,
-    top: 0,
-    width: 34,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eyeText: {
-    fontSize: 16,
-    color: COLORS.muted,
-  },
-  registerButton: {
-    width: 105,
-    height: 34,
-    borderRadius: 18,
-    backgroundColor: COLORS.pink,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    fontSize: 10,
-    fontFamily: 'FredokaBold',
-    color: COLORS.dark,
-  },
-});
-
-const alertStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: COLORS.transparentbrown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    paddingHorizontal: 26,
-    paddingTop: 30,
-    paddingBottom: 24,
-    alignItems: 'center',
-    elevation: 10,
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  errorIconCircle: {
-    backgroundColor: COLORS.background,
-  },
-  successIconCircle: {
-    backgroundColor: COLORS.pink,
-  },
-  standaloneIcon: {
-    marginBottom: 18,
-  },
-  title: {
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  message: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  button: {
-    width: '100%',
-    minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  buttonPressed: {
-    opacity: 0.75,
-  },
-  buttonText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-});

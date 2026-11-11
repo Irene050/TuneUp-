@@ -1,70 +1,39 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-import {
-  DYNAMIC_RANGE_PARAMS,
-  type DynamicRangeParams,
-  type Tier,
-} from '@/constants/params';
-import {
-  type LiveAudioFrame,
-  useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
+import { DYNAMIC_RANGE_PARAMS, type DynamicRangeParams, type Tier } from '@/constants/params';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-  ExerciseNoAudioModal,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import {
-  measureDynamicRange,
-  type RepetitionInterval,
-} from '@/services/measurement/volume/dynamicRangeExercise';
+import { measureDynamicRange, type RepetitionInterval } from '@/services/measurement/volume/dynamicRangeExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
+import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { playSingleNote } from '@/utils/music/notePlayer';
-import {
-  createMusicalNote,
-  frequencyToMidi,
-} from '@/utils/music/notes';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
-  VOLUME_DBFS_MAX,
-  VOLUME_DBFS_MIN,
-} from '@/constants/appConstants';
+import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
 import { sleep } from '@/utils/async';
-import {
-  concatenateRepetitions,
-  fixedDurationSamples,
-  hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
+import { concatenateRepetitions, fixedDurationSamples, hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
-const BAR_COUNT = 32;
 const PHASES_PER_REPETITION = 3;
-const PROCESSING_MIN_DURATION_MS = 350;
+const PROCESSING_MIN_DURATION_MS = 100;
 const TIMER_TICK_MS = 100;
 
 type Phase =
   | 'instructions'
+  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -82,32 +51,32 @@ function normalizeVolume(value: number): number {
 }
 
 function referenceHeight(index: number): number {
-  const middle = (BAR_COUNT - 1) / 2;
+  const middle = (VOLUME_HISTORY_BAR_COUNT - 1) / 2;
   const distance = Math.abs(index - middle) / middle;
   return 0.18 + (1 - distance) * 0.72;
 }
 
 function DynamicRangeVisualizer({ liveHistory }: { liveHistory: number[] }) {
   return (
-    <View style={styles.visualizer}>
-      <View style={styles.targetBand} />
-      <View style={styles.actualBars}>
-        {Array.from({ length: BAR_COUNT }, (_, index) => {
+    <View style={exerciseStyles.visualizer}>
+      <View style={exerciseStyles.targetBand} />
+      <View style={exerciseStyles.actualBars}>
+        {Array.from({ length: VOLUME_HISTORY_BAR_COUNT }, (_, index) => {
           const height = liveHistory[index] ?? 0;
           return (
             <View
               key={`actual-${index}`}
               style={[
-                styles.actualBar,
+                exerciseStyles.actualBar,
                 { height: height > 0 ? `${Math.max(5, height * 82)}%` : '0%' },
               ]}
             />
           );
         })}
       </View>
-      <View style={styles.centerLine} />
-      <View style={styles.targetMarker}>
-        <Text style={styles.targetMarkerText}>TARGET</Text>
+      <View style={exerciseStyles.centerLine} />
+      <View style={exerciseStyles.targetMarker}>
+        <Text style={exerciseStyles.targetMarkerText}>TARGET</Text>
       </View>
     </View>
   );
@@ -123,13 +92,13 @@ export default function DynamicRangeExercise({
     DYNAMIC_RANGE_PARAMS[initialTier],
   );
   const [referenceNote, setReferenceNote] = useState(() => createMusicalNote(60));
-  const [phase, setPhase] = useState<Phase>('instructions');
-  const [loadingParams, setLoadingParams] = useState(true);
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [countdownFor, setCountdownFor] = useState<CountdownFor>('start');
   const [currentRep, setCurrentRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [score, setScore] = useState(0);
   const [rangeAccuracy, setRangeAccuracy] = useState(0);
@@ -155,7 +124,6 @@ export default function DynamicRangeExercise({
   );
 
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('instructions');
   const countdownRunIdRef = useRef(0);
   const shouldSaveResultRef = useRef(false);
   const finishingRef = useRef(false);
@@ -167,7 +135,7 @@ export default function DynamicRangeExercise({
   const discardNextStopRef = useRef(false);
   const pausedPhaseRef = useRef<Phase>('instructions');
   const pausedHadRecordingRef = useRef(false);
-  const recordingActiveRef = useRef(false);
+  const isRecordingRef = useRef(false);
   const referencePlayingRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
   const repetitionStartedAtRef = useRef<number | null>(null);
@@ -177,11 +145,6 @@ export default function DynamicRangeExercise({
   const currentRepetitionStartRef = useRef<number | null>(null);
   const stopRecordingRef = useRef<(() => void | Promise<void>) | null>(null);
   const pendingStopRef = useRef<Promise<void> | null>(null);
-
-  const setCurrentPhase = useCallback((next: Phase) => {
-    phaseRef.current = next;
-    setPhase(next);
-  }, []);
 
   const clearCountdown = useCallback(() => {
     countdownRunIdRef.current += 1;
@@ -246,8 +209,8 @@ export default function DynamicRangeExercise({
         const midiNote = Math.max(lowMidi, Math.min(highMidi, midpointMidi));
 
         if (!cancelled) setReferenceNote(createMusicalNote(midiNote));
-      } catch (error) {
-        console.error('[DynamicRange] Could not load vocal range:', error);
+      } catch (errorMessage) {
+        console.error('[DynamicRange] Could not load vocal range:', errorMessage);
       }
     }
 
@@ -261,7 +224,7 @@ export default function DynamicRangeExercise({
     let cancelled = false;
 
     async function initializeAdaptiveParams() {
-      setLoadingParams(true);
+      setIsLoadingParams(true);
 
       try {
         let currentTier: Tier = tier ?? 'beginner';
@@ -315,8 +278,8 @@ export default function DynamicRangeExercise({
             recentScores,
           }),
         );
-      } catch (error) {
-        console.error('[DynamicRange] Could not load adaptive parameters:', error);
+      } catch (errorMessage) {
+        console.error('[DynamicRange] Could not load adaptive parameters:', errorMessage);
         if (cancelled) return;
         const fallbackTier = tier ?? 'beginner';
         setResolvedTier(fallbackTier);
@@ -327,7 +290,7 @@ export default function DynamicRangeExercise({
           }),
         );
       } finally {
-        if (!cancelled) setLoadingParams(false);
+        if (!cancelled) setIsLoadingParams(false);
       }
     }
 
@@ -352,8 +315,8 @@ export default function DynamicRangeExercise({
 
     try {
       await playSingleNote(referenceNote.frequency, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS);
-    } catch (error) {
-      console.error('[DynamicRange] Could not play reference note:', error);
+    } catch (errorMessage) {
+      console.error('[DynamicRange] Could not play reference note:', errorMessage);
       if (mountedRef.current) {
         setReferencePlaybackError(
           'Unable to play the reference note. Please try again.',
@@ -383,16 +346,16 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      setLiveFrame(frame);
+      setLiveAudioFrame(frame);
       const normalized = normalizeVolume(frame.volume);
       setLiveHistory(previous => {
         const next = [...previous, normalized];
-        return next.length > BAR_COUNT ? next.slice(-BAR_COUNT) : next;
+        return next.length > VOLUME_HISTORY_BAR_COUNT ? next.slice(-VOLUME_HISTORY_BAR_COUNT) : next;
       });
     },
 
     onStop: (samples, sampleRate) => {
-      recordingActiveRef.current = false;
+      isRecordingRef.current = false;
       acceptFramesRef.current = false;
 
       if (discardNextStopRef.current) {
@@ -432,7 +395,7 @@ export default function DynamicRangeExercise({
             finishingRef.current = false;
             setCurrentRep(retryingRepetition + 1);
             setShowNoAudioModal(true);
-            setCurrentPhase('instructions');
+            setPhase('instructions');
             return;
           }
 
@@ -476,7 +439,7 @@ export default function DynamicRangeExercise({
           finishingRef.current = false;
           setCurrentRep(missingRepetition + 1);
           setShowNoAudioModal(true);
-          setCurrentPhase('instructions');
+          setPhase('instructions');
           return;
         }
 
@@ -531,7 +494,7 @@ export default function DynamicRangeExercise({
           setRampConsistency(result.rampConsistency);
           setScore(Math.round(result.overallScore));
           setPassed(result.passed);
-          setCurrentPhase('results');
+          setPhase('results');
 
           if (
             !mountedRef.current ||
@@ -551,26 +514,26 @@ export default function DynamicRangeExercise({
           } catch (saveError) {
             console.error('[DynamicRange] Could not save progress:', saveError);
           }
-        } catch (error) {
-          console.error('[DynamicRange] Measurement failed:', error);
+        } catch (errorMessage) {
+          console.error('[DynamicRange] Measurement failed:', errorMessage);
           if (
             mountedRef.current &&
             !cancelProcessingRef.current &&
             !quitInProgressRef.current
           ) {
             setReferencePlaybackError(
-              error instanceof Error
-                ? error.message
+              errorMessage instanceof Error
+                ? errorMessage.message
                 : 'We could not analyze this attempt. Please try again.',
             );
-            setCurrentPhase('instructions');
+            setPhase('instructions');
           }
         } finally {
           finishingRef.current = false;
           if (mountedRef.current) {
             setSeconds(0);
             setCurrentRep(1);
-            setLiveFrame(null);
+            setLiveAudioFrame(null);
             setLiveHistory([]);
           }
         }
@@ -583,7 +546,7 @@ export default function DynamicRangeExercise({
   }, [stopRecording]);
 
   useEffect(() => {
-    recordingActiveRef.current = isRecording;
+    isRecordingRef.current = isRecording;
   }, [isRecording]);
 
   useEffect(() => {
@@ -599,11 +562,11 @@ export default function DynamicRangeExercise({
       showQuitModalRef.current = false;
 
       try {
-        void Promise.resolve(stopRecordingRef.current?.()).catch(error => {
-          console.error('[DynamicRange] Cleanup stop failed:', error);
+        void Promise.resolve(stopRecordingRef.current?.()).catch(errorMessage => {
+          console.error('[DynamicRange] Cleanup stop failed:', errorMessage);
         });
-      } catch (error) {
-        console.error('[DynamicRange] Cleanup stop failed:', error);
+      } catch (errorMessage) {
+        console.error('[DynamicRange] Cleanup stop failed:', errorMessage);
       }
     };
   }, []);
@@ -615,7 +578,7 @@ export default function DynamicRangeExercise({
     setRangeAccuracy(0);
     setRampConsistency(0);
     setPassed(false);
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveHistory([]);
     setReferencePlaybackError('');
 
@@ -638,7 +601,7 @@ export default function DynamicRangeExercise({
     async (runId: number, purpose: CountdownFor) => {
       setCountdownFor(purpose);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-      setCurrentPhase('countdown');
+      setPhase('countdown');
 
       for (let value = EXERCISE_COUNTDOWN_SECONDS; value >= 1; value--) {
         if (
@@ -660,11 +623,11 @@ export default function DynamicRangeExercise({
         runId === countdownRunIdRef.current
       );
     },
-    [setCurrentPhase],
+    [setPhase],
   );
 
   const startExercise = useCallback(async (repetitionToRedo?: number) => {
-    if (loadingParams || pausedRef.current || quitInProgressRef.current) return;
+    if (isLoadingParams || pausedRef.current || quitInProgressRef.current) return;
 
     const runId = ++countdownRunIdRef.current;
     resetExercise(repetitionToRedo !== undefined);
@@ -703,32 +666,32 @@ export default function DynamicRangeExercise({
         return;
       }
 
-      recordingActiveRef.current = true;
+      isRecordingRef.current = true;
       shouldSaveResultRef.current = false;
       finishingRef.current = false;
       beginRecordingSession();
       acceptFramesRef.current = true;
       setSeconds(0);
       setCurrentRep(repetitionToRedo ?? 1);
-      setCurrentPhase('recording');
-    } catch (error) {
-      console.error('[DynamicRange] Could not start recording:', error);
+      setPhase('recording');
+    } catch (errorMessage) {
+      console.error('[DynamicRange] Could not start recording:', errorMessage);
       acceptFramesRef.current = false;
       shouldSaveResultRef.current = false;
-      recordingActiveRef.current = false;
+      isRecordingRef.current = false;
       if (mountedRef.current && runId === countdownRunIdRef.current) {
-        setCurrentPhase('instructions');
+        setPhase('instructions');
       }
     }
   }, [
-    loadingParams,
+    isLoadingParams,
     resetExercise,
     runCountdown,
     repetitions,
     startRecording,
     stopRecording,
     beginRecordingSession,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   const tryAgain = useCallback(() => {
@@ -750,7 +713,7 @@ export default function DynamicRangeExercise({
 
     const current = phaseRef.current;
     pausedPhaseRef.current = current;
-    pausedHadRecordingRef.current = recordingActiveRef.current;
+    pausedHadRecordingRef.current = isRecordingRef.current;
     pausedRef.current = current !== 'processing';
     showQuitModalRef.current = true;
     clearCountdown();
@@ -761,10 +724,10 @@ export default function DynamicRangeExercise({
       shouldSaveResultRef.current = false;
       finishingRef.current = true;
       setSeconds(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       setLiveHistory([]);
-      void stopRecordingSafely().catch(error => {
-        console.error('[DynamicRange] Pause stop failed:', error);
+      void stopRecordingSafely().catch(errorMessage => {
+        console.error('[DynamicRange] Pause stop failed:', errorMessage);
       });
     } else if (current === 'countdown') {
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
@@ -802,15 +765,15 @@ export default function DynamicRangeExercise({
       shouldSaveResultRef.current = false;
       setCurrentRep(1);
       setSeconds(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       setLiveHistory([]);
       repetitionSamplesRef.current = Array(repetitions).fill(null);
       retryingRepetitionRef.current = null;
 
       try {
         await pendingStopRef.current;
-      } catch (error) {
-        console.error('[DynamicRange] Interrupted stop failed:', error);
+      } catch (errorMessage) {
+        console.error('[DynamicRange] Interrupted stop failed:', errorMessage);
       }
 
       if (
@@ -859,12 +822,12 @@ export default function DynamicRangeExercise({
           return;
         }
 
-        recordingActiveRef.current = true;
+        isRecordingRef.current = true;
         beginRecordingSession();
         setCurrentRep(1);
-      } catch (error) {
-        console.error('[DynamicRange] Could not resume recording:', error);
-        if (mountedRef.current) setCurrentPhase('instructions');
+      } catch (errorMessage) {
+        console.error('[DynamicRange] Could not resume recording:', errorMessage);
+        if (mountedRef.current) setPhase('instructions');
         return;
       }
     } else if (countdownFor === 'repetition') {
@@ -874,7 +837,7 @@ export default function DynamicRangeExercise({
 
     acceptFramesRef.current = true;
     setSeconds(0);
-    setCurrentPhase('recording');
+    setPhase('recording');
   }, [
     beginRecordingSession,
     countdownFor,
@@ -882,7 +845,7 @@ export default function DynamicRangeExercise({
     runCountdown,
     startRecording,
     stopRecording,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   const quitExercise = useCallback(async () => {
@@ -902,10 +865,10 @@ export default function DynamicRangeExercise({
 
     try {
       await stopRecordingSafely();
-    } catch (error) {
-      console.error('[DynamicRange] Quit stop failed:', error);
+    } catch (errorMessage) {
+      console.error('[DynamicRange] Quit stop failed:', errorMessage);
     } finally {
-      recordingActiveRef.current = false;
+      isRecordingRef.current = false;
       if (mountedRef.current) router.replace('/dashboard?tab=exercises');
     }
   }, [clearCountdown, stopRecordingSafely]);
@@ -949,10 +912,10 @@ export default function DynamicRangeExercise({
       const repStartedAt = repetitionStartedAtRef.current;
       if (repStartedAt === null) return;
 
-      const elapsed = Math.floor((Date.now() - repStartedAt) / 1000);
-      setSeconds(Math.min(totalSeconds, elapsed));
+      const elapsedSeconds = Math.floor((Date.now() - repStartedAt) / 1000);
+      setSeconds(Math.min(totalSeconds, elapsedSeconds));
 
-      if (elapsed < totalSeconds) return;
+      if (elapsedSeconds < totalSeconds) return;
 
       finishCurrentRepetition();
 
@@ -964,7 +927,7 @@ export default function DynamicRangeExercise({
         setCurrentRep(nextRep);
         setSeconds(0);
         setLiveHistory([]);
-        setLiveFrame(null);
+        setLiveAudioFrame(null);
 
         void (async () => {
           const countdownFinished = await runCountdown(runId, 'repetition');
@@ -983,7 +946,7 @@ export default function DynamicRangeExercise({
           repetitionStartedAtRef.current = Date.now();
           acceptFramesRef.current = true;
           setSeconds(0);
-          setCurrentPhase('recording');
+          setPhase('recording');
         })();
 
         return;
@@ -993,14 +956,14 @@ export default function DynamicRangeExercise({
         finishingRef.current = true;
         shouldSaveResultRef.current = true;
         acceptFramesRef.current = false;
-        setCurrentPhase('processing');
+        setPhase('processing');
 
-        void stopRecordingSafely().catch(error => {
-          console.error('[DynamicRange] Final recording stop failed:', error);
+        void stopRecordingSafely().catch(errorMessage => {
+          console.error('[DynamicRange] Final recording stop failed:', errorMessage);
           finishingRef.current = false;
           shouldSaveResultRef.current = false;
           if (mountedRef.current && !quitInProgressRef.current) {
-            setCurrentPhase('instructions');
+            setPhase('instructions');
           }
         });
       }
@@ -1017,7 +980,7 @@ export default function DynamicRangeExercise({
     getRecordingElapsedSeconds,
     runCountdown,
     stopRecordingSafely,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   let instructionTitle = 'SOFT → LOUD';
@@ -1069,7 +1032,7 @@ export default function DynamicRangeExercise({
     </>
   );
 
-  if (loadingParams) {
+  if (isLoadingParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1077,7 +1040,7 @@ export default function DynamicRangeExercise({
           message="Adjusting the recording to your current difficulty level and preparing your vocal range."
           icon="options-outline"
           iconSize={44}
-          containerStyle={styles.centerScreen}
+          containerStyle={exerciseStyles.centerScreen}
         />
         {quitModal}
       </>
@@ -1126,26 +1089,24 @@ export default function DynamicRangeExercise({
           tip="Keep the same note throughout the recording. Change your vocal volume gradually instead of changing pitch."
           tier={resolvedTier}
           onBack={handleBack}
-          onStart={() => {
-            void startExercise();
-          }}
+          onStart={() => setPhase('listening')}
         >
-          <View style={styles.referenceCard}>
-            <View style={styles.referenceTopRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={styles.referenceNote}>{referenceNote.name}</Text>
+          <View style={exerciseStyles.referenceCard}>
+            <View style={exerciseStyles.referenceTopRow}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
+                <Text style={exerciseStyles.referenceNoteVariant1}>{referenceNote.name}</Text>
               </View>
-              <View style={styles.referenceIconCircle}>
+              <View style={exerciseStyles.referenceIconCircle}>
                 <Ionicons name="musical-note" size={22} color={COLORS.brown} />
               </View>
             </View>
-            <Text style={styles.referenceInstruction}>
+            <Text style={exerciseStyles.referenceInstruction}>
               Play the note, then sing it while gradually increasing your volume
               from soft to loud, before returning to soft.
             </Text>
             <TouchableOpacity
-              style={[styles.referenceButton, referencePlaying && styles.disabled]}
+              style={[exerciseStyles.referenceButton, referencePlaying && exerciseStyles.disabled]}
               onPress={() => void playReferenceNote()}
               activeOpacity={0.85}
               disabled={referencePlaying}
@@ -1155,35 +1116,64 @@ export default function DynamicRangeExercise({
               ) : (
                 <Ionicons name="play" size={17} color={COLORS.brown} />
               )}
-              <Text style={styles.referenceButtonText}>
+              <Text style={exerciseStyles.referenceButtonText}>
                 {referencePlaying ? 'Playing...' : `Play ${referenceNote.name}`}
               </Text>
             </TouchableOpacity>
             {referencePlaybackError !== '' && (
-              <Text style={styles.playbackError}>{referencePlaybackError}</Text>
+              <Text style={exerciseStyles.playbackError}>{referencePlaybackError}</Text>
             )}
           </View>
 
-          <View style={styles.previewCard}>
-            <Text style={styles.previewTitle}>Follow this pattern</Text>
-            <View style={styles.previewVisualizer}>
-              {Array.from({ length: BAR_COUNT }, (_, index) => (
+          <View style={exerciseStyles.previewCardVariant1}>
+            <Text style={exerciseStyles.referenceButtonText}>Follow this pattern</Text>
+            <View style={exerciseStyles.previewVisualizerVariant1}>
+              {Array.from({ length: VOLUME_HISTORY_BAR_COUNT }, (_, index) => (
                 <View
                   key={`preview-${index}`}
                   style={[
-                    styles.previewBar,
+                    exerciseStyles.previewBar,
                     { height: `${referenceHeight(index) * 80}%` },
                   ]}
                 />
               ))}
             </View>
-            <View style={styles.previewLabels}>
-              <Text style={styles.previewLabel}>Soft</Text>
-              <Text style={styles.previewLabel}>Loud</Text>
-              <Text style={styles.previewLabel}>Soft</Text>
+            <View style={exerciseStyles.previewLabelsVariant1}>
+              <Text style={exerciseStyles.guideText}>Soft</Text>
+              <Text style={exerciseStyles.guideText}>Loud</Text>
+              <Text style={exerciseStyles.guideText}>Soft</Text>
             </View>
           </View>
         </ExerciseScreen>
+        {quitModal}
+      </>
+    );
+  }
+
+  if (phase === 'listening') {
+    return (
+      <>
+        <ExerciseListeningScreen
+          icon="volume-high-outline"
+          title="Dynamic Range"
+          currentRep={1}
+          repetitions={repetitions}
+          promptTitle="Listen to the Reference"
+          prompt={`Listen to the ${referenceNote.name} note before singing.`}
+          isPlayingReference={referencePlaying}
+          onPlayReference={() => void playReferenceNote()}
+          onContinue={() => void startExercise()}
+          onBack={handleBack}
+          liveContent={
+            <View style={exerciseStyles.referenceCard}>
+              <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
+              <Text style={exerciseStyles.referenceNoteVariant1}>
+                {referenceNote.name}
+              </Text>
+            </View>
+          }
+          errorMessage={referencePlaybackError}
+        />
         {quitModal}
       </>
     );
@@ -1193,23 +1183,18 @@ export default function DynamicRangeExercise({
     const repetitionCountdown = countdownFor === 'repetition';
     return (
       <>
-        <View style={styles.centerScreen}>
-          <View style={styles.countdownCircle}>
-            <Text style={styles.countdownNumber}>{countdown}</Text>
-          </View>
-          <Text style={styles.screenTitle}>
-            {repetitionCountdown ? `Repetition ${currentRep}` : 'Get Ready'}
-          </Text>
-          <Text style={styles.countdownPrompt}>
-            {repetitionCountdown
-              ? 'Get ready to repeat the volume pattern.'
-              : 'Recording starts when the countdown ends.'}
-          </Text>
-          <Text style={styles.screenSubtitle}>
-            Prepare to sing {referenceNote.name}. Start softly, then follow the
-            volume prompts.
-          </Text>
-        </View>
+        <ExerciseCountdownScreen
+          icon="volume-high-outline"
+          title={repetitionCountdown ? `Repetition ${currentRep}` : 'Get Ready'}
+          currentRep={currentRep}
+          repetitions={repetitions}
+          countdown={countdown}
+          promptTitle={
+            repetitionCountdown ? 'Get ready to repeat' : 'Get ready to begin'
+          }
+          prompt={`Sing ${referenceNote.name}. Start softly, then follow the volume prompts.`}
+          onBack={handleBack}
+        />
         {quitModal}
       </>
     );
@@ -1218,61 +1203,61 @@ export default function DynamicRangeExercise({
   if (phase === 'recording') {
     return (
       <>
-        <View style={styles.screen}>
-          <View style={styles.exerciseHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.exerciseHeaderTitle}>Dynamic Range</Text>
-              <Text style={styles.exerciseHeaderSubtitle}>VOLUME CONTROL</Text>
+        <View style={exerciseStyles.screenVariant1}>
+          <View style={exerciseStyles.exerciseHeader}>
+            <View style={exerciseStyles.infoText}>
+              <Text style={exerciseStyles.resultValueVariant1}>Dynamic Range</Text>
+              <Text style={exerciseStyles.exerciseHeaderSubtitle}>VOLUME CONTROL</Text>
             </View>
           </View>
 
-          <View style={styles.exercisePromptCard}>
-            <Text style={styles.exercisePromptTitle}>{instructionTitle}</Text>
-            <Text style={styles.exercisePromptText}>
+          <View style={exerciseStyles.exercisePromptCard}>
+            <Text style={exerciseStyles.exercisePromptTitleVariant1}>{instructionTitle}</Text>
+            <Text style={exerciseStyles.exercisePromptText}>
               {instructionPrompt} Sing {referenceNote.name} throughout the pattern.
             </Text>
           </View>
 
           <ScrollView
-            style={styles.exerciseScroll}
-            contentContainerStyle={styles.exerciseScrollContent}
+            style={exerciseStyles.infoText}
+            contentContainerStyle={exerciseStyles.exerciseScrollContent}
             showsVerticalScrollIndicator={false}
           >
 
-            <View style={styles.phaseCountdownCard}>
-              <Text style={styles.phaseCountdownLabel}>NEXT PHASE IN</Text>
-              <Text style={styles.phaseCountdownValue}>{secondsUntilChange}s</Text>
+            <View style={exerciseStyles.phaseCountdownCard}>
+              <Text style={exerciseStyles.liveLabelVariant1}>NEXT PHASE IN</Text>
+              <Text style={exerciseStyles.phaseCountdownValue}>{secondsUntilChange}s</Text>
             </View>
 
-            <View style={styles.legend}>
-              <View style={styles.actualDot} />
-              <Text style={styles.legendText}>Your voice</Text>
+            <View style={exerciseStyles.legendVariant1}>
+              <View style={exerciseStyles.actualDot} />
+              <Text style={exerciseStyles.guideText}>Your voice</Text>
             </View>
 
             <DynamicRangeVisualizer liveHistory={liveHistory} />
 
-            <View style={styles.visualizerLabels}>
-              <Text style={styles.visualizerLabel}>SOFT</Text>
-              <Text style={styles.visualizerLabel}>LOUD</Text>
-              <Text style={styles.visualizerLabel}>SOFT</Text>
+            <View style={exerciseStyles.visualizerLabelsVariant1}>
+              <Text style={exerciseStyles.visualizerLabelVariant1}>SOFT</Text>
+              <Text style={exerciseStyles.visualizerLabelVariant1}>LOUD</Text>
+              <Text style={exerciseStyles.visualizerLabelVariant1}>SOFT</Text>
             </View>
 
-            <View style={styles.sessionRow}>
-              <View style={styles.sessionPart}>
-                <Text style={styles.sessionLabel}>REPETITION</Text>
-                <Text style={styles.sessionValue}>{currentRep} / {repetitions}</Text>
+            <View style={exerciseStyles.sessionRowVariant1}>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.sessionLabel}>REPETITION</Text>
+                <Text style={exerciseStyles.sessionValue}>{currentRep} / {repetitions}</Text>
               </View>
-              <View style={styles.sessionDivider} />
-              <View style={styles.sessionPart}>
-                <Text style={styles.sessionLabel}>ELAPSED</Text>
-                <Text style={styles.sessionValue}>
+              <View style={exerciseStyles.sessionDivider} />
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.sessionLabel}>ELAPSED</Text>
+                <Text style={exerciseStyles.sessionValue}>
                   {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.liveProgressTrack}>
-              <View style={[styles.liveProgressFill, { width: `${progress}%` }]} />
+            <View style={exerciseStyles.liveProgressTrack}>
+              <View style={[exerciseStyles.exerciseProgressFill, { width: `${progress}%` }]} />
             </View>
           </ScrollView>
         </View>
@@ -1311,14 +1296,14 @@ export default function DynamicRangeExercise({
             : 'Try to follow the soft-to-loud-to-soft pattern more consistently.'
         }
         scoreDetails={
-          <View style={styles.resultsDetails}>
-            <View style={styles.resultMetric}>
-              <Text style={styles.resultValue}>{rangeAccuracy}%</Text>
-              <Text style={styles.resultLabel}>Range Accuracy</Text>
+          <View style={exerciseStyles.resultsDetails}>
+            <View style={exerciseStyles.resultMetric}>
+              <Text style={exerciseStyles.resultValueVariant1}>{rangeAccuracy}%</Text>
+              <Text style={exerciseStyles.resultLabelVariant2}>Range Accuracy</Text>
             </View>
-            <View style={styles.resultMetric}>
-              <Text style={styles.resultValue}>{rampConsistency}%</Text>
-              <Text style={styles.resultLabel}>Ramp Consistency</Text>
+            <View style={exerciseStyles.resultMetric}>
+              <Text style={exerciseStyles.resultValueVariant1}>{rampConsistency}%</Text>
+              <Text style={exerciseStyles.resultLabelVariant2}>Ramp Consistency</Text>
             </View>
           </View>
         }
@@ -1330,459 +1315,3 @@ export default function DynamicRangeExercise({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  centerScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  screenTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  screenSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    lineHeight: 21,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 10,
-    maxWidth: 320,
-  },
-  countdownCircle: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  countdownNumber: {
-    fontFamily: 'FredokaBold',
-    fontSize: 54,
-    color: COLORS.brown,
-  },
-  countdownPrompt: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  referenceCard: {
-    width: '100%',
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 9,
-  },
-  referenceTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  eyebrow: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.7,
-  },
-  referenceNote: {
-    marginTop: 2,
-    color: COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 29,
-    lineHeight: 36,
-  },
-  referenceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referenceInstruction: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  referenceButton: {
-    width: '100%',
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  referenceButtonText: {
-    color: COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-  },
-  playbackError: {
-    marginTop: 6,
-    color: COLORS.error,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  disabled: { opacity: 0.6 },
-  previewCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginTop: 12,
-  },
-  previewTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  previewVisualizer: {
-    height: 65,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  previewBar: {
-    flex: 1,
-    maxWidth: 7,
-    backgroundColor: COLORS.otherpink,
-    borderRadius: 4,
-  },
-  previewLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  previewLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  screen: {
-    position: 'absolute',
-    top: 90,
-    right: 8,
-    bottom: 0,
-    left: 8,
-    zIndex: 1000,
-    elevation: 1000,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  exerciseHeaderTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-  },
-  exerciseHeaderSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  exercisePromptCard: {
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: COLORS.pink,
-    marginBottom: 14,
-  },
-  exercisePromptTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 23,
-    color: COLORS.brown,
-  },
-  exercisePromptText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.brown,
-    marginTop: 5,
-  },
-  exerciseScroll: { flex: 1 },
-  exerciseScrollContent: { paddingBottom: 24 },
-  visualizerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  visualizerTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-  },
-  visualizerSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  micCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  phaseCountdownCard: {
-    marginTop: 12,
-    marginBottom: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  phaseCountdownLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.5,
-    color: COLORS.muted,
-  },
-  phaseCountdownValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.accent,
-  },
-  legend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  actualDot: {
-    width: 15,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.brown,
-  },
-  legendText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  visualizer: {
-    height: 155,
-    borderRadius: 15,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  targetBand: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '19%',
-    height: '27%',
-    backgroundColor: COLORS.lightGray,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COLORS.pink,
-  },
-  actualBars: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  actualBar: {
-    flex: 1,
-    maxWidth: 8,
-    backgroundColor: COLORS.brown,
-    borderRadius: 5,
-  },
-  centerLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    height: 1,
-    backgroundColor: COLORS.background,
-  },
-  targetMarker: {
-    position: 'absolute',
-    right: 7,
-    top: '18%',
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  targetMarkerText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    color: COLORS.accent,
-  },
-  visualizerLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 5,
-  },
-  visualizerLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  voiceRow: {
-    minHeight: 46,
-    marginTop: 12,
-    borderRadius: 13,
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  voiceLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  voiceLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  voiceValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 16,
-    color: COLORS.brown,
-  },
-  voiceUnit: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  targetRow: {
-    marginTop: 12,
-    minHeight: 60,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  targetLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.accent,
-  },
-  targetValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginTop: 1,
-  },
-  pattern: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  sessionRow: {
-    minHeight: 60,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  sessionPart: { flex: 1, alignItems: 'center' },
-  sessionLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  sessionValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  sessionDivider: {
-    width: 1,
-    height: 29,
-    backgroundColor: COLORS.border,
-  },
-  liveProgressTrack: {
-    height: 6,
-    marginTop: 10,
-    backgroundColor: COLORS.background,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  liveProgressFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 3,
-  },
-  exerciseFooter: { alignItems: 'center', marginTop: 14 },
-  exerciseFooterText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  resultsDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 12,
-    marginTop: 18,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  resultMetric: { flex: 1, alignItems: 'center', gap: 4 },
-  resultLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  resultValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-  },
-});

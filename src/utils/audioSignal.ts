@@ -1,3 +1,34 @@
+import {
+  LIVE_VOICE_DETECTION_THRESHOLD_DB,
+  VOLUME_DBFS_MAX,
+  VOLUME_DBFS_MIN,
+} from '@/constants/appConstants';
+
+export interface LiveVoiceDetection {
+  detected: boolean;
+  level: number;
+}
+
+export function getLiveVoiceDetection(
+  volumeDb: number,
+): LiveVoiceDetection {
+  if (!Number.isFinite(volumeDb)) {
+    return { detected: false, level: 0 };
+  }
+
+  return {
+    detected: volumeDb >= LIVE_VOICE_DETECTION_THRESHOLD_DB,
+    level: Math.max(
+      0,
+      Math.min(
+        1,
+        (volumeDb - VOLUME_DBFS_MIN) /
+          (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
+      ),
+    ),
+  };
+}
+
 export function hasSufficientRecordedSignal(
   samples: Float32Array | null | undefined,
 ): boolean {

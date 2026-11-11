@@ -6,21 +6,23 @@ import {
   useRef,
   useState,
 } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
   type VolumeControlStabilityParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseNoAudioModal,
+  ExerciseListeningScreen,
   ExercisePreparingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVolumeControlStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -44,11 +46,17 @@ import {
   EXERCISE_COUNTDOWN_SECONDS,
   EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
   concatenateRepetitions,
   fixedDurationSamples,
   hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 const DEFAULT_REFERENCE_MIDI = 60;
 const MAX_LIVE_HISTORY = 40;
@@ -56,8 +64,10 @@ const MIN_VOICE_CLARITY = 0.45;
 
 type Phase =
   | 'instructions'
+  | 'listening'
   | 'countdown'
   | 'recording'
+  | 'processing'
   | 'results';
 
 type MeasurementResult =
@@ -112,6 +122,7 @@ function getAssessmentReferenceMidi(
   return Math.round(
     (bounds.lowMidi + bounds.highMidi) / 2,
   );
+
 }
 
 export default function VolumeControlStabilityScreen({
@@ -119,8 +130,7 @@ export default function VolumeControlStabilityScreen({
 }: {
   tier?: Tier;
 }) {
-  const [phase, setPhase] =
-    useState<Phase>('instructions');
+  const { phase, setPhase } = usePhaseState<Phase>('instructions');
 
   const [referenceMidi, setReferenceMidi] =
     useState(DEFAULT_REFERENCE_MIDI);
@@ -245,10 +255,10 @@ export default function VolumeControlStabilityScreen({
         ) {
           setReferenceMidi(assessedMidi);
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Unable to load assessed vocal range for reference note:',
-          error,
+          errorMessage,
         );
       }
     };
@@ -351,10 +361,10 @@ export default function VolumeControlStabilityScreen({
             generatedParams.repetitions,
         );
         setParamsReady(true);
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load Volume Control Stability parameters:',
-          error,
+          errorMessage,
         );
 
         if (cancelled) {
@@ -414,10 +424,10 @@ export default function VolumeControlStabilityScreen({
           );
         }),
       ]);
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         `${NOTE} reference playback error:`,
-        error,
+        errorMessage,
       );
 
       if (mountedRef.current) {
@@ -451,17 +461,17 @@ export default function VolumeControlStabilityScreen({
 
       setMeasurement(measured);
       setScore(scored);
-      setPhase('results');
+      setPhase('processing');
 
       void saveCompletedExercise(
         'volume',
         'volumeControlStability',
         resolvedTier,
         scored.overallScore,
-      ).catch((error) => {
+      ).catch((errorMessage) => {
         console.error(
           'Unable to save completed recording:',
-          error,
+          errorMessage,
         );
       });
     },
@@ -472,6 +482,13 @@ export default function VolumeControlStabilityScreen({
       resolvedTier,
     ],
   );
+
+  useEffect(() => {
+    if (phase !== 'processing') return;
+
+    const timeout = setTimeout(() => setPhase('results'), 100);
+    return () => clearTimeout(timeout);
+  }, [phase]);
 
   const { startRecording, stopRecording } =
     useAudioRecorder({
@@ -669,10 +686,10 @@ export default function VolumeControlStabilityScreen({
 
         try {
           await stopRecording();
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             'Unable to stop recording after interruption:',
-            error,
+            errorMessage,
           );
         } finally {
           pauseStopPendingRef.current = false;
@@ -694,10 +711,10 @@ export default function VolumeControlStabilityScreen({
         recordingDurationSecondsRef.current || totalExerciseSeconds,
       );
       setPhase('recording');
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Unable to start recording:',
-        error,
+        errorMessage,
       );
 
       if (
@@ -783,7 +800,7 @@ export default function VolumeControlStabilityScreen({
         return;
       }
 
-      const elapsed =
+      const elapsedSeconds =
         (Date.now() - startedAt) / 1000;
 
       const recordingDuration =
@@ -791,13 +808,13 @@ export default function VolumeControlStabilityScreen({
       const remaining = Math.max(
         0,
         Math.ceil(
-          recordingDuration - elapsed,
+          recordingDuration - elapsedSeconds,
         ),
       );
 
       setRemainingSeconds(remaining);
 
-      if (elapsed >= recordingDuration) {
+      if (elapsedSeconds >= recordingDuration) {
         clearInterval(interval);
         void stopRecording();
       }
@@ -932,10 +949,10 @@ export default function VolumeControlStabilityScreen({
 
       try {
         await stopRecording();
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Unable to stop recording while opening quit modal:',
-          error,
+          errorMessage,
         );
       } finally {
         pauseStopPendingRef.current = false;
@@ -1006,10 +1023,10 @@ export default function VolumeControlStabilityScreen({
 
       try {
         await stopRecording();
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Unable to stop recording while quitting:',
-          error,
+          errorMessage,
         );
       } finally {
         pauseStopPendingRef.current = false;
@@ -1096,7 +1113,7 @@ export default function VolumeControlStabilityScreen({
 
   if (phase === 'instructions') {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={exerciseStyles.screen}>
         <ExerciseScreen
           title="Volume Control Stability"
           category="VOLUME CONTROL"
@@ -1141,7 +1158,7 @@ export default function VolumeControlStabilityScreen({
           tip="Choose a comfortable volume first. Avoid sudden changes in loudness while sustaining the note."
           tier={resolvedTier}
           onBack={() => void pauseForExitPrompt()}
-          onStart={startExercise}
+          onStart={() => setPhase('listening')}
           startDisabled={
             !paramsReady ||
             referencePlaying ||
@@ -1152,21 +1169,21 @@ export default function VolumeControlStabilityScreen({
               ? 'Preparing...'
               : 'Start Exercise'
           }
-          error={referenceError}
+          errorMessage={referenceError}
         >
-          <View style={styles.referenceCard}>
-            <View style={styles.referenceTopRow}>
-              <View style={styles.referenceCopy}>
-                <Text style={styles.referenceLabel}>
+          <View style={exerciseStyles.referenceCardVariant4}>
+            <View style={exerciseStyles.referenceTopRow}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.referenceLabelVariant1}>
                   OPTIONAL REFERENCE NOTE
                 </Text>
 
-                <Text style={styles.referenceNote}>
+                <Text style={exerciseStyles.referenceNoteVariant2}>
                   {NOTE}
                 </Text>
               </View>
 
-              <View style={styles.noteIconCircle}>
+              <View style={exerciseStyles.liveMicCircle}>
                 <Ionicons
                   name="musical-note"
                   size={22}
@@ -1175,7 +1192,7 @@ export default function VolumeControlStabilityScreen({
               </View>
             </View>
 
-            <Text style={styles.referenceInstruction}>
+            <Text style={exerciseStyles.referenceInstructionVariant2}>
               Play the note if you want a pitch guide.
               You can start the recording without playing it.
             </Text>
@@ -1184,8 +1201,8 @@ export default function VolumeControlStabilityScreen({
               accessibilityRole="button"
               accessibilityLabel={`Play ${NOTE} reference note`}
               style={[
-                styles.referenceButton,
-                referencePlaying && styles.disabled,
+                exerciseStyles.referenceButtonVariant2,
+                referencePlaying && exerciseStyles.quitModalButtonDisabled,
               ]}
               disabled={referencePlaying}
               onPress={() => {
@@ -1202,7 +1219,7 @@ export default function VolumeControlStabilityScreen({
                 color={ COLORS.brown}
               />
 
-              <Text style={styles.referenceButtonText}>
+              <Text style={exerciseStyles.referenceButtonText}>
                 {referencePlaying
                   ? 'Playing...'
                   : `Play ${NOTE}`}
@@ -1216,9 +1233,36 @@ export default function VolumeControlStabilityScreen({
     );
   }
 
+  if (phase === 'listening') {
+    return (
+      <SafeAreaView style={exerciseStyles.screen}>
+        <ExerciseListeningScreen
+          icon="pulse-outline"
+          title="Volume Control Stability"
+          currentRep={1}
+          repetitions={repetitions}
+          promptTitle="Listen to the Reference"
+          prompt={`Listen to the ${NOTE} note, then sing it steadily on “Ah.”`}
+          isPlayingReference={referencePlaying}
+          onPlayReference={() => void playReferenceNote()}
+          onContinue={startExercise}
+          onBack={() => void pauseForExitPrompt()}
+          errorMessage={referenceError ?? undefined}
+          liveContent={
+            <View style={exerciseStyles.referenceCardVariant4}>
+              <Text style={exerciseStyles.referenceLabelVariant1}>REFERENCE NOTE</Text>
+              <Text style={exerciseStyles.referenceNoteVariant2}>{NOTE}</Text>
+            </View>
+          }
+        />
+        {quitModal}
+      </SafeAreaView>
+    );
+  }
+
   if (phase === 'countdown') {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={exerciseStyles.screen}>
         <ExerciseCountdownScreen
           icon="pulse-outline"
           title="Get Ready"
@@ -1272,41 +1316,41 @@ export default function VolumeControlStabilityScreen({
       100;
 
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.screen}>
-          <View style={styles.exerciseHeader}>
-            <View style={styles.exerciseHeaderText}>
-              <Text style={styles.exerciseTitle}>
+      <SafeAreaView style={exerciseStyles.screen}>
+        <View style={exerciseStyles.screenVariant1}>
+          <View style={exerciseStyles.exerciseHeaderVariant1}>
+            <View style={exerciseStyles.exerciseHeaderText}>
+              <Text style={exerciseStyles.exerciseTitle}>
                 Volume Stability
               </Text>
 
-              <Text style={styles.exerciseEyebrow}>
+              <Text style={exerciseStyles.exerciseEyebrow}>
                 VOLUME CONTROL
               </Text>
             </View>
           </View>
 
-          <View style={styles.liveCard}>
-            <View style={styles.rowBetween}>
-              <View style={styles.stabilityHeading}>
-                <Text style={styles.cardTitle}>
+          <View style={exerciseStyles.liveCardVariant11}>
+            <View style={exerciseStyles.rowBetween}>
+              <View style={exerciseStyles.flex}>
+                <Text style={exerciseStyles.cardTitle}>
                   Volume Stability
                 </Text>
 
-                <Text style={styles.mutedSmall}>
+                <Text style={exerciseStyles.mutedSmallVariant1}>
                   Live consistency estimate
                 </Text>
               </View>
 
-              <Text style={styles.stabilityValue}>
+              <Text style={exerciseStyles.stabilityValueVariant1}>
                 {Math.round(clampedStability)}%
               </Text>
             </View>
 
-            <View style={styles.stabilityTrack}>
+            <View style={exerciseStyles.stabilityTrackVariant2}>
               <View
                 style={[
-                  styles.stabilityFill,
+                  exerciseStyles.stabilityFillVariant2,
                   {
                     width: `${clampedStability}%`,
                   },
@@ -1315,7 +1359,7 @@ export default function VolumeControlStabilityScreen({
 
               <View
                 style={[
-                  styles.stabilityTargetMarker,
+                  exerciseStyles.stabilityTargetMarker,
                   {
                     left: `${clampedTarget}%`,
                   },
@@ -1323,24 +1367,24 @@ export default function VolumeControlStabilityScreen({
               />
             </View>
 
-            <View style={styles.scaleRow}>
-              <Text style={styles.scaleText}>
+            <View style={exerciseStyles.scaleRow}>
+              <Text style={exerciseStyles.scaleText}>
                 Less steady
               </Text>
 
-              <Text style={styles.scaleText}>
+              <Text style={exerciseStyles.scaleText}>
                 Target: {Math.round(targetStability)}%
               </Text>
 
-              <Text style={styles.scaleText}>
+              <Text style={exerciseStyles.scaleText}>
                 More steady
               </Text>
             </View>
           </View>
 
-          <View style={styles.liveCard}>
-            <View style={styles.liveCardHeader}>
-              <View style={styles.liveIconCircle}>
+          <View style={exerciseStyles.liveCardVariant11}>
+            <View style={exerciseStyles.liveCardHeaderVariant3}>
+              <View style={exerciseStyles.liveIconCircle}>
                 <Ionicons
                   name="volume-medium-outline"
                   size={18}
@@ -1348,26 +1392,26 @@ export default function VolumeControlStabilityScreen({
                 />
               </View>
 
-              <View style={styles.liveCardHeading}>
-                <Text style={styles.cardTitle}>
+              <View style={exerciseStyles.flex}>
+                <Text style={exerciseStyles.cardTitle}>
                   Your Live Volume
                 </Text>
 
-                <Text style={styles.mutedSmall}>
+                <Text style={exerciseStyles.mutedSmallVariant1}>
                   Relative microphone level
                 </Text>
               </View>
 
               <View
                 style={[
-                  styles.noteStatusBadge,
+                  exerciseStyles.noteStatusBadge,
                   voiceDetected &&
-                    styles.noteStatusBadgeActive,
+                    exerciseStyles.noteStatusBadgeActive,
                 ]}
               >
                 <View
                   style={[
-                    styles.statusDot,
+                    exerciseStyles.statusDot,
                     {
                       backgroundColor: voiceDetected
                         ? COLORS.guideGreen
@@ -1378,9 +1422,9 @@ export default function VolumeControlStabilityScreen({
 
                 <Text
                   style={[
-                    styles.noteStatusText,
+                    exerciseStyles.noteStatusTextVariant1,
                     voiceDetected &&
-                      styles.statusTextSuccess,
+                      exerciseStyles.statusTextSuccess,
                   ]}
                 >
                   {voiceDetected
@@ -1390,20 +1434,20 @@ export default function VolumeControlStabilityScreen({
               </View>
             </View>
 
-            <View style={styles.liveVolumeRow}>
-              <Text style={styles.liveVolume}>
+            <View style={exerciseStyles.liveVolumeRow}>
+              <Text style={exerciseStyles.pageTitle}>
                 {liveVolumeDisplay}
               </Text>
 
-              <Text style={styles.liveUnit}>
+              <Text style={exerciseStyles.scoreDescriptionVariant2}>
                 / 70 level
               </Text>
             </View>
 
-            <View style={styles.statusBadge}>
+            <View style={exerciseStyles.statusBadge}>
               <View
                 style={[
-                  styles.statusDot,
+                  exerciseStyles.statusDot,
                   {
                     backgroundColor: meetsLiveTarget
                       ? COLORS.guideGreen
@@ -1414,9 +1458,9 @@ export default function VolumeControlStabilityScreen({
 
               <Text
                 style={[
-                  styles.statusText,
+                  exerciseStyles.statusText,
                   meetsLiveTarget &&
-                    styles.statusTextSuccess,
+                    exerciseStyles.statusTextSuccess,
                 ]}
               >
                 {!voiceDetected
@@ -1427,10 +1471,10 @@ export default function VolumeControlStabilityScreen({
               </Text>
             </View>
 
-            <View style={styles.liveSectionDivider} />
+            <View style={exerciseStyles.resultDivider} />
 
-            <View style={styles.liveCardHeader}>
-              <View style={styles.liveIconCircle}>
+            <View style={exerciseStyles.liveCardHeaderVariant3}>
+              <View style={exerciseStyles.liveIconCircle}>
                 <Ionicons
                   name="musical-note-outline"
                   size={18}
@@ -1438,25 +1482,25 @@ export default function VolumeControlStabilityScreen({
                 />
               </View>
 
-              <View style={styles.liveCardHeading}>
-                <Text style={styles.cardTitle}>
+              <View style={exerciseStyles.flex}>
+                <Text style={exerciseStyles.cardTitle}>
                   Detected Note
                 </Text>
               </View>
             </View>
 
-            <View style={styles.detectedNotePanel}>
+            <View style={exerciseStyles.detectedNotePanel}>
               <Text
                 style={[
-                  styles.detectedNote,
+                  exerciseStyles.detectedNote,
                   !voiceDetected &&
-                    styles.detectedNoteWaiting,
+                    exerciseStyles.detectedNoteWaiting,
                 ]}
               >
                 {voiceDetected ? liveNote : '--'}
               </Text>
 
-              <Text style={styles.detectedFrequency}>
+              <Text style={exerciseStyles.summaryLabel}>
                 {voiceDetected &&
                 livePitch !== null
                   ? `${livePitch.toFixed(1)} Hz`
@@ -1464,10 +1508,10 @@ export default function VolumeControlStabilityScreen({
               </Text>
             </View>
           </View>
-          <View style={styles.exerciseProgressTrack}>
+          <View style={exerciseStyles.progressTrackVariant7}>
               <View
                 style={[
-                  styles.exerciseProgressFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${Math.min(
                       100,
@@ -1483,6 +1527,20 @@ export default function VolumeControlStabilityScreen({
       </SafeAreaView>
     );
   }
+
+  if (phase === 'processing') {
+    return (
+      <SafeAreaView style={exerciseStyles.screen}>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Performance"
+          message="Measuring volume stability across all repetitions."
+        />
+        {quitModal}
+      </SafeAreaView>
+    );
+  }
+
   const finalScore = score?.overallScore ?? 0;
   const stabilityScore = measurement?.stability ?? 0;
   const durationScore = measurement?.durationScore ?? 0;
@@ -1547,7 +1605,7 @@ export default function VolumeControlStabilityScreen({
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={exerciseStyles.screen}>
       <ExerciseResultsScreen
         title="Volume Stability Results"
         subtitle={
@@ -1571,21 +1629,21 @@ export default function VolumeControlStabilityScreen({
           void pauseForExitPrompt();
         }}
 >
-  <View style={styles.resultCard}>
+  <View style={exerciseStyles.resultCardVariant4}>
     {resultRows.map((item, index) => (
       <View
         key={item.label}
         style={[
-          styles.resultRow,
+          exerciseStyles.resultRowVariant4,
           index === resultRows.length - 1 &&
-            styles.lastResultRow,
+            exerciseStyles.metricRowLast,
         ]}
       >
-        <Text style={styles.resultLabel}>
+        <Text style={exerciseStyles.resultLabel}>
           {item.label}
         </Text>
 
-        <Text style={styles.resultValue}>
+        <Text style={exerciseStyles.resultValue}>
           {item.value}
         </Text>
       </View>
@@ -1597,378 +1655,3 @@ export default function VolumeControlStabilityScreen({
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  screen: {
-    position: 'absolute',
-    top: 90,
-    right: 8,
-    bottom: 0,
-    left: 8,
-    zIndex: 1000,
-    elevation: 1000,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 2,
-  },
-  exerciseHeaderText: {
-    flex: 1,
-    marginBottom: 20,
-  },
-  exerciseExitButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  exerciseEyebrow: {
-    textAlign: 'center',
-    color: COLORS.muted,
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    letterSpacing: 1,
-  },
-  exerciseTitle: {
-    textAlign: 'center',
-    marginTop: 2,
-    color:  COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 21,
-  },
-  singingPrompt: {
-    marginTop: 20,
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 17,
-    backgroundColor: COLORS.white,
-  },
-  singingPromptTitle: {
-    color:  COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    textAlign: 'center',
-  },
-  singingPromptText: {
-    marginTop: 5,
-    color: COLORS.text,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: 'center',
-  },
-  disabled: {
-    opacity: 0.55,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  referenceCard: {
-    marginTop: 12,
-    padding: 13,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  referenceTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  referenceCopy: {
-    flex: 1,
-  },
-  referenceLabel: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  referenceNote: {
-    marginTop: 2,
-    color:  COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 28,
-  },
-  noteIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-  },
-  referenceInstruction: {
-    marginTop: 7,
-    color: COLORS.text,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  referenceButton: {
-    minHeight: 43,
-    marginTop: 11,
-    paddingHorizontal: 12,
-    borderRadius: 13,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  referenceButtonText: {
-    color:  COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-  },
-  liveCard: {
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-    marginBottom: 14,
-  },
-  liveCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  liveIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-  },
-  liveCardHeading: {
-    flex: 1,
-    minWidth: 0,
-  },
-  cardTitle: {
-    color:  COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-  },
-  mutedSmall: {
-    marginTop: 3,
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 14,
-  },
-  liveVolumeRow: {
-    width: '100%',
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  liveVolume: {
-    color:  COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-    textAlign: 'center',
-  },
-  liveUnit: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    textAlign: 'center',
-  },
-  statusBadge: {
-    alignSelf: 'center',
-    minHeight: 25,
-    marginTop: 7,
-    paddingHorizontal: 9,
-    borderRadius: 13,
-    backgroundColor: COLORS.background,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.muted,
-  },
-  statusText: {
-    color: COLORS.text,
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    letterSpacing: 0.25,
-  },
-  statusTextSuccess: {
-    color: COLORS.guideGreen,
-  },
-  liveSectionDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 12,
-  },
-  stabilityHeading: {
-    flex: 1,
-    minWidth: 0,
-  },
-  stabilityValue: {
-    color: COLORS.accent,
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-  },
-  stabilityTrack: {
-    height: 14,
-    marginTop: 11,
-    borderRadius: 6,
-    backgroundColor: COLORS.pink,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  stabilityFill: {
-    height: '100%',
-    borderRadius: 6,
-    backgroundColor: COLORS.accent,
-  },
-  stabilityTargetMarker: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor:  COLORS.brown,
-  },
-  scaleRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-  },
-  scaleText: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-  },
-  noteStatusBadge: {
-    flexShrink: 0,
-    minHeight: 23,
-    paddingHorizontal: 7,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  noteStatusBadgeActive: {
-    backgroundColor: COLORS.success,
-  },
-  noteStatusText: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaBold',
-    fontSize: 8,
-    letterSpacing: 0.2,
-  },
-  detectedNotePanel: {
-    marginTop: 10,
-    paddingVertical: 9,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-  },
-  detectedNote: {
-    color: COLORS.accent,
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    lineHeight: 40,
-  },
-  detectedNoteWaiting: {
-    color: COLORS.gray,
-  },
-  detectedFrequency: {
-    marginTop: 2,
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  progressCard: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 15,
-    backgroundColor: COLORS.white,
-  },
-  progressTime: {
-    color:  COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-  },
-  exerciseProgressTrack: {
-    height: 7,
-    borderRadius: 5,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-  },
-  exerciseProgressFill: {
-    height: '100%',
-    borderRadius: 5,
-    backgroundColor: COLORS.pink,
-  },
-  resultCard: {
-    width: '100%',
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 3,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  resultRow: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.background,
-    gap: 10,
-    paddingVertical: 5,
-  },
-  lastResultRow: {
-    borderBottomWidth: 0,
-  },
-  resultLabel: {
-    flex: 1,
-    color: COLORS.text,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-  },
-  resultValue: {
-    flexShrink: 1,
-    color:  COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    textAlign: 'right',
-  },
-});

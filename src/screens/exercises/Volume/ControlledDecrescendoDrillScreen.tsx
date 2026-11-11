@@ -1,73 +1,50 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-import {
-    CONTROLLED_DECRESCENDO_PARAMS,
-    type Tier,
-} from '@/constants/params';
-import {
-    type LiveAudioFrame,
-    useAudioRecorder,
-} from '@/hooks/useAudioRecorder';
+import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { CONTROLLED_DECRESCENDO_PARAMS, type Tier } from '@/constants/params';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import ExerciseScreen, {
-    ExerciseListeningScreen,
-    ExerciseNoAudioModal,
-    ExercisePreparingScreen,
-    ExerciseQuitModal,
-    ExerciseResultsScreen
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledDecrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureControlledDecrescendo } from '@/services/measurement/volume/controlledDecrescendoDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
+import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
 import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
 import {
-    createMusicalNote,
-    frequencyToMidi,
-} from '@/utils/music/notes';
-
-import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    VOLUME_ANALYSIS_WINDOW_MS,
-    VOLUME_DBFS_MAX,
-    VOLUME_DBFS_MIN,
-} from '@/constants/appConstants';
-import {
-    ResultItem,
-    VolumeVisualizer,
+  ResultItem,
+  VolumeRampRecordingContent,
 } from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
-
-const BAR_COUNT = 28;
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 type ControlledDecrescendoParams =
   typeof CONTROLLED_DECRESCENDO_PARAMS.beginner;
 
-type ExercisePhase =
+type Phase =
   | 'directions'
+  | 'listening'
   | 'countdown'
   | 'repCountdown'
   | 'exercise'
+  | 'processing'
   | 'results';
 
 interface ControlledDecrescendoExerciseProps {
   tier?: Tier;
-}
-
-interface TargetDecrescendoGuideProps {
-  seconds: number;
-  durationSeconds: number;
 }
 
 interface QuitExerciseModalProps {
@@ -90,7 +67,7 @@ function normalizeVolume(value: number): number {
 }
 
 function targetHeight(index: number): number {
-  const progress = index / Math.max(1, BAR_COUNT - 1);
+  const progress = index / Math.max(1, VOLUME_RAMP_BAR_COUNT - 1);
   return 0.83 - progress * 0.65;
 }
 
@@ -149,73 +126,6 @@ function estimateLiveSmoothness(history: number[]): number {
   return calculateLiveSmoothness(dbValues);
 }
 
-function TargetDecrescendoGuide({
-  seconds,
-  durationSeconds,
-}: TargetDecrescendoGuideProps) {
-  const progress = clamp(
-    durationSeconds > 0 ? seconds / durationSeconds : 0,
-    0,
-    1,
-  );
-
-  const activeIndex = Math.min(
-    BAR_COUNT - 1,
-    Math.floor(progress * BAR_COUNT),
-  );
-
-  return (
-    <View style={styles.guideCard}>
-      <Text style={styles.guideTitle}>Follow this pattern</Text>
-
-      <View style={styles.guideVisualizer}>
-        {Array.from({ length: BAR_COUNT }, (_, index) => {
-          const isActive = index === activeIndex;
-          const hasPassed = index < activeIndex;
-
-          return (
-            <View
-              key={`target-guide-${index}`}
-              style={[
-                styles.guideBar,
-                {
-                  height: `${targetHeight(index) * 100}%`,
-                  backgroundColor: isActive
-                    ? COLORS.accent
-                    : hasPassed
-                      ? COLORS.otherpink
-                      : COLORS.border,
-                },
-              ]}
-            />
-          );
-        })}
-
-        <View
-          style={[
-            styles.guideIndicator,
-            { left: `${progress * 100}%` },
-          ]}
-        />
-      </View>
-
-      <View style={styles.guideLabels}>
-        <Text style={styles.guideLabel}>LOUD</Text>
-        <Text style={styles.guideLabel}>SOFT</Text>
-      </View>
-
-      <View style={styles.guideProgressTrack}>
-        <View
-          style={[
-            styles.guideProgressFill,
-            { width: `${progress * 100}%` },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
-
 function QuitExerciseModal({
   visible,
   isQuitting,
@@ -239,11 +149,11 @@ function QuitExerciseModal({
 export default function ControlledDecrescendoDrill({
   tier,
 }: ControlledDecrescendoExerciseProps) {
-  const [phase, setPhase] = useState<ExercisePhase>('directions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('directions');
   const [countdownSeconds, setCountdownSeconds] =
     useState(EXERCISE_COUNTDOWN_SECONDS);
 
-  const [loadingParams, setLoadingParams] = useState(true);
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
   const [resolvedTier, setResolvedTier] = useState<Tier>(
     tier ?? 'beginner',
   );
@@ -264,7 +174,7 @@ export default function ControlledDecrescendoDrill({
   const [seconds, setSeconds] = useState(0);
   const [guideElapsed, setGuideElapsed] = useState(0);
 
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
 
   const [smoothness, setSmoothness] = useState(0);
@@ -288,15 +198,10 @@ export default function ControlledDecrescendoDrill({
   const completedNaturallyRef = useRef(false);
   const interRepStopRef = useRef(false);
   const discardInterruptedStopRef = useRef(false);
-  const phaseRef = useRef<ExercisePhase>(phase);
   const showQuitModalRef = useRef(false);
-  const pausedPhaseRef = useRef<ExercisePhase>('directions');
+  const pausedPhaseRef = useRef<Phase>('directions');
   const quitInProgressRef = useRef(false);
   const repetitionSamplesRef = useRef<Float32Array[]>([]);
-
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
 
   useEffect(() => {
     showQuitModalRef.current = showQuitModal;
@@ -404,7 +309,7 @@ export default function ControlledDecrescendoDrill({
     async function initializeAdaptiveParams() {
       let currentTier: Tier = tier ?? 'beginner';
 
-      setLoadingParams(true);
+      setIsLoadingParams(true);
 
       try {
         const user = auth.currentUser;
@@ -506,7 +411,7 @@ export default function ControlledDecrescendoDrill({
         setParams(fallbackParams);
       } finally {
         if (!cancelled) {
-          setLoadingParams(false);
+          setIsLoadingParams(false);
         }
       }
     }
@@ -521,7 +426,7 @@ export default function ControlledDecrescendoDrill({
   const clearLiveState = useCallback(() => {
     setSeconds(0);
     setGuideElapsed(0);
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveHistory([]);
   }, []);
 
@@ -539,15 +444,15 @@ export default function ControlledDecrescendoDrill({
         return;
       }
 
-      setLiveFrame(frame);
+      setLiveAudioFrame(frame);
 
       const normalized = normalizeVolume(frame.volume);
 
       setLiveHistory((previous) => {
         const next = [...previous, normalized];
 
-        return next.length > BAR_COUNT
-          ? next.slice(-BAR_COUNT)
+        return next.length > VOLUME_RAMP_BAR_COUNT
+          ? next.slice(-VOLUME_RAMP_BAR_COUNT)
           : next;
       });
     },
@@ -650,8 +555,8 @@ export default function ControlledDecrescendoDrill({
         setMinDb(Math.round(measurement.minDb * 10) / 10);
         setMaxDb(Math.round(measurement.maxDb * 10) / 10);
 
-        phaseRef.current = 'results';
-        setPhase('results');
+        phaseRef.current = 'processing';
+        setPhase('processing');
 
         void saveCompletedExercise(
           'volume',
@@ -730,7 +635,7 @@ export default function ControlledDecrescendoDrill({
     if (pausedPhase === 'exercise') {
       setSeconds(0);
       setGuideElapsed(0);
-      setLiveFrame(null);
+      setLiveAudioFrame(null);
       setLiveHistory([]);
       setCountdownSeconds(EXERCISE_COUNTDOWN_SECONDS);
 
@@ -895,7 +800,7 @@ export default function ControlledDecrescendoDrill({
 
             setSeconds(0);
             setGuideElapsed(0);
-            setLiveFrame(null);
+            setLiveAudioFrame(null);
             setLiveHistory([]);
 
             phaseRef.current = 'exercise';
@@ -1015,7 +920,7 @@ export default function ControlledDecrescendoDrill({
     setMinDb(0);
     setMaxDb(0);
 
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveHistory([]);
 
     finishingRef.current = false;
@@ -1039,6 +944,17 @@ export default function ControlledDecrescendoDrill({
   const tryAgain = useCallback(() => {
     startExercise();
   }, [startExercise]);
+
+  useEffect(() => {
+    if (phase !== 'processing') return;
+
+    const timeout = setTimeout(() => {
+      phaseRef.current = 'results';
+      setPhase('results');
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [phase]);
 
   const liveSmoothness = estimateLiveSmoothness(liveHistory);
 
@@ -1081,8 +997,8 @@ export default function ControlledDecrescendoDrill({
           finishingRef.current = false;
           setCountdownSeconds(EXERCISE_COUNTDOWN_SECONDS);
           clearLiveState();
-          phaseRef.current = 'countdown';
-          setPhase('countdown');
+          phaseRef.current = 'listening';
+          setPhase('listening');
         }}
         onQuit={() => void quitExercise()}
         isQuitting={isQuitting}
@@ -1090,7 +1006,7 @@ export default function ControlledDecrescendoDrill({
     </>
   );
 
-  if (loadingParams) {
+  if (isLoadingParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1138,19 +1054,19 @@ export default function ControlledDecrescendoDrill({
           tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
           onBack={openQuitModal}
           onStart={startExercise}
-          error={errorMessage}
+          errorMessage={errorMessage}
           startLabel="Start Exercise"
         >
-          <View style={styles.referenceCard}>
-            <View style={styles.referenceTopRow}>
-              <View style={styles.referenceCopy}>
-                <Text style={styles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={styles.referenceNote}>
+          <View style={exerciseStyles.referenceCard}>
+            <View style={exerciseStyles.referenceTopRowVariant1}>
+              <View style={exerciseStyles.infoText}>
+                <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
+                <Text style={exerciseStyles.referenceNoteVariant1}>
                   {referenceNote.name}
                 </Text>
               </View>
 
-              <View style={styles.referenceIconCircle}>
+              <View style={exerciseStyles.referenceIconCircle}>
                 <Ionicons
                   name="musical-note"
                   size={22}
@@ -1159,15 +1075,15 @@ export default function ControlledDecrescendoDrill({
               </View>
             </View>
 
-            <Text style={styles.referenceInstruction}>
+            <Text style={exerciseStyles.referenceInstruction}>
               Play the note, then sing it while gradually decreasing your
               volume from loud to soft.
             </Text>
 
             <TouchableOpacity
               style={[
-                styles.referenceButton,
-                referencePlaying && styles.disabled,
+                exerciseStyles.referenceButton,
+                referencePlaying && exerciseStyles.disabled,
               ]}
               onPress={() => void playReferenceNote()}
               activeOpacity={0.85}
@@ -1179,7 +1095,7 @@ export default function ControlledDecrescendoDrill({
                 <Ionicons name="play" size={17} color={COLORS.brown} />
               )}
 
-              <Text style={styles.referenceButtonText}>
+              <Text style={exerciseStyles.referenceButtonText}>
                 {referencePlaying
                   ? 'Playing...'
                   : `Play ${referenceNote.name}`}
@@ -1187,34 +1103,65 @@ export default function ControlledDecrescendoDrill({
             </TouchableOpacity>
 
             {referencePlaybackError && (
-              <Text style={styles.playbackError}>
+              <Text style={exerciseStyles.playbackError}>
                 {referencePlaybackError}
               </Text>
             )}
           </View>
 
-          <View style={styles.previewCard}>
-            <Text style={styles.previewTitle}>Follow this pattern</Text>
+          <View style={exerciseStyles.previewCard}>
+            <Text style={exerciseStyles.progressTime}>Follow this pattern</Text>
 
-            <View style={styles.previewVisualizer}>
-              {Array.from({ length: BAR_COUNT }, (_, index) => (
+            <View style={exerciseStyles.previewVisualizer}>
+              {Array.from({ length: VOLUME_RAMP_BAR_COUNT }, (_, index) => (
                 <View
                   key={`preview-${index}`}
                   style={[
-                    styles.previewBar,
+                    exerciseStyles.previewBar,
                     { height: `${targetHeight(index) * 80}%` },
                   ]}
                 />
               ))}
             </View>
 
-            <View style={styles.previewLabels}>
-              <Text style={styles.previewLabel}>Loud</Text>
-              <Text style={styles.previewLabel}>Soft</Text>
+            <View style={exerciseStyles.previewLabels}>
+              <Text style={exerciseStyles.scaleText}>Loud</Text>
+              <Text style={exerciseStyles.scaleText}>Soft</Text>
             </View>
           </View>
         </ExerciseScreen>
 
+        {quitModal}
+      </>
+    );
+  }
+
+  if (phase === 'listening') {
+    return (
+      <>
+        <ExerciseListeningScreen
+          icon="volume-low-outline"
+          title="Controlled Decrescendo"
+          currentRep={1}
+          repetitions={repetitions}
+          promptTitle="Listen to the Reference"
+          prompt={`Listen to the ${referenceNote.name} note before singing.`}
+          isPlayingReference={referencePlaying}
+          onPlayReference={() => void playReferenceNote()}
+          onContinue={() => {
+            phaseRef.current = 'countdown';
+            setPhase('countdown');
+          }}
+          onBack={openQuitModal}
+          liveContent={
+            <View style={exerciseStyles.referenceCard}>
+              <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
+              <Text style={exerciseStyles.referenceNoteVariant1}>
+                {referenceNote.name}
+              </Text>
+            </View>
+          }
+        />
         {quitModal}
       </>
     );
@@ -1228,13 +1175,12 @@ export default function ControlledDecrescendoDrill({
 
     return (
       <>
-        <ExerciseListeningScreen
+        <ExerciseCountdownScreen
           icon="volume-low-outline"
-          title="Controlled Decrescendo"
+          title="Get Ready"
           currentRep={upcomingRep}
           repetitions={repetitions}
-          elapsed={0}
-          targetDuration={rampSeconds}
+          countdown={countdownSeconds}
           promptTitle={
             isNextRepetition
               ? `Get ready for repetition ${upcomingRep}`
@@ -1245,32 +1191,7 @@ export default function ControlledDecrescendoDrill({
               ? 'Take a breath. Begin loudly, then gradually lower your volume.'
               : 'Prepare your voice. Begin comfortably loud when the countdown ends.'
           }
-          progress={0}
           onBack={openQuitModal}
-          liveContent={
-            <View style={styles.countdownContent}>
-              <Text style={styles.countdownEyebrow}>
-                {isNextRepetition
-                  ? 'NEXT REPETITION STARTS IN'
-                  : 'YOUR EXERCISE STARTS IN'}
-              </Text>
-
-              <View style={styles.countdownCircle}>
-                <Text style={styles.countdownNumber}>
-                  {countdownSeconds}
-                </Text>
-              </View>
-
-              <Text style={styles.countdownSubtitle}>
-                Start comfortably loud and gradually become softer.
-              </Text>
-
-              <TargetDecrescendoGuide
-                seconds={0}
-                durationSeconds={rampSeconds}
-              />
-            </View>
-          }
         />
 
         {quitModal}
@@ -1279,102 +1200,33 @@ export default function ControlledDecrescendoDrill({
   }
 
   if (phase === 'exercise') {
-    const progress = clamp(seconds / rampSeconds, 0, 1);
-
     return (
       <>
-        <View style={styles.screen}>
-          <View style={styles.exercisePrompt}>
-            <Text style={styles.exercisePromptTitle}>
-              {instruction.title}
-            </Text>
-            <Text style={styles.exercisePromptSubtitle}>
-              {instruction.subtitle}
-            </Text>
-          </View>
+        <VolumeRampRecordingContent
+          direction="decrescendo"
+          instruction={instruction}
+          liveHistory={liveHistory}
+          seconds={seconds}
+          guideElapsed={guideElapsed}
+          durationSeconds={rampSeconds}
+          currentRep={currentRep}
+          repetitions={repetitions}
+          liveSmoothness={liveSmoothness}
+        />
 
-          <ScrollView
-            style={styles.exerciseScroll}
-            contentContainerStyle={styles.exerciseScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.liveContent}>
-              <TargetDecrescendoGuide
-                seconds={guideElapsed}
-                durationSeconds={rampSeconds}
-              />
+        {quitModal}
+      </>
+    );
+  }
 
-              <View style={styles.visualizerCard}>
-                <View style={styles.visualizerHeader}>
-                  <View>
-                    <Text style={styles.visualizerTitle}>
-                      Your Performance
-                    </Text>
-                    <Text style={styles.visualizerSubtitle}>
-                      Match the target decrescendo
-                    </Text>
-                  </View>
-
-                  <View style={styles.micCircle}>
-                    <Ionicons name="mic" size={18} color={COLORS.brown} />
-                  </View>
-                </View>
-
-                <View style={styles.visualizerLegend}>
-                  <View style={styles.legendDot} />
-                  <Text style={styles.legendText}>Your voice</Text>
-                </View>
-
-                <VolumeVisualizer
-                  liveHistory={liveHistory}
-                  barCount={BAR_COUNT}
-                  variant="decrescendo"
-                />
-
-                <View style={styles.visualizerLabels}>
-                  <Text style={styles.visualizerLabel}>LOUD</Text>
-                  <Text style={styles.visualizerLabel}>SOFT</Text>
-                </View>
-              </View>
-
-              <View style={styles.sessionRow}>
-                <View style={styles.sessionPart}>
-                  <Text style={styles.sessionLabel}>REPETITION</Text>
-                  <Text style={styles.sessionValue}>
-                    {currentRep} / {repetitions}
-                  </Text>
-                </View>
-
-                <View style={styles.sessionDivider} />
-
-                <View style={styles.sessionPart}>
-                  <Text style={styles.sessionLabel}>TIME</Text>
-                  <Text style={styles.sessionValue}>
-                    0:{String(seconds).padStart(2, '0')}
-                  </Text>
-                </View>
-
-                <View style={styles.sessionDivider} />
-
-                <View style={styles.sessionPart}>
-                  <Text style={styles.sessionLabel}>SMOOTHNESS</Text>
-                  <Text style={styles.sessionValue}>
-                    {liveSmoothness}%
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.exerciseProgressTrack}>
-            <View
-              style={[
-                styles.exerciseProgressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-            </View>
-          </ScrollView>
-        </View>
-
+  if (phase === 'processing') {
+    return (
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Performance"
+          message="Measuring your volume control across all repetitions."
+        />
         {quitModal}
       </>
     );
@@ -1398,7 +1250,7 @@ export default function ControlledDecrescendoDrill({
             : 'refresh-circle-outline'
         }
         scoreDetails={
-          <View style={styles.referenceCard}>
+          <View style={exerciseStyles.referenceCard}>
             <ResultItem
               label="Direction correct"
               value={directionCorrect ? 'Yes' : 'No'}
@@ -1447,465 +1299,3 @@ export default function ControlledDecrescendoDrill({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  countdownNumber: {
-    fontFamily: 'FredokaBold',
-    fontSize: 44,
-    color: COLORS.brown,
-  },
-
-  referenceCard: {
-    width: '100%',
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 9,
-  },
-  referenceTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 0,
-  },
-  referenceCopy: {
-    flex: 1,
-  },
-  eyebrow: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.7,
-  },
-  referenceNote: {
-    marginTop: 2,
-    color: COLORS.brown,
-    fontFamily: 'FredokaBold',
-    fontSize: 29,
-    lineHeight: 36,
-  },
-  referenceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referenceInstruction: {
-    color: COLORS.muted,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  referenceButton: {
-    width: '100%',
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  referenceButtonText: {
-    color: COLORS.brown,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 13,
-  },
-  playbackError: {
-    marginTop: 6,
-    color: COLORS.error,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-
-  previewCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginTop: 10,
-  },
-  previewTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  previewVisualizer: {
-    height: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: 7,
-    overflow: 'hidden',
-  },
-  previewBar: {
-    flex: 1,
-    maxWidth: 7,
-    backgroundColor: COLORS.otherpink,
-    borderRadius: 4,
-  },
-  previewLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 3,
-  },
-  previewLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  screen: {
-    position: 'absolute',
-    top: 90,
-    right: 8,
-    bottom: 0,
-    left: 8,
-    zIndex: 1000,
-    elevation: 1000,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  exerciseHeaderCopy: {
-    flex: 1,
-  },
-  exerciseHeaderClose: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exerciseScreenTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-  },
-  exerciseScreenSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  exerciseProgressTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  exerciseProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: COLORS.pink,
-  },
-  exercisePrompt: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  exercisePromptTitle: {
-    marginTop: 20,
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  exercisePromptSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 3,
-    marginBottom: 8,
-  },
-  exerciseScroll: {
-    flex: 1,
-  },
-  exerciseScrollContent: {
-    paddingBottom: 24,
-  },
-  countdownContent: {
-    width: '100%',
-    gap: 12,
-    alignItems: 'center',
-  },
-  countdownEyebrow: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.accent,
-    textAlign: 'center',
-  },
-  countdownCircle: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-
-  liveContent: {
-    width: '100%',
-    gap: 8,
-  },
-  guideCard: {
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 12,
-  },
-  guideHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  guideHeaderText: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  guideTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  guideVisualizer: {
-    height: 55,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    overflow: 'hidden',
-    marginTop: 8,
-    position: 'relative',
-  },
-  guideBar: {
-    flex: 1,
-    maxWidth: 7,
-    borderRadius: 4,
-    marginHorizontal: 1,
-  },
-  guideIndicator: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2,
-    marginLeft: -1,
-    backgroundColor: COLORS.brown,
-    opacity: 0.8,
-  },
-  guideLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 3,
-  },
-  guideLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    letterSpacing: 0.5,
-    color: COLORS.muted,
-  },
-  guideProgressTrack: {
-    height: 4,
-    borderRadius: 3,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  guideProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
-  },
-
-  visualizerCard: {
-    width: '100%',
-    minHeight: 185,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 13,
-  },
-  visualizerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  visualizerTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  visualizerSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  micCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  visualizerLegend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 7,
-  },
-  legendDot: {
-    width: 14,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.brown,
-  },
-  legendText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: COLORS.muted,
-    marginLeft: 6,
-  },
-  visualizerLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  visualizerLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 8,
-    color: COLORS.muted,
-  },
-
-  voiceRow: {
-    minHeight: 52,
-    borderRadius: 15,
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  voiceLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  smallMic: {
-    width: 33,
-    height: 33,
-    borderRadius: 17,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  voiceTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    color: COLORS.brown,
-  },
-  voiceSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: COLORS.muted,
-    marginTop: 1,
-  },
-  voiceValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  voiceUnit: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 8,
-    color: COLORS.muted,
-  },
-
-  targetRow: {
-    minHeight: 60,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  targetLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.accent,
-  },
-  targetValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginTop: 1,
-  },
-  patternText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-
-  sessionRow: {
-    minHeight: 60,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sessionPart: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  sessionLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  sessionValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 20,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  sessionDivider: {
-    width: 1,
-    height: 29,
-    backgroundColor: COLORS.border,
-  },
-
-});

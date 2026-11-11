@@ -1,48 +1,28 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
-
-import type {
-  SteadyAirflowParams,
-  Tier,
-} from '@/constants/params';
+import type { SteadyAirflowParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseNoAudioModal,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseQuitModal,
-  ExerciseResultsScreen,
-  Metric,
-} from '@/screens/exercises/ExerciseScreen';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyAirflowParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import type { SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
-import { measureSteadyAirflow } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
+import { measureSteadyAirflow, type SteadyAirflowMeasurement } from '@/services/measurement/breathControl/steadyAirflowMaintenance';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
-import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
-} from '@/services/progress/progressRepo';
-import type { SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
-import { scoreSteadyAirflow } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-} from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
+import { scoreSteadyAirflow, type SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
+import { getLiveVoiceDetection, hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+import { usePhaseState } from '@/hooks/usePhaseState';
+
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;
+const PROCESSING_DELAY_MS = 700;
 
 interface Props {
   tier?: Tier;
@@ -55,7 +35,7 @@ type Phase =
   | 'processing'
   | 'results';
 
-interface RepResult {
+interface RepetitionResult {
   rep: number;
   measurement: SteadyAirflowMeasurement;
   score: SteadyAirflowScoreResult;
@@ -69,16 +49,16 @@ export default function SteadyAirflowMaintenanceScreen({
   );
   const [params, setParams] =
     useState<SteadyAirflowParams | null>(null);
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(
     EXERCISE_COUNTDOWN_SECONDS,
   );
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [volume, setVolume] = useState(0);
   const [airflowDetected, setAirflowDetected] = useState(false);
   const [airflowStability, setAirflowStability] = useState(0);
-  const [repResults, setRepResults] = useState<RepResult[]>([]);
+  const [repetitionResults, setRepetitionResults] = useState<RepetitionResult[]>([]);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
@@ -86,9 +66,8 @@ export default function SteadyAirflowMaintenanceScreen({
   const paramsRef = useRef<SteadyAirflowParams | null>(null);
   const tierRef = useRef<Tier>(initialTier ?? 'beginner');
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('instructions');
   const currentRepRef = useRef(1);
-  const repResultsRef = useRef<RepResult[]>([]);
+  const repetitionResultsRef = useRef<RepetitionResult[]>([]);
   const recentVolumeRef = useRef<number[]>([]);
   const showQuitModalRef = useRef(false);
   const exitRequestedRef = useRef(false);
@@ -113,11 +92,6 @@ export default function SteadyAirflowMaintenanceScreen({
   const startRecordingPhaseRef = useRef<(() => void) | null>(
     null,
   );
-
-  const setCurrentPhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
 
   const setQuitModalVisible = useCallback((visible: boolean) => {
     showQuitModalRef.current = visible;
@@ -152,16 +126,16 @@ export default function SteadyAirflowMaintenanceScreen({
     try {
       void Promise.resolve(
         stopRecordingRef.current?.(),
-      ).catch(error => {
+      ).catch(errorMessage => {
         console.error(
           'Failed to stop Steady Airflow recording:',
-          error,
+          errorMessage,
         );
       });
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop Steady Airflow recording:',
-        error,
+        errorMessage,
       );
     }
   }, []);
@@ -184,10 +158,10 @@ export default function SteadyAirflowMaintenanceScreen({
 
           currentTier = progress?.currentTier ?? 'beginner';
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load Steady Airflow current tier:',
-          error,
+          errorMessage,
         );
 
         currentTier = initialTier ?? 'beginner';
@@ -229,10 +203,10 @@ export default function SteadyAirflowMaintenanceScreen({
             }
           }
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load Steady Airflow history or assessment:',
-          error,
+          errorMessage,
         );
 
         recentScores = [];
@@ -270,9 +244,9 @@ export default function SteadyAirflowMaintenanceScreen({
 
     clearTimers();
 
-    setCurrentPhase('countdown');
+    setPhase('countdown');
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setElapsed(0);
+    setElapsedSeconds(0);
     resetAirflowIndicator();
 
     let value = EXERCISE_COUNTDOWN_SECONDS;
@@ -305,7 +279,7 @@ export default function SteadyAirflowMaintenanceScreen({
   }, [
     clearTimers,
     resetAirflowIndicator,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   const finishExercise = useCallback(async () => {
@@ -320,7 +294,7 @@ export default function SteadyAirflowMaintenanceScreen({
       return;
     }
 
-    const finalResults = repResultsRef.current;
+    const finalResults = repetitionResultsRef.current;
     const finalScore =
       finalResults.length > 0
         ? Math.round(
@@ -340,10 +314,10 @@ export default function SteadyAirflowMaintenanceScreen({
         activeTier,
         finalScore,
       );
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to save Steady Airflow progress:',
-        error,
+        errorMessage,
       );
     }
 
@@ -356,13 +330,13 @@ export default function SteadyAirflowMaintenanceScreen({
       return;
     }
 
-    setCurrentPhase('results');
-    setElapsed(0);
+    setPhase('results');
+    setElapsedSeconds(0);
     resetAirflowIndicator();
   }, [
     clearTimers,
     resetAirflowIndicator,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   const startRecordingPhase = useCallback(() => {
@@ -381,15 +355,15 @@ export default function SteadyAirflowMaintenanceScreen({
       console.error(
         'Steady Airflow parameters are not ready.',
       );
-      setCurrentPhase('instructions');
+      setPhase('instructions');
       return;
     }
 
     clearTimers();
     resetAirflowIndicator();
 
-    setCurrentPhase('recording');
-    setElapsed(0);
+    setPhase('recording');
+    setElapsedSeconds(0);
 
     const startedAt = Date.now();
     restartCurrentRepRef.current = false;
@@ -410,7 +384,7 @@ export default function SteadyAirflowMaintenanceScreen({
 
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
 
-      setElapsed(
+      setElapsedSeconds(
         Math.min(elapsedSeconds, adaptiveParams.durationSec),
       );
 
@@ -422,10 +396,10 @@ export default function SteadyAirflowMaintenanceScreen({
 
         void Promise.resolve(
           stopRecordingRef.current?.(),
-        ).catch(error => {
+        ).catch(errorMessage => {
           console.error(
             'Failed to stop Steady Airflow recording:',
-            error,
+            errorMessage,
           );
         });
       }
@@ -433,7 +407,7 @@ export default function SteadyAirflowMaintenanceScreen({
   }, [
     clearTimers,
     resetAirflowIndicator,
-    setCurrentPhase,
+    setPhase,
   ]);
 
   useEffect(() => {
@@ -459,14 +433,14 @@ export default function SteadyAirflowMaintenanceScreen({
         console.error(
           'Steady Airflow parameters are not ready.',
         );
-        setCurrentPhase('instructions');
+        setPhase('instructions');
         return;
       }
 
       if (!hasSufficientRecordedSignal(samples)) {
         clearTimers();
-        setCurrentPhase('instructions');
-        setElapsed(0);
+        setPhase('instructions');
+        setElapsedSeconds(0);
         resetAirflowIndicator();
         setShowNoAudioModal(true);
         return;
@@ -474,8 +448,8 @@ export default function SteadyAirflowMaintenanceScreen({
 
       clearTimers();
 
-      setCurrentPhase('processing');
-      setElapsed(0);
+      setPhase('processing');
+      setElapsedSeconds(0);
       resetAirflowIndicator();
 
       const measurement = measureSteadyAirflow(
@@ -489,19 +463,19 @@ export default function SteadyAirflowMaintenanceScreen({
         adaptiveParams,
       );
 
-      const result: RepResult = {
+      const result: RepetitionResult = {
         rep: currentRepRef.current,
         measurement,
         score,
       };
 
       const updatedResults = [
-        ...repResultsRef.current,
+        ...repetitionResultsRef.current,
         result,
       ];
 
-      repResultsRef.current = updatedResults;
-      setRepResults(updatedResults);
+      repetitionResultsRef.current = updatedResults;
+      setRepetitionResults(updatedResults);
 
       processingTimerRef.current = setTimeout(() => {
         processingTimerRef.current = null;
@@ -526,13 +500,15 @@ export default function SteadyAirflowMaintenanceScreen({
         currentRepRef.current += 1;
         setCurrentRep(currentRepRef.current);
         startCountdown();
-      }, 700);
+      }, currentRepRef.current >= adaptiveParams.repetitions
+        ? EXERCISE_FINAL_RESULT_DELAY_MS
+        : PROCESSING_DELAY_MS);
     },
     [
       clearTimers,
       finishExercise,
       resetAirflowIndicator,
-      setCurrentPhase,
+      setPhase,
       startCountdown,
     ],
   );
@@ -576,15 +552,9 @@ export default function SteadyAirflowMaintenanceScreen({
     return;
   }
 
-  const normalizedVolume = Math.max(
-    0,
-    Math.min(1, (volumeDb + 60) / 50),
-  );
+  const { detected, level } = getLiveVoiceDetection(volumeDb);
 
-  setVolume(normalizedVolume);
-
-  const detected = volumeDb >= -45;
-
+  setVolume(level);
   setAirflowDetected(detected);
 
   if (!detected) {
@@ -654,12 +624,12 @@ export default function SteadyAirflowMaintenanceScreen({
     restartCurrentRepRef.current = false;
     pausedPhaseRef.current = 'instructions';
 
-    repResultsRef.current = [];
+    repetitionResultsRef.current = [];
     currentRepRef.current = 1;
 
-    setRepResults([]);
+    setRepetitionResults([]);
     setCurrentRep(1);
-    setElapsed(0);
+    setElapsedSeconds(0);
     resetAirflowIndicator();
 
     startCountdown();
@@ -673,12 +643,12 @@ export default function SteadyAirflowMaintenanceScreen({
     restartCurrentRepRef.current = false;
     pausedPhaseRef.current = 'instructions';
 
-    repResultsRef.current = [];
+    repetitionResultsRef.current = [];
     currentRepRef.current = 1;
 
-    setRepResults([]);
+    setRepetitionResults([]);
     setCurrentRep(1);
-    setElapsed(0);
+    setElapsedSeconds(0);
     resetAirflowIndicator();
 
     startCountdown();
@@ -709,11 +679,11 @@ export default function SteadyAirflowMaintenanceScreen({
 
       clearTimers();
       recentVolumeRef.current = [];
-      setElapsed(0);
+      setElapsedSeconds(0);
       resetAirflowIndicator();
 
       if (currentPhase === 'recording') {
-        setCurrentPhase('countdown');
+        setPhase('countdown');
         stopRecorderSafely();
       }
     }
@@ -722,7 +692,7 @@ export default function SteadyAirflowMaintenanceScreen({
   }, [
     clearTimers,
     resetAirflowIndicator,
-    setCurrentPhase,
+    setPhase,
     setQuitModalVisible,
     stopRecorderSafely,
   ]);
@@ -759,7 +729,7 @@ export default function SteadyAirflowMaintenanceScreen({
 
     restartCurrentRepRef.current = false;
     exitRequestedRef.current = false;
-    setElapsed(0);
+    setElapsedSeconds(0);
     resetAirflowIndicator();
     startCountdown();
   }, [
@@ -781,16 +751,16 @@ export default function SteadyAirflowMaintenanceScreen({
     clearTimers();
     recentVolumeRef.current = [];
 
-    setCurrentPhase('instructions');
+    setPhase('instructions');
 
     try {
       await Promise.resolve(
         stopRecordingRef.current?.(),
       );
-    } catch (error) {
+    } catch (errorMessage) {
       console.error(
         'Failed to stop Steady Airflow recording:',
-        error,
+        errorMessage,
       );
     } finally {
       if (mountedRef.current) {
@@ -799,7 +769,7 @@ export default function SteadyAirflowMaintenanceScreen({
     }
   }, [
     clearTimers,
-    setCurrentPhase,
+    setPhase,
     setQuitModalVisible,
   ]);
 
@@ -816,44 +786,44 @@ export default function SteadyAirflowMaintenanceScreen({
 
       void Promise.resolve(
         stopRecordingRef.current?.(),
-      ).catch(error => {
+      ).catch(errorMessage => {
         console.error(
           'Failed to stop Steady Airflow recording during cleanup:',
-          error,
+          errorMessage,
         );
       });
     };
   }, [clearTimers]);
 
   const averageScore =
-    repResults.length > 0
+    repetitionResults.length > 0
       ? Math.round(
-          repResults.reduce(
+          repetitionResults.reduce(
             (sum, result) => sum + result.score.score,
             0,
-          ) / repResults.length,
+          ) / repetitionResults.length,
         )
       : 0;
 
   const averageStability =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, result) =>
             sum + result.measurement.stabilityPct,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
   const averageDuration =
-    repResults.length > 0
-      ? repResults.reduce(
+    repetitionResults.length > 0
+      ? repetitionResults.reduce(
           (sum, result) =>
             sum + result.measurement.durationSec,
           0,
-        ) / repResults.length
+        ) / repetitionResults.length
       : 0;
 
-  const passedReps = repResults.filter(
+  const passedReps = repetitionResults.filter(
     result => result.score.passed,
   ).length;
 
@@ -911,7 +881,7 @@ export default function SteadyAirflowMaintenanceScreen({
 
   const progress =
     params.durationSec > 0
-      ? Math.min(elapsed / params.durationSec, 1)
+      ? Math.min(elapsedSeconds / params.durationSec, 1)
       : 0;
 
   if (phase === 'instructions') {
@@ -984,20 +954,20 @@ export default function SteadyAirflowMaintenanceScreen({
 
   if (phase === 'recording') {
     return (
-      <View style={styles.screen}>
-        <View style={styles.exerciseContent}>
-          <Text style={styles.phaseLabel}>
+      <View style={exerciseStyles.screen}>
+        <View style={exerciseStyles.exerciseContentVariant2}>
+          <Text style={exerciseStyles.phaseLabelVariant1}>
             Maintain a Steady Airflow
           </Text>
 
-          <Text style={styles.repText}>
+          <Text style={exerciseStyles.exerciseSubtitle}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
           <View
             style={[
-              styles.recordingCircle,
-              isRecording && styles.recordingCircleActive,
+              exerciseStyles.recordingCircle,
+              isRecording && exerciseStyles.recordingCircleActive,
             ]}
           >
             <Ionicons
@@ -1006,65 +976,37 @@ export default function SteadyAirflowMaintenanceScreen({
               color={COLORS.brown}
             />
 
-            <Text style={styles.timerText}>
-              {elapsed.toFixed(1)}
+            <Text style={exerciseStyles.timerTextVariant6}>
+              {elapsedSeconds.toFixed(1)}
             </Text>
 
-            <Text style={styles.timerTarget}>
+            <Text style={exerciseStyles.frequencyText}>
               / {params.durationSec.toFixed(1)}s
             </Text>
           </View>
 
-          <View style={styles.airflowCard}>
-            <View style={styles.airflowHeader}>
-              <Text style={styles.airflowLabel}>
-                AIRFLOW DETECTION
-              </Text>
+          <LiveVoiceDetectionVisualizer
+            detected={airflowDetected}
+            level={volume}
+          />
 
-              <View style={styles.airflowStatus}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    airflowDetected && styles.statusDotActive,
-                  ]}
-                />
-
-                <Text style={styles.airflowStatusText}>
-                  {airflowDetected ? 'Detected' : 'Listening'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.airflowIndicator}>
-              <View
-                style={[
-                  styles.airflowFill,
-                  {
-                    width: `${Math.min(
-                      Math.max(volume * 100, 0),
-                      100,
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-
-            <View style={styles.stabilityHeader}>
-              <Text style={styles.stabilityLabel}>
+          <View style={exerciseStyles.airflowCard}>
+            <View style={exerciseStyles.stabilityHeader}>
+              <Text style={exerciseStyles.airflowLabel}>
                 LIVE STABILITY
               </Text>
 
-              <Text style={styles.stabilityValue}>
+              <Text style={exerciseStyles.repResultTitle}>
                 {airflowDetected
                   ? `${airflowStability}%`
                   : '--'}
               </Text>
             </View>
 
-            <View style={styles.stabilityTrack}>
+            <View style={exerciseStyles.stabilityTrack}>
               <View
                 style={[
-                  styles.stabilityFill,
+                  exerciseStyles.stabilityFill,
                   {
                     width: `${
                       airflowDetected ? airflowStability : 0
@@ -1074,7 +1016,7 @@ export default function SteadyAirflowMaintenanceScreen({
               />
             </View>
 
-            <Text style={styles.airflowHint}>
+            <Text style={exerciseStyles.airflowHint}>
               {!airflowDetected
                 ? 'Exhale gently toward the microphone.'
                 : airflowStability >= 80
@@ -1083,16 +1025,16 @@ export default function SteadyAirflowMaintenanceScreen({
             </Text>
           </View>
 
-          <View style={styles.progressTrack}>
+          <View style={exerciseStyles.progressTrackVariant5}>
             <View
               style={[
-                styles.progressFill,
+                exerciseStyles.progressFill,
                 { width: `${progress * 100}%` },
               ]}
             />
           </View>
 
-          <Text style={styles.smallHint}>
+          <Text style={exerciseStyles.smallHint}>
             Keep going until the timer reaches{' '}
             {`${params.durationSec} seconds.`}
           </Text>
@@ -1144,65 +1086,65 @@ export default function SteadyAirflowMaintenanceScreen({
           void quitExercise();
         }}
       >
-        <View style={styles.statsGrid}>
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>
+        <View style={exerciseStyles.statsGrid}>
+          <View style={exerciseStyles.resultStat}>
+            <Text style={exerciseStyles.resultStatValue}>
               {Math.round(averageStability)}%
             </Text>
-            <Text style={styles.resultStatLabel}>
+            <Text style={exerciseStyles.resultStatLabel}>
               Avg. Stability
             </Text>
           </View>
 
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>
+          <View style={exerciseStyles.resultStat}>
+            <Text style={exerciseStyles.resultStatValue}>
               {averageDuration.toFixed(1)}s
             </Text>
-            <Text style={styles.resultStatLabel}>
+            <Text style={exerciseStyles.resultStatLabel}>
               Avg. Duration
             </Text>
           </View>
 
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>
-              {passedReps}/{repResults.length}
+          <View style={exerciseStyles.resultStat}>
+            <Text style={exerciseStyles.resultStatValue}>
+              {passedReps}/{repetitionResults.length}
             </Text>
-            <Text style={styles.resultStatLabel}>
+            <Text style={exerciseStyles.resultStatLabel}>
               Passed
             </Text>
           </View>
 
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>
+          <View style={exerciseStyles.resultStat}>
+            <Text style={exerciseStyles.resultStatValue}>
               {params.stabilityThreshold}%
             </Text>
-            <Text style={styles.resultStatLabel}>
+            <Text style={exerciseStyles.resultStatLabel}>
               Target
             </Text>
           </View>
         </View>
 
-        <Text style={styles.resultsSectionTitle}>
+        <Text style={exerciseStyles.resultsSectionTitle}>
           Repetition Results
         </Text>
 
-        {repResults.map(result => (
+        {repetitionResults.map(result => (
           <View
             key={`rep-${result.rep}`}
-            style={styles.repCard}
+            style={exerciseStyles.repCard}
           >
-            <View style={styles.repHeader}>
-              <Text style={styles.repTitle}>
+            <View style={exerciseStyles.resultDetailRow}>
+              <Text style={exerciseStyles.cardTitle}>
                 Repetition {result.rep}
               </Text>
 
               <View
                 style={[
-                  styles.passBadge,
-                  !result.score.passed && styles.failBadge,
+                  exerciseStyles.passBadge,
+                  !result.score.passed && exerciseStyles.resultIconFailed,
                 ]}
               >
-                <Text style={styles.passBadgeText}>
+                <Text style={exerciseStyles.passBadgeText}>
                   {result.score.passed
                     ? 'PASS'
                     : 'KEEP PRACTICING'}
@@ -1210,7 +1152,7 @@ export default function SteadyAirflowMaintenanceScreen({
               </View>
             </View>
 
-            <View style={styles.repMetrics}>
+            <View style={exerciseStyles.repMetrics}>
               <Metric
                 label="Stability"
                 value={`${Math.round(
@@ -1244,244 +1186,3 @@ export default function SteadyAirflowMaintenanceScreen({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  exerciseContent: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 25,
-    paddingTop: 100,
-  },
-  phaseLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 29,
-    color: COLORS.brown,
-  },
-  repText: {
-    marginTop: 5,
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  recordingCircle: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 42,
-  },
-  recordingCircleActive: {
-    borderWidth: 5,
-    borderColor: COLORS.border,
-  },
-  timerText: {
-    marginTop: 7,
-    fontFamily: 'FredokaBold',
-    fontSize: 34,
-    color: COLORS.brown,
-  },
-  timerTarget: {
-    marginTop: 2,
-    fontFamily: 'FredokaRegular',
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  exerciseTitle: {
-    marginTop: 30,
-    fontFamily: 'FredokaBold',
-    fontSize: 22,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  exerciseDescription: {
-    marginTop: 7,
-    maxWidth: 320,
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 21,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  airflowCard: {
-    width: '100%',
-    marginTop: 22,
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: COLORS.background,
-  },
-  airflowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  airflowLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    letterSpacing: 1,
-    color: COLORS.muted,
-  },
-  airflowStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.muted,
-  },
-  statusDotActive: {
-    backgroundColor: COLORS.accent,
-  },
-  airflowStatusText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  airflowIndicator: {
-    width: '100%',
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 12,
-  },
-  airflowFill: {
-    height: '100%',
-    borderRadius: 6,
-    backgroundColor: COLORS.brown,
-  },
-  stabilityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 18,
-  },
-  stabilityLabel: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 11,
-    letterSpacing: 1,
-    color: COLORS.muted,
-  },
-  stabilityValue: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 14,
-    color: COLORS.brown,
-  },
-  stabilityTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  stabilityFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: COLORS.accent,
-  },
-  airflowHint: {
-    marginTop: 8,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  progressTrack: {
-    width: '100%',
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 25,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 5,
-    backgroundColor: COLORS.pink,
-  },
-  smallHint: {
-    marginTop: 16,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 12,
-  },
-  resultStat: {
-    width: '48%',
-    flexGrow: 1,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 16,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  resultStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.brown,
-  },
-  resultStatLabel: {
-    marginTop: 3,
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  resultsSectionTitle: {
-    marginTop: 24,
-    marginBottom: 10,
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 17,
-    color: COLORS.brown,
-  },
-  repCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    padding: 15,
-    marginBottom: 10,
-  },
-  repHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  repTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  passBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: COLORS.pink,
-  },
-  failBadge: {
-    backgroundColor: COLORS.lightGray,
-  },
-  passBadgeText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 9,
-    color: COLORS.brown,
-  },
-  repMetrics: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 13,
-    gap: 8,
-  },
-});

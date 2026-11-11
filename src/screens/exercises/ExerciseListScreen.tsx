@@ -1,15 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 
 type ExerciseComponent =
   | 'breath-control'
@@ -292,10 +286,10 @@ export default function ExerciseListScreen({ component }: Props) {
   };
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
+    <View style={exerciseStyles.screen}>
+      <View style={exerciseStyles.header_ExerciseList}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={exerciseStyles.backButton_ExerciseList}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -305,46 +299,46 @@ export default function ExerciseListScreen({ component }: Props) {
 
         <Image
           source={require('@/assets/images/tabIcons/tuneup-logo.png')}
-          style={styles.logo}
+          style={exerciseStyles.logo_ExerciseList}
           resizeMode="contain"
         />
 
-        <View style={styles.headerSpacer} />
+        <View style={exerciseStyles.headerSpacer} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={exerciseStyles.content_ExerciseList}
       >
-        <Text style={styles.pageTitle}>{config.title}</Text>
+        <Text style={exerciseStyles.pageTitle_ExerciseList}>{config.title}</Text>
 
-        <Text style={styles.pageSubtitle}>{config.subtitle}</Text>
+        <Text style={exerciseStyles.pageSubtitle}>{config.subtitle}</Text>
 
-        <View style={styles.exerciseList}>
+        <View style={exerciseStyles.exerciseList_ExerciseList}>
           {config.exercises.map(exercise => (
             <TouchableOpacity
               key={exercise.id}
-              style={styles.exerciseCard}
+              style={exerciseStyles.exerciseCard_ExerciseList}
               onPress={() => openExercise(exercise)}
               activeOpacity={0.9}
               accessibilityRole="button"
               accessibilityLabel={`Open ${exercise.title}`}
             >
-              <View style={styles.exerciseNameContainer}>
-                <Text style={styles.exerciseName} numberOfLines={2}>
+              <View style={exerciseStyles.exerciseNameContainer}>
+                <Text style={exerciseStyles.exerciseName_Exercises} numberOfLines={2}>
                   {exercise.title}
                 </Text>
               </View>
 
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>Beginner</Text>
+              <View style={exerciseStyles.levelBadge_ExerciseList}>
+                <Text style={exerciseStyles.levelText}>Beginner</Text>
               </View>
 
-              <Text style={styles.exerciseCategory} numberOfLines={1}>
+              <Text style={exerciseStyles.exerciseCategory} numberOfLines={1}>
                 {config.category}
               </Text>
 
-              <View style={styles.listPlayButton}>
+              <View style={exerciseStyles.listPlayButton_ExerciseList}>
                 <Ionicons name="play" size={16} color={COLORS.brown} />
               </View>
             </TouchableOpacity>
@@ -353,12 +347,12 @@ export default function ExerciseListScreen({ component }: Props) {
 
         {config.freeMode && (
           <TouchableOpacity
-            style={styles.freeMode}
+            style={exerciseStyles.freeMode}
             onPress={openFreeMode}
             activeOpacity={0.9}
             accessibilityRole="button"
           >
-            <View style={styles.freeModeIcon}>
+            <View style={exerciseStyles.infoIcon}>
               <Ionicons
                 name="musical-notes"
                 size={20}
@@ -366,9 +360,9 @@ export default function ExerciseListScreen({ component }: Props) {
               />
             </View>
 
-            <View style={styles.freeModeText}>
-              <Text style={styles.freeModeTitle}>Free Mode</Text>
-              <Text style={styles.freeModeDescription}>
+            <View style={exerciseStyles.infoText}>
+              <Text style={exerciseStyles.cardTitle}>Free Mode</Text>
+              <Text style={exerciseStyles.repResultDetails}>
                 {config.freeModeDescription}
               </Text>
             </View>
@@ -385,148 +379,3 @@ export default function ExerciseListScreen({ component }: Props) {
   );
 
 }
-
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  header: {
-    height: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 17,
-    position: 'relative',
-  },
-  backButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 72,
-  },
-  headerSpacer: {
-    width: 34,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 36,
-    paddingBottom: 35,
-  },
-  logo: {
-    width: 45,
-    height: 45,
-    marginBottom: 0,
-    marginTop: 68.4,
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -5.5,
-  },
-  pageTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 32,
-    color: COLORS.brown,
-    marginTop: 16,
-  },
-  pageSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.muted,
-    marginTop: 2,
-    marginBottom: 16,
-  },
-  exerciseList: {
-    gap: 5,
-    marginTop: 4,
-  },
-  exerciseCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 64,
-    backgroundColor: COLORS.background,
-    borderRadius: 9,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderWidth: 0,
-  },
-  exerciseNameContainer: {
-    width: 108,
-  },
-  exerciseName: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 15,
-    lineHeight: 17,
-    color: COLORS.brown,
-  },
-  levelBadge: {
-    width: 61,
-    backgroundColor: COLORS.pink,
-    borderRadius: 10,
-    paddingVertical: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  levelText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 8,
-    color: COLORS.brown,
-  },
-  exerciseCategory: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    lineHeight: 12,
-    color: COLORS.brown,
-  },
-  listPlayButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  freeMode: {
-    marginTop: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.pink,
-    padding: 14,
-  },
-  freeModeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  freeModeText: {
-    flex: 1,
-  },
-  freeModeTitle: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.brown,
-  },
-  freeModeDescription: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-});

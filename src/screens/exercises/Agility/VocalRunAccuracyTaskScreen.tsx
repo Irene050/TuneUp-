@@ -1,32 +1,27 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  BackHandler,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   AUDIO_SAMPLE_RATE,
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
+
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
   ExerciseRecordingScreen,
   ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
@@ -43,7 +38,16 @@ import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccura
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
+import {
+  AGILITY_NOTE_START_DELAY_MS,
+  getActiveSequenceNoteIndex,
+} from '@/utils/music/notePlayer';
 import { frequencyToNoteName } from '@/utils/music/notes';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 type Phase =
   | 'instructions'
@@ -123,31 +127,12 @@ function getTimedTargetNoteIndex(
   noteDurationSec: number,
   gapSec: number,
 ): number | null {
-  if (
-    !Number.isFinite(elapsedSeconds) ||
-    elapsedSeconds < 0 ||
-    targetNoteCount <= 0 ||
-    !Number.isFinite(noteDurationSec) ||
-    noteDurationSec <= 0
-  ) {
-    return null;
-  }
-
-  const gap = Math.max(
-    0,
-    Number.isFinite(gapSec) ? gapSec : 0,
+  return getActiveSequenceNoteIndex(
+    elapsedSeconds,
+    targetNoteCount,
+    noteDurationSec,
+    gapSec,
   );
-
-  const cycle = noteDurationSec + gap;
-  const index = Math.floor(elapsedSeconds / cycle);
-
-  if (index >= targetNoteCount) {
-    return null;
-  }
-
-  return elapsedSeconds - index * cycle < noteDurationSec
-    ? index
-    : null;
 }
 
 function getSequenceDurationSeconds(
@@ -204,17 +189,17 @@ function getPitchAccuracy(
 
 export default function VocalRunAccuracyTaskScreen() {
   const [tier, setTier] = useState<Tier>('beginner');
-  const [tierLoading, setTierLoading] = useState(true);
+  const [isLoadingTier, setIsLoadingTier] = useState(true);
 
   const [config, setConfig] = useState<Config | null>(null);
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+  const [isLoadingParams, setIsLoadingParams] =
     useState(true);
 
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(
     EXERCISE_COUNTDOWN_SECONDS,
   );
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
 
   const [result, setResult] = useState<ExerciseResult | null>(null);
@@ -229,7 +214,6 @@ export default function VocalRunAccuracyTaskScreen() {
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const mountedRef = useRef(true);
-  const phaseRef = useRef<Phase>('instructions');
 
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -237,7 +221,7 @@ export default function VocalRunAccuracyTaskScreen() {
     ReturnType<typeof measureVocalRunAccuracy>[]
   >([]);
 
-  const recordingStartRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const recordingTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -353,23 +337,23 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const cancelActiveRecording = useCallback(async () => {
     clearRecordingTimer();
-    recordingStartRef.current = null;
+    recordingStartedAtRef.current = null;
 
     try {
       await cancelAudioRecording();
-    } catch (error) {
-      console.warn('[VocalRun] Could not cancel recording:', error);
+    } catch (errorMessage) {
+      console.warn('[VocalRun] Could not cancel recording:', errorMessage);
     }
   }, [cancelAudioRecording, clearRecordingTimer]);
 
   const stopActiveRecording = useCallback(async () => {
     clearRecordingTimer();
-    recordingStartRef.current = null;
+    recordingStartedAtRef.current = null;
 
     try {
       await stopAudioRecording();
-    } catch (error) {
-      console.warn('[VocalRun] Could not stop recording:', error);
+    } catch (errorMessage) {
+      console.warn('[VocalRun] Could not stop recording:', errorMessage);
 
       if (
         mountedRef.current &&
@@ -396,16 +380,16 @@ export default function VocalRunAccuracyTaskScreen() {
 
     if (context) {
       try {
-        void context.suspend().catch(error => {
+        void context.suspend().catch(errorMessage => {
           console.warn(
             '[VocalRun] Could not suspend reference audio:',
-            error,
+            errorMessage,
           );
         });
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           '[VocalRun] Could not suspend reference audio:',
-          error,
+          errorMessage,
         );
       }
     }
@@ -439,10 +423,10 @@ export default function VocalRunAccuracyTaskScreen() {
       if (context) {
         try {
           void context.close();
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             '[VocalRun] Could not close audio context:',
-            error,
+            errorMessage,
           );
         }
       }
@@ -458,7 +442,7 @@ export default function VocalRunAccuracyTaskScreen() {
       if (!user) {
         if (!cancelled) {
           setTier('beginner');
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
         return;
       }
@@ -472,15 +456,15 @@ export default function VocalRunAccuracyTaskScreen() {
         if (!cancelled) {
           setTier(progress?.currentTier ?? 'beginner');
         }
-      } catch (error) {
-        console.warn('[VocalRun] Could not load tier:', error);
+      } catch (errorMessage) {
+        console.warn('[VocalRun] Could not load tier:', errorMessage);
 
         if (!cancelled) {
           setTier('beginner');
         }
       } finally {
         if (!cancelled) {
-          setTierLoading(false);
+          setIsLoadingTier(false);
         }
       }
     }
@@ -493,14 +477,14 @@ export default function VocalRunAccuracyTaskScreen() {
   }, []);
 
   useEffect(() => {
-    if (tierLoading) {
+    if (isLoadingTier) {
       return;
     }
 
     let cancelled = false;
 
     async function loadParameters() {
-      setIsLoadingAdaptiveParams(true);
+      setIsLoadingParams(true);
 
       let recentScores: number[] = [];
       let vocalRange: VocalRange | null = null;
@@ -519,10 +503,10 @@ export default function VocalRunAccuracyTaskScreen() {
           }
 
           recentScores = getRecentVocalRunScores(records, tier);
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             '[VocalRun] Could not load score history:',
-            error,
+            errorMessage,
           );
         }
 
@@ -552,10 +536,10 @@ export default function VocalRunAccuracyTaskScreen() {
           ) {
             vocalRange = { lowHz, highHz };
           }
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             '[VocalRun] Could not load vocal range:',
-            error,
+            errorMessage,
           );
         }
       }
@@ -584,14 +568,14 @@ export default function VocalRunAccuracyTaskScreen() {
         });
 
         setConfig(generated);
-        setIsLoadingAdaptiveParams(false);
+        setIsLoadingParams(false);
       }
     }
 
-    void loadParameters().catch(error => {
+    void loadParameters().catch(errorMessage => {
       console.warn(
         '[VocalRun] Parameter loading failed:',
-        error,
+        errorMessage,
       );
 
       if (!cancelled) {
@@ -602,14 +586,14 @@ export default function VocalRunAccuracyTaskScreen() {
         });
 
         setConfig(fallback);
-        setIsLoadingAdaptiveParams(false);
+        setIsLoadingParams(false);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [tier, tierLoading]);
+  }, [tier, isLoadingTier]);
 
   const hasValidGeneratedSequence =
     !!config &&
@@ -634,7 +618,7 @@ export default function VocalRunAccuracyTaskScreen() {
   const activeTargetNoteIndex =
     phase === 'recording' && config
       ? getTimedTargetNoteIndex(
-          recordingTime,
+          elapsedSeconds,
           config.frequencies.length,
           config.noteDurationSec,
           config.gapSec,
@@ -736,10 +720,10 @@ export default function VocalRunAccuracyTaskScreen() {
           await sleep(config.gapSec * 1000);
         }
       }
-    } catch (error) {
+    } catch (errorMessage) {
       console.warn(
         '[VocalRun] Reference playback failed:',
-        error,
+        errorMessage,
       );
 
       if (
@@ -764,8 +748,8 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const beginExercise = useCallback(async () => {
     if (
-      tierLoading ||
-      isLoadingAdaptiveParams ||
+      isLoadingTier ||
+      isLoadingParams ||
       pausedRef.current ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
@@ -794,7 +778,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
     setCurrentRep(1);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setLivePitch(null);
     setResult(null);
     setShowNoAudioModal(false);
@@ -802,9 +786,9 @@ export default function VocalRunAccuracyTaskScreen() {
   }, [
     cancelReferencePlayback,
     hasValidGeneratedSequence,
-    isLoadingAdaptiveParams,
+    isLoadingParams,
     setExercisePhase,
-    tierLoading,
+    isLoadingTier,
   ]);
 
   const processRecording = useCallback(
@@ -843,7 +827,7 @@ export default function VocalRunAccuracyTaskScreen() {
             runId === exerciseRunIdRef.current &&
             !quitInProgressRef.current
           ) {
-            setRecordingTime(0);
+            setElapsedSeconds(0);
             setExercisePhase('listening');
             setShowNoAudioModal(true);
           }
@@ -887,7 +871,7 @@ export default function VocalRunAccuracyTaskScreen() {
         if (completedRepetitions < config.repetitions) {
           setCurrentRep(completedRepetitions + 1);
           setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-          setRecordingTime(0);
+          setElapsedSeconds(0);
           setLivePitch(null);
 
           processingRef.current = false;
@@ -1007,10 +991,10 @@ export default function VocalRunAccuracyTaskScreen() {
         });
 
         setExercisePhase('results');
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           '[VocalRun] Recording processing failed:',
-          error,
+          errorMessage,
         );
 
         if (
@@ -1051,10 +1035,10 @@ export default function VocalRunAccuracyTaskScreen() {
     const runId = exerciseRunIdRef.current;
 
     try {
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setLivePitch(null);
 
-      recordingStartRef.current = Date.now();
+      recordingStartedAtRef.current = Date.now();
 
       setExercisePhase('recording');
 
@@ -1077,12 +1061,12 @@ export default function VocalRunAccuracyTaskScreen() {
         return;
       }
 
-      recordingStartRef.current = Date.now();
+      recordingStartedAtRef.current = Date.now();
 
       console.log('[VocalRun] Recording started successfully.');
 
       recordingTimerRef.current = setInterval(() => {
-        const started = recordingStartRef.current;
+        const started = recordingStartedAtRef.current;
 
         if (
           started === null ||
@@ -1096,20 +1080,20 @@ export default function VocalRunAccuracyTaskScreen() {
           return;
         }
 
-        const elapsed = (Date.now() - started) / 1000;
+        const elapsedSeconds = (Date.now() - started) / 1000;
 
         const boundedElapsed = Math.min(
-          elapsed,
+          elapsedSeconds,
           recordingDurationSec,
         );
 
-        setRecordingTime(boundedElapsed);
+        setElapsedSeconds(boundedElapsed);
 
-        if (elapsed >= recordingDurationSec) {
-          setRecordingTime(recordingDurationSec);
+        if (elapsedSeconds >= recordingDurationSec) {
+          setElapsedSeconds(recordingDurationSec);
 
           clearRecordingTimer();
-          recordingStartRef.current = null;
+          recordingStartedAtRef.current = null;
 
           setExercisePhase('processing');
 
@@ -1119,11 +1103,11 @@ export default function VocalRunAccuracyTaskScreen() {
 
           void stopActiveRecording();
         }
-      }, 100);
-    } catch (error) {
+      }, 20);
+    } catch (errorMessage) {
       console.warn(
         '[VocalRun] Could not start recording:',
-        error,
+        errorMessage,
       );
 
       await cancelActiveRecording();
@@ -1200,7 +1184,7 @@ export default function VocalRunAccuracyTaskScreen() {
     }
 
     setCountdown(0);
-    await sleep(500);
+    await sleep(AGILITY_NOTE_START_DELAY_MS);
 
     if (
       !mountedRef.current ||
@@ -1261,7 +1245,7 @@ export default function VocalRunAccuracyTaskScreen() {
     setConfig(nextConfig);
     setResult(null);
     setCurrentRep(1);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setLivePitch(null);
     setErrorMessage('');
@@ -1295,7 +1279,7 @@ export default function VocalRunAccuracyTaskScreen() {
     cancelReferencePlayback();
 
     if (pausedPhaseRef.current === 'recording') {
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setLivePitch(null);
 
       void cancelActiveRecording();
@@ -1341,7 +1325,7 @@ export default function VocalRunAccuracyTaskScreen() {
       pausedRef.current = false;
       showQuitModalRef.current = false;
 
-      setRecordingTime(0);
+      setElapsedSeconds(0);
       setLivePitch(null);
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
@@ -1390,7 +1374,7 @@ export default function VocalRunAccuracyTaskScreen() {
     clearRecordingTimer();
 
     setLivePitch(null);
-    setRecordingTime(0);
+    setElapsedSeconds(0);
 
     cancelReferencePlayback();
 
@@ -1402,10 +1386,10 @@ export default function VocalRunAccuracyTaskScreen() {
     if (context) {
       try {
         await context.close();
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           '[VocalRun] Could not close audio context:',
-          error,
+          errorMessage,
         );
       }
     }
@@ -1503,7 +1487,7 @@ export default function VocalRunAccuracyTaskScreen() {
           value: `${config!.noteDurationSec.toFixed(2)} sec`,
         },
       ]}
-      error={errorMessage || null}
+      errorMessage={errorMessage || null}
       startDisabled={!hasValidGeneratedSequence}
       startLabel="Start Exercise"
       onBack={handleBack}
@@ -1523,10 +1507,12 @@ export default function VocalRunAccuracyTaskScreen() {
         <AgilitySequenceGuide
           names={config!.frequencies.map(frequencyToNoteName)}
           activeIndex={activeReferenceNoteIndex}
-          caption="The pink highlight follows the note being played."
+          noteDurationSec={config!.noteDurationSec}
+          gapSec={config!.gapSec}
+          caption="The highlight follows each note while it plays."
         />
       }
-      error={errorMessage || null}
+      errorMessage={errorMessage || null}
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
       onContinue={() => void startCountdown()}
@@ -1556,31 +1542,33 @@ export default function VocalRunAccuracyTaskScreen() {
       <AgilitySequenceGuide
         names={config!.frequencies.map(frequencyToNoteName)}
         activeIndex={activeTargetNoteIndex}
+        noteDurationSec={config!.noteDurationSec}
+        gapSec={config!.gapSec}
         liveNote={livePitch?.note}
         showFeedback
         caption="Follow the highlighted note. Green is in tune, yellow is close, and red is off pitch."
       />
 
-      <View style={styles.recordingCard}>
-        <Text style={styles.cardTitle}>CURRENT NOTE</Text>
+      <View style={exerciseStyles.recordingCard}>
+        <Text style={exerciseStyles.cardTitleVariant2}>CURRENT NOTE</Text>
 
         <Text
           style={[
-            styles.livePitch,
+            exerciseStyles.livePitch,
             { color: pitchStatusColor },
           ]}
         >
           {livePitch?.note ?? '--'}
         </Text>
 
-        <Text style={styles.hint}>
+        <Text style={exerciseStyles.hint}>
           {livePitch
             ? `${livePitch.frequency.toFixed(1)} Hz`
             : '--'}
         </Text>
 
         {pitchAccuracy ? (
-          <Text style={styles.pitchDeviation}>
+          <Text style={exerciseStyles.pitchDeviation}>
             {Math.abs(pitchAccuracy.cents).toFixed(0)} cents{' '}
             {pitchAccuracy.cents > 0
               ? 'sharp'
@@ -1591,17 +1579,17 @@ export default function VocalRunAccuracyTaskScreen() {
         ) : null}
       </View>
 
-      <View style={styles.timerContainer}>
-        <View style={styles.progressTrack}>
+      <View style={exerciseStyles.timerContainer}>
+        <View style={exerciseStyles.progressTrackVariant2}>
           <View
             style={[
-              styles.progressFill,
+              exerciseStyles.progressFill,
               {
                 width: `${
                   recordingDurationSec > 0
                     ? Math.min(
                         100,
-                        (recordingTime / recordingDurationSec) * 100,
+                        (elapsedSeconds / recordingDurationSec) * 100,
                       )
                     : 0
                 }%`,
@@ -1609,9 +1597,9 @@ export default function VocalRunAccuracyTaskScreen() {
             ]}
           />
         </View>
-        <Text style={styles.timerText}>
+        <Text style={exerciseStyles.timerTextVariant5}>
           Recording Time: {' '}
-          {recordingTime.toFixed(1)}
+          {elapsedSeconds.toFixed(1)}
         </Text>
       </View>
     </ExerciseRecordingScreen>
@@ -1671,7 +1659,7 @@ export default function VocalRunAccuracyTaskScreen() {
         }
         scoreMessage={result.feedback}
         scoreDetails={
-          <Text style={styles.hint}>
+          <Text style={exerciseStyles.hint}>
             {result.repetitionsCompleted} of {config!.repetitions}{' '}
             repetitions completed
           </Text>
@@ -1680,23 +1668,23 @@ export default function VocalRunAccuracyTaskScreen() {
         onRetry={resetExercise}
         onExit={handleBack}
       >
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Accuracy Breakdown</Text>
+        <View style={exerciseStyles.cardVariant1}>
+          <Text style={exerciseStyles.cardTitleVariant2}>Accuracy Breakdown</Text>
 
           {accuracyItems.map(([label, value]) => (
-            <View key={label} style={styles.metricBlock}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{label}</Text>
+            <View key={label} style={exerciseStyles.metricBlock}>
+              <View style={exerciseStyles.detailRow}>
+                <Text style={exerciseStyles.detailLabel}>{label}</Text>
 
-                <Text style={styles.detailValue}>
+                <Text style={exerciseStyles.metricValue}>
                   {Math.round(value)}%
                 </Text>
               </View>
 
-              <View style={styles.progressTrack}>
+              <View style={exerciseStyles.progressTrackVariant2}>
                 <View
                   style={[
-                    styles.progressFill,
+                    exerciseStyles.progressFill,
                     {
                       width: `${Math.max(
                         0,
@@ -1709,18 +1697,18 @@ export default function VocalRunAccuracyTaskScreen() {
             </View>
           ))}
 
-          <Text style={styles.hint}>
+          <Text style={exerciseStyles.hint}>
             Sequence target: {config!.accuracyThreshold}%
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Performance Metrics</Text>
+        <View style={exerciseStyles.cardVariant1}>
+          <Text style={exerciseStyles.cardTitleVariant2}>Performance Metrics</Text>
 
           {metrics.map(([label, value]) => (
-            <View key={label} style={styles.detailRow}>
-              <Text style={styles.detailLabel}>{label}</Text>
-              <Text style={styles.detailValue}>{value}</Text>
+            <View key={label} style={exerciseStyles.detailRow}>
+              <Text style={exerciseStyles.detailLabel}>{label}</Text>
+              <Text style={exerciseStyles.metricValue}>{value}</Text>
             </View>
           ))}
         </View>
@@ -1747,7 +1735,7 @@ export default function VocalRunAccuracyTaskScreen() {
       onRedo={() => {
         setShowNoAudioModal(false);
         setLivePitch(null);
-        setRecordingTime(0);
+        setElapsedSeconds(0);
         setExercisePhase('listening');
       }}
       onQuit={() => {
@@ -1758,7 +1746,7 @@ export default function VocalRunAccuracyTaskScreen() {
     />
   );
 
-  if (tierLoading || isLoadingAdaptiveParams || !config) {
+  if (isLoadingTier || isLoadingParams || !config) {
     return (
       <ExercisePreparingScreen
         title="Preparing Your Exercise"
@@ -1770,7 +1758,7 @@ export default function VocalRunAccuracyTaskScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={exerciseStyles.screen}>
       {phase === 'instructions' ? (
         renderInstructions()
       ) : phase === 'countdown' ? (
@@ -1782,8 +1770,8 @@ export default function VocalRunAccuracyTaskScreen() {
       ) : (
         <ScrollView
           key={phase}
-          style={styles.screen}
-          contentContainerStyle={styles.scrollContent}
+          style={exerciseStyles.screen}
+          contentContainerStyle={exerciseStyles.scrollContent_Register}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -1797,154 +1785,3 @@ export default function VocalRunAccuracyTaskScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  card: {
-    width: '100%',
-    borderRadius: 20,
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    padding: 18,
-    marginBottom: 14,
-  },
-  recordingCard: {
-    width: '100%',
-    borderRadius: 20,
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 10,
-    marginTop: 8,
-  },
-  cardTitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 7,
-  },
-  detailLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 12,
-    color: COLORS.muted,
-    flex: 1,
-  },
-  detailValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'right',
-    marginLeft: 12,
-  },
-  hint: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 17,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  pitchStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  pitchStatusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  pitchStatusText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  livePitch: {
-    fontFamily: 'FredokaBold',
-    fontSize: 38,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  pitchDeviation: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 12,
-    color: COLORS.brown,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  pitchLegend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-  },
-  timerContainer: {
-    width: '100%',
-    paddingHorizontal: 4,
-  },
-  timerText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    textAlign: 'center',
-  },
-  progressTrack: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
-    borderRadius: 4,
-  },
-  metricBlock: {
-    marginBottom: 12,
-  },
-});

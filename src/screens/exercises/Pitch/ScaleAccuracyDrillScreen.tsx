@@ -6,8 +6,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Alert, BackHandler, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Text, View } from 'react-native';
 
+import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
@@ -41,7 +42,7 @@ import {
   calcPitchAccuracy,
   segmentIntoNotes,
 } from '@/utils/dsp/pitch';
-import { averageFinite, clamp } from '@/utils/math';
+import { averageFinite } from '@/utils/math';
 import {
   disposeNotePlayer,
   playNoteSequence,
@@ -51,17 +52,22 @@ import {
   getRandomScale,
   type VocalRange,
 } from '@/utils/music/notes';
-import { formatFrequency } from '@/utils/numberFormatting';
+
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExerciseListeningScreen,
-  ExerciseNoAudioModal,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
-  ExerciseQuitModal,
   ExerciseResultsScreen,
 } from '../ExerciseScreen';
+
+import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/exercises/ExerciseModals';
 
 const NOTE_DURATION_SECONDS = 0.8;
 const RECORDING_MIN_DURATION_MS = 5000;
@@ -84,12 +90,7 @@ interface SavedRecording {
   sampleRate: number;
 }
 
-interface LivePitchIndicatorProps {
-  targetNote: string;
-  targetFrequency: number | null;
-  detectedFrequency: number | null;
-  detectedNote: string | null;
-}
+
 
 function generateScale(
   params: ScaleAccuracyParams,
@@ -174,191 +175,7 @@ function aggregateScaleResults(
   };
 }
 
-function LivePitchIndicator({
-  targetNote,
-  targetFrequency,
-  detectedFrequency,
-  detectedNote,
-}: LivePitchIndicatorProps) {
-  const hasTarget =
-    targetFrequency !== null &&
-    Number.isFinite(targetFrequency) &&
-    targetFrequency > 0;
 
-  const hasPitch =
-    detectedFrequency !== null &&
-    Number.isFinite(detectedFrequency) &&
-    detectedFrequency > 0;
-
-  const hasValidComparison = hasTarget && hasPitch;
-
-  const centsOffset = hasValidComparison
-    ? 1200 * Math.log2(detectedFrequency / targetFrequency)
-    : null;
-
-  const absoluteOffset =
-    centsOffset === null ? null : Math.abs(centsOffset);
-
-  const markerPosition =
-    centsOffset === null
-      ? 50
-      : clamp(50 + (centsOffset / 100) * 43, 7, 93);
-
-  const guideColor = !hasValidComparison
-    ? COLORS.gray
-    : absoluteOffset !== null && absoluteOffset <= 25
-      ? COLORS.guideGreen
-      : absoluteOffset !== null && absoluteOffset <= 60
-        ? COLORS.guideYellow
-        : COLORS.guideRed;
-
-  const markerIcon =
-    !hasValidComparison
-      ? 'mic-outline'
-      : absoluteOffset !== null && absoluteOffset <= 25
-        ? 'checkmark'
-        : centsOffset !== null && centsOffset < 0
-          ? 'arrow-back'
-          : 'arrow-forward';
-
-  return (
-    <View
-      style={styles.pitchGuide}
-      accessibilityLabel={
-        hasValidComparison
-          ? `Live pitch guide. Target ${targetNote}, detected ${
-              detectedNote ?? 'unknown note'
-            }.`
-          : 'Live pitch guide waiting for a detected pitch.'
-      }
-    >
-      <View style={styles.pitchGuideNotes}>
-        <View style={styles.pitchGuideNoteBlock}>
-          <Text style={styles.pitchGuideNoteLabel}>TARGET NOTE</Text>
-          <Text style={styles.pitchGuideTargetNote}>
-            {targetNote}
-          </Text>
-          <Text style={styles.pitchGuideFrequency}>
-            {formatFrequency(targetFrequency, 0, '-- Hz')}
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.pitchGuideArrow,
-            { backgroundColor: `${guideColor}18` },
-          ]}
-        >
-          <Ionicons
-            name={markerIcon}
-            size={22}
-            color={guideColor}
-          />
-        </View>
-
-        <View style={styles.pitchGuideNoteBlock}>
-          <Text style={styles.pitchGuideNoteLabel}>YOUR PITCH</Text>
-          <Text
-            style={[
-              styles.pitchGuideDetectedNote,
-              { color: guideColor },
-            ]}
-          >
-            {detectedNote ?? '--'}
-          </Text>
-          <Text style={styles.pitchGuideFrequency}>
-            {formatFrequency(detectedFrequency, 0, '-- Hz')}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.pitchMeterLabels}>
-        <View style={styles.pitchMeterSide}>
-          <Text
-            style={[
-              styles.pitchMeterSideLabel,
-              { color: COLORS.guideRed },
-            ]}
-          >
-            {'← LOW'}
-          </Text>
-        </View>
-
-        <Text style={styles.pitchMeterCenterLabel}>TARGET</Text>
-
-        <View style={styles.pitchMeterSide}>
-          <Text
-            style={[
-              styles.pitchMeterSideLabel,
-              { color: COLORS.guideRed },
-            ]}
-          >
-            {'HIGH →'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.pitchMeterContainer}>
-        <View style={styles.pitchMeterTrack}>
-          <View
-            style={[
-              styles.pitchMeterSegment,
-              styles.pitchMeterRedLeft,
-            ]}
-          />
-          <View
-            style={[
-              styles.pitchMeterSegment,
-              styles.pitchMeterYellowLeft,
-            ]}
-          />
-          <View
-            style={[
-              styles.pitchMeterSegment,
-              styles.pitchMeterGreen,
-            ]}
-          />
-          <View
-            style={[
-              styles.pitchMeterSegment,
-              styles.pitchMeterYellowRight,
-            ]}
-          />
-          <View
-            style={[
-              styles.pitchMeterSegment,
-              styles.pitchMeterRedRight,
-            ]}
-          />
-
-          <View
-            style={[
-              styles.pitchMeterMarker,
-              {
-                left: `${markerPosition}%`,
-                borderColor: guideColor,
-                opacity: hasValidComparison ? 1 : 0.55,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.pitchMeterMarkerInner,
-                { backgroundColor: guideColor },
-              ]}
-            />
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.pitchMeterScale}>
-        <Text style={styles.pitchMeterScaleText}>-100 cents</Text>
-        <Text style={styles.pitchMeterScaleText}>0</Text>
-        <Text style={styles.pitchMeterScaleText}>+100 cents</Text>
-      </View>
-    </View>
-  );
-}
 
 export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const initialTier = tier ?? 'beginner';
@@ -367,10 +184,11 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const [params, setParams] = useState<ScaleAccuracyParams>(
     SCALE_ACCURACY_PARAMS[initialTier],
   );
-  const [isLoadingAdaptiveParams, setIsLoadingAdaptiveParams] =
+  const [isLoadingParams, setIsLoadingParams] =
     useState(true);
 
-  const [phase, setPhase] = useState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
+  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
   const [currentRep, setCurrentRep] = useState(1);
@@ -384,7 +202,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     ),
   );
 
-  const [liveFrame, setLiveFrame] = useState<LiveAudioFrame | null>(null);
+  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [liveFrequencies, setLiveFrequencies] = useState<number[]>([]);
   const [result, setResult] = useState<ScaleAccuracyScoreResult | null>(
     null,
@@ -396,7 +214,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const [isQuitting, setIsQuitting] = useState(false);
 
   const mountedRef = useRef(false);
-  const phaseRef = useRef<Phase>('instructions');
   const showQuitModalRef = useRef(false);
   const isQuittingRef = useRef(false);
   const pausedRef = useRef(false);
@@ -407,9 +224,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const pitchHistoryRef = useRef<number[]>([]);
   const recordingElapsedRef = useRef(0);
 
-  const recordingRef = useRef(false);
+  const isRecordingRef = useRef(false);
   const startingRecordingRef = useRef(false);
-  const stopRequestedRef = useRef(false);
+  const recordingStopRequestedRef = useRef(false);
   const processingRef = useRef(false);
   const discardNextStopRef = useRef(false);
   const stopPendingForQuitRef = useRef(false);
@@ -425,11 +242,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
   const beginRepCountdownRef = useRef<() => void>(() => {});
-
-  const updatePhase = useCallback((nextPhase: Phase) => {
-    phaseRef.current = nextPhase;
-    setPhase(nextPhase);
-  }, []);
 
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -452,20 +264,20 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     pitchHistoryRef.current = [];
     recordingElapsedRef.current = 0;
 
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveFrequencies([]);
     setCurrentNoteIndex(-1);
   }, []);
 
   const resetRecordingState = useCallback(() => {
-    recordingRef.current = false;
+    isRecordingRef.current = false;
     startingRecordingRef.current = false;
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
     processingRef.current = false;
     recordingElapsedRef.current = 0;
     pitchHistoryRef.current = [];
 
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveFrequencies([]);
     setCurrentNoteIndex(-1);
   }, []);
@@ -477,12 +289,12 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       showQuitModalRef.current ||
       isQuittingRef.current ||
       discardNextStopRef.current ||
-      !recordingRef.current
+      !isRecordingRef.current
     ) {
       return;
     }
 
-    setLiveFrame(frame);
+    setLiveAudioFrame(frame);
 
     if (Number.isFinite(frame.pitch) && frame.pitch > 0) {
       pitchHistoryRef.current = [
@@ -496,7 +308,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   const handleRecordingStop = useCallback(
     async (samples: Float32Array, sampleRate: number) => {
-      recordingRef.current = false;
+      isRecordingRef.current = false;
 
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
@@ -507,12 +319,12 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         discardNextStopRef.current = false;
         stopPendingForQuitRef.current = false;
         startingRecordingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
         recordingElapsedRef.current = 0;
         pitchHistoryRef.current = [];
 
         if (mountedRef.current && !isQuittingRef.current) {
-          setLiveFrame(null);
+          setLiveAudioFrame(null);
           setLiveFrequencies([]);
           setCurrentNoteIndex(-1);
         }
@@ -537,17 +349,17 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         pausedRef.current ||
         showQuitModalRef.current ||
         isQuittingRef.current ||
-        !stopRequestedRef.current
+        !recordingStopRequestedRef.current
       ) {
         return;
       }
 
       if (!hasSufficientRecordedSignal(samples)) {
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
         startingRecordingRef.current = false;
         processingRef.current = false;
         setErrorMessage(null);
-        updatePhase('instructions');
+        setPhase('instructions');
         setShowNoAudioModal(true);
         return;
       }
@@ -557,7 +369,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         sampleRate,
       });
 
-      stopRequestedRef.current = false;
+      recordingStopRequestedRef.current = false;
       startingRecordingRef.current = false;
       recordingElapsedRef.current = 0;
 
@@ -593,7 +405,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       }
 
       processingRef.current = true;
-      updatePhase('processing');
+      setPhase('processing');
 
       try {
         await new Promise<void>(resolve => {
@@ -649,22 +461,22 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         }
 
         setResult(finalResult);
-        updatePhase('results');
-      } catch (error) {
-        console.error('Scale processing failed:', error);
+        setPhase('results');
+      } catch (errorMessage) {
+        console.error('Scale processing failed:', errorMessage);
 
         if (mountedRef.current && !isQuittingRef.current) {
           setErrorMessage(
             'We could not analyze your recordings. Please try again.',
           );
-          updatePhase('instructions');
+          setPhase('instructions');
         }
       } finally {
         processingRef.current = false;
-        stopRequestedRef.current = false;
+        recordingStopRequestedRef.current = false;
       }
     },
-    [currentTier, params, resetLiveData, updatePhase],
+    [currentTier, params, resetLiveData, setPhase],
   );
 
   const {
@@ -692,7 +504,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       isQuittingRef.current ||
       discardNextStopRef.current ||
       stopPendingForQuitRef.current ||
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       processingRef.current
     ) {
@@ -700,11 +512,11 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     }
 
     startingRecordingRef.current = true;
-    stopRequestedRef.current = false;
+    recordingStopRequestedRef.current = false;
 
     try {
       resetLiveData();
-      updatePhase('recording');
+      setPhase('recording');
 
       await startRecording();
 
@@ -716,23 +528,23 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       ) {
         discardNextStopRef.current = true;
         stopPendingForQuitRef.current = true;
-        stopRequestedRef.current = true;
+        recordingStopRequestedRef.current = true;
 
         try {
           await stopRecording();
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             'Failed to stop recording after interruption:',
-            error,
+            errorMessage,
           );
         }
 
-        recordingRef.current = false;
+        isRecordingRef.current = false;
         startingRecordingRef.current = false;
         return;
       }
 
-      recordingRef.current = true;
+      isRecordingRef.current = true;
 
       const noteCount = Math.max(1, targetNotesRef.current.length);
       const recordingDuration = Math.max(
@@ -752,8 +564,8 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           pausedRef.current ||
           showQuitModalRef.current ||
           isQuittingRef.current ||
-          !recordingRef.current ||
-          stopRequestedRef.current
+          !isRecordingRef.current ||
+          recordingStopRequestedRef.current
         ) {
           return;
         }
@@ -777,13 +589,13 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           recordingTimerRef.current = null;
         }
 
-        stopRequestedRef.current = true;
+        recordingStopRequestedRef.current = true;
 
-        void stopRecordingRef.current?.().catch(error => {
-          console.error('Failed to stop scale recording:', error);
+        void stopRecordingRef.current?.().catch(errorMessage => {
+          console.error('Failed to stop scale recording:', errorMessage);
 
-          recordingRef.current = false;
-          stopRequestedRef.current = false;
+          isRecordingRef.current = false;
+          recordingStopRequestedRef.current = false;
 
           if (
             mountedRef.current &&
@@ -793,15 +605,15 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             setErrorMessage(
               'We could not finish the recording. Please try again.',
             );
-            updatePhase('instructions');
+            setPhase('instructions');
           }
         });
       }, EXERCISE_RECORDING_INTERVAL_MS);
-    } catch (error) {
-      console.error('Failed to start scale recording:', error);
+    } catch (errorMessage) {
+      console.error('Failed to start scale recording:', errorMessage);
 
-      recordingRef.current = false;
-      stopRequestedRef.current = false;
+      isRecordingRef.current = false;
+      recordingStopRequestedRef.current = false;
 
       if (
         mountedRef.current &&
@@ -811,7 +623,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         setErrorMessage(
           'Unable to start the microphone. Please check your microphone permission and try again.',
         );
-        updatePhase('instructions');
+        setPhase('instructions');
 
         Alert.alert(
           'Microphone Error',
@@ -821,7 +633,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     } finally {
       startingRecordingRef.current = false;
     }
-  }, [resetLiveData, startRecording, stopRecording, updatePhase]);
+  }, [resetLiveData, startRecording, stopRecording, setPhase]);
 
   const playScaleAndRecord = useCallback(async () => {
     if (
@@ -834,7 +646,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     }
 
     try {
-      updatePhase('listening');
+      setPhase('listening');
       setCurrentNoteIndex(0);
 
       const sequence = targetNotesRef.current.map(note => ({
@@ -854,7 +666,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       }
 
       await beginRecording();
-    } catch (error) {
+    } catch (errorMessage) {
       if (
         pausedRef.current ||
         showQuitModalRef.current ||
@@ -863,13 +675,13 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         return;
       }
 
-      console.error('Failed to play scale or start recording:', error);
+      console.error('Failed to play scale or start recording:', errorMessage);
 
       if (mountedRef.current) {
         setErrorMessage(
           'Unable to play the target scale or start recording. Please try again.',
         );
-        updatePhase('instructions');
+        setPhase('instructions');
 
         Alert.alert(
           'Audio Error',
@@ -877,7 +689,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         );
       }
     }
-  }, [beginRecording, updatePhase]);
+  }, [beginRecording, setPhase]);
 
   const beginRepCountdown = useCallback(() => {
     if (
@@ -897,9 +709,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCurrentNoteIndex(-1);
-    setLiveFrame(null);
+    setLiveAudioFrame(null);
     setLiveFrequencies([]);
-    updatePhase('countdown');
+    setPhase('countdown');
 
     let value = EXERCISE_COUNTDOWN_SECONDS;
 
@@ -940,7 +752,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
       setCountdown(value);
     }, 1000);
-  }, [playScaleAndRecord, updatePhase]);
+  }, [playScaleAndRecord, setPhase]);
 
   useEffect(() => {
     beginRepCountdownRef.current = beginRepCountdown;
@@ -948,7 +760,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   const startCountdown = useCallback(() => {
     if (
-      isLoadingAdaptiveParams ||
+      isLoadingParams ||
       showQuitModalRef.current ||
       isQuittingRef.current ||
       stopPendingForQuitRef.current
@@ -975,13 +787,14 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     resetRecordingState();
     setResult(null);
     setErrorMessage(null);
+    setIsInitialListening(false);
 
     beginRepCountdown();
   }, [
     beginRepCountdown,
     clearTimers,
     currentTier,
-    isLoadingAdaptiveParams,
+    isLoadingParams,
     params,
     resetRecordingState,
     vocalRange,
@@ -991,7 +804,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     clearTimers();
 
     const recorderMayBeActive =
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       isRecording;
 
@@ -1006,16 +819,16 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     if (recorderMayBeActive || stopPendingForQuitRef.current) {
       discardNextStopRef.current = true;
       stopPendingForQuitRef.current = true;
-      stopRequestedRef.current = true;
+      recordingStopRequestedRef.current = true;
 
-      void stopRecordingRef.current?.().catch(error => {
-        console.warn('Failed to stop recorder before retry:', error);
+      void stopRecordingRef.current?.().catch(errorMessage => {
+        console.warn('Failed to stop recorder before retry:', errorMessage);
       });
 
       setErrorMessage(
         'The microphone is still stopping. Please retry in a moment.',
       );
-      updatePhase('instructions');
+      setPhase('instructions');
       return;
     }
 
@@ -1029,9 +842,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     resetRecordingState();
     setResult(null);
     setErrorMessage(null);
-    updatePhase('instructions');
+    setPhase('instructions');
     pausedRef.current = false;
-  }, [clearTimers, isRecording, resetRecordingState, updatePhase]);
+  }, [clearTimers, isRecording, resetRecordingState, setPhase]);
 
   const openQuitModal = useCallback(() => {
     if (showQuitModalRef.current || isQuittingRef.current) {
@@ -1047,20 +860,20 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     clearTimers();
     setShowQuitModal(true);
 
-    void disposeNotePlayer().catch(error => {
-      console.warn('Could not stop target audio:', error);
+    void disposeNotePlayer().catch(errorMessage => {
+      console.warn('Could not stop target audio:', errorMessage);
     });
 
     const recorderMayBeActive =
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       isRecording;
 
     if (recorderMayBeActive) {
       discardNextStopRef.current = true;
       stopPendingForQuitRef.current = true;
-      stopRequestedRef.current = true;
-      recordingRef.current = false;
+      recordingStopRequestedRef.current = true;
+      isRecordingRef.current = false;
       startingRecordingRef.current = false;
       resumeAfterDiscardRef.current = false;
 
@@ -1073,17 +886,17 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         const stopPromise = stopRecordingRef.current?.();
 
         if (stopPromise) {
-          void stopPromise.catch(error => {
+          void stopPromise.catch(errorMessage => {
             console.warn(
               'Could not stop recording while opening quit modal:',
-              error,
+              errorMessage,
             );
           });
         }
-      } catch (error) {
+      } catch (errorMessage) {
         console.warn(
           'Could not stop recording while opening quit modal:',
-          error,
+          errorMessage,
         );
       }
     }
@@ -1139,28 +952,28 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     clearTimers();
 
     const recorderMayBeActive =
-      recordingRef.current ||
+      isRecordingRef.current ||
       startingRecordingRef.current ||
       isRecording;
 
     if (recorderMayBeActive || stopPendingForQuitRef.current) {
       discardNextStopRef.current = true;
       stopPendingForQuitRef.current = true;
-      stopRequestedRef.current = true;
-      recordingRef.current = false;
+      recordingStopRequestedRef.current = true;
+      isRecordingRef.current = false;
       startingRecordingRef.current = false;
 
       try {
         await Promise.resolve(stopRecordingRef.current?.());
-      } catch (error) {
-        console.warn('Could not stop recording while leaving:', error);
+      } catch (errorMessage) {
+        console.warn('Could not stop recording while leaving:', errorMessage);
       }
     }
 
     try {
       await disposeNotePlayer();
-    } catch (error) {
-      console.warn('Could not dispose note player:', error);
+    } catch (errorMessage) {
+      console.warn('Could not dispose note player:', errorMessage);
     }
 
     router.replace('/exercises/pitch');
@@ -1181,27 +994,27 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
       clearTimers();
 
-      if (recordingRef.current || startingRecordingRef.current) {
+      if (isRecordingRef.current || startingRecordingRef.current) {
         discardNextStopRef.current = true;
-        stopRequestedRef.current = true;
+        recordingStopRequestedRef.current = true;
 
         try {
-          void stopRecordingRef.current?.().catch(error => {
+          void stopRecordingRef.current?.().catch(errorMessage => {
             console.warn(
               'Failed to stop recorder during cleanup:',
-              error,
+              errorMessage,
             );
           });
-        } catch (error) {
+        } catch (errorMessage) {
           console.warn(
             'Failed to stop recorder during cleanup:',
-            error,
+            errorMessage,
           );
         }
       }
 
-      void disposeNotePlayer().catch(error => {
-        console.warn('Failed to dispose note player:', error);
+      void disposeNotePlayer().catch(errorMessage => {
+        console.warn('Failed to dispose note player:', errorMessage);
       });
     };
   }, [clearTimers]);
@@ -1227,7 +1040,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     let cancelled = false;
 
     async function loadAdaptiveParams() {
-      setIsLoadingAdaptiveParams(true);
+      setIsLoadingParams(true);
 
       try {
         const user = auth.currentUser;
@@ -1306,10 +1119,10 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
         targetNotesRef.current = newScale;
         setTargetNotes(newScale);
-      } catch (error) {
+      } catch (errorMessage) {
         console.error(
           'Failed to load scale accuracy parameters:',
-          error,
+          errorMessage,
         );
 
         if (!cancelled) {
@@ -1320,7 +1133,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         }
       } finally {
         if (!cancelled) {
-          setIsLoadingAdaptiveParams(false);
+          setIsLoadingParams(false);
         }
       }
     }
@@ -1338,12 +1151,12 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       : null;
 
   const detectedFrequency =
-    liveFrame && Number.isFinite(liveFrame.pitch) && liveFrame.pitch > 0
-      ? liveFrame.pitch
+    liveAudioFrame && Number.isFinite(liveAudioFrame.pitch) && liveAudioFrame.pitch > 0
+      ? liveAudioFrame.pitch
       : null;
 
   const detectedNote = detectedFrequency
-    ? liveFrame?.note ?? null
+    ? liveAudioFrame?.note ?? null
     : null;
 
   const hasLivePitch = detectedFrequency !== null;
@@ -1426,7 +1239,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     </>
   );
 
-  if (phase === 'instructions' && isLoadingAdaptiveParams) {
+  if (phase === 'instructions' && isLoadingParams) {
     return (
       <>
         <ExercisePreparingScreen
@@ -1434,7 +1247,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           message="Adjusting the exercise to your current difficulty level"
           icon="options-outline"
           iconSize={44}
-          containerStyle={styles.centerScreen}
+          containerStyle={exerciseStyles.centerScreen}
         />
 
         {quitModal}
@@ -1468,11 +1281,14 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           targetValue={`${params.noteCount} notes`}
           tip="Sing each note clearly before moving to the next one."
           onBack={goBack}
-          onStart={startCountdown}
-          error={errorMessage ?? undefined}
-          startDisabled={isLoadingAdaptiveParams}
+          onStart={() => {
+            setIsInitialListening(true);
+            setPhase('listening');
+          }}
+          errorMessage={errorMessage ?? undefined}
+          startDisabled={isLoadingParams}
           startLabel={
-            isLoadingAdaptiveParams
+            isLoadingParams
               ? 'Preparing Exercise...'
               : 'Start Exercise'
           }
@@ -1513,18 +1329,23 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           promptTitle="Listen to the target scale"
           prompt="Listen to the target scale first. After it finishes, sing the notes back in the same order."
           liveContent={
-            <View style={styles.sharedScalePreview}>
+            <View style={exerciseStyles.sharedScalePreview}>
               {targetNotes.map((note, index) => (
                 <View
                   key={`${note.name}-${index}`}
-                  style={styles.sharedScaleNote}
+                  style={exerciseStyles.sharedScaleNote}
                 >
-                  <Text style={styles.sharedScaleNoteText}>
+                  <Text style={exerciseStyles.scoreRowValue}>
                     {note.name}
                   </Text>
                 </View>
               ))}
             </View>
+          }
+          onContinue={
+            isInitialListening
+              ? startCountdown
+              : undefined
           }
           progress={100}
         />
@@ -1537,18 +1358,18 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   if (phase === 'recording') {
     return (
       <>
-        <View style={styles.recordingScreen}>
-          <View style={styles.recordingIcon}>
+        <View style={exerciseStyles.recordingScreenVariant1}>
+          <View style={exerciseStyles.recordingIcon}>
             <Ionicons name="mic" size={34} color={COLORS.brown} />
           </View>
 
-          <Text style={styles.recordingTitle}>Sing the Scale</Text>
+          <Text style={exerciseStyles.phaseTitleVariant1}>Sing the Scale</Text>
 
-          <Text style={styles.recordingSubtitle}>
+          <Text style={exerciseStyles.recordingSubtitleVariant1}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <View style={styles.scalePreview}>
+          <View style={exerciseStyles.scalePreview}>
             {targetNotes.map((note, index) => {
               const active = index === currentNoteIndex;
               const completed = index < currentNoteIndex;
@@ -1557,9 +1378,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
                 <View
                   key={`${note.name}-${index}`}
                   style={[
-                    styles.previewNote,
-                    completed && styles.previewNoteCompleted,
-                    active && styles.previewNoteActive,
+                    exerciseStyles.previewNote,
+                    completed && exerciseStyles.previewNoteCompleted,
+                    active && exerciseStyles.previewNoteActive,
                   ]}
                 >
                   {completed && (
@@ -1567,15 +1388,15 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
                       name="checkmark"
                       size={11}
                       color={COLORS.guideGreen}
-                      style={styles.previewCheck}
+                      style={exerciseStyles.previewCheck}
                     />
                   )}
 
                   <Text
                     style={[
-                      styles.previewNoteText,
-                      completed && styles.previewNoteTextCompleted,
-                      active && styles.previewNoteTextActive,
+                      exerciseStyles.previewNoteText,
+                      completed && exerciseStyles.statusTextSuccess,
+                      active && exerciseStyles.liveNoteDetected,
                     ]}
                   >
                     {note.name}
@@ -1585,27 +1406,27 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             })}
           </View>
 
-          <View style={styles.liveCard}>
-            <View style={styles.pitchGuideHeader}>
-              <View style={styles.pitchGuideHeading}>
+          <View style={exerciseStyles.liveCardVariant8}>
+            <View style={exerciseStyles.pitchGuideHeader}>
+              <View style={exerciseStyles.pitchGuideHeading}>
                 <View
                   style={[
-                    styles.pitchGuideLiveDot,
+                    exerciseStyles.pitchGuideLiveDot,
                     { backgroundColor: COLORS.brown },
                   ]}
                 />
-                <Text style={styles.pitchGuideTitle}>LIVE PITCH GUIDE</Text>
+                <Text style={exerciseStyles.pitchGuideTitleVariant1}>LIVE PITCH GUIDE</Text>
               </View>
 
               <View
                 style={[
-                  styles.pitchStatusBadge,
+                  exerciseStyles.pitchStatusBadge,
                   { backgroundColor: `${guideColor}18` },
                 ]}
               >
                 <Text
                   style={[
-                    styles.pitchStatusText,
+                    exerciseStyles.pitchStatusText,
                     { color: guideColor },
                   ]}
                 >
@@ -1614,48 +1435,48 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
               </View>
             </View>
 
-            <LivePitchIndicator
+            <ExerciseLivePitchIndicator
               targetNote={currentTarget?.name ?? '--'}
               targetFrequency={currentTarget?.frequency ?? null}
-              detectedFrequency={detectedFrequency}
               detectedNote={detectedNote}
+              detectedFrequency={detectedFrequency}
             />
 
-            <View style={styles.liveStats}>
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Accuracy</Text>
+            <View style={exerciseStyles.liveStatsVariant1}>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.scaleText}>Accuracy</Text>
 
-                <Text style={styles.liveStatValue}>
+                <Text style={exerciseStyles.liveStatValueVariant2}>
                   {hasLivePitch && currentTarget
                     ? `${Math.round(liveAccuracy)}%`
                     : '--'}
                 </Text>
               </View>
 
-              <View style={styles.liveStatsDivider} />
+              <View style={exerciseStyles.liveStatsDividerVariant1} />
 
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Stability</Text>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.scaleText}>Stability</Text>
 
-                <Text style={styles.liveStatValue}>
+                <Text style={exerciseStyles.liveStatValueVariant2}>
                   {liveFrequencies.length > 0
                     ? `${Math.round(liveStability)}%`
                     : '--'}
                 </Text>
               </View>
 
-              <View style={styles.liveStatsDivider} />
+              <View style={exerciseStyles.liveStatsDividerVariant1} />
 
-              <View style={styles.liveStat}>
-                <Text style={styles.liveStatLabel}>Frequency</Text>
+              <View style={exerciseStyles.sessionPart}>
+                <Text style={exerciseStyles.scaleText}>Frequency</Text>
 
-                <Text style={styles.liveStatValue}>
+                <Text style={exerciseStyles.liveStatValueVariant2}>
                   {hasLivePitch
                     ? `${Math.round(detectedFrequency)}`
                     : '--'}
                 </Text>
 
-                <Text style={styles.liveStatUnit}>Hz</Text>
+                <Text style={exerciseStyles.liveStatUnit}>Hz</Text>
               </View>
             </View>
           </View>
@@ -1694,35 +1515,35 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           onRetry={retry}
           onExit={goBack}
         >
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>Note Accuracy</Text>
+          <View style={exerciseStyles.resultCard}>
+            <Text style={exerciseStyles.resultCardTitle}>Note Accuracy</Text>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Accurate notes</Text>
-              <Text style={styles.resultRowValue}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.scoreRowLabel}>Accurate notes</Text>
+              <Text style={exerciseStyles.timeText}>
                 {Math.round(result.noteAccuracy)}%
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.scoreRowLabel}>
                 Transition smoothness
               </Text>
-              <Text style={styles.resultRowValue}>
+              <Text style={exerciseStyles.timeText}>
                 {Math.round(result.transitionSmoothness)}%
               </Text>
             </View>
 
-            <View style={styles.resultRow}>
-              <Text style={styles.resultRowLabel}>Average clarity</Text>
-              <Text style={styles.resultRowValue}>
+            <View style={exerciseStyles.resultRow}>
+              <Text style={exerciseStyles.scoreRowLabel}>Average clarity</Text>
+              <Text style={exerciseStyles.timeText}>
                 {Math.round(result.averageClarity * 100)}%
               </Text>
             </View>
           </View>
 
-          <View style={styles.resultCard}>
-            <Text style={styles.resultCardTitle}>Your Notes</Text>
+          <View style={exerciseStyles.resultCard}>
+            <Text style={exerciseStyles.resultCardTitle}>Your Notes</Text>
 
             {targetNotes.map((target, index) => {
               const detected = result.detectedFreqs[index] ?? 0;
@@ -1740,28 +1561,28 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
               return (
                 <View
                   key={`${target.name}-${index}`}
-                  style={styles.noteResultRow}
+                  style={exerciseStyles.noteResultRow}
                 >
-                  <View style={styles.noteNumber}>
-                    <Text style={styles.noteNumberText}>
+                  <View style={exerciseStyles.noteNumberVariant1}>
+                    <Text style={exerciseStyles.volumeGuideText}>
                       {index + 1}
                     </Text>
                   </View>
 
-                  <View style={styles.noteResultInfo}>
-                    <Text style={styles.targetNoteText}>
+                  <View style={exerciseStyles.feedbackContent}>
+                    <Text style={exerciseStyles.volumeGuideText}>
                       Target: {target.name}
                     </Text>
 
-                    <Text style={styles.detectedNoteText}>
+                    <Text style={exerciseStyles.assessmentDate}>
                       Detected: {noteName}
                     </Text>
                   </View>
 
                   <View
                     style={[
-                      styles.noteStatus,
-                      correct && styles.noteStatusCorrect,
+                      exerciseStyles.noteStatus,
+                      correct && exerciseStyles.noteStatusCorrect,
                     ]}
                   >
                     <Ionicons
@@ -1770,7 +1591,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
                       color={COLORS.brown}
                     />
 
-                    <Text style={styles.noteStatusText}>
+                    <Text style={exerciseStyles.noteStatusText}>
                       {Math.round(noteScore)}%
                     </Text>
                   </View>
@@ -1779,14 +1600,14 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             })}
           </View>
 
-          <View style={styles.resultTip}>
+          <View style={exerciseStyles.tipCard}>
             <Ionicons
               name="bulb-outline"
               size={21}
               color={COLORS.brown}
             />
 
-            <Text style={styles.tipText}>
+            <Text style={exerciseStyles.tipText}>
               {result.passed
                 ? 'Your notes were consistently accurate across the repetitions. Continue practicing smooth transitions for even greater consistency.'
                 : 'Focus on landing directly on each target note and maintaining accuracy across every repetition.'}
@@ -1801,437 +1622,3 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   return quitModal;
 }
-
-const styles = StyleSheet.create({
-  centerScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  recordingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-  },
-  recordingIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 99,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  recordingTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    textAlign: 'center',
-  },
-  recordingSubtitle: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  liveCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 13,
-    marginTop: 19,
-  },
-  pitchGuide: {
-    width: '100%',
-    padding: 13,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  pitchGuideHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  pitchGuideHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 1,
-  },
-  pitchGuideLiveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 7,
-  },
-  pitchGuideTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: COLORS.brown,
-  },
-  pitchStatusBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  pitchStatusText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    letterSpacing: 0.3,
-  },
-  pitchGuideNotes: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-    paddingTop: 17,
-    paddingBottom: 15,
-  },
-  pitchGuideNoteBlock: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  pitchGuideNoteLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    letterSpacing: 0.7,
-    color: COLORS.muted,
-  },
-  pitchGuideTargetNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    color: COLORS.brown,
-    marginTop: 3,
-  },
-  pitchGuideDetectedNote: {
-    fontFamily: 'FredokaBold',
-    fontSize: 25,
-    marginTop: 3,
-  },
-  pitchGuideFrequency: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  pitchGuideArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 8,
-  },
-  pitchMeterLabels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  pitchMeterSide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  pitchMeterSideLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    letterSpacing: 0.4,
-  },
-  pitchMeterCenterLabel: {
-    fontFamily: 'FredokaBold',
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: COLORS.guideGreen,
-  },
-  pitchMeterContainer: {
-    paddingVertical: 6,
-  },
-  pitchMeterTrack: {
-    height: 15,
-    width: '100%',
-    borderRadius: 8,
-    overflow: 'visible',
-    backgroundColor: COLORS.lightGray,
-    flexDirection: 'row',
-    position: 'relative',
-  },
-  pitchMeterSegment: {
-    height: '100%',
-  },
-  pitchMeterRedLeft: {
-    width: '20%',
-    backgroundColor: COLORS.guideRed,
-    borderTopLeftRadius: 8,
-    borderBottomLeftRadius: 8,
-  },
-  pitchMeterYellowLeft: {
-    width: '15%',
-    backgroundColor: COLORS.guideYellow,
-  },
-  pitchMeterGreen: {
-    width: '30%',
-    backgroundColor: COLORS.guideGreen,
-  },
-  pitchMeterYellowRight: {
-    width: '15%',
-    backgroundColor: COLORS.guideYellow,
-  },
-  pitchMeterRedRight: {
-    width: '20%',
-    backgroundColor: COLORS.guideRed,
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
-  },
-  pitchMeterMarker: {
-    position: 'absolute',
-    top: '50%',
-    width: 25,
-    height: 25,
-    marginLeft: -12.5,
-    marginTop: -12.5,
-    borderRadius: 13,
-    borderWidth: 3,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 3,
-    elevation: 4,
-    shadowColor: COLORS.brown,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-  },
-  pitchMeterMarkerInner: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  pitchMeterScale: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  pitchMeterScaleText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  liveStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    marginTop: 14,
-    paddingTop: 13,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  liveStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  liveStatLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-  },
-  liveStatValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 15,
-    color: COLORS.brown,
-    marginTop: 2,
-  },
-  liveStatUnit: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 9,
-    color: COLORS.muted,
-    marginTop: -1,
-  },
-  liveStatsDivider: {
-    height: 40,
-    width: 1,
-    backgroundColor: COLORS.border,
-  },
-  scalePreview: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 18,
-    maxWidth: 350,
-  },
-  previewNote: {
-    minWidth: 60,
-    height: 60,
-    paddingHorizontal: 8,
-    borderRadius: 100,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  previewNoteActive: {
-    backgroundColor: COLORS.pink,
-    borderWidth: 1,
-    borderColor: COLORS.pink,
-  },
-  previewNoteCompleted: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  previewCheck: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-  },
-  previewNoteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 18,
-    color: COLORS.muted,
-  },
-  previewNoteTextActive: {
-    color: COLORS.brown,
-  },
-  previewNoteTextCompleted: {
-    color: COLORS.guideGreen,
-  },
-  sharedScalePreview: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  sharedScaleNote: {
-    minWidth: 44,
-    height: 40,
-    paddingHorizontal: 9,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sharedScaleNoteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 12,
-    color: COLORS.brown,
-  },
-  resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  resultCardTitle: {
-    fontFamily: 'FredokaBold',
-    fontSize: 17,
-    color: COLORS.brown,
-    marginBottom: 10,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  resultRowLabel: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  resultRowValue: {
-    fontFamily: 'FredokaBold',
-    fontSize: 13,
-    color: COLORS.brown,
-  },
-  noteResultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  noteNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noteNumberText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: COLORS.brown,
-  },
-  noteResultInfo: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  targetNoteText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 11,
-    color: COLORS.brown,
-  },
-  detectedNoteText: {
-    fontFamily: 'FredokaRegular',
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  noteStatus: {
-    minWidth: 55,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.lightGray,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 7,
-  },
-  noteStatusCorrect: {
-    backgroundColor: COLORS.lightGreen,
-  },
-  noteStatusText: {
-    fontFamily: 'FredokaBold',
-    fontSize: 10,
-    color: COLORS.brown,
-  },
-  resultTip: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.pink,
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 14,
-  },
-  tipText: {
-    flex: 1,
-    fontFamily: 'FredokaRegular',
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.brown,
-    marginLeft: 10,
-  },
-});
