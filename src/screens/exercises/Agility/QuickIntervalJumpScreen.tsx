@@ -776,8 +776,6 @@ export default function QuickIntervalJumpScreen() {
     setIsPlayingReference(true);
 
     const playbackToken = ++playbackTokenRef.current;
-    let completed = false;
-
     try {
       const context =
         audioContextRef.current ??
@@ -834,12 +832,6 @@ export default function QuickIntervalJumpScreen() {
           await sleep(gapSec * 1000);
         }
       }
-      completed =
-        mountedRef.current &&
-        playbackToken === playbackTokenRef.current &&
-        phaseRef.current === 'listening' &&
-        !showQuitModalRef.current &&
-        !quitInProgressRef.current;
     } catch (errorMessage) {
       console.warn('Reference playback failed:', errorMessage);
     } finally {
@@ -851,9 +843,6 @@ export default function QuickIntervalJumpScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
-    }
-    if (completed) {
-      void startCountdownRef.current?.();
     }
   };
 
@@ -1305,6 +1294,7 @@ export default function QuickIntervalJumpScreen() {
       }
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
+      onReady={() => void startCountdownRef.current?.()}
       onBack={() => void pauseForExitPrompt()}
     />
   );

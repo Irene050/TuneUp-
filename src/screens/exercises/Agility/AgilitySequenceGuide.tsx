@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
@@ -77,6 +78,27 @@ export function AgilitySequenceGuide({
 
   const itemWidth = 38;
   const staffWidth = Math.max(210, names.length * itemWidth + 42);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  useEffect(() => {
+    if (
+      activeIndex === null ||
+      activeIndex === undefined ||
+      viewportWidth === 0
+    ) {
+      return;
+    }
+
+    const noteCenterX = 40 + activeIndex * itemWidth;
+    const maxOffset = Math.max(0, staffWidth - viewportWidth);
+    const offset = Math.max(
+      0,
+      Math.min(maxOffset, noteCenterX - viewportWidth / 2),
+    );
+
+    scrollViewRef.current?.scrollTo({ x: offset, animated: true });
+  }, [activeIndex, itemWidth, staffWidth, viewportWidth]);
 
   return (
     <View style={exerciseStyles.card}>
@@ -102,8 +124,12 @@ export function AgilitySequenceGuide({
       ) : null}
 
       <ScrollView
+        ref={scrollViewRef}
         horizontal
         showsHorizontalScrollIndicator={false}
+        onLayout={event =>
+          setViewportWidth(event.nativeEvent.layout.width)
+        }
         contentContainerStyle={exerciseStyles.scrollContent}
       >
         <View style={[exerciseStyles.canvas, { width: staffWidth }]}>

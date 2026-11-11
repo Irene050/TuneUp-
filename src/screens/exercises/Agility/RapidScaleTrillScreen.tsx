@@ -468,8 +468,6 @@ export default function RapidScaleTrillScreen() {
     referencePlayingRef.current = true;
     setReferencePlaying(true);
 
-    let completed = false;
-
     try {
       let context = audioContextRef.current;
 
@@ -516,11 +514,6 @@ export default function RapidScaleTrillScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
-      completed =
-        referenceRunRef.current === runId &&
-        phaseRef.current === 'listening' &&
-        !quitInProgressRef.current &&
-        confirmationRef.current === null;
     } catch (errorMessage) {
       if (referenceRunRef.current === runId) {
         console.warn('Reference playback failed:', errorMessage);
@@ -536,9 +529,6 @@ export default function RapidScaleTrillScreen() {
         setReferencePlaying(false);
         setActiveReferenceNoteIndex(null);
       }
-    }
-    if (completed) {
-      void startCountdownRef.current?.();
     }
   }, [
     frequencies,
@@ -1394,6 +1384,7 @@ export default function RapidScaleTrillScreen() {
       }
       isPlayingReference={referencePlaying}
       onPlayReference={() => void playReference()}
+      onReady={() => void startCountdownRef.current?.()}
       onBack={pauseForExitPrompt}
     />
   );

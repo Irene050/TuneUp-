@@ -671,8 +671,6 @@ export default function VocalRunAccuracyTaskScreen() {
     setIsPlayingReference(true);
     setErrorMessage('');
 
-    let completed = false;
-
     try {
       const context =
         audioContextRef.current ??
@@ -726,13 +724,6 @@ export default function VocalRunAccuracyTaskScreen() {
           await sleep(config.gapSec * 1000);
         }
       }
-      completed =
-        mountedRef.current &&
-        playbackId === referencePlaybackIdRef.current &&
-        phaseRef.current === 'listening' &&
-        !pausedRef.current &&
-        !showQuitModalRef.current &&
-        !quitInProgressRef.current;
     } catch (errorMessage) {
       console.warn(
         '[VocalRun] Reference playback failed:',
@@ -756,9 +747,6 @@ export default function VocalRunAccuracyTaskScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
-    }
-    if (completed) {
-      void startCountdownRef.current?.();
     }
   }, [config, hasValidGeneratedSequence]);
 
@@ -1542,6 +1530,7 @@ export default function VocalRunAccuracyTaskScreen() {
       errorMessage={errorMessage || null}
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
+      onReady={() => void startCountdownRef.current?.()}
       onBack={handleBack}
     />
   );

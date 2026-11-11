@@ -45,6 +45,7 @@ type ListeningScreenProps = ExercisePhaseProps & {
   progress?: number;
   isPlayingReference?: boolean;
   onPlayReference?: () => void;
+  onReady?: () => void;
 };
 
 type ProcessingScreenProps = {
@@ -366,6 +367,7 @@ export function ExerciseListeningScreen({
   progress,
   isPlayingReference = false,
   onPlayReference,
+  onReady,
   onBack,
 }: ListeningScreenProps) {
   const formatTime = (seconds: number) => {
@@ -503,6 +505,28 @@ export function ExerciseListeningScreen({
           )}
           <Text style={exerciseStyles.componentScore}>
             {isPlayingReference ? 'Playing Reference...' : 'Play Reference'}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {onReady ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="I'm Ready"
+          disabled={isPlayingReference}
+          style={[
+            exerciseStyles.listeningContinueButton,
+            isPlayingReference && exerciseStyles.disabled,
+          ]}
+          onPress={onReady}
+        >
+          <Text
+            style={[
+              exerciseStyles.componentScore,
+              { color: COLORS.white },
+            ]}
+          >
+            I&apos;m Ready
           </Text>
         </Pressable>
       ) : null}

@@ -565,7 +565,7 @@ export default function RapidNoteTransitionExerciseScreen({
         playingSequenceRef.current = false;
         setErrorMessage('');
         setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-        setPhase('countdown');
+        setPhase('listening');
         return;
       }
       const failedAttemptFeedback = createFailedAttempt(1).feedback;
@@ -656,7 +656,6 @@ export default function RapidNoteTransitionExerciseScreen({
     setIsPlayingReference(true);
     clearTimers();
     setErrorMessage('');
-    let completed = false;
     try {
       if (!mountedRef.current) {
         return;
@@ -674,10 +673,6 @@ export default function RapidNoteTransitionExerciseScreen({
           phaseRef.current === 'listening' &&
           playingSequenceRef.current,
       );
-      completed =
-        mountedRef.current &&
-        phaseRef.current === 'listening' &&
-        playingSequenceRef.current;
     } catch (errorMessage) {
       console.error('Reference playback failed:', errorMessage);
       if (!mountedRef.current) {
@@ -691,9 +686,6 @@ export default function RapidNoteTransitionExerciseScreen({
         setIsPlayingReference(false);
         setActiveGuideNoteIndex(null);
       }
-    }
-    if (completed) {
-      setPhase('countdown');
     }
   }, [
     clearTimers,
@@ -979,6 +971,7 @@ export default function RapidNoteTransitionExerciseScreen({
       errorMessage={errorMessage || null}
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReferenceSequence()}
+      onReady={() => setPhase('countdown')}
       onBack={() => {
         playingSequenceRef.current = false;
         setConfirmation('quit');

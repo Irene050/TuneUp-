@@ -462,7 +462,7 @@ const expectedNote =
           processingRef.current = false;
 
           setPhase('listening');
-          void playReference();
+          void playReferenceRef.current?.();
 
           return;
         }
@@ -1014,15 +1014,12 @@ const expectedNote =
       }),
     );
 
-    let completed = false;
-
     try {
       await playNoteSequence(
         sequence,
         config.gapSec,
         setReferenceNoteIndex,
       );
-      completed = true;
     } catch (errorMessage) {
       console.error(
         'Reference playback failed:',
@@ -1032,17 +1029,7 @@ const expectedNote =
       setReferenceNoteIndex(null);
       setIsPlayingReference(false);
     }
-    if (
-      completed &&
-      mountedRef.current &&
-      phaseRef.current === 'listening' &&
-      !showQuitModalRef.current &&
-      !quitInProgressRef.current
-    ) {
-      setPhase('listening');
-      void playReference();
-    }
-  }, [config, isPlayingReference, phaseRef, startCountdown]);
+  }, [config, isPlayingReference]);
   playReferenceRef.current = playReference;
 
   const beginExercise = useCallback(() => {
@@ -1194,6 +1181,7 @@ const expectedNote =
       }
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
+      onReady={() => void startCountdownRef.current?.()}
       onBack={pauseForExitPrompt}
     />
   );
