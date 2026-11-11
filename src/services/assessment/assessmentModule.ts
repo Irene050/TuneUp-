@@ -1845,7 +1845,6 @@ export async function runAssessment(
     ),
   });
 
-  await sleep(0);
   const breathScore = safeMetric(
     'Breath control',
     () =>
@@ -1856,7 +1855,6 @@ export async function runAssessment(
       ),
   );
 
-  await sleep(0);
   const pitchScore = safeMetric(
     'Pitch',
     () =>
@@ -1867,19 +1865,16 @@ export async function runAssessment(
       ),
   );
 
-  await sleep(0);
   const toneScore = safeMetric(
     'Tone',
     () => measureTone(audio.toneSamples, audio.sampleRate),
   );
 
-  await sleep(0);
   const volumeScore = safeMetric(
     'Volume',
     () => measureVolume(audio.volumeSamples, audio.sampleRate),
   );
 
-  await sleep(0);
   const agilityScore = safeMetric(
     'Agility',
     () =>

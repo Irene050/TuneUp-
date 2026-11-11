@@ -14,6 +14,7 @@ import {
   type SavedAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
 import { frequencyToNoteName } from '@/utils/music/notes';
+import { classifyVoice } from '@/utils/music/voiceClassification';
 
 const VOCAL_COMPONENTS = [
   {
@@ -213,15 +214,23 @@ export default function DashboardScreen() {
             {assessmentLoading ? (
               <Text style={exerciseStyles.rangeText_Dashboard}>Loading...</Text>
             ) : latestAssessment ? (
-              <Text style={exerciseStyles.rangeText_Dashboard}>
-                {frequencyToNoteName(
-                  latestAssessment.vocalRangeLowHz,
-                )}
-                {' – '}
-                {frequencyToNoteName(
-                  latestAssessment.vocalRangeHighHz,
-                )}
-              </Text>
+              <>
+                <Text style={exerciseStyles.rangeText_Dashboard}>
+                  {frequencyToNoteName(
+                    latestAssessment.vocalRangeLowHz,
+                  )}
+                  {' – '}
+                  {frequencyToNoteName(
+                    latestAssessment.vocalRangeHighHz,
+                  )}
+                </Text>
+                <Text style={exerciseStyles.voiceClassificationDashboard}>
+                  {classifyVoice(
+                    latestAssessment.vocalRangeLowHz,
+                    latestAssessment.vocalRangeHighHz,
+                  )}
+                </Text>
+              </>
             ) : (
               <Text style={exerciseStyles.rangeEmptyText}>
                 Complete an assessment to discover your range.

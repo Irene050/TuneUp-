@@ -1,34 +1,29 @@
-import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { BackHandler, ScrollView, Text, View } from 'react-native';
-import { usePhaseState } from '@/hooks/usePhaseState';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 import {
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_MAX_RECORDING_SECONDS
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_MAX_RECORDING_SECONDS
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  RAPID_NOTE_TRANSITION_PARAMS,
-  type Tier,
+    RAPID_NOTE_TRANSITION_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -40,20 +35,25 @@ import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTr
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clampScore } from '@/utils/math';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  disposeNotePlayer,
-  getActiveSequenceNoteIndex,
-  playNoteSequence,
-  type NoteToPlay,
+    AGILITY_NOTE_START_DELAY_MS,
+    disposeNotePlayer,
+    getActiveSequenceNoteIndex,
+    playNoteSequence,
+    type NoteToPlay,
 } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
 } from '@/utils/music/notes';
+import { router } from 'expo-router';
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
 type Phase =
   | 'instructions'
@@ -444,6 +444,8 @@ export default function RapidNoteTransitionExerciseScreen({
   const finishingRef = useRef(false);
   const recordingStopHandledRef = useRef(false);
   const playingSequenceRef = useRef(false);
+  const startRecordingExerciseRef =
+    useRef<(() => Promise<void>) | null>(null);
   const attemptResultsRef = useRef<AttemptResult[]>([]);
   const clearTimers = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -562,7 +564,8 @@ export default function RapidNoteTransitionExerciseScreen({
         resetLiveState();
         playingSequenceRef.current = false;
         setErrorMessage('');
-        setPhase('listening');
+        setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+        setPhase('countdown');
         return;
       }
       const failedAttemptFeedback = createFailedAttempt(1).feedback;
@@ -653,6 +656,7 @@ export default function RapidNoteTransitionExerciseScreen({
     setIsPlayingReference(true);
     clearTimers();
     setErrorMessage('');
+    let completed = false;
     try {
       if (!mountedRef.current) {
         return;
@@ -670,6 +674,10 @@ export default function RapidNoteTransitionExerciseScreen({
           phaseRef.current === 'listening' &&
           playingSequenceRef.current,
       );
+      completed =
+        mountedRef.current &&
+        phaseRef.current === 'listening' &&
+        playingSequenceRef.current;
     } catch (errorMessage) {
       console.error('Reference playback failed:', errorMessage);
       if (!mountedRef.current) {
@@ -684,22 +692,21 @@ export default function RapidNoteTransitionExerciseScreen({
         setActiveGuideNoteIndex(null);
       }
     }
+    if (completed) {
+      setPhase('countdown');
+    }
   }, [
     clearTimers,
     exerciseConfig.sequence.notes,
     setActiveGuideNoteIndex,
+    setPhase,
   ]);
-  const continueFromReference = useCallback(() => {
-    if (playingSequenceRef.current || phaseRef.current !== 'listening') {
-      return;
-    }
-    setActiveGuideNoteIndex(null);
-    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setPhase('countdown');
-  }, [setPhase]);
   const startRecordingExercise = useCallback(async () => {
     try {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        phaseRef.current !== 'listening'
+      ) {
         return;
       }
       recordingStopHandledRef.current = false;
@@ -747,6 +754,7 @@ export default function RapidNoteTransitionExerciseScreen({
     startRecording,
     stopRecording,
   ]);
+  startRecordingExerciseRef.current = startRecordingExercise;
   useEffect(() => {
     if (phase !== 'countdown') {
       return;
@@ -768,7 +776,8 @@ export default function RapidNoteTransitionExerciseScreen({
       countdownTimerRef.current = setTimeout(() => {
         countdownTimerRef.current = null;
         if (mountedRef.current && phaseRef.current === 'countdown') {
-          void startRecordingExercise();
+          setPhase('listening');
+          void startRecordingExerciseRef.current?.();
         }
       }, AGILITY_NOTE_START_DELAY_MS);
     }, 1000);
@@ -778,7 +787,7 @@ export default function RapidNoteTransitionExerciseScreen({
         countdownTimerRef.current = null;
       }
     };
-  }, [phase, clearTimers, startRecordingExercise]);
+  }, [phase, clearTimers]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -805,9 +814,11 @@ export default function RapidNoteTransitionExerciseScreen({
     setActiveGuideNoteIndex(null);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('listening');
+    void playReferenceSequence();
   }, [
     clearTimers,
     isLoadingParams,
+    playReferenceSequence,
     resetLiveState,
     setPhase,
   ]);
@@ -867,7 +878,11 @@ export default function RapidNoteTransitionExerciseScreen({
         }
         setIsPreparingResume(false);
         setActiveGuideNoteIndex(null);
-        setPhase('listening');
+        setPhase(
+          pausedPhaseRef.current === 'listening'
+            ? 'listening'
+            : 'countdown',
+        );
       }, 900);
     }
   };
@@ -877,7 +892,8 @@ export default function RapidNoteTransitionExerciseScreen({
     playingSequenceRef.current = false;
     resetLiveState();
     setActiveGuideNoteIndex(null);
-    setPhase('listening');
+    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
+    setPhase('countdown');
   };
   const renderInstructions = () => (
     <ExerciseScreen
@@ -963,8 +979,10 @@ export default function RapidNoteTransitionExerciseScreen({
       errorMessage={errorMessage || null}
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReferenceSequence()}
-      onContinue={continueFromReference}
-      onBack={() => setConfirmation('quit')}
+      onBack={() => {
+        playingSequenceRef.current = false;
+        setConfirmation('quit');
+      }}
     />
   );
   const renderCountdown = () => (
@@ -1007,10 +1025,6 @@ export default function RapidNoteTransitionExerciseScreen({
         <View style={exerciseStyles.timerTrackVariant2}>
           <View style={[exerciseStyles.timerFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={exerciseStyles.timerTextVariant3}>
-          Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
-          {recordingDurationSeconds.toFixed(1)}s
-        </Text>
       </ExerciseRecordingScreen>
     );
   };

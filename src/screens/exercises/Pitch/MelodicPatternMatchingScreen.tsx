@@ -1,25 +1,24 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { MELODIC_PATTERN_MATCHING_PARAMS, type MelodicPatternMatchingParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
+import { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, default as ExerciseScreen } from '@/screens/exercises/ExerciseScreen';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureMelodicPatternMatching } from '@/services/measurement/pitch/melodicPatternMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreMelodicPatternMatchingRepetitions, type MelodicPatternScoreResult } from '@/services/scoring/pitch/melodicPatternMatching';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
-import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, getRandomPitchNote, type VocalRange } from '@/utils/music/notes';
-import { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, default as ExerciseScreen } from '@/screens/exercises/ExerciseScreen';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS } from '@/constants/appConstants';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 interface Props {
   tier?: Tier;
@@ -144,7 +143,6 @@ export default function MelodicPatternMatchingScreen({
     useState<VocalRange | null>(null);
 
   const { phase, setPhase } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
 
   const [currentPattern, setCurrentPattern] =
@@ -852,7 +850,6 @@ export default function MelodicPatternMatchingScreen({
     recordingStopRequestedRef.current = false;
     discardRecordingRef.current = false;
     processingRef.current = false;
-    setIsInitialListening(false);
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setPhase('countdown');
@@ -1286,10 +1283,7 @@ export default function MelodicPatternMatchingScreen({
           tip="Focus on accurate note transitions rather than singing loudly. The same reference melody is played before each repetition."
           tier={currentTier}
           onBack={handleBack}
-          onStart={() => {
-            setIsInitialListening(true);
-            setPhase('listening');
-          }}
+          onStart={startCountdown}
           errorMessage={errorMessage}
           startDisabled={isLoadingParams}
           startLabel={
@@ -1368,14 +1362,6 @@ export default function MelodicPatternMatchingScreen({
           }
           progress={0}
           onBack={handleBack}
-          onContinue={
-            isInitialListening
-              ? () => {
-                  setIsInitialListening(false);
-                  startCountdown();
-                }
-              : undefined
-          }
         />
       </View>
     );
@@ -1419,71 +1405,12 @@ export default function MelodicPatternMatchingScreen({
           showsVerticalScrollIndicator={false}
         >
 
-          <View style={exerciseStyles.liveCardVariant7}>
-            <View style={exerciseStyles.liveCardHeaderVariant1}>
-              <View style={exerciseStyles.liveHeaderText}>
-                <Text style={exerciseStyles.scoreRowValue}>
-                  <View style={exerciseStyles.liveRecordingDot} />
-                  LIVE PITCH GUIDE
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.liveRecordingBadge}>
-                <Text style={exerciseStyles.liveRecordingBadgeText}>
-                  LISTENING
-                </Text>
-              </View>
-            </View>
-
-            <View style={exerciseStyles.pitchComparison}>
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.liveLabelVariant3}>TARGET NOTE</Text>
-                <Text style={exerciseStyles.liveTarget}>
-                  {currentTargetNote?.name ?? '--'}
-                </Text>
-                <Text style={exerciseStyles.liveFrequency}>
-                  {currentTargetNote
-                    ? `${Math.round(currentTargetNote.frequency)} Hz`
-                    : '-- Hz'}
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.pitchComparisonDivider}>
-                <Ionicons
-                  name="mic-outline"
-                  size={18}
-                  color={COLORS.muted}
-                />
-              </View>
-
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.liveLabelVariant3}>YOUR NOTE</Text>
-                <Text
-                  style={[
-                    exerciseStyles.liveNote,
-                    exerciseStyles.liveNoteCompact,
-                    hasValidPitch
-                      ? exerciseStyles.liveNoteDetected
-                      : exerciseStyles.liveNoteWaiting,
-                  ]}
-                >
-                  {hasValidPitch ? liveAudioFrame?.note ?? '--' : '--'}
-                </Text>
-                <Text style={exerciseStyles.liveFrequency}>
-                  {hasValidPitch
-                    ? `${Math.round(liveAudioFrame.pitch)} Hz`
-                    : 'Waiting for voice'}
-                </Text>
-              </View>
-            </View>
-
-            <ExerciseLivePitchIndicator
-              targetNote={currentTargetNote?.name ?? '--'}
-              targetFrequency={currentTargetNote?.frequency ?? null}
-              detectedNote={hasValidPitch ? liveAudioFrame.note : null}
-              detectedFrequency={hasValidPitch ? liveAudioFrame.pitch : null}
-            />
-
+          <ExerciseLivePitchIndicator
+            targetNote={currentTargetNote?.name ?? '--'}
+            targetFrequency={currentTargetNote?.frequency ?? null}
+            detectedNote={hasValidPitch ? liveAudioFrame.note : null}
+            detectedFrequency={hasValidPitch ? liveAudioFrame.pitch : null}
+          >
             <View style={exerciseStyles.liveStats}>
               <View style={exerciseStyles.liveMetric}>
                 <View style={exerciseStyles.liveStatHeading}>
@@ -1506,7 +1433,7 @@ export default function MelodicPatternMatchingScreen({
                 </Text>
               </View>
             </View>
-          </View>
+          </ExerciseLivePitchIndicator>
           <View style={exerciseStyles.recordingProgressTrack}>
               <View
                 style={[

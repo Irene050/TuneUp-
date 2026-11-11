@@ -9,7 +9,6 @@ import {
 } from 'react';
 import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
@@ -19,6 +18,7 @@ import {
   ARPEGGIO_SPEED_DRILL_PARAMS,
   type Tier,
 } from '@/constants/params';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import {
   useAudioRecorder,
@@ -68,7 +68,7 @@ import {
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 type Phase =
   | 'instructions'
@@ -337,8 +337,16 @@ export default function ArpeggioSpeedDrillScreen() {
   const pausedPhaseRef = useRef<Phase>('instructions');
 
   const quitInProgressRef = useRef(false);
+  const showQuitModalRef = useRef(false);
 
   const countdownRunIdRef = useRef(0);
+
+  const startCountdownRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const playReferenceRef =
+    useRef<(() => Promise<void>) | null>(null);
 
   const mountedRef = useRef(true);
 
@@ -454,6 +462,7 @@ const expectedNote =
           processingRef.current = false;
 
           setPhase('listening');
+          void playReference();
 
           return;
         }
@@ -593,6 +602,7 @@ const expectedNote =
     }
 
     pausedPhaseRef.current = activePhase;
+    showQuitModalRef.current = true;
     setShowQuitModal(true);
 
     countdownRunIdRef.current += 1;
@@ -615,7 +625,8 @@ const expectedNote =
   const startCountdown = useCallback(async () => {
     if (
       processingRef.current ||
-      isPlayingReference ||
+      (phaseRef.current !== 'instructions' &&
+        phaseRef.current !== 'listening') ||
       quitInProgressRef.current
     ) {
       return;
@@ -660,6 +671,24 @@ const expectedNote =
       return;
     }
 
+    setPhase('listening');
+    void startRecordingRef.current?.();
+  }, [
+    setPhase,
+  ]);
+
+  startCountdownRef.current = startCountdown;
+
+  const startRecording = useCallback(async () => {
+    if (
+      processingRef.current ||
+      phaseRef.current !== 'listening' ||
+      showQuitModalRef.current ||
+      quitInProgressRef.current
+    ) {
+      return;
+    }
+
     try {
       processingRef.current = false;
 
@@ -672,42 +701,42 @@ const expectedNote =
       if (
         !mountedRef.current ||
         quitInProgressRef.current ||
-        phaseRef.current !== 'recording'
+        (phaseRef.current as Phase) !== 'recording'
       ) {
         await cancelActiveRecording();
         return;
       }
 
-  recordingStartedAtRef.current = Date.now();
-  setElapsedSeconds(0);
+      recordingStartedAtRef.current = Date.now();
+      setElapsedSeconds(0);
 
-  recordingTimerRef.current = setInterval(() => {
-    const start = recordingStartedAtRef.current;
+      recordingTimerRef.current = setInterval(() => {
+        const start = recordingStartedAtRef.current;
 
-    if (
-      start === null ||
-      processingRef.current ||
-      phaseRef.current !== 'recording'
-    ) {
-      return;
-    }
+        if (
+          start === null ||
+          processingRef.current ||
+          phaseRef.current !== 'recording'
+        ) {
+          return;
+        }
 
-    const elapsedSeconds = (Date.now() - start) / 1000;
+        const elapsedSeconds = (Date.now() - start) / 1000;
 
-    setElapsedSeconds(
-      Math.min(elapsedSeconds, EXERCISE_MAX_RECORDING_SECONDS),
-    );
+        setElapsedSeconds(
+          Math.min(elapsedSeconds, EXERCISE_MAX_RECORDING_SECONDS),
+        );
 
-    if (elapsedSeconds >= EXERCISE_MAX_RECORDING_SECONDS) {
-      processingRef.current = true;
+        if (elapsedSeconds >= EXERCISE_MAX_RECORDING_SECONDS) {
+          processingRef.current = true;
 
-      clearRecordingTimer();
+          clearRecordingTimer();
 
-      setPhase('processing');
-      setLivePitchHz(null);
-      void stopActiveRecording();
-    }
-  }, 20);
+          setPhase('processing');
+          setLivePitchHz(null);
+          void stopActiveRecording();
+        }
+      }, 20);
     } catch (errorMessage) {
       console.error(
         'Arpeggio Speed Drill recording failed:',
@@ -727,16 +756,17 @@ const expectedNote =
     cancelActiveRecording,
     setPhase,
     clearRecordingTimer,
-    isPlayingReference,
     startAudioRecording,
     stopActiveRecording,
   ]);
+  startRecordingRef.current = startRecording;
 
   const continueExercise = useCallback(() => {
     if (quitInProgressRef.current) return;
 
     const pausedPhase = pausedPhaseRef.current;
 
+    showQuitModalRef.current = false;
     setShowQuitModal(false);
 
     if (
@@ -750,18 +780,20 @@ const expectedNote =
 
       processingRef.current = false;
 
-      void startCountdown();
+      setPhase('listening');
+      void playReferenceRef.current?.();
 
       return;
     }
 
     setPhase(pausedPhase);
-  }, [setPhase, startCountdown]);
+  }, [setPhase]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) return;
 
     quitInProgressRef.current = true;
+    showQuitModalRef.current = true;
 
     setIsQuitting(true);
     setShowQuitModal(false);
@@ -781,6 +813,7 @@ const expectedNote =
       );
 
       quitInProgressRef.current = false;
+      showQuitModalRef.current = false;
       setIsQuitting(false);
     }
   }, [cancelActiveRecording]);
@@ -965,6 +998,7 @@ const expectedNote =
   const playReference = useCallback(async () => {
     if (
       isPlayingReference ||
+      phaseRef.current !== 'listening' ||
       !config.frequencies.length
     ) {
       return;
@@ -980,12 +1014,15 @@ const expectedNote =
       }),
     );
 
+    let completed = false;
+
     try {
       await playNoteSequence(
         sequence,
         config.gapSec,
         setReferenceNoteIndex,
       );
+      completed = true;
     } catch (errorMessage) {
       console.error(
         'Reference playback failed:',
@@ -995,7 +1032,18 @@ const expectedNote =
       setReferenceNoteIndex(null);
       setIsPlayingReference(false);
     }
-  }, [config, isPlayingReference]);
+    if (
+      completed &&
+      mountedRef.current &&
+      phaseRef.current === 'listening' &&
+      !showQuitModalRef.current &&
+      !quitInProgressRef.current
+    ) {
+      setPhase('listening');
+      void playReference();
+    }
+  }, [config, isPlayingReference, phaseRef, startCountdown]);
+  playReferenceRef.current = playReference;
 
   const beginExercise = useCallback(() => {
     attemptResultsRef.current = [];
@@ -1010,11 +1058,13 @@ const expectedNote =
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
     setPhase('listening');
-  }, [setPhase]);
+    void playReference();
+  }, [playReference, setPhase]);
 
   const resetExercise = useCallback(() => {
     countdownRunIdRef.current += 1;
 
+    showQuitModalRef.current = false;
     void cancelActiveRecording();
 
     setShowQuitModal(false);
@@ -1144,7 +1194,6 @@ const expectedNote =
       }
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
-      onContinue={() => void startCountdown()}
       onBack={pauseForExitPrompt}
     />
   );
@@ -1235,9 +1284,6 @@ const renderRecording = () => {
         />
       </View>
 
-      <Text style={exerciseStyles.timerTextVariant2}>
-        Recording Time: {elapsedSeconds.toFixed(1)}s
-      </Text>
     </ExerciseRecordingScreen>
   );
 };
@@ -1533,7 +1579,8 @@ const renderRecording = () => {
           setLivePitchHz(null);
           setElapsedSeconds(0);
 
-          void startCountdown();
+          setPhase('listening');
+          void playReference();
         }}
         onQuit={() => {
           setShowNoAudioModal(false);

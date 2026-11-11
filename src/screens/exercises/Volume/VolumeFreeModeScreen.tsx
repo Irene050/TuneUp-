@@ -1,15 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
-import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
-import { VolumeVisualizer } from '@/screens/exercises/Volume/SharedVolumeComponents';
+import { ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { VolumeVisualizer } from '@/screens/exercises/Volume/SharedVolumeComponents';
+import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Phase = 'ready' | 'exercise';
 
@@ -36,19 +36,16 @@ export default function VolumeFreeModeScreen() {
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('ready');
   const [liveVolume, setLiveVolume] = useState<number | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
-  const startedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const leaveRequestedRef = useRef(false);
   const showQuitModalRef = useRef(false);
   const startTaskRef = useRef<Promise<void> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -56,11 +53,6 @@ export default function VolumeFreeModeScreen() {
     return () => {
       mountedRef.current = false;
       phaseRef.current = 'ready';
-
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
     };
   }, []);
 
@@ -95,33 +87,6 @@ export default function VolumeFreeModeScreen() {
     analyzePitch: false,
     onFrame: handleAudioFrame,
   });
-
-  useEffect(() => {
-    if (phase !== 'exercise') {
-      return;
-    }
-
-    startedAtRef.current = Date.now();
-
-    timerRef.current = setInterval(() => {
-      const startedAt = startedAtRef.current;
-
-      if (startedAt === null || !mountedRef.current) {
-        return;
-      }
-
-      setElapsedSeconds(
-        Math.floor((Date.now() - startedAt) / 1000),
-      );
-    }, 250);
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [phase]);
 
   const handleBack = useCallback(() => {
     if (
@@ -175,12 +140,6 @@ export default function VolumeFreeModeScreen() {
         stopError,
       );
     } finally {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-
-      startedAtRef.current = null;
       router.back();
     }
   }, [stopRecording]);
@@ -238,8 +197,6 @@ export default function VolumeFreeModeScreen() {
     try {
       setLiveVolume(null);
       setLiveHistory([]);
-      setElapsedSeconds(0);
-      startedAtRef.current = null;
 
       phaseRef.current = 'ready';
 
@@ -309,32 +266,15 @@ export default function VolumeFreeModeScreen() {
     } catch (stopError) {
       console.error('Unable to stop Volume Free Mode:', stopError);
     } finally {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-
-      startedAtRef.current = null;
-
       if (mountedRef.current) {
         setLiveVolume(null);
         setLiveHistory([]);
-        setElapsedSeconds(0);
         setIsStarting(false);
       }
 
       stoppingRef.current = false;
     }
   }, [isRecording, stopRecording]);
-
-  const formattedTime = useMemo(() => {
-    const minutes = Math.floor(elapsedSeconds / 60);
-    const seconds = elapsedSeconds % 60;
-
-    return `${String(minutes).padStart(2, '0')}:${String(
-      seconds,
-    ).padStart(2, '0')}`;
-  }, [elapsedSeconds]);
 
   const safeAreaStyle = {
     paddingBottom: insets.bottom,
@@ -541,17 +481,6 @@ export default function VolumeFreeModeScreen() {
               </Text>
             </View>
 
-            <View style={exerciseStyles.timeBadge}>
-              <Ionicons
-                name="time-outline"
-                size={16}
-                color={COLORS.accent}
-              />
-
-              <Text style={exerciseStyles.timeText}>
-                {formattedTime}
-              </Text>
-            </View>
           </View>
 
           <View style={exerciseStyles.liveCardVariant1}>

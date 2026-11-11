@@ -16,10 +16,6 @@ import {
 import { usePhaseState } from '@/hooks/usePhaseState';
 
 import {
-  AssessmentCompletionModal,
-  AssessmentProgressActions,
-} from '@/components/assessment/AssessmentProgress';
-import {
   ASSESSMENT_DURATION,
   type AssessmentAudioBundle,
   type AssessmentResult,
@@ -32,22 +28,21 @@ import {
   type VocalRange,
 } from '@/services/assessment/assessmentModule';
 import { saveAssessment } from '@/services/assessment/assessmentRepository';
-import { calcRMS } from '@/utils/dsp/rms';
 import {
   type NoteToPlay,
   playNoteSequence,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToMidi,
   frequencyToNoteName,
 } from '@/utils/music/notes';
+import { classifyVoice } from '@/utils/music/voiceClassification';
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 
 import {
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const AGILITY_PITCH_TOLERANCE = 0.07;
 const AGILITY_CONFIRMATION_FRAMES = 3;
@@ -225,90 +220,6 @@ function getStepReferenceNotes(
   }
 }
 
-type VoiceClassification =
-  | 'Soprano'
-  | 'Alto'
-  | 'Tenor'
-  | 'Bass';
-
-const VOICE_CLASSIFICATION_RANGES: {
-  type: VoiceClassification;
-  lowMidi: number;
-  highMidi: number;
-}[] = [
-  {
-    type: 'Soprano',
-    lowMidi: 60, // C4
-    highMidi: 84, // C6
-  },
-  {
-    type: 'Alto',
-    lowMidi: 53, // F3
-    highMidi: 77, // F5
-  },
-  {
-    type: 'Tenor',
-    lowMidi: 48, // C3
-    highMidi: 72, // C5
-  },
-  {
-    type: 'Bass',
-    lowMidi: 40, // E2
-    highMidi: 64, // E4
-  },
-];
-
-function classifyVoice(
-  lowHz: number,
-  highHz: number,
-): VoiceClassification {
-  const detectedLow = frequencyToMidi(lowHz);
-  const detectedHigh = frequencyToMidi(highHz);
-
-  let bestClassification: VoiceClassification = 'Soprano';
-  let greatestOverlap = -1;
-  let smallestDistance = Infinity;
-
-  for (const range of VOICE_CLASSIFICATION_RANGES) {
-    const overlap = Math.max(
-      0,
-      Math.min(detectedHigh, range.highMidi) -
-        Math.max(detectedLow, range.lowMidi),
-    );
-
-    const distance =
-      Math.pow(detectedLow - range.lowMidi, 2) +
-      Math.pow(detectedHigh - range.highMidi, 2);
-
-    if (
-      overlap > greatestOverlap ||
-      (overlap === greatestOverlap && distance < smallestDistance)
-    ) {
-      greatestOverlap = overlap;
-      smallestDistance = distance;
-      bestClassification = range.type;
-    }
-  }
-
-  return bestClassification;
-}
-
-function isRecordingUsable(
-  step: AssessmentStep,
-  samples: Float32Array,
-): boolean {
-  if (step === 'breathControl') {
-    if (samples.length === 0) {
-      return false;
-    }
-
-    const rms = calcRMS(samples);
-    return Number.isFinite(rms) && rms >= 0.0005;
-  }
-
-  return checkRecordingLevel(samples).usable;
-}
-
 export default function AssessmentScreen() {
   const { phase, setPhase } =
     usePhaseState<AssessmentStep>('instructions');
@@ -328,7 +239,6 @@ export default function AssessmentScreen() {
   const [agilityMatchedCount, setAgilityMatchedCount] = useState(0);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
-  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const recordingStepRef = useRef<AssessmentStep | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -534,10 +444,10 @@ export default function AssessmentScreen() {
         return;
       }
 
-      const level = {
-        ...checkRecordingLevel(samples),
-        usable: isRecordingUsable(recordedStep, samples),
-      };
+      const level = checkRecordingLevel(samples);
+      if (recordedStep === 'breathControl') {
+        level.usable = level.rms >= 0.0005;
+      }
 
       const durationSeconds =
         sampleRate > 0 ? samples.length / sampleRate : 0;
@@ -632,16 +542,6 @@ export default function AssessmentScreen() {
     const highRecording = sections.highHum;
 
     if (!lowRecording || !highRecording || vocalRange) {
-      return;
-    }
-
-    if (
-      !checkRecordingLevel(lowRecording.samples).usable ||
-      !checkRecordingLevel(highRecording.samples).usable
-    ) {
-      restartRangeRecordings(
-        'We could not hear enough audio to determine your vocal range. Please try both notes again.',
-      );
       return;
     }
 
@@ -1003,26 +903,16 @@ export default function AssessmentScreen() {
       setErrorMessage(null);
       await new Promise<void>(resolve => setTimeout(resolve, 0));
 
-      for (const requiredStep of REQUIRED_STEPS) {
-        const recording = sections[requiredStep];
-
-        if (!recording || recording.samples.length === 0) {
-          throw new Error(
-            `The ${getStepTitle(requiredStep)} recording is missing. Please complete the assessment again.`,
-          );
-        }
-
-        if (!isRecordingUsable(requiredStep, recording.samples)) {
-          throw new Error(
-            `The ${getStepTitle(requiredStep)} recording did not contain enough microphone audio.`,
-          );
-        }
-
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-      }
-
       const sampleRates = REQUIRED_STEPS.map(
-        requiredStep => sections[requiredStep]!.sampleRate,
+        requiredStep => {
+          const recording = sections[requiredStep];
+          if (!recording || recording.samples.length === 0) {
+            throw new Error(
+              `The ${getStepTitle(requiredStep)} recording is missing. Please complete the assessment again.`,
+            );
+          }
+          return recording.sampleRate;
+        },
       );
 
       const firstSampleRate = sampleRates[0];
@@ -1065,7 +955,6 @@ export default function AssessmentScreen() {
       setResult(assessmentResult);
       currentResultRef.current = assessmentResult;
       setPhase('results');
-      setShowCompletionModal(true);
 
       void saveAssessment(assessmentResult)
         .then(() => {
@@ -1150,7 +1039,6 @@ export default function AssessmentScreen() {
     setAgilityMatchedCount(0);
     setCompletedStep(null);
     setShowQuitModal(false);
-    setShowCompletionModal(false);
     setIsQuitting(false);
     setPhase('instructions');
   }, [clearRecordingTimer]);
@@ -1169,15 +1057,6 @@ export default function AssessmentScreen() {
     },
     [],
   );
-
-  const checkAssessmentResults = useCallback(() => {
-    setShowCompletionModal(false);
-
-    if (backgroundNavigationRef.current) {
-      backgroundNavigationRef.current = false;
-      router.back();
-    }
-  }, []);
 
     const continueAssessment = useCallback(() => {
     if (isQuitting || quittingRef.current) {
@@ -1340,20 +1219,11 @@ export default function AssessmentScreen() {
 
         <Text style={exerciseStyles.processingTitle}>Analyzing your voice...</Text>
 
-        <Text style={exerciseStyles.processingText}>
-          We're checking your five vocal fundamentals and vocal range.
-        </Text>
-
         {errorMessage && (
           <View style={exerciseStyles.errorCard_Assessment}>
             <Text style={exerciseStyles.errorText_Assessment}>{errorMessage}</Text>
           </View>
         )}
-
-        <AssessmentProgressActions
-          onOpenDashboard={() => openBackgroundRoute('index')}
-          onOpenExerciseLibrary={() => openBackgroundRoute('exercises')}
-        />
       </View>
     );
   }
@@ -1445,13 +1315,6 @@ export default function AssessmentScreen() {
           </Pressable>
         </ScrollView>
 
-        <AssessmentCompletionModal
-          visible={showCompletionModal}
-          title="Assessment is done!"
-          message="Your vocal assessment is ready. You can close this message or view your results."
-          onClose={() => setShowCompletionModal(false)}
-          onCheckResults={checkAssessmentResults}
-        />
       </>
     );
   }

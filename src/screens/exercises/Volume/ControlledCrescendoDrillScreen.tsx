@@ -1,16 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_CRESCENDO_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
+import {
+    ResultItem,
+    VolumeRampRecordingContent,
+} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { generateControlledCrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -18,25 +21,20 @@ import { measureControlledCrescendo } from '@/services/measurement/volume/contro
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledCrescendo } from '@/services/scoring/volume/controlledCrescendoDrill';
-import { playSingleNote } from '@/utils/music/notePlayer';
-import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
-import {
-  ResultItem,
-  VolumeRampRecordingContent,
-} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clamp } from '@/utils/math';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
 
 type ControlledCrescendoParams =
   typeof CONTROLLED_CRESCENDO_PARAMS.beginner;
 
 type Phase =
   | 'instructions'
-  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -416,7 +414,7 @@ export default function ControlledCrescendoExercise({
 
   const playReferenceNote = useCallback(async () => {
     if (referencePlaying || showQuitModalRef.current) {
-      return;
+      return false;
     }
 
     setReferencePlaying(true);
@@ -429,6 +427,7 @@ export default function ControlledCrescendoExercise({
       );
 
       setHasPlayedReference(true);
+      return true;
     } catch (playbackError) {
       console.error(
         'Reference note playback failed:',
@@ -438,6 +437,7 @@ export default function ControlledCrescendoExercise({
       setReferencePlaybackError(
         'Unable to play the reference note. Please try again.',
       );
+      return false;
     } finally {
       setReferencePlaying(false);
     }
@@ -789,6 +789,7 @@ export default function ControlledCrescendoExercise({
       }
 
       setCountdownReady(false);
+
       setSeconds(0);
       setGuideElapsed(0);
       setLiveAudioFrame(null);
@@ -872,7 +873,7 @@ export default function ControlledCrescendoExercise({
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCountdownReady(true);
-    setPhase('listening');
+    setPhase('countdown');
   }, [repetitions, setPhase]);
 
   const pauseForExitPrompt = useCallback(() => {
@@ -956,7 +957,9 @@ export default function ControlledCrescendoExercise({
       setCountdownReady(true);
 
       setPhase('countdown');
+      return;
     }
+
   }, [setPhase]);
 
   const quitExercise = useCallback(async () => {
@@ -1257,34 +1260,6 @@ export default function ControlledCrescendoExercise({
             </View>
           </View>
         </ExerciseScreen>
-        {quitModal}
-      </>
-    );
-  }
-
-  if (phase === 'listening') {
-    return (
-      <>
-        <ExerciseListeningScreen
-          icon="volume-high-outline"
-          title="Controlled Crescendo"
-          currentRep={1}
-          repetitions={repetitions}
-          promptTitle="Listen to the Reference"
-          prompt={`Listen to the ${referenceNote.name} note before singing.`}
-          isPlayingReference={referencePlaying}
-          onPlayReference={() => void playReferenceNote()}
-          onContinue={() => setPhase('countdown')}
-          onBack={handleBack}
-          liveContent={
-            <View style={exerciseStyles.referenceCard}>
-              <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-              <Text style={exerciseStyles.referenceNote}>
-                {referenceNote.name}
-              </Text>
-            </View>
-          }
-        />
         {quitModal}
       </>
     );

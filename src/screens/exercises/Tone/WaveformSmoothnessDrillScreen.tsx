@@ -1,75 +1,75 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
-  type Tier,
-  WAVEFORM_SMOOTHNESS_PARAMS,
-  type WaveformSmoothnessParams,
+    type Tier,
+    WAVEFORM_SMOOTHNESS_PARAMS,
+    type WaveformSmoothnessParams,
 } from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-  generateWaveformSmoothnessParams,
+    generateWaveformSmoothnessParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureWaveformSmoothness,
-  type WaveformSmoothnessMeasurement,
+    measureWaveformSmoothness,
+    type WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import {
-  saveCompletedExercise,
+    saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreWaveformSmoothnessDrill,
-  type WaveformSmoothnessScoreResult,
+    scoreWaveformSmoothnessDrill,
+    type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
 import {
-  samplesToFFTFrames,
+    samplesToFFTFrames,
 } from '@/utils/dsp/fft';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomPitchNote,
-  getSemitoneDistance,
-  type VocalRange,
+    frequencyToNoteName,
+    getRandomPitchNote,
+    getSemitoneDistance,
+    type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  TONE_WAVEFORM_BAR_COUNT,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -78,9 +78,9 @@ import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 
 interface Props {
   tier?: Tier;
@@ -220,11 +220,6 @@ function RecordingScreen({
       ? clamp(elapsedSeconds / durationSeconds, 0, 1)
       : 0;
 
-  const remainingSeconds = Math.max(
-    0,
-    durationSeconds - elapsedSeconds,
-  );
-
   return (
     <View style={exerciseStyles.recordingScreenVariant6}>
 
@@ -261,9 +256,6 @@ function RecordingScreen({
         <View style={exerciseStyles.recordingProgressSection}>
           <View style={exerciseStyles.recordingProgressLabels}>
             <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
-            <Text style={exerciseStyles.progressTime}>
-              {formatNumber(elapsedSeconds)}s / {durationSeconds}s
-            </Text>
           </View>
 
           <View style={exerciseStyles.progressTrackVariant1}>
@@ -275,9 +267,6 @@ function RecordingScreen({
             />
           </View>
 
-          <Text style={exerciseStyles.remainingText}>
-            {formatNumber(remainingSeconds)} seconds remaining
-          </Text>
         </View>
       </View>
     </View>
@@ -296,7 +285,6 @@ export default function WaveformSmoothnessDrillScreen({
   const [isLoadingParams, setIsLoadingParams] = useState(true);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [countdownCycle, setCountdownCycle] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
@@ -911,7 +899,6 @@ export default function WaveformSmoothnessDrillScreen({
     isRecordingRef.current = false;
     recordingStopRequestedRef.current = false;
     processingRef.current = false;
-    setIsInitialListening(false);
 
     setIsQuitting(false);
     setShowQuitModal(false);
@@ -1243,10 +1230,7 @@ export default function WaveformSmoothnessDrillScreen({
           tip="Focus on keeping your tone smooth and your vocal output steady rather than changing your pitch."
           tier={currentTier}
           onBack={handleBack}
-          onStart={() => {
-            setIsInitialListening(true);
-            setPhase('listening');
-          }}
+          onStart={startExercise}
           startDisabled={isLoadingParams || !targetNote}
           startLabel={isLoadingParams ? 'Loading...' : 'Start Exercise'}
           errorMessage={errorMessage}
@@ -1306,11 +1290,6 @@ export default function WaveformSmoothnessDrillScreen({
             </View>
           }
           onBack={handleBack}
-          onContinue={
-            isInitialListening
-              ? startExercise
-              : undefined
-          }
         />
         {quitModal}
       </>

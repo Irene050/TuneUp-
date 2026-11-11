@@ -1,9 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { SteadyAirflowParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyAirflowParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -12,13 +12,13 @@ import { measureSteadyAirflow, type SteadyAirflowMeasurement } from '@/services/
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreSteadyAirflow, type SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import { getLiveVoiceDetection, hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Text, View } from 'react-native';
 import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;
@@ -985,11 +985,6 @@ export default function SteadyAirflowMaintenanceScreen({
             </Text>
           </View>
 
-          <LiveVoiceDetectionVisualizer
-            detected={airflowDetected}
-            level={volume}
-          />
-
           <View style={exerciseStyles.airflowCard}>
             <View style={exerciseStyles.stabilityHeader}>
               <Text style={exerciseStyles.airflowLabel}>
@@ -1034,10 +1029,10 @@ export default function SteadyAirflowMaintenanceScreen({
             />
           </View>
 
-          <Text style={exerciseStyles.smallHint}>
-            Keep going until the timer reaches{' '}
-            {`${params.durationSec} seconds.`}
-          </Text>
+          <LiveVoiceDetectionVisualizer
+            detected={airflowDetected}
+            level={volume}
+          />
         </View>
 
         {quitModal}

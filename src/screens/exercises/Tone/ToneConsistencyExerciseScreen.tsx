@@ -1,57 +1,57 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, ScrollView, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import type { Tier } from '@/constants/params';
 import {
-  TONE_CONSISTENCY_PARAMS,
-  type ToneConsistencyParams,
+    TONE_CONSISTENCY_PARAMS,
+    type ToneConsistencyParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureToneConsistency } from '@/services/measurement/tone/toneConsistencyExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  getRandomPitchNote,
-  type VocalRange,
+    getRandomPitchNote,
+    type VocalRange,
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  MetricCard,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    MetricCard,
 } from '../ExerciseScreen';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  TONE_WAVEFORM_BAR_COUNT,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -60,9 +60,9 @@ import { clamp } from '@/utils/math';
 import { formatFrequency } from '@/utils/numberFormatting';
 
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 
 
 type Phase =
@@ -196,7 +196,6 @@ export default function ToneConsistencyExerciseScreen({
   tier,
 }: Props) {
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
 
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
@@ -853,7 +852,6 @@ export default function ToneConsistencyExerciseScreen({
     setElapsedSeconds(0);
     setListenElapsedSeconds(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    setIsInitialListening(false);
     setExercisePhase('countdown');
 
     let remaining = EXERCISE_COUNTDOWN_SECONDS;
@@ -1287,10 +1285,7 @@ export default function ToneConsistencyExerciseScreen({
           tip="Listen to the reference note before every repetition and use the same target note each time."
           tier={currentTier}
           onBack={goBack}
-          onStart={() => {
-            setIsInitialListening(true);
-            setExercisePhase('listening');
-          }}
+          onStart={startExercise}
           errorMessage={errorMessage}
           startDisabled={isLoadingParams}
         />
@@ -1342,11 +1337,6 @@ export default function ToneConsistencyExerciseScreen({
             </View>
           }
           progress={listenProgress}
-          onContinue={
-            isInitialListening
-              ? startExercise
-              : undefined
-          }
         />
 
         {quitModal}
@@ -1365,11 +1355,6 @@ export default function ToneConsistencyExerciseScreen({
       elapsedSeconds,
       params.intervalSec,
     );
-    const remaining = Math.max(
-      0,
-      params.intervalSec - displayElapsedSeconds,
-    );
-
     return (
       <>
         <View style={exerciseStyles.recordingScreenVariant4}>
@@ -1473,9 +1458,6 @@ export default function ToneConsistencyExerciseScreen({
                   RECORDING
                 </Text>
 
-                <Text style={exerciseStyles.volumeGuideText}>
-                  {displayElapsedSeconds.toFixed(1)}s / {params.intervalSec.toFixed(1)}s
-                </Text>
               </View>
 
               <View
@@ -1496,9 +1478,6 @@ export default function ToneConsistencyExerciseScreen({
                 />
               </View>
 
-              <Text style={exerciseStyles.remainingTextVariant1}>
-                {remaining.toFixed(1)} seconds remaining
-              </Text>
             </View>
 
           </ScrollView>

@@ -10,15 +10,11 @@ import {
 import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
-import {
-  AssessmentCompletionModal,
-  AssessmentProgressActions,
-} from '@/components/assessment/AssessmentProgress';
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import {
   ExerciseCountdownScreen,
@@ -43,7 +39,7 @@ import { exerciseStyles } from '@/constants/exerciseStyles';
 
 import {
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const BEAT_MS = 60_000 / SINGING_ASSESSMENT_BPM;
 const BEAT_SECONDS = BEAT_MS / 1000;
@@ -218,7 +214,6 @@ export default function SingingAssessmentScreen() {
   const [isGuidePlaying, setIsGuidePlaying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
-  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const beatContextRef = useRef<AudioContext | null>(null);
   const beatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -387,7 +382,6 @@ export default function SingingAssessmentScreen() {
           setResult(assessment);
           setErrorMessage(null);
           setPhase('results');
-          setShowCompletionModal(true);
 
           void saveResult(assessment);
         } catch (processingError) {
@@ -785,7 +779,6 @@ export default function SingingAssessmentScreen() {
     recordingStartedAtRef.current = null;
 
     setShowQuitModal(false);
-    setShowCompletionModal(false);
     setIsCancelling(false);
     setErrorMessage(null);
     setResult(null);
@@ -809,7 +802,6 @@ export default function SingingAssessmentScreen() {
     await stopBeatGuide();
 
     setShowQuitModal(false);
-    setShowCompletionModal(false);
     setResult(null);
     setSaveMessage(null);
     setErrorMessage(null);
@@ -838,15 +830,6 @@ export default function SingingAssessmentScreen() {
     },
     [],
   );
-
-  const checkAssessmentResults = useCallback(() => {
-    setShowCompletionModal(false);
-
-    if (backgroundNavigationRef.current) {
-      backgroundNavigationRef.current = false;
-      router.back();
-    }
-  }, []);
 
   const playReference = useCallback(async () => {
     if (isGuidePlaying) return;
@@ -1079,10 +1062,6 @@ export default function SingingAssessmentScreen() {
           title="Analyzing Your Singing"
           message="Checking your pitch accuracy, pitch stability, and vocal consistency…"
         >
-          <AssessmentProgressActions
-            onOpenDashboard={() => openBackgroundRoute('index')}
-            onOpenExerciseLibrary={() => openBackgroundRoute('exercises')}
-          />
         </ExerciseProcessingScreen>
 
         {quitAssessmentModal}
@@ -1150,13 +1129,6 @@ export default function SingingAssessmentScreen() {
         </ExerciseResultsScreen>
 
         {quitAssessmentModal}
-        <AssessmentCompletionModal
-          visible={showCompletionModal}
-          title="Assessment is done!"
-          message="Your singing assessment is ready. You can close this message or view your results."
-          onClose={() => setShowCompletionModal(false)}
-          onCheckResults={checkAssessmentResults}
-        />
       </>
     );
   }

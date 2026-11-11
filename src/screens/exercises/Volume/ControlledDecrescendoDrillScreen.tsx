@@ -1,16 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_DECRESCENDO_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
+import {
+    ResultItem,
+    VolumeRampRecordingContent,
+} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { generateControlledDecrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -18,25 +21,20 @@ import { measureControlledDecrescendo } from '@/services/measurement/volume/cont
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
-import { playSingleNote } from '@/utils/music/notePlayer';
-import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
-import {
-  ResultItem,
-  VolumeRampRecordingContent,
-} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { clamp } from '@/utils/math';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
 
 type ControlledDecrescendoParams =
   typeof CONTROLLED_DECRESCENDO_PARAMS.beginner;
 
 type Phase =
   | 'directions'
-  | 'listening'
   | 'countdown'
   | 'repCountdown'
   | 'exercise'
@@ -278,7 +276,7 @@ export default function ControlledDecrescendoDrill({
 
   const playReferenceNote = useCallback(async () => {
     if (referencePlaying) {
-      return;
+      return false;
     }
 
     setReferencePlaying(true);
@@ -289,6 +287,7 @@ export default function ControlledDecrescendoDrill({
         referenceNote.frequency,
         EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
       );
+      return true;
     } catch (playbackError) {
       console.error(
         'Reference note playback failed:',
@@ -298,6 +297,7 @@ export default function ControlledDecrescendoDrill({
       setReferencePlaybackError(
         'Unable to play the reference note. Please try again.',
       );
+      return false;
     } finally {
       setReferencePlaying(false);
     }
@@ -651,8 +651,10 @@ export default function ControlledDecrescendoDrill({
       setCountdownSeconds(EXERCISE_COUNTDOWN_SECONDS);
       phaseRef.current = pausedPhase;
       setPhase(pausedPhase);
+      return;
     }
-  }, []);
+
+  }, [setPhase, phaseRef]);
 
   const quitExercise = useCallback(async () => {
     if (quitInProgressRef.current) {
@@ -839,6 +841,7 @@ export default function ControlledDecrescendoDrill({
     };
   }, [
     phase,
+    phaseRef,
     showQuitModal,
     startRecording,
     stopRecording,
@@ -939,7 +942,7 @@ export default function ControlledDecrescendoDrill({
 
     phaseRef.current = 'countdown';
     setPhase('countdown');
-  }, [repetitions]);
+  }, [repetitions, setPhase, phaseRef]);
 
   const tryAgain = useCallback(() => {
     startExercise();
@@ -997,8 +1000,8 @@ export default function ControlledDecrescendoDrill({
           finishingRef.current = false;
           setCountdownSeconds(EXERCISE_COUNTDOWN_SECONDS);
           clearLiveState();
-          phaseRef.current = 'listening';
-          setPhase('listening');
+          phaseRef.current = 'countdown';
+          setPhase('countdown');
         }}
         onQuit={() => void quitExercise()}
         isQuitting={isQuitting}
@@ -1131,37 +1134,6 @@ export default function ControlledDecrescendoDrill({
           </View>
         </ExerciseScreen>
 
-        {quitModal}
-      </>
-    );
-  }
-
-  if (phase === 'listening') {
-    return (
-      <>
-        <ExerciseListeningScreen
-          icon="volume-low-outline"
-          title="Controlled Decrescendo"
-          currentRep={1}
-          repetitions={repetitions}
-          promptTitle="Listen to the Reference"
-          prompt={`Listen to the ${referenceNote.name} note before singing.`}
-          isPlayingReference={referencePlaying}
-          onPlayReference={() => void playReferenceNote()}
-          onContinue={() => {
-            phaseRef.current = 'countdown';
-            setPhase('countdown');
-          }}
-          onBack={openQuitModal}
-          liveContent={
-            <View style={exerciseStyles.referenceCard}>
-              <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-              <Text style={exerciseStyles.referenceNoteVariant1}>
-                {referenceNote.name}
-              </Text>
-            </View>
-          }
-        />
         {quitModal}
       </>
     );

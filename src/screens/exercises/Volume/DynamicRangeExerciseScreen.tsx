@@ -1,15 +1,14 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { DYNAMIC_RANGE_PARAMS, type DynamicRangeParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateDynamicRangeParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -18,14 +17,14 @@ import { measureDynamicRange, type RepetitionInterval } from '@/services/measure
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
-import { playSingleNote } from '@/utils/music/notePlayer';
-import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
 import { sleep } from '@/utils/async';
 import { concatenateRepetitions, fixedDurationSamples, hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
+import { playSingleNote } from '@/utils/music/notePlayer';
+import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 const PHASES_PER_REPETITION = 3;
 const PROCESSING_MIN_DURATION_MS = 100;
@@ -33,7 +32,6 @@ const TIMER_TICK_MS = 100;
 
 type Phase =
   | 'instructions'
-  | 'listening'
   | 'countdown'
   | 'recording'
   | 'processing'
@@ -306,7 +304,7 @@ export default function DynamicRangeExercise({
       pausedRef.current ||
       quitInProgressRef.current
     ) {
-      return;
+      return false;
     }
 
     referencePlayingRef.current = true;
@@ -315,6 +313,7 @@ export default function DynamicRangeExercise({
 
     try {
       await playSingleNote(referenceNote.frequency, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS);
+      return true;
     } catch (errorMessage) {
       console.error('[DynamicRange] Could not play reference note:', errorMessage);
       if (mountedRef.current) {
@@ -322,6 +321,7 @@ export default function DynamicRangeExercise({
           'Unable to play the reference note. Please try again.',
         );
       }
+      return false;
     } finally {
       referencePlayingRef.current = false;
       if (mountedRef.current) setReferencePlaying(false);
@@ -843,6 +843,7 @@ export default function DynamicRangeExercise({
     countdownFor,
     getRecordingElapsedSeconds,
     runCountdown,
+    startExercise,
     startRecording,
     stopRecording,
     setPhase,
@@ -985,19 +986,15 @@ export default function DynamicRangeExercise({
 
   let instructionTitle = 'SOFT → LOUD';
   let instructionPrompt = 'Gradually increase your volume.';
-  let secondsUntilChange = firstPhaseSeconds - seconds;
 
   if (seconds >= firstPhaseSeconds) {
     instructionTitle = 'LOUD';
     instructionPrompt = 'Reach and maintain your loud target.';
-    secondsUntilChange = secondPhaseEndSeconds - seconds;
   }
   if (seconds >= secondPhaseEndSeconds) {
     instructionTitle = 'LOUD → SOFT';
     instructionPrompt = 'Gradually decrease your volume.';
-    secondsUntilChange = totalSeconds - seconds;
   }
-  secondsUntilChange = Math.max(0, secondsUntilChange);
 
   const progress = Math.min(100, (seconds / totalSeconds) * 100);
 
@@ -1089,7 +1086,7 @@ export default function DynamicRangeExercise({
           tip="Keep the same note throughout the recording. Change your vocal volume gradually instead of changing pitch."
           tier={resolvedTier}
           onBack={handleBack}
-          onStart={() => setPhase('listening')}
+          onStart={() => void startExercise()}
         >
           <View style={exerciseStyles.referenceCard}>
             <View style={exerciseStyles.referenceTopRow}>
@@ -1150,35 +1147,6 @@ export default function DynamicRangeExercise({
     );
   }
 
-  if (phase === 'listening') {
-    return (
-      <>
-        <ExerciseListeningScreen
-          icon="volume-high-outline"
-          title="Dynamic Range"
-          currentRep={1}
-          repetitions={repetitions}
-          promptTitle="Listen to the Reference"
-          prompt={`Listen to the ${referenceNote.name} note before singing.`}
-          isPlayingReference={referencePlaying}
-          onPlayReference={() => void playReferenceNote()}
-          onContinue={() => void startExercise()}
-          onBack={handleBack}
-          liveContent={
-            <View style={exerciseStyles.referenceCard}>
-              <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-              <Text style={exerciseStyles.referenceNoteVariant1}>
-                {referenceNote.name}
-              </Text>
-            </View>
-          }
-          errorMessage={referencePlaybackError}
-        />
-        {quitModal}
-      </>
-    );
-  }
-
   if (phase === 'countdown') {
     const repetitionCountdown = countdownFor === 'repetition';
     return (
@@ -1224,11 +1192,6 @@ export default function DynamicRangeExercise({
             showsVerticalScrollIndicator={false}
           >
 
-            <View style={exerciseStyles.phaseCountdownCard}>
-              <Text style={exerciseStyles.liveLabelVariant1}>NEXT PHASE IN</Text>
-              <Text style={exerciseStyles.phaseCountdownValue}>{secondsUntilChange}s</Text>
-            </View>
-
             <View style={exerciseStyles.legendVariant1}>
               <View style={exerciseStyles.actualDot} />
               <Text style={exerciseStyles.guideText}>Your voice</Text>
@@ -1246,13 +1209,6 @@ export default function DynamicRangeExercise({
               <View style={exerciseStyles.sessionPart}>
                 <Text style={exerciseStyles.sessionLabel}>REPETITION</Text>
                 <Text style={exerciseStyles.sessionValue}>{currentRep} / {repetitions}</Text>
-              </View>
-              <View style={exerciseStyles.sessionDivider} />
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.sessionLabel}>ELAPSED</Text>
-                <Text style={exerciseStyles.sessionValue}>
-                  {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                </Text>
               </View>
             </View>
 

@@ -1,10 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { SustainedExhaleParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -14,13 +13,14 @@ import { saveCompletedExercise } from '@/services/progress/exerciseProgressServi
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreSustainedSSSS, type SustainedSSSSScoreResult } from '@/services/scoring/breathControl/sustainedSSSS';
 import {
-  getLiveVoiceDetection,
-  hasSufficientRecordedSignal,
+    getLiveVoiceDetection,
+    hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 const PROCESSING_DELAY_MS = 1200;
 
@@ -1027,10 +1027,6 @@ export default function SustainedSSSSScreen({
     1,
   );
 
-  const targetDuration =
-    (params.durationRangeSec[0] +
-      params.durationRangeSec[1]) / 2;
-
   if (phase === 'instructions') {
     return (
       <>
@@ -1155,20 +1151,6 @@ export default function SustainedSSSSScreen({
                 { width: `${durationProgress * 100}%` },
               ]}
             />
-          </View>
-
-          <View style={exerciseStyles.rangeRow}>
-            <Text style={exerciseStyles.sessionLabel}>
-              {params.durationRangeSec[0]}s
-            </Text>
-
-            <Text style={exerciseStyles.progressTime}>
-              Target: {targetDuration.toFixed(1)}s
-            </Text>
-
-            <Text style={exerciseStyles.sessionLabel}>
-              {params.durationRangeSec[1]}s
-            </Text>
           </View>
 
           <LiveVoiceDetectionVisualizer

@@ -8,7 +8,6 @@ import {
 } from 'react';
 import { Alert, BackHandler, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   COLORS,
   EXERCISE_COUNTDOWN_SECONDS,
@@ -23,6 +22,7 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { generateScaleAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -62,12 +62,13 @@ import ExerciseScreen, {
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
 
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const NOTE_DURATION_SECONDS = 0.8;
 const RECORDING_MIN_DURATION_MS = 5000;
@@ -188,9 +189,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     useState(true);
 
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(-1);
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const [currentRep, setCurrentRep] = useState(1);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
 
@@ -267,6 +268,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     setLiveAudioFrame(null);
     setLiveFrequencies([]);
     setCurrentNoteIndex(-1);
+    setRecordingElapsedMs(0);
   }, []);
 
   const resetRecordingState = useCallback(() => {
@@ -280,6 +282,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     setLiveAudioFrame(null);
     setLiveFrequencies([]);
     setCurrentNoteIndex(-1);
+    setRecordingElapsedMs(0);
   }, []);
 
   const handleLiveFrame = useCallback((frame: LiveAudioFrame) => {
@@ -327,6 +330,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           setLiveAudioFrame(null);
           setLiveFrequencies([]);
           setCurrentNoteIndex(-1);
+          setRecordingElapsedMs(0);
         }
 
         if (
@@ -372,6 +376,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       recordingStopRequestedRef.current = false;
       startingRecordingRef.current = false;
       recordingElapsedRef.current = 0;
+      setRecordingElapsedMs(0);
 
       const isLastRep = currentRepRef.current >= params.repetitions;
 
@@ -573,6 +578,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         recordingElapsedRef.current += elapsedDelta;
 
         const elapsedMs = recordingElapsedRef.current;
+        setRecordingElapsedMs(elapsedMs);
         const nextNoteIndex = Math.min(
           Math.floor(elapsedMs / noteDuration),
           noteCount - 1,
@@ -787,8 +793,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     resetRecordingState();
     setResult(null);
     setErrorMessage(null);
-    setIsInitialListening(false);
-
     beginRepCountdown();
   }, [
     beginRepCountdown,
@@ -1168,37 +1172,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   const liveStability = calcLiveStability(liveFrequencies);
 
-  const targetFrequency = currentTarget?.frequency ?? null;
-
-  const hasValidComparison =
-    targetFrequency !== null &&
-    detectedFrequency !== null &&
-    Number.isFinite(targetFrequency) &&
-    targetFrequency > 0;
-
-  const centsOffset = hasValidComparison
-    ? 1200 * Math.log2(detectedFrequency / targetFrequency)
-    : null;
-
-  const absoluteOffset =
-    centsOffset === null ? null : Math.abs(centsOffset);
-
-  const guideColor = !hasValidComparison
-    ? COLORS.gray
-    : absoluteOffset !== null && absoluteOffset <= 25
-      ? COLORS.guideGreen
-      : absoluteOffset !== null && absoluteOffset <= 60
-        ? COLORS.guideYellow
-        : COLORS.guideRed;
-
-  const directionLabel = !hasValidComparison
-    ? 'LISTENING'
-    : absoluteOffset !== null && absoluteOffset <= 25
-      ? 'IN TUNE'
-      : centsOffset !== null && centsOffset < 0
-        ? 'TOO LOW'
-        : 'TOO HIGH';
-
   const modalMessage =
     pausedPhaseRef.current === 'instructions' ||
     pausedPhaseRef.current === 'results'
@@ -1281,10 +1254,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           targetValue={`${params.noteCount} notes`}
           tip="Sing each note clearly before moving to the next one."
           onBack={goBack}
-          onStart={() => {
-            setIsInitialListening(true);
-            setPhase('listening');
-          }}
+          onStart={startCountdown}
           errorMessage={errorMessage ?? undefined}
           startDisabled={isLoadingParams}
           startLabel={
@@ -1342,11 +1312,6 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
               ))}
             </View>
           }
-          onContinue={
-            isInitialListening
-              ? startCountdown
-              : undefined
-          }
           progress={100}
         />
 
@@ -1354,6 +1319,15 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
       </>
     );
   }
+
+  const recordingDurationMs = Math.max(
+    RECORDING_MIN_DURATION_MS,
+    targetNotes.length * RECORDING_MS_PER_NOTE,
+  );
+  const recordingProgress = Math.min(
+    recordingElapsedMs / recordingDurationMs,
+    1,
+  );
 
   if (phase === 'recording') {
     return (
@@ -1406,79 +1380,59 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
             })}
           </View>
 
-          <View style={exerciseStyles.liveCardVariant8}>
-            <View style={exerciseStyles.pitchGuideHeader}>
-              <View style={exerciseStyles.pitchGuideHeading}>
-                <View
-                  style={[
-                    exerciseStyles.pitchGuideLiveDot,
-                    { backgroundColor: COLORS.brown },
-                  ]}
-                />
-                <Text style={exerciseStyles.pitchGuideTitleVariant1}>LIVE PITCH GUIDE</Text>
-              </View>
-
-              <View
-                style={[
-                  exerciseStyles.pitchStatusBadge,
-                  { backgroundColor: `${guideColor}18` },
-                ]}
-              >
-                <Text
-                  style={[
-                    exerciseStyles.pitchStatusText,
-                    { color: guideColor },
-                  ]}
-                >
-                  {directionLabel}
-                </Text>
-              </View>
-            </View>
-
-            <ExerciseLivePitchIndicator
-              targetNote={currentTarget?.name ?? '--'}
-              targetFrequency={currentTarget?.frequency ?? null}
-              detectedNote={detectedNote}
-              detectedFrequency={detectedFrequency}
-            />
-
-            <View style={exerciseStyles.liveStatsVariant1}>
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.scaleText}>Accuracy</Text>
-
-                <Text style={exerciseStyles.liveStatValueVariant2}>
-                  {hasLivePitch && currentTarget
+          <ExerciseLivePitchIndicator
+            targetNote={currentTarget?.name ?? '--'}
+            targetFrequency={currentTarget?.frequency ?? null}
+            detectedNote={detectedNote}
+            detectedFrequency={detectedFrequency}
+          >
+            <View style={exerciseStyles.metricsGridInline}>
+              <MetricCard
+                label="ACCURACY"
+                variant="noteMatching"
+                value={
+                  hasLivePitch && currentTarget
                     ? `${Math.round(liveAccuracy)}%`
-                    : '--'}
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.liveStatsDividerVariant1} />
-
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.scaleText}>Stability</Text>
-
-                <Text style={exerciseStyles.liveStatValueVariant2}>
-                  {liveFrequencies.length > 0
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="STABILITY"
+                variant="noteMatching"
+                value={
+                  liveFrequencies.length > 0
                     ? `${Math.round(liveStability)}%`
-                    : '--'}
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.liveStatsDividerVariant1} />
-
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.scaleText}>Frequency</Text>
-
-                <Text style={exerciseStyles.liveStatValueVariant2}>
-                  {hasLivePitch
-                    ? `${Math.round(detectedFrequency)}`
-                    : '--'}
-                </Text>
-
-                <Text style={exerciseStyles.liveStatUnit}>Hz</Text>
-              </View>
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="FREQUENCY"
+                variant="noteMatching"
+                value={
+                  hasLivePitch
+                    ? `${Math.round(detectedFrequency)} Hz`
+                    : '-- Hz'
+                }
+              />
             </View>
+          </ExerciseLivePitchIndicator>
+
+          <View
+            style={exerciseStyles.timerTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Recording progress"
+            accessibilityValue={{
+              min: 0,
+              max: 100,
+              now: Math.round(recordingProgress * 100),
+            }}
+          >
+            <View
+              style={[
+                exerciseStyles.timerFill,
+                { width: `${recordingProgress * 100}%` },
+              ]}
+            />
           </View>
         </View>
 

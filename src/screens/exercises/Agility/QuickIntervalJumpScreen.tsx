@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   AGILITY_CLOSE_NOTE_SEMITONES,
   AGILITY_GOOD_NOTE_SEMITONES,
@@ -18,6 +17,7 @@ import {
   type Tier,
 } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 
 import ExerciseScreen, {
@@ -40,18 +40,18 @@ import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickInterval
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  frequencyToNoteName,
-  getSemitoneDistance,
-} from '@/utils/music/notes';
-import {
   AGILITY_NOTE_START_DELAY_MS,
   getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
+import {
+  frequencyToNoteName,
+  getSemitoneDistance,
+} from '@/utils/music/notes';
 
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const MAX_RECORDING_SECONDS = 15;
 
@@ -162,6 +162,10 @@ export default function QuickIntervalJumpScreen() {
   const mountedRef = useRef(true);
   const countdownTokenRef = useRef(0);
   const playbackTokenRef = useRef(0);
+  const startCountdownRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const startRecordingRef =
+    useRef<((countdownToken: number) => Promise<void>) | null>(null);
   const referencePlayingRef = useRef(false);
 
   const showQuitModalRef = useRef(false);
@@ -656,6 +660,7 @@ export default function QuickIntervalJumpScreen() {
         setElapsedSeconds(0);
         resetLivePitch();
         setExercisePhase('listening');
+        void playReference();
         return;
       }
 
@@ -771,6 +776,7 @@ export default function QuickIntervalJumpScreen() {
     setIsPlayingReference(true);
 
     const playbackToken = ++playbackTokenRef.current;
+    let completed = false;
 
     try {
       const context =
@@ -828,6 +834,12 @@ export default function QuickIntervalJumpScreen() {
           await sleep(gapSec * 1000);
         }
       }
+      completed =
+        mountedRef.current &&
+        playbackToken === playbackTokenRef.current &&
+        phaseRef.current === 'listening' &&
+        !showQuitModalRef.current &&
+        !quitInProgressRef.current;
     } catch (errorMessage) {
       console.warn('Reference playback failed:', errorMessage);
     } finally {
@@ -839,6 +851,9 @@ export default function QuickIntervalJumpScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
+    }
+    if (completed) {
+      void startCountdownRef.current?.();
     }
   };
 
@@ -864,12 +879,14 @@ export default function QuickIntervalJumpScreen() {
     resetLivePitch();
 
     setExercisePhase('listening');
+    void playReference();
   };
 
   const startRecording = async (countdownToken: number) => {
     if (
       !mountedRef.current ||
       countdownToken !== countdownTokenRef.current ||
+      phaseRef.current !== 'listening' ||
       showQuitModalRef.current ||
       quitInProgressRef.current
     ) {
@@ -890,7 +907,7 @@ export default function QuickIntervalJumpScreen() {
         countdownToken !== countdownTokenRef.current ||
         showQuitModalRef.current ||
         quitInProgressRef.current ||
-        phaseRef.current !== 'recording'
+        (phaseRef.current as Phase) !== 'recording'
       ) {
         await cancelAudioRecording();
         return;
@@ -940,12 +957,13 @@ export default function QuickIntervalJumpScreen() {
       }
     }
   };
+  startRecordingRef.current = startRecording;
 
   const startCountdown = async () => {
     if (
-      phaseRef.current !== 'listening' ||
+      (phaseRef.current !== 'instructions' &&
+        phaseRef.current !== 'listening') ||
       referencePlayingRef.current ||
-      isPlayingReference ||
       isLoadingParams ||
       !hasUsableVocalRange ||
       showQuitModalRef.current ||
@@ -1008,8 +1026,11 @@ export default function QuickIntervalJumpScreen() {
       return;
     }
 
-    await startRecording(countdownToken);
+    setExercisePhase('listening');
+    void startRecordingRef.current?.(countdownToken);
   };
+
+  startCountdownRef.current = startCountdown;
 
   const resetExercise = () => {
     if (quitInProgressRef.current) return;
@@ -1125,6 +1146,7 @@ export default function QuickIntervalJumpScreen() {
 
       if (mountedRef.current && !quitInProgressRef.current) {
         setIsPreparingResume(false);
+        void playReference();
       }
 
       return;
@@ -1133,6 +1155,7 @@ export default function QuickIntervalJumpScreen() {
     setExercisePhase(previouslyPausedPhase);
   }, [
     cancelActiveRecording,
+    playReference,
     setExercisePhase,
     resetLivePitch,
     updateQuitModalVisibility,
@@ -1282,7 +1305,6 @@ export default function QuickIntervalJumpScreen() {
       }
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
-      onContinue={() => void startCountdown()}
       onBack={() => void pauseForExitPrompt()}
     />
   );
@@ -1389,10 +1411,6 @@ export default function QuickIntervalJumpScreen() {
             ]}
           />
         </View>
-        <Text style={exerciseStyles.timerText}>
-          Recording Time: {elapsedSeconds.toFixed(1)}s /{' '}
-          {repetitionDurationSec.toFixed(1)}s
-        </Text>
       </ExerciseRecordingScreen>
     );
   };
@@ -1672,7 +1690,7 @@ export default function QuickIntervalJumpScreen() {
 
           setExercisePhase('listening');
 
-          void startCountdown();
+          void playReference();
         }}
         onQuit={() => {
           setShowNoAudioModal(false);

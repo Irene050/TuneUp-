@@ -3,27 +3,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
-  AUDIO_SAMPLE_RATE,
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    AUDIO_SAMPLE_RATE,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -31,23 +31,23 @@ import { auth } from '@/services/firebase/config';
 import { measureVocalRunAccuracy } from '@/services/measurement/agility/vocalRunAccuracyTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  getActiveSequenceNoteIndex,
+    AGILITY_NOTE_START_DELAY_MS,
+    getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 
 type Phase =
   | 'instructions'
@@ -229,6 +229,10 @@ export default function VocalRunAccuracyTaskScreen() {
   const exerciseRunIdRef = useRef(0);
   const countdownRunIdRef = useRef(0);
   const referencePlaybackIdRef = useRef(0);
+  const startCountdownRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(null);
 
   const referencePlayingRef = useRef(false);
   const processingRef = useRef(false);
@@ -667,6 +671,8 @@ export default function VocalRunAccuracyTaskScreen() {
     setIsPlayingReference(true);
     setErrorMessage('');
 
+    let completed = false;
+
     try {
       const context =
         audioContextRef.current ??
@@ -720,6 +726,13 @@ export default function VocalRunAccuracyTaskScreen() {
           await sleep(config.gapSec * 1000);
         }
       }
+      completed =
+        mountedRef.current &&
+        playbackId === referencePlaybackIdRef.current &&
+        phaseRef.current === 'listening' &&
+        !pausedRef.current &&
+        !showQuitModalRef.current &&
+        !quitInProgressRef.current;
     } catch (errorMessage) {
       console.warn(
         '[VocalRun] Reference playback failed:',
@@ -743,6 +756,9 @@ export default function VocalRunAccuracyTaskScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
+    }
+    if (completed) {
+      void startCountdownRef.current?.();
     }
   }, [config, hasValidGeneratedSequence]);
 
@@ -783,12 +799,14 @@ export default function VocalRunAccuracyTaskScreen() {
     setResult(null);
     setShowNoAudioModal(false);
     setExercisePhase('listening');
+    void playReference();
   }, [
     cancelReferencePlayback,
     hasValidGeneratedSequence,
     isLoadingParams,
-    setExercisePhase,
     isLoadingTier,
+    playReference,
+    setExercisePhase,
   ]);
 
   const processRecording = useCallback(
@@ -876,6 +894,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
           processingRef.current = false;
           setExercisePhase('listening');
+          void playReference();
 
           return;
         }
@@ -1021,7 +1040,8 @@ export default function VocalRunAccuracyTaskScreen() {
   const startRecording = useCallback(async () => {
     if (
       recordingStartInProgressRef.current ||
-      phaseRef.current !== 'countdown' ||
+      phaseRef.current !== 'listening' ||
+      referencePlayingRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
       quitInProgressRef.current ||
@@ -1136,10 +1156,12 @@ export default function VocalRunAccuracyTaskScreen() {
     startAudioRecording,
     stopActiveRecording,
   ]);
+  startRecordingRef.current = startRecording;
 
   const startCountdown = useCallback(async () => {
     if (
-      phaseRef.current !== 'listening' ||
+      (phaseRef.current !== 'instructions' &&
+        phaseRef.current !== 'listening') ||
       referencePlayingRef.current ||
       pausedRef.current ||
       showQuitModalRef.current ||
@@ -1196,8 +1218,10 @@ export default function VocalRunAccuracyTaskScreen() {
       return;
     }
 
-    await startRecording();
-  }, [setExercisePhase, startRecording]);
+    setExercisePhase('listening');
+    void startRecordingRef.current?.();
+  }, [setExercisePhase]);
+  startCountdownRef.current = startCountdown;
 
   const resetExercise = useCallback(() => {
     if (quitInProgressRef.current) {
@@ -1330,6 +1354,7 @@ export default function VocalRunAccuracyTaskScreen() {
       setCountdown(EXERCISE_COUNTDOWN_SECONDS);
 
       setExercisePhase('listening');
+      void playReference();
       return;
     }
 
@@ -1338,6 +1363,7 @@ export default function VocalRunAccuracyTaskScreen() {
 
     if (previousPhase === 'listening') {
       setExercisePhase('listening');
+      void playReference();
       return;
     }
 
@@ -1349,6 +1375,7 @@ export default function VocalRunAccuracyTaskScreen() {
     setExercisePhase(previousPhase);
   }, [
     cancelActiveRecording,
+    playReference,
     setExercisePhase,
   ]);
 
@@ -1515,7 +1542,6 @@ export default function VocalRunAccuracyTaskScreen() {
       errorMessage={errorMessage || null}
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
-      onContinue={() => void startCountdown()}
       onBack={handleBack}
     />
   );
@@ -1597,10 +1623,6 @@ export default function VocalRunAccuracyTaskScreen() {
             ]}
           />
         </View>
-        <Text style={exerciseStyles.timerTextVariant5}>
-          Recording Time: {' '}
-          {elapsedSeconds.toFixed(1)}
-        </Text>
       </View>
     </ExerciseRecordingScreen>
   );
@@ -1737,6 +1759,7 @@ export default function VocalRunAccuracyTaskScreen() {
         setLivePitch(null);
         setElapsedSeconds(0);
         setExercisePhase('listening');
+        void playReference();
       }}
       onQuit={() => {
         setShowNoAudioModal(false);

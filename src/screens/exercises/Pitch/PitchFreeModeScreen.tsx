@@ -1,20 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { measurePitchFreeModeFrame } from '@/services/measurement/freeMode/pitch';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
@@ -22,8 +22,8 @@ import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 
 import {
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 
 type Phase = 'ready' | 'exercise';
 
@@ -36,7 +36,6 @@ export default function PitchFreeModeScreen() {
   const horizontalPadding = Math.min(22, width * 0.055);
 
   const { phase, setPhase } = usePhaseState<Phase>('ready');
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -131,21 +130,6 @@ export default function PitchFreeModeScreen() {
   });
 
   useEffect(() => {
-    if (phase !== 'exercise') {
-      return;
-    }
-
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      setElapsedSeconds(
-        Math.floor((Date.now() - startedAt) / 1000),
-      );
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  useEffect(() => {
     mountedRef.current = true;
 
     return () => {
@@ -153,15 +137,6 @@ export default function PitchFreeModeScreen() {
       isRecordingRef.current = false;
     };
   }, []);
-
-  const formattedTime = useMemo(() => {
-    const minutes = Math.floor(elapsedSeconds / 60);
-    const seconds = elapsedSeconds % 60;
-
-    return `${String(minutes).padStart(2, '0')}:${String(
-      seconds,
-    ).padStart(2, '0')}`;
-  }, [elapsedSeconds]);
 
   const currentNote = useMemo(
     () => frequencyToNoteName(detectedFrequency),
@@ -271,7 +246,6 @@ export default function PitchFreeModeScreen() {
     isRecordingRef.current = false;
 
     try {
-      setElapsedSeconds(0);
       resetPitchData();
 
       isRecordingRef.current = true;
@@ -342,7 +316,6 @@ export default function PitchFreeModeScreen() {
       recentFrequenciesRef.current = [];
 
       if (mountedRef.current) {
-        setElapsedSeconds(0);
         resetPitchData();
         setIsStarting(false);
       }
@@ -553,17 +526,6 @@ export default function PitchFreeModeScreen() {
             </Text>
           </View>
 
-          <View style={exerciseStyles.timeBadge}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color={COLORS.accent}
-            />
-
-            <Text style={exerciseStyles.timeText}>
-              {formattedTime}
-            </Text>
-          </View>
         </View>
 
         <View style={exerciseStyles.liveCardVariant1}>

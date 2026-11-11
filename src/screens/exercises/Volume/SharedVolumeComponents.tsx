@@ -235,15 +235,6 @@ export function VolumeRampRecordingContent({
             <View style={exerciseStyles.sessionDivider} />
 
             <View style={exerciseStyles.sessionPart}>
-              <Text style={exerciseStyles.sessionLabel}>TIME</Text>
-              <Text style={exerciseStyles.sessionValue}>
-                0:{String(seconds).padStart(2, '0')}
-              </Text>
-            </View>
-
-            <View style={exerciseStyles.sessionDivider} />
-
-            <View style={exerciseStyles.sessionPart}>
               <Text style={exerciseStyles.sessionLabel}>SMOOTHNESS</Text>
               <Text style={exerciseStyles.sessionValue}>
                 {liveSmoothness}%

@@ -1,31 +1,32 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS, PITCH_GUIDE_MAX_CENTS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { INTERVAL_RECOGNITION_PARAMS, type IntervalRecognitionParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
+import ExerciseScreen, {
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  MetricCard,
+} from '@/screens/exercises/ExerciseScreen';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureIntervalRecognition } from '@/services/measurement/pitch/intervalRecognitionTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreIntervalRecognitionTask, type IntervalRecognitionScoreResult } from '@/services/scoring/pitch/intervalRecognitionTask';
 import { sleep } from '@/utils/async';
-import { calcPitchAccuracy } from '@/utils/dsp/pitch';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { calcLiveStability, calcPitchAccuracy } from '@/utils/dsp/pitch';
 import { clamp } from '@/utils/math';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToNoteName, getRandomIntervalNotes, type VocalRange } from '@/utils/music/notes';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS, PITCH_GUIDE_MAX_CENTS } from '@/constants/appConstants';
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-} from '@/screens/exercises/ExerciseScreen';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 const MIN_RESPONSE_TIME_PER_REPETITION_SECONDS = 1.8;
 const PRE_RECORDING_DELAY_MS = 1500;
@@ -171,7 +172,6 @@ export default function IntervalRecognitionTaskScreen({
 
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
@@ -862,7 +862,6 @@ export default function IntervalRecognitionTaskScreen({
       setErrorMessage(null);
       setLiveAudioFrame(null);
       setLiveFrequencies([]);
-      setIsInitialListening(false);
 
       pitchHistoryRef.current = [];
       recordingElapsedRef.current = 0;
@@ -1205,8 +1204,11 @@ export default function IntervalRecognitionTaskScreen({
           liveTarget.frequency,
         )
       : 0;
-
-
+  const liveStability = calcLiveStability(liveFrequencies);
+  const hasLivePitch =
+    liveAudioFrame !== null &&
+    Number.isFinite(liveAudioFrame.pitch) &&
+    liveAudioFrame.pitch > 0;
 
   const pitchTrace = liveFrequencies
     .slice(-18)
@@ -1285,10 +1287,7 @@ export default function IntervalRecognitionTaskScreen({
             tip="Leave a short, clear pause between each pair of sung notes so TuneUp! can detect every repetition separately."
             tier={currentTier}
             onBack={requestQuit}
-            onStart={() => {
-              setIsInitialListening(true);
-              setPhase('listening');
-            }}
+            onStart={() => startCountdown(false)}
             errorMessage={errorMessage}
             startDisabled={isLoadingParams}
             startLabel={
@@ -1342,19 +1341,7 @@ export default function IntervalRecognitionTaskScreen({
           icon="volume-high-outline"
           title="Interval Recognition Task"
           promptTitle="Listen to the Interval"
-          prompt={
-            isInitialListening
-              ? 'Listen to the reference interval before the countdown begins.'
-              : `The same interval is being repeated ${repetitionCount} times.`
-          }
-          onContinue={
-            isInitialListening
-              ? () => {
-                  setIsInitialListening(false);
-                  startCountdown(false);
-                }
-              : undefined
-          }
+          prompt={`The same interval is being repeated ${repetitionCount} times.`}
           onBack={requestQuit}
           liveContent={
             <>
@@ -1472,9 +1459,47 @@ export default function IntervalRecognitionTaskScreen({
             <ExerciseLivePitchIndicator
               targetNote={liveTarget.name}
               targetFrequency={liveTarget.frequency}
-              detectedNote={liveAudioFrame && liveAudioFrame.pitch > 0 ? liveAudioFrame.note || frequencyToNoteName(liveAudioFrame.pitch) : null}
-              detectedFrequency={liveAudioFrame && liveAudioFrame.pitch > 0 ? liveAudioFrame.pitch : null}
-              pitchTrace={pitchTrace} />
+              detectedNote={
+                hasLivePitch
+                  ? liveAudioFrame.note ||
+                    frequencyToNoteName(liveAudioFrame.pitch)
+                  : null
+              }
+              detectedFrequency={
+                hasLivePitch ? liveAudioFrame.pitch : null
+              }
+              pitchTrace={pitchTrace}
+            >
+              <View style={exerciseStyles.metricsGridInline}>
+                <MetricCard
+                  label="ACCURACY"
+                  variant="noteMatching"
+                  value={
+                    hasLivePitch
+                      ? `${Math.round(liveAccuracy)}%`
+                      : '--'
+                  }
+                />
+                <MetricCard
+                  label="STABILITY"
+                  variant="noteMatching"
+                  value={
+                    liveFrequencies.length >= 2
+                      ? `${Math.round(liveStability)}%`
+                      : '--'
+                  }
+                />
+                <MetricCard
+                  label="FREQUENCY"
+                  variant="noteMatching"
+                  value={
+                    hasLivePitch
+                      ? `${Math.round(liveAudioFrame.pitch)} Hz`
+                      : '-- Hz'
+                  }
+                />
+              </View>
+            </ExerciseLivePitchIndicator>
 
             <View style={exerciseStyles.recordingBar}>
               <View

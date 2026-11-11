@@ -9,17 +9,16 @@ import {
 import { BackHandler, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
   type VolumeControlStabilityParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseListeningScreen,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
@@ -56,7 +55,7 @@ import {
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const DEFAULT_REFERENCE_MIDI = 60;
 const MAX_LIVE_HISTORY = 40;
@@ -130,7 +129,7 @@ export default function VolumeControlStabilityScreen({
 }: {
   tier?: Tier;
 }) {
-  const { phase, setPhase } = usePhaseState<Phase>('instructions');
+  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
 
   const [referenceMidi, setReferenceMidi] =
     useState(DEFAULT_REFERENCE_MIDI);
@@ -404,7 +403,7 @@ export default function VolumeControlStabilityScreen({
       showQuitModalRef.current ||
       quitInProgressRef.current
     ) {
-      return;
+      return false;
     }
 
     setReferenceError(null);
@@ -424,6 +423,7 @@ export default function VolumeControlStabilityScreen({
           );
         }),
       ]);
+      return true;
     } catch (errorMessage) {
       console.error(
         `${NOTE} reference playback error:`,
@@ -435,6 +435,7 @@ export default function VolumeControlStabilityScreen({
           `Unable to play the ${NOTE} reference note.`,
         );
       }
+      return false;
     } finally {
       if (mountedRef.current) {
         setReferencePlaying(false);
@@ -772,7 +773,7 @@ export default function VolumeControlStabilityScreen({
     return () => {
       clearInterval(interval);
     };
-  }, [phase, beginRecording]);
+  }, [phase, beginRecording, setPhase]);
 
   useEffect(() => {
     if (
@@ -862,7 +863,6 @@ export default function VolumeControlStabilityScreen({
     setRemainingSeconds(totalExerciseSeconds);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setReferenceError(null);
-
     setPhase('countdown');
 
     setTimeout(() => {
@@ -1158,7 +1158,7 @@ export default function VolumeControlStabilityScreen({
           tip="Choose a comfortable volume first. Avoid sudden changes in loudness while sustaining the note."
           tier={resolvedTier}
           onBack={() => void pauseForExitPrompt()}
-          onStart={() => setPhase('listening')}
+          onStart={startExercise}
           startDisabled={
             !paramsReady ||
             referencePlaying ||
@@ -1228,33 +1228,6 @@ export default function VolumeControlStabilityScreen({
           </View>
         </ExerciseScreen>
 
-        {quitModal}
-      </SafeAreaView>
-    );
-  }
-
-  if (phase === 'listening') {
-    return (
-      <SafeAreaView style={exerciseStyles.screen}>
-        <ExerciseListeningScreen
-          icon="pulse-outline"
-          title="Volume Control Stability"
-          currentRep={1}
-          repetitions={repetitions}
-          promptTitle="Listen to the Reference"
-          prompt={`Listen to the ${NOTE} note, then sing it steadily on “Ah.”`}
-          isPlayingReference={referencePlaying}
-          onPlayReference={() => void playReferenceNote()}
-          onContinue={startExercise}
-          onBack={() => void pauseForExitPrompt()}
-          errorMessage={referenceError ?? undefined}
-          liveContent={
-            <View style={exerciseStyles.referenceCardVariant4}>
-              <Text style={exerciseStyles.referenceLabelVariant1}>REFERENCE NOTE</Text>
-              <Text style={exerciseStyles.referenceNoteVariant2}>{NOTE}</Text>
-            </View>
-          }
-        />
         {quitModal}
       </SafeAreaView>
     );

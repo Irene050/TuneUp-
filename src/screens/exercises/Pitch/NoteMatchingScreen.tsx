@@ -1,10 +1,10 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, PITCH_GUIDE_MAX_CENTS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { NOTE_MATCHING_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -18,11 +18,11 @@ import { clamp } from '@/utils/math';
 import { disposeNotePlayer, playSingleNote } from '@/utils/music/notePlayer';
 import { frequencyToNoteName, getRandomPitchNote, type VocalRange } from '@/utils/music/notes';
 import { formatFrequency } from '@/utils/numberFormatting';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
 import ExerciseScreen, { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '../ExerciseScreen';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;
@@ -113,7 +113,6 @@ function getFeedback(
 
 export default function NoteMatchingScreen({ tier }: Props) {
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [currentTier, setCurrentTier] = useState<Tier>(
     tier ?? 'beginner',
   );
@@ -874,8 +873,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
     setElapsedSeconds(0);
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     resetLivePitch();
-    setIsInitialListening(false);
-
     beginCountdown();
   }, [
     beginCountdown,
@@ -1055,10 +1052,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           tip="Sing comfortably and make small adjustments until your pitch matches the target."
           tier={currentTier}
           onBack={goBack}
-          onStart={() => {
-            setIsInitialListening(true);
-            setPhase('listening');
-          }}
+          onStart={beginCountdown}
           errorMessage={errorMessage}
           startDisabled={isLoadingParams}
         />
@@ -1093,14 +1087,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
                 {formatFrequency(targetFrequency)}
               </Text>
             </View>
-          }
-          onContinue={
-            isInitialListening
-              ? () => {
-                  setIsInitialListening(false);
-                  startExercise();
-                }
-              : undefined
           }
           progress={100}
         />
@@ -1186,10 +1172,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
                 ]}
               />
             </View>
-            <Text style={exerciseStyles.timerText}>
-              {elapsedSeconds.toFixed(1)} /{' '}
-              {RECORDING_DURATION_SECONDS.toFixed(1)}s
-            </Text>
           </ScrollView>
         </View>
       )}

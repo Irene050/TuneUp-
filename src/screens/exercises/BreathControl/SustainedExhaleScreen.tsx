@@ -1,9 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { SustainedExhaleParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { generateSustainedExhaleParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -11,16 +11,16 @@ import { measureSustainedExhale, type SustainedExhaleMeasurement } from '@/servi
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreSustainedExhale, type SustainedExhaleScoreResult } from '@/services/scoring/breathControl/sustainedExhale';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import {
-  getLiveVoiceDetection,
-  hasSufficientRecordedSignal,
+    getLiveVoiceDetection,
+    hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
 import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '../ExerciseScreen';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
 import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 const PROCESSING_DELAY_MS = 1200;
 
@@ -1041,20 +1041,6 @@ export default function SustainedExhaleScreen({
                 { width: `${durationProgress * 100}%` },
               ]}
             />
-          </View>
-
-          <View style={exerciseStyles.rangeRow}>
-            <Text style={exerciseStyles.sessionLabel}>
-              {params.durationRangeSec[0]}s
-            </Text>
-
-            <Text style={exerciseStyles.progressTime}>
-              Target: {targetDuration.toFixed(1)}s
-            </Text>
-
-            <Text style={exerciseStyles.sessionLabel}>
-              {params.durationRangeSec[1]}s
-            </Text>
           </View>
 
           <LiveVoiceDetectionVisualizer

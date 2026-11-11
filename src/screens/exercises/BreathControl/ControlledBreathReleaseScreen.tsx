@@ -1,9 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_BREATH_RELEASE_PARAMS, type ControlledBreathReleaseParams, type Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -11,16 +11,16 @@ import { measureControlledBreathRelease, type ControlledBreathReleaseMeasurement
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledBreathRelease, type ControlledBreathReleaseScoreResult } from '@/services/scoring/breathControl/controlledBreathRelease';
-import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric, ResultStat } from '../ExerciseScreen';
-import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import {
-  getLiveVoiceDetection,
-  hasSufficientRecordedSignal,
+    getLiveVoiceDetection,
+    hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric, ResultStat } from '../ExerciseScreen';
 import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 const EXTRA_RECORDING_TIME_SECONDS = 1;
 const GUIDE_TOLERANCE_SECONDS = 0.35;
@@ -1006,16 +1006,6 @@ export default function ControlledBreathReleaseScreen({
     currentPulseElapsed >= 0 &&
     currentPulseElapsed <= GUIDE_TOLERANCE_SECONDS;
 
-  const nextPulseIn =
-    guidedPulse > 0 && !isFinalPulse
-      ? Math.max(0, guidedPulse * params.intervalSec - elapsedSeconds)
-      : 0;
-
-  const secondsRemaining = Math.max(
-    0,
-    targetRecordingDuration - elapsedSeconds,
-  );
-
   const quitConfirmationModal = (
     <ExerciseQuitModal
         visible={showQuitModal}
@@ -1222,10 +1212,10 @@ export default function ControlledBreathReleaseScreen({
                 {currentPulseIsDue
                   ? 'Release one short, gentle breath pulse now.'
                   : isFinalPulse
-                    ? `Final pulse — ${secondsRemaining.toFixed(1)}s remaining`
+                    ? 'This is your final pulse.'
                     : guidedPulse === 0
                       ? 'Get ready for the first pulse.'
-                      : `Next pulse in ${nextPulseIn.toFixed(1)} seconds.`}
+                      : 'Get ready for the next pulse.'}
               </Text>
 
               <View style={exerciseStyles.pulseProgressTrack}>
@@ -1266,16 +1256,6 @@ export default function ControlledBreathReleaseScreen({
                   { width: `${durationProgress * 100}%` },
                 ]}
               />
-            </View>
-
-            <View style={exerciseStyles.rangeRow}>
-              <Text style={exerciseStyles.scoreRowLabel}>0s</Text>
-              <Text style={exerciseStyles.rangeTarget}>
-                Guide: {targetRecordingDuration.toFixed(1)}s
-              </Text>
-              <Text style={exerciseStyles.scoreRowLabel}>
-                {targetRecordingDuration.toFixed(1)}s
-              </Text>
             </View>
 
             <LiveVoiceDetectionVisualizer

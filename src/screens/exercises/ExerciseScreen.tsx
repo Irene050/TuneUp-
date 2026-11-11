@@ -45,7 +45,6 @@ type ListeningScreenProps = ExercisePhaseProps & {
   progress?: number;
   isPlayingReference?: boolean;
   onPlayReference?: () => void;
-  onContinue?: () => void;
 };
 
 type ProcessingScreenProps = {
@@ -367,15 +366,12 @@ export function ExerciseListeningScreen({
   progress,
   isPlayingReference = false,
   onPlayReference,
-  onContinue,
   onBack,
 }: ListeningScreenProps) {
   const formatTime = (seconds: number) => {
     const safeSeconds = Math.max(0, seconds);
     const minutes = Math.floor(safeSeconds / 60);
-    const remainingSeconds = Math.floor(
-      safeSeconds % 60,
-    );
+    const remainingSeconds = Math.floor(safeSeconds % 60);
 
     return `${minutes}:${remainingSeconds
       .toString()
@@ -451,6 +447,7 @@ export function ExerciseListeningScreen({
               {errorMessage}
             </Text>
           ) : null}
+
         </View>
 
         {elapsedSeconds !== undefined ? (
@@ -466,6 +463,7 @@ export function ExerciseListeningScreen({
             ) : null}
           </View>
         ) : null}
+
       </View>
 
       {progress !== undefined ||
@@ -509,19 +507,6 @@ export function ExerciseListeningScreen({
         </Pressable>
       ) : null}
 
-      {onContinue ? (
-        <Pressable
-          accessibilityRole="button"
-          disabled={isPlayingReference}
-          style={[
-            exerciseStyles.listeningContinueButton,
-            isPlayingReference && exerciseStyles.disabled,
-          ]}
-          onPress={onContinue}
-        >
-          <Text style={exerciseStyles.startButtonText_SingingAssessment}>I'm Ready</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }

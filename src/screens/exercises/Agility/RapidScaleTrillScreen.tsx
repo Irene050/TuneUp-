@@ -4,29 +4,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
-  AGILITY_CLOSE_NOTE_SEMITONES,
-  AGILITY_GOOD_NOTE_SEMITONES,
-  AUDIO_SAMPLE_RATE,
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    AGILITY_CLOSE_NOTE_SEMITONES,
+    AGILITY_GOOD_NOTE_SEMITONES,
+    AUDIO_SAMPLE_RATE,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  RAPID_SCALE_TRILL_PARAMS,
-  type Tier,
+    RAPID_SCALE_TRILL_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateRapidScaleTrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,25 +34,25 @@ import { auth } from '@/services/firebase/config';
 import { measureRapidScaleTrill } from '@/services/measurement/agility/rapidScaleTrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreRapidScaleTrill } from '@/services/scoring/agility/rapidScaleTrill';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { sleep } from '@/utils/async';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  getActiveSequenceNoteIndex,
+    AGILITY_NOTE_START_DELAY_MS,
+    getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getSemitoneDistance,
+    frequencyToNoteName,
+    getSemitoneDistance,
 } from '@/utils/music/notes';
 
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 
 const MIN_RECORDING_SECONDS = 0.25;
 const MIN_RECORDING_RMS = 0.001;
@@ -217,6 +217,10 @@ export default function RapidScaleTrillScreen() {
   const countdownRunRef = useRef(0);
   const referenceRunRef = useRef(0);
   const referencePlayingRef = useRef(false);
+  const startCountdownRef =
+    useRef<(() => Promise<void>) | null>(null);
+  const startRecordingRef =
+    useRef<(() => Promise<void>) | null>(null);
 
   const savedAttemptRef = useRef(false);
   const activeExerciseNoteIndexRef = useRef<number | null>(null);
@@ -464,6 +468,8 @@ export default function RapidScaleTrillScreen() {
     referencePlayingRef.current = true;
     setReferencePlaying(true);
 
+    let completed = false;
+
     try {
       let context = audioContextRef.current;
 
@@ -510,6 +516,11 @@ export default function RapidScaleTrillScreen() {
           setActiveReferenceNoteIndex(null);
         }
       }
+      completed =
+        referenceRunRef.current === runId &&
+        phaseRef.current === 'listening' &&
+        !quitInProgressRef.current &&
+        confirmationRef.current === null;
     } catch (errorMessage) {
       if (referenceRunRef.current === runId) {
         console.warn('Reference playback failed:', errorMessage);
@@ -525,6 +536,9 @@ export default function RapidScaleTrillScreen() {
         setReferencePlaying(false);
         setActiveReferenceNoteIndex(null);
       }
+    }
+    if (completed) {
+      void startCountdownRef.current?.();
     }
   }, [
     frequencies,
@@ -841,6 +855,8 @@ export default function RapidScaleTrillScreen() {
   const startRecording = useCallback(async () => {
     if (
       !config ||
+      phaseRef.current !== 'listening' ||
+      referencePlayingRef.current ||
       quitInProgressRef.current ||
       confirmationRef.current !== null
     ) {
@@ -867,7 +883,7 @@ export default function RapidScaleTrillScreen() {
         !mountedRef.current ||
         quitInProgressRef.current ||
         confirmationRef.current !== null ||
-        phaseRef.current !== 'recording'
+        (phaseRef.current as Phase) !== 'recording'
       ) {
         await cancelAudioRecording();
         return;
@@ -973,11 +989,13 @@ export default function RapidScaleTrillScreen() {
     startAudioRecording,
     targetSequenceDurationSeconds,
   ]);
+  startRecordingRef.current = startRecording;
 
   const startCountdown = useCallback(async () => {
     if (
       referencePlayingRef.current ||
-      phaseRef.current !== 'listening' ||
+      (phaseRef.current !== 'instructions' &&
+        phaseRef.current !== 'listening') ||
       confirmationRef.current !== null ||
       !hasUsableSequence ||
       quitInProgressRef.current
@@ -1034,13 +1052,14 @@ export default function RapidScaleTrillScreen() {
       return;
     }
 
-    await startRecording();
+    setExercisePhase('listening');
+    void startRecordingRef.current?.();
   }, [
     clearCountdownTimer,
     hasUsableSequence,
     setExercisePhase,
-    startRecording,
   ]);
+  startCountdownRef.current = startCountdown;
 
   const beginExercise = useCallback(() => {
     if (
@@ -1074,8 +1093,10 @@ export default function RapidScaleTrillScreen() {
     setActiveReferenceNoteIndex(null);
 
     setExercisePhase('listening');
+    void playReference();
   }, [
     hasUsableSequence,
+    playReference,
     setExercisePhase,
     vocalRange,
     vocalRangeError,
@@ -1152,15 +1173,15 @@ export default function RapidScaleTrillScreen() {
           confirmationRef.current === null &&
           phaseRef.current === 'listening'
         ) {
-          void startCountdown();
+          void playReference();
         }
       }, 100);
     }
   }, [
     hasUsableSequence,
+    playReference,
     setCurrentConfirmation,
     setExercisePhase,
-    startCountdown,
   ]);
 
   const quitExercise = useCallback(async () => {
@@ -1373,7 +1394,6 @@ export default function RapidScaleTrillScreen() {
       }
       isPlayingReference={referencePlaying}
       onPlayReference={() => void playReference()}
-      onContinue={() => void startCountdown()}
       onBack={pauseForExitPrompt}
     />
   );
@@ -1463,9 +1483,6 @@ export default function RapidScaleTrillScreen() {
             ]}
           />
         </View>
-        <Text style={exerciseStyles.timerTextVariant4}>
-          Recording Time: {elapsedSeconds.toFixed(1)}s
-        </Text>
       </ExerciseRecordingScreen>
     );
   };
@@ -1654,7 +1671,7 @@ export default function RapidScaleTrillScreen() {
           setCurrentRep(1);
           setExercisePhase('listening');
 
-          void startCountdown();
+          void playReference();
         }}
         onQuit={() => {
           setShowNoAudioModal(false);

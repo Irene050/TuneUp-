@@ -8,7 +8,6 @@ import {
 } from 'react';
 import { Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   SUSTAINED_NOTE_STABILITY_PARAMS,
   type SustainedNoteStabilityParams,
@@ -18,6 +17,7 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import {
   ExerciseCountdownScreen,
@@ -25,6 +25,7 @@ import {
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   default as ExerciseScreen,
+  MetricCard,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -66,7 +67,7 @@ import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
@@ -99,7 +100,6 @@ export default function SustainedNoteStabilityScreen({
   const [isLoadingParams, setIsLoadingParams] =
     useState(true);
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
-  const [isInitialListening, setIsInitialListening] = useState(false);
   const [countdown, setCountdown] = useState(EXERCISE_COUNTDOWN_SECONDS);
   const [currentRep, setCurrentRep] = useState(1);
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -801,7 +801,6 @@ export default function SustainedNoteStabilityScreen({
     let remaining = EXERCISE_COUNTDOWN_SECONDS;
 
     setCountdown(remaining);
-    setIsInitialListening(false);
     setPhase('countdown');
 
     countdownTimerRef.current = setInterval(() => {
@@ -1178,10 +1177,7 @@ export default function SustainedNoteStabilityScreen({
           tip="Avoid intentionally changing pitch. Focus on maintaining one relaxed, consistent note."
           tier={currentTier}
           onBack={requestPause}
-          onStart={() => {
-            setIsInitialListening(true);
-            setPhase('listening');
-          }}
+          onStart={startCountdown}
           errorMessage={errorMessage}
           startDisabled={isLoadingParams}
           startLabel={
@@ -1230,11 +1226,6 @@ export default function SustainedNoteStabilityScreen({
               </Text>
             </View>
           }
-          onContinue={
-            isInitialListening
-              ? startCountdown
-              : undefined
-          }
         />
         {quitModal}
       </>
@@ -1255,91 +1246,59 @@ export default function SustainedNoteStabilityScreen({
           </View>
 
           <Text style={exerciseStyles.phaseTitleVariant1}>
-            Sustain {targetNote.name}
+            Sustain the Note
           </Text>
 
           <Text style={exerciseStyles.phaseSubtitleVariant1}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <View style={exerciseStyles.liveCardVariant9}>
-            <View style={exerciseStyles.liveCardHeaderVariant2}>
-              <Text style={exerciseStyles.scoreRowValue}>LIVE PITCH GUIDE</Text>
-            </View>
-
-            <View style={exerciseStyles.pitchComparison}>
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.scoreRowLabel}>TARGET NOTE</Text>
-                <Text style={exerciseStyles.liveTarget}>{targetNote.name}</Text>
-                <Text style={exerciseStyles.repResultDetails}>
-                  {Math.round(targetNote.frequency)} Hz
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.pitchComparisonDividerVariant1}>
-                <Ionicons
-                  name="mic-outline"
-                  size={20}
-                  color={COLORS.muted}
-                />
-              </View>
-
-              <View style={exerciseStyles.sessionPart}>
-                <Text style={exerciseStyles.scoreRowLabel}>YOUR NOTE</Text>
-                <Text
-                  style={[
-                    exerciseStyles.liveNoteVariant1,
-                    liveAudioFrame?.pitch && liveAudioFrame.pitch > 0
-                      ? exerciseStyles.liveNoteDetected
-                      : exerciseStyles.liveNoteWaiting,
-                  ]}
-                >
-                  {liveAudioFrame?.note ?? '--'}
-                </Text>
-                <Text style={exerciseStyles.repResultDetails}>
-                  {liveAudioFrame && liveAudioFrame.pitch > 0
+          <ExerciseLivePitchIndicator
+            targetNote={targetNote.name}
+            targetFrequency={targetNote.frequency}
+            detectedNote={
+              liveAudioFrame && liveAudioFrame.pitch > 0
+                ? liveAudioFrame.note
+                : null
+            }
+            detectedFrequency={
+              liveAudioFrame &&
+              Number.isFinite(liveAudioFrame.pitch) &&
+              liveAudioFrame.pitch > 0
+                ? liveAudioFrame.pitch
+                : null
+            }
+          >
+            <View style={exerciseStyles.metricsGridInline}>
+              <MetricCard
+                label="ACCURACY"
+                variant="noteMatching"
+                value={
+                  liveAudioFrame && liveAudioFrame.pitch > 0
+                    ? `${Math.round(liveAccuracy)}%`
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="STABILITY"
+                variant="noteMatching"
+                value={
+                  liveFrequencies.length >= 2
+                    ? `${Math.round(liveStability)}%`
+                    : '--'
+                }
+              />
+              <MetricCard
+                label="FREQUENCY"
+                variant="noteMatching"
+                value={
+                  liveAudioFrame && liveAudioFrame.pitch > 0
                     ? `${Math.round(liveAudioFrame.pitch)} Hz`
-                    : 'Waiting for voice'}
-                </Text>
-              </View>
+                    : '-- Hz'
+                }
+              />
             </View>
-
-            <ExerciseLivePitchIndicator
-              targetNote={targetNote.name}
-              targetFrequency={targetNote.frequency}
-              detectedNote={liveAudioFrame && liveAudioFrame.pitch > 0 ? liveAudioFrame.note : null}
-              detectedFrequency={liveAudioFrame && Number.isFinite(liveAudioFrame.pitch) && liveAudioFrame.pitch > 0 ? liveAudioFrame.pitch : null}
-            />
-
-            <View style={exerciseStyles.liveSectionDivider} />
-
-            <LiveStabilityIndicator
-              stability={liveStability}
-              hasPitch={liveFrequencies.length >= 2}
-            />
-
-            <View style={exerciseStyles.liveStatsVariant2}>
-              <View style={exerciseStyles.recordingHeader}>
-                <View style={exerciseStyles.liveStatHeading}>
-                  <Text style={exerciseStyles.guideText}>ACCURACY</Text>
-                </View>
-                <Text style={exerciseStyles.liveStatValueVariant3}>
-                  {Math.round(liveAccuracy)}%
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.liveStatsDivider} />
-
-              <View style={exerciseStyles.recordingHeader}>
-                <View style={exerciseStyles.liveStatHeading}>
-                  <Text style={exerciseStyles.guideText}>STABILITY</Text>
-                </View>
-                <Text style={exerciseStyles.liveStatValueVariant3}>
-                  {Math.round(liveStability)}%
-                </Text>
-              </View>
-            </View>
-          </View>
+          </ExerciseLivePitchIndicator>
 
           <View style={exerciseStyles.progressContainer}>
             <View style={exerciseStyles.progressTrackVariant6}>
@@ -1350,10 +1309,6 @@ export default function SustainedNoteStabilityScreen({
                 ]}
               />
             </View>
-
-            <Text style={exerciseStyles.targetIntervalText}>
-              {(elapsedMs / 1000).toFixed(1)}s / {params.durationSec}s
-            </Text>
           </View>
         </ScrollView>
         {quitModal}
@@ -1497,71 +1452,6 @@ export default function SustainedNoteStabilityScreen({
 
 
 
-
-function LiveStabilityIndicator({
-  stability,
-  hasPitch,
-}: {
-  stability: number;
-  hasPitch: boolean;
-}) {
-  const safeStability = Number.isFinite(stability)
-    ? Math.max(0, Math.min(100, stability))
-    : 0;
-
-  const status = !hasPitch
-    ? 'WAITING'
-    : safeStability >= 80
-      ? 'STEADY'
-      : safeStability >= 60
-        ? 'MODERATE'
-        : 'UNSTEADY';
-
-  const statusColor = !hasPitch
-    ? COLORS.pink
-    : safeStability >= 80
-      ? COLORS.guideGreen
-      : safeStability >= 60
-        ? COLORS.guideYellow
-        : COLORS.guideRed;
-
-  return (
-    <View style={exerciseStyles.form_Login_login}>
-          <Text style={exerciseStyles.infoName}>
-            Pitch Stability
-          </Text>
-
-      <View style={exerciseStyles.stabilityTrackVariant1}>
-        <View
-          style={[
-            exerciseStyles.stabilityFillVariant1,
-            {
-              width: hasPitch ? `${safeStability}%` : '0%',
-              backgroundColor: statusColor,
-            },
-          ]}
-        />
-      </View>
-
-      <View style={exerciseStyles.stabilityFooter}>
-        <Text style={exerciseStyles.scaleText}>
-          Less steady
-        </Text>
-        <Text
-          style={[
-            exerciseStyles.stabilityStatus,
-            { color: statusColor },
-          ]}
-        >
-          {status}
-        </Text>
-        <Text style={exerciseStyles.scaleText}>
-          More steady
-        </Text>
-      </View>
-    </View>
-  );
-}
 
 function QuitExerciseModal({
   visible,

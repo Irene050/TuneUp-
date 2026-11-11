@@ -1,14 +1,14 @@
+import { ExerciseQuitModal } from '@/components/ExerciseModals';
+import { COLORS, VOLUME_DBFS_MIN } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
+import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, VOLUME_DBFS_MIN } from '@/constants/appConstants';
-import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
-import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { ExerciseQuitModal } from '@/components/exercises/ExerciseModals';
-import { usePhaseState } from '@/hooks/usePhaseState';
 
 type Phase = 'ready' | 'exercise';
 
@@ -20,7 +20,6 @@ export default function BreathControlFreeModeScreen() {
   const horizontalPadding = Math.min(22, width * 0.055);
 
   const { phase, setPhase } = usePhaseState<Phase>('ready');
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -80,7 +79,6 @@ export default function BreathControlFreeModeScreen() {
   }, [stopRecording]);
 
   const resetExercise = useCallback(() => {
-    setElapsedSeconds(0);
     setVolumeDb(-100);
     setFlowHistory(Array(FLOW_HISTORY_BAR_COUNT).fill(0));
   }, []);
@@ -321,28 +319,6 @@ export default function BreathControlFreeModeScreen() {
     };
   }, [waitForStartAndStop]);
 
-  useEffect(() => {
-    if (phase !== 'exercise' || recordingStopRequestedRef.current) {
-      return;
-    }
-
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      setElapsedSeconds(
-        Math.floor((Date.now() - startedAt) / 1000),
-      );
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  const formattedTime = useMemo(() => {
-    const minutes = Math.floor(elapsedSeconds / 60);
-    const seconds = elapsedSeconds % 60;
-
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  }, [elapsedSeconds]);
-
   const renderHeader = (onBack: () => void) => (
     <View
       style={[
@@ -550,17 +526,6 @@ export default function BreathControlFreeModeScreen() {
               </Text>
             </View>
 
-            <View style={exerciseStyles.timeBadge}>
-              <Ionicons
-                name="time-outline"
-                size={16}
-                color={COLORS.accent}
-              />
-
-              <Text style={exerciseStyles.timeText}>
-                {formattedTime}
-              </Text>
-            </View>
           </View>
 
           <View style={exerciseStyles.liveCardVariant6}>

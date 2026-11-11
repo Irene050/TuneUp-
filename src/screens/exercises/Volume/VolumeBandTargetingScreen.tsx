@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
   VOLUME_BAND_TARGETING_PARAMS,
   type Tier,
@@ -14,10 +13,10 @@ import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
   ExerciseCountdownScreen,
-  ExerciseListeningScreen,
   ExercisePreparingScreen,
   ExerciseProcessingScreen,
   ExerciseResultsScreen,
@@ -51,7 +50,7 @@ import { clamp } from '@/utils/math';
 import {
   ExerciseNoAudioModal,
   ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+} from '@/components/ExerciseModals';
 
 const DEFAULT_TIER: Tier = 'beginner';
 const HISTORY_LIMIT = 60;
@@ -1358,7 +1357,7 @@ export default function VolumeBandTargeting({
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [phase, countdown, showQuitModal, currentRep]);
+  }, [phase, countdown, showQuitModal, currentRep, setPhase]);
 
   const currentRepElapsed = elapsedMs;
   const progress = clamp(currentRepElapsed / repDurationMs, 0, 1);
@@ -1467,7 +1466,7 @@ export default function VolumeBandTargeting({
             tip="Don't chase the number. Find a comfortable loudness first, then make small adjustments to stay inside the band."
             tier={resolvedTier}
             onBack={pauseForExitPrompt}
-            onStart={() => setPhase('listening')}
+            onStart={startExercise}
             startDisabled={startDisabled}
             startLabel={
               isRecording
@@ -1546,43 +1545,6 @@ export default function VolumeBandTargeting({
               </Text>
             </View>
           </ExerciseScreen>
-        </SafeAreaView>
-      </>
-    );
-  }
-
-  if (phase === 'listening') {
-    return (
-      <>
-        {quitModal}
-        <SafeAreaView style={exerciseStyles.screen}>
-          <ExerciseListeningScreen
-            icon="musical-note-outline"
-            title="Volume Band Targeting"
-            currentRep={1}
-            repetitions={params.repetitions}
-            promptTitle="Listen to the Reference"
-            prompt={`Listen to the ${referenceNote.name} note before singing.`}
-            isPlayingReference={referencePlaying}
-            onPlayReference={() => void playReferenceNote()}
-            onContinue={startExercise}
-            onBack={pauseForExitPrompt}
-            errorMessage={referencePlaybackError ?? undefined}
-            liveContent={
-              <>
-                <View style={exerciseStyles.referenceCardVariant3}>
-                  <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-                  <Text style={exerciseStyles.referenceNote}>
-                    {referenceNote.name}
-                  </Text>
-                </View>
-                <TargetBandMeter
-                  liveDb={0}
-                  targetRange={params.targetDbRange}
-                />
-              </>
-            }
-          />
         </SafeAreaView>
       </>
     );

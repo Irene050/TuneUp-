@@ -265,16 +265,6 @@ export const exerciseStyles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
   },
-  assessmentCompletionClose: {
-    alignSelf: 'flex-end',
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -12,
-    marginRight: -12,
-    marginBottom: 4,
-  },
   assessmentBackgroundActions: {
     width: '100%',
     alignItems: 'center',
@@ -2253,6 +2243,11 @@ export const exerciseStyles = StyleSheet.create({
   rangeText_Dashboard: {
     ...textStyleBases.boldBrownText,
     fontSize: 25,
+  },
+  voiceClassificationDashboard: {
+    ...textStyleBases.semiBoldBrownText,
+    fontSize: 15,
+    marginTop: 1,
   },
   comparisonFrequency: {
     ...textStyleBases.regularMutedText,
@@ -5275,6 +5270,7 @@ export const exerciseStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 20,
+    marginBottom: 12,
   },
   intervalProgressNote: {
     minWidth: 70,
@@ -5846,8 +5842,9 @@ export const exerciseStyles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 7,
-    marginTop: 18,
+    marginTop: 12,
     maxWidth: 350,
+    marginBottom: 12,
   },
   previewNote: {
     minWidth: 60,

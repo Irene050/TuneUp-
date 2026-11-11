@@ -1,59 +1,59 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, Pressable, Text, View } from 'react-native';
 
-import { usePhaseState } from '@/hooks/usePhaseState';
 import {
-  type DiaphragmaticBreathingParams,
-  type Tier,
+    type DiaphragmaticBreathingParams,
+    type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureDiaphragmaticBreathing,
-  type DiaphragmaticBreathingMeasurement,
+    measureDiaphragmaticBreathing,
+    type DiaphragmaticBreathingMeasurement,
 } from '@/services/measurement/breathControl/diaphragmaticBreathing';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreDiaphragmaticBreathing,
-  type DiaphragmaticBreathingScoreResult,
+    scoreDiaphragmaticBreathing,
+    type DiaphragmaticBreathingScoreResult,
 } from '@/services/scoring/breathControl/diaphragmaticBreathing';
 
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  Metric,
-  ResultStat,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    Metric,
+    ResultStat,
 } from '../ExerciseScreen';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  getLiveVoiceDetection,
-  hasSufficientRecordedSignal,
+    getLiveVoiceDetection,
+    hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
 
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/exercises/ExerciseModals';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
 
 
