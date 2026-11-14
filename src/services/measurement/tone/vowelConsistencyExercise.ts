@@ -89,15 +89,6 @@ export function measureVowelConsistency(
       ? calcCentroidStdSmoothness(centroidOverTime)
       : 0;
 
-  console.log('🎤 VOWEL MEASUREMENT DEBUG:', {
-    inputFrameCount: fftFrames.length,
-    validFrameCount: centroidOverTime.length,
-    rejectedInvalidFrames,
-    rejectedLowEnergyFrames,
-    averageCentroidHz,
-    smoothnessPct,
-  });
-
   return {
     centroidOverTime,
     averageCentroidHz,

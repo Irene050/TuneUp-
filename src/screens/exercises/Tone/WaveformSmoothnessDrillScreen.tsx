@@ -1,75 +1,75 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, Text, View } from 'react-native';
 
 import {
-    type Tier,
-    WAVEFORM_SMOOTHNESS_PARAMS,
-    type WaveformSmoothnessParams,
+  type Tier,
+  WAVEFORM_SMOOTHNESS_PARAMS,
+  type WaveformSmoothnessParams,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-    generateWaveformSmoothnessParams,
+  generateWaveformSmoothnessParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureWaveformSmoothness,
-    type WaveformSmoothnessMeasurement,
+  measureWaveformSmoothness,
+  type WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import {
-    saveCompletedExercise,
+  saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreWaveformSmoothnessDrill,
-    type WaveformSmoothnessScoreResult,
+  scoreWaveformSmoothnessDrill,
+  type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
 import {
-    samplesToFFTFrames,
+  samplesToFFTFrames,
 } from '@/utils/dsp/fft';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    frequencyToNoteName,
-    getRandomPitchNote,
-    getSemitoneDistance,
-    type VocalRange,
+  frequencyToNoteName,
+  getRandomPitchNote,
+  getSemitoneDistance,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -78,8 +78,8 @@ import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 interface Props {
@@ -254,10 +254,6 @@ function RecordingScreen({
         </LiveToneMonitorCard>
 
         <View style={exerciseStyles.recordingProgressSection}>
-          <View style={exerciseStyles.recordingProgressLabels}>
-            <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
-          </View>
-
           <View style={exerciseStyles.progressTrackVariant1}>
             <View
               style={[

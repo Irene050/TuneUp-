@@ -37,7 +37,6 @@ import {
 
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
 import { average, clampPercentage } from '@/utils/math';
-import { sleep } from '@/utils/async';
 
 export type ComponentId =
   | 'breathControl'
@@ -298,15 +297,6 @@ export function measureBreathControl(
 
   const score = clampPercentage(finalScore);
 
-  console.log('🌬️ BREATH CONTROL ASSESSMENT:', {
-    durationSeconds: Number(durationSeconds.toFixed(2)),
-    targetDurationSec,
-    durationScore,
-    rawConsistency: consistencyScore,
-    consistencyScore: Math.round(consistencyScore),
-    finalScore: score,
-  });
-
   return score;
 }
 
@@ -328,7 +318,6 @@ function measurePitch(
   try {
     frames = trackPitchOverTime(samples, 30, sampleRate);
   } catch (error) {
-    console.error('❌ Pitch tracking failed:', error);
     return 0;
   }
 
@@ -349,10 +338,6 @@ function measurePitch(
   );
 
   if (validFrames.length < 8) {
-    console.warn(
-      '⚠️ Pitch assessment: insufficient valid frames.',
-      { validFrameCount: validFrames.length },
-    );
     return 0;
   }
 
@@ -378,18 +363,6 @@ function measurePitch(
     clarityScore * 0.08;
 
   const score = clampPercentage(finalScore);
-
-  console.log('🎵 PITCH ASSESSMENT BREAKDOWN:', {
-    targetFrequency: Number(targetFrequency.toFixed(2)),
-    validFrames: validFrames.length,
-    averageAccuracy: Math.round(accuracy),
-    stability,
-    clarityScore,
-    weightedAccuracy: Math.round(accuracy * 0.80),
-    weightedStability: Math.round(stability * 0.12),
-    weightedClarity: Math.round(clarityScore * 0.08),
-    finalScore: score,
-  });
 
   return score;
 }
@@ -441,7 +414,6 @@ function measureTone(
     try {
       magnitudes = computeFFTMagnitudes(fftFrame);
     } catch (error) {
-      console.warn('⚠️ Tone FFT frame failed:', error);
       continue;
     }
 
@@ -458,10 +430,6 @@ function measureTone(
         fftSize,
       );
     } catch (error) {
-      console.warn(
-        '⚠️ Spectral centroid calculation failed:',
-        error,
-      );
       continue;
     }
 
@@ -479,7 +447,6 @@ function measureTone(
   try {
     smoothness = calcCentroidStdSmoothness(centroids);
   } catch (error) {
-    console.warn('⚠️ Tone smoothness calculation failed:', error);
     return 0;
   }
 
@@ -626,18 +593,6 @@ function measureVolume(
       patternScore * 0.30,
   );
 
-  console.log('Volume assessment diagnostics:', {
-    totalWindows: rmsValues.length,
-    activeWindows: activeDbValues.length,
-    derivativeSmoothness: Math.round(derivativeSmoothness),
-    volumeConsistency: Math.round(volumeConsistency),
-    firstSoft: Number(firstSoft.toFixed(2)),
-    loud: Number(loud.toFixed(2)),
-    finalSoft: Number(finalSoft.toFixed(2)),
-    patternScore: Math.round(patternScore),
-    finalScore,
-  });
-
   return finalScore;
 }
 
@@ -765,12 +720,10 @@ function measureAgility(
       },
     );
   } catch (error) {
-    console.error('❌ Agility pitch tracking failed:', error);
     return 0;
   }
 
   if (frames.length === 0) {
-    console.warn('⚠️ Agility assessment: no usable pitch frames.');
     return 0;
   }
 
@@ -789,7 +742,6 @@ function measureAgility(
   );
 
   if (notesToScore.length === 0) {
-    console.warn('⚠️ Agility assessment: no distinct notes detected.');
     return 0;
   }
 
@@ -919,46 +871,6 @@ function measureAgility(
       withinNoteStability * 0.20 +
       speedScore * 0.20,
   );
-
-  console.log('🎵 AGILITY ASSESSMENT BREAKDOWN', {
-    targetNoteCount: targetNotes.length,
-    detectedDistinctNotes: detectedNotes.length,
-    successfullyScoredNotes: notesToScore.length,
-    patternAccuracy: Math.round(patternAccuracy),
-    withinNoteStability: Math.round(withinNoteStability),
-    detectedTransitions,
-    expectedTransitions,
-    speedScore: Math.round(speedScore),
-    weightedAccuracy: Math.round(patternAccuracy * 0.60),
-    weightedStability: Math.round(withinNoteStability * 0.20),
-    weightedSpeed: Math.round(speedScore * 0.20),
-    finalScore,
-  });
-
-console.log('🎵 AGILITY PER-NOTE ACCURACY', {
-  noteAccuracies: noteAccuracies.map(score =>
-    Math.round(score),
-  ),
-  noteStabilities: noteStabilities.map(score =>
-    Math.round(score),
-  ),
-  detectedNotes: notesToScore.map((note, index) =>
-    note
-      ? {
-          targetIndex: index,
-          targetHz: targetNotes[index],
-          midi: note.midi,
-          timestampMs: Math.round(note.timestampMs),
-        }
-      : {
-          targetIndex: index,
-          targetHz: targetNotes[index],
-          midi: null,
-          timestampMs: null,
-          status: 'No matched note',
-        },
-  ),
-});
 
   return finalScore;
 }
@@ -1184,19 +1096,6 @@ function detectFundamentalByAutocorrelation(
     );
   });
 
-  console.log('[Autocorrelation] Candidate analysis:', {
-    strongestFrequency: Number(
-      strongestCandidate.frequency.toFixed(2),
-    ),
-    strongestCorrelation: Number(
-      strongestCandidate.correlation.toFixed(3),
-    ),
-    octaveAlternatives: octaveAlternatives.map(candidate => ({
-      frequency: Number(candidate.frequency.toFixed(2)),
-      correlation: Number(candidate.correlation.toFixed(3)),
-    })),
-  });
-
   return {
     frequency: strongestCandidate.frequency,
     confidence: strongestCandidate.correlation,
@@ -1313,39 +1212,16 @@ function detectComfortableNote(
   const durationSec = samples.length / sampleRate;
 
   if (durationSec < MIN_NOTE_DURATION_SEC) {
-    console.warn(
-      '⚠️ Comfortable note recording is too short.',
-      {
-        durationSec,
-        requiredMinimum: MIN_NOTE_DURATION_SEC,
-      },
-    );
-
     return null;
   }
 
   const peak = calculatePeak(samples);
   const overallRms = calcRMS(samples);
 
-  console.log('🎙️ RANGE AUDIO SIGNAL:', {
-    durationSec: Number(durationSec.toFixed(3)),
-    rms: Number(overallRms.toFixed(6)),
-    peak: Number(peak.toFixed(6)),
-  });
-
   if (
     !Number.isFinite(overallRms) ||
     overallRms < MIN_VOCAL_RMS
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: microphone signal is too quiet.',
-      {
-        rms: overallRms,
-        peak,
-        requiredMinimumRms: MIN_VOCAL_RMS,
-      },
-    );
-
     return null;
   }
 
@@ -1361,10 +1237,6 @@ function detectComfortableNote(
   }
 
   if (!Array.isArray(pitchyFrames) || pitchyFrames.length === 0) {
-    console.warn(
-      '⚠️ Comfortable note rejected: Pitchy returned no frames.',
-    );
-
     return null;
   }
 
@@ -1388,15 +1260,6 @@ function detectComfortableNote(
   );
 
   if (validPitchyFrames.length < MIN_PITCHY_FRAMES) {
-    console.warn(
-      '⚠️ Comfortable note rejected: insufficient Pitchy evidence.',
-      {
-        pitchyFrames: validPitchyFrames.length,
-        required: MIN_PITCHY_FRAMES,
-        totalPitchyFrames: pitchyFrames.length,
-      },
-    );
-
     return null;
   }
 
@@ -1408,25 +1271,8 @@ function detectComfortableNote(
     pitchyMedian === null ||
     !isValidFrequency(pitchyMedian)
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: no valid Pitchy median.',
-    );
-
     return null;
   }
-
-  console.log('[Range Debug] Pitchy frequency distribution:', {
-  medianHz: Number(pitchyMedian.toFixed(2)),
-  frequencies: pitchyFrequencies.map(frequency =>
-    Number(frequency.toFixed(2)),
-  ),
-});
-
-  console.log('🎵 PITCHY RANGE ESTIMATE:', {
-    median: Number(pitchyMedian.toFixed(2)),
-    validFrames: validPitchyFrames.length,
-    totalFrames: pitchyFrames.length,
-  });
 
   const pitchyCandidates = [
     pitchyMedian / 2,
@@ -1443,26 +1289,10 @@ function detectComfortableNote(
     sampleRate,
   );
 
-  console.log(
-    '🎵 AUTOCORRELATION WINDOWS:',
-    autocorrelationResults.map(result => ({
-      frequency: Number(result.frequency.toFixed(2)),
-      confidence: Number(result.confidence.toFixed(3)),
-    })),
-  );
-
   if (
     autocorrelationResults.length <
     MIN_AUTOCORRELATION_RESULTS
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: not enough independent waveform evidence.',
-      {
-        required: MIN_AUTOCORRELATION_RESULTS,
-        received: autocorrelationResults.length,
-      },
-    );
-
     return null;
   }
 
@@ -1477,13 +1307,6 @@ function detectComfortableNote(
     ) / autocorrelationResults.length;
 
   if (autoConfidence < MIN_AUTOCORRELATION_CONFIDENCE) {
-    console.warn(
-      '⚠️ Comfortable note rejected: autocorrelation confidence is too low.',
-      {
-        autoConfidence: Number(autoConfidence.toFixed(3)),
-      },
-    );
-
     return null;
   }
 
@@ -1519,34 +1342,10 @@ function detectComfortableNote(
 
   const bestCandidate = candidates[0];
 
-  console.log(
-    '🎯 RANGE CANDIDATES:',
-    candidates.map(candidate => ({
-      frequency: Number(candidate.frequency.toFixed(2)),
-      pitchySupport: Number(candidate.pitchySupport.toFixed(2)),
-      autoSupport: Number(candidate.autoSupport.toFixed(2)),
-      evidence: Number(candidate.evidenceScore.toFixed(3)),
-    })),
-  );
-
   if (
     !bestCandidate ||
     bestCandidate.evidenceScore < MIN_RANGE_EVIDENCE_SCORE
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: no candidate has enough combined evidence.',
-      {
-        bestCandidate: bestCandidate
-          ? {
-              frequency: bestCandidate.frequency,
-              evidence: bestCandidate.evidenceScore,
-              pitchySupport: bestCandidate.pitchySupport,
-              autoSupport: bestCandidate.autoSupport,
-            }
-          : null,
-      },
-    );
-
     return null;
   }
 
@@ -1574,10 +1373,6 @@ function detectComfortableNote(
     bestCandidate.frequency;
 
   if (!isValidFrequency(finalFrequency)) {
-    console.warn(
-      '⚠️ Comfortable note rejected: final frequency is invalid.',
-    );
-
     return null;
   }
 
@@ -1597,15 +1392,6 @@ function detectComfortableNote(
     finalAutoSupport < MIN_AUTOCORRELATION_AGREEMENT_RATIO ||
     finalPitchySupport < 0.50
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: final pitch cluster is not sufficiently supported.',
-      {
-        finalFrequency: Number(finalFrequency.toFixed(2)),
-        pitchySupport: Number(finalPitchySupport.toFixed(2)),
-        autoSupport: Number(finalAutoSupport.toFixed(2)),
-      },
-    );
-
     return null;
   }
 
@@ -1613,13 +1399,6 @@ function detectComfortableNote(
     finalFrequency < COMFORTABLE_NOTE_MIN_HZ ||
     finalFrequency > COMFORTABLE_NOTE_MAX_HZ
   ) {
-    console.warn(
-      '⚠️ Comfortable note rejected: final frequency is outside supported range.',
-      {
-        finalFrequency,
-      },
-    );
-
     return null;
   }
 
@@ -1637,36 +1416,10 @@ function detectComfortableNote(
   const pitchyClarity = average(clarityValues);
 
   if (pitchyClarity < PITCHY_MIN_CLARITY) {
-    console.warn(
-      '⚠️ Comfortable note rejected: Pitchy clarity is too low.',
-      {
-        pitchyClarity: Number(pitchyClarity.toFixed(3)),
-      },
-    );
-
     return null;
   }
 
   const stabilityPct = clampPercentage(finalPitchySupport * 100);
-
-  console.log('🎵 COMFORTABLE NOTE ANALYSIS:', {
-    durationSec: Number(durationSec.toFixed(2)),
-    finalFrequency: Number(finalFrequency.toFixed(2)),
-    finalNoteCandidate: Number(bestCandidate.frequency.toFixed(2)),
-    pitchyMedian: Number(pitchyMedian.toFixed(2)),
-    pitchyFrames: validPitchyFrames.length,
-    selectedPitchyFrames: selectedPitchyFrequencies.length,
-    autocorrelationFrequencies: autoFrequencies.map(
-      frequency => Number(frequency.toFixed(2)),
-    ),
-    pitchySupport: Number(finalPitchySupport.toFixed(2)),
-    autocorrelationSupport: Number(finalAutoSupport.toFixed(2)),
-    pitchyClarity: Number(pitchyClarity.toFixed(3)),
-    autoConfidence: Number(autoConfidence.toFixed(3)),
-    stabilityPct,
-    rms: Number(overallRms.toFixed(6)),
-    peak: Number(peak.toFixed(6)),
-  });
 
   return {
     frequency: finalFrequency,
@@ -1700,9 +1453,6 @@ export function getVocalRange(
     audio.sampleRate,
   );
 
-  console.log('🎵 LOWEST COMFORTABLE NOTE:', low);
-  console.log('🎵 HIGHEST COMFORTABLE NOTE:', high);
-
   if (!low || !high) {
     throw new Error(
       'We could not detect both comfortable notes accurately. Please sing each note steadily for the full recording and keep the same pitch without changing notes.',
@@ -1710,15 +1460,6 @@ export function getVocalRange(
   }
 
   if (low.frequency >= high.frequency) {
-    console.warn('⚠️ Invalid vocal range ordering:', {
-      lowHz: low.frequency,
-      highHz: high.frequency,
-      differenceCents: centsDifference(
-        high.frequency,
-        low.frequency,
-      ),
-    });
-
     throw new Error(
       'The highest comfortable note must be above the lowest comfortable note. Please make the second recording clearly higher than the first.',
     );
@@ -1727,11 +1468,6 @@ export function getVocalRange(
   const semitoneSpan = getSemitoneDistance(
     high.frequency,
     low.frequency,
-  );
-
-  console.log(
-    '🎵 Vocal range semitone span:',
-    Number(semitoneSpan.toFixed(2)),
   );
 
   if (!Number.isFinite(semitoneSpan) || semitoneSpan < 3) {
@@ -1772,23 +1508,12 @@ function safeMetric(
   try {
     const score = calculate();
 
-    console.log(
-      `⏱️ ${name} scoring time: ${Date.now() - startedAt} ms`,
-    );
-
     if (!Number.isFinite(score)) {
-      console.warn(`⚠️ ${name} returned an invalid score.`);
       return 0;
     }
 
     return clampPercentage(score);
   } catch (error) {
-    console.error(`❌ ${name} assessment failed:`, error);
-
-    console.log(
-      `⏱️ ${name} failed after ${Date.now() - startedAt} ms`,
-    );
-
     return 0;
   }
 }
@@ -1807,43 +1532,12 @@ export async function runAssessment(
     throw new Error('Invalid audio sample rate.');
   }
 
-  console.log('🧪 Assessment sample rate:', audio.sampleRate);
-  console.log('🧪 Breath Control samples:', audio.breathSamples.length);
-  console.log('🧪 Pitch samples:', audio.pitchSamples.length);
-  console.log('🧪 Tone samples:', audio.toneSamples.length);
-  console.log('🧪 Volume samples:', audio.volumeSamples.length);
-  console.log('🧪 Agility samples:', audio.agilitySamples.length);
-  console.log(
-    '🧪 Low-note samples:',
-    audio.lowestComfortableNoteSamples.length,
-  );
-  console.log(
-    '🧪 High-note samples:',
-    audio.highestComfortableNoteSamples.length,
-  );
-
-  console.log('🧪 Detecting vocal range first...');
-
   const vocalRange = precomputedRange ?? getVocalRange(audio);
-
-  console.log(
-    '🧪 Vocal range:',
-    vocalRange.lowHz,
-    '-',
-    vocalRange.highHz,
-  );
 
   const targetNotes = computeTargetNotes(
     vocalRange.lowHz,
     vocalRange.highHz,
   );
-
-  console.log('🎯 Generated assessment targets:', {
-    rootHz: Number(targetNotes.rootHz.toFixed(2)),
-    agilityRun: targetNotes.agilityRun.map(
-      frequency => Number(frequency.toFixed(2)),
-    ),
-  });
 
   const breathScore = safeMetric(
     'Breath control',
@@ -1948,6 +1642,5 @@ export function compareAssessments(
     result[currentScore.componentId] =
       currentScore.scorePct - previousScore.scorePct;
   }
-
   return result;
 }

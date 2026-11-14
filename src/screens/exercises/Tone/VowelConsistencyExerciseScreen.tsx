@@ -1,59 +1,59 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
-    type Tier,
-    VOWEL_CONSISTENCY_PARAMS,
-    type VowelConsistencyParams,
+  type Tier,
+  VOWEL_CONSISTENCY_PARAMS,
+  type VowelConsistencyParams,
 } from '@/constants/params';
 import {
-    type LiveAudioFrame,
-    useAudioRecorder,
+  type LiveAudioFrame,
+  useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    type ExercisePreparationStep,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    type ExerciseSummaryItem,
+  ExerciseCountdownScreen,
+  type ExercisePreparationStep,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-    generateVowelConsistencyParams,
+  generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-    getLatestAssessment,
+  getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureVowelConsistency,
+  measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 import {
-    saveCompletedExercise,
+  saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreVowelConsistencyExercise,
-    type VowelConsistencyScoreResult,
+  scoreVowelConsistencyExercise,
+  type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -62,8 +62,8 @@ import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 const REST_MS = 1200;
@@ -1162,7 +1162,7 @@ export default function VowelConsistencyExerciseScreen({
               <View style={exerciseStyles.liveDivider} />
 
               <View style={exerciseStyles.liveMetric}>
-                <Text style={exerciseStyles.liveLabelVariant2}>VOICE CLARITY</Text>
+                <Text style={exerciseStyles.liveLabelVariant2}>CLARITY</Text>
                 <Text style={exerciseStyles.liveValueVariant1}>
                   {voiceClarity}
                 </Text>
@@ -1174,10 +1174,6 @@ export default function VowelConsistencyExerciseScreen({
           </LiveToneMonitorCard>
 
           <View style={exerciseStyles.recordingProgressSection}>
-            <View style={exerciseStyles.recordingProgressLabels}>
-              <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
-            </View>
-
             <View
               style={exerciseStyles.progressTrackVariant1}
               accessibilityRole="progressbar"

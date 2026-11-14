@@ -1,4 +1,3 @@
-
 import type { IntervalRecognitionParams } from '@/constants/params';
 import type { IntervalRecognitionMeasurement } from '@/services/measurement/pitch/intervalRecognitionTask';
 
@@ -111,17 +110,6 @@ export function scoreIntervalRecognitionTask(
     score >= 85;
 
   const firstAttempt = validAttempts[0];
-
-  console.log('🎵 INTERVAL RECOGNITION SCORE DEBUG:', {
-    targetRatio,
-    detectedRatios: validAttempts.map(a => a.detectedRatio),
-    deviationsPct: scoredAttemptResults.map(r => r.deviationPct),
-    repetitionScores,
-    requestedRepetitions,
-    repetitionsCompleted: validAttempts.length,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score,

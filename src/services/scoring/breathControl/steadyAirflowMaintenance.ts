@@ -51,15 +51,6 @@ export function scoreSteadyAirflow(
     stabilityScore >= params.stabilityThreshold &&
     score >= 75;
 
-  console.log('🌬️ STEADY AIRFLOW SCORE DEBUG:', {
-    actualDurationSec: measurement.durationSec,
-    targetDurationSec: params.durationSec,
-    durationScore,
-    stabilityScore,
-    finalScore: score,
-    passed,
-  });
-
   return {
     score,
     passed,

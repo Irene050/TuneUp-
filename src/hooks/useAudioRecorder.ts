@@ -30,22 +30,6 @@ const OCTAVE_JUMP_CENTS = 1200;
 const OCTAVE_TOLERANCE_CENTS = 100;
 const OCTAVE_CONFIRMATION_FRAMES = 3;
 
-function centsBetween(
-  frequencyA: number,
-  frequencyB: number,
-): number {
-  if (
-    !Number.isFinite(frequencyA) ||
-    !Number.isFinite(frequencyB) ||
-    frequencyA <= 0 ||
-    frequencyB <= 0
-  ) {
-    return Infinity;
-  }
-
-  return 1200 * Math.log2(frequencyA / frequencyB);
-}
-
 interface UseAudioRecorderOptions {
   analyzePitch?: boolean;
   onFrame?: (frame: LiveAudioFrame) => void;
@@ -62,6 +46,28 @@ export interface LiveAudioFrame {
   volume: number;
   samples: Float32Array;
   sampleRate: number;
+}
+
+interface LiveSignalMetrics {
+  rms: number;
+  db: number;
+  peak: number;
+}
+
+function centsBetween(
+  frequencyA: number,
+  frequencyB: number,
+): number {
+  if (
+    !Number.isFinite(frequencyA) ||
+    !Number.isFinite(frequencyB) ||
+    frequencyA <= 0 ||
+    frequencyB <= 0
+  ) {
+    return Infinity;
+  }
+
+  return 1200 * Math.log2(frequencyA / frequencyB);
 }
 
 function calculatePeak(samples: Float32Array): number {
@@ -94,12 +100,6 @@ function calculateDCOffset(samples: Float32Array): number {
   }
 
   return count > 0 ? sum / count : 0;
-}
-
-interface LiveSignalMetrics {
-  rms: number;
-  db: number;
-  peak: number;
 }
 
 function analyzeLiveSignal(
@@ -703,11 +703,6 @@ export function useAudioRecorder(
       return stopTaskRef.current;
     }
 
-    console.log(
-      '[AudioRecorder] ⏹️ RECORDER STOPPING',
-      new Date().toISOString(),
-    );
-
     let stopTask: Promise<void>;
 
     stopTask = Promise.resolve().then(async () => {
@@ -794,33 +789,6 @@ export function useAudioRecorder(
           fullBuffer.set(chunk, offset);
           offset += chunk.length;
         }
-
-        const finalSignal = analyzeAudioSignal(
-          fullBuffer,
-          DEFAULT_SAMPLE_RATE,
-        );
-
-        const durationSeconds =
-          fullBuffer.length / DEFAULT_SAMPLE_RATE;
-
-        console.log(
-          'Recording summary',
-          {
-            sampleRate: DEFAULT_SAMPLE_RATE,
-            durationSeconds: Number(
-              durationSeconds.toFixed(2),
-            ),
-            sampleCount: fullBuffer.length,
-            rms: Number(finalSignal.rms.toFixed(4)),
-            volumeDb: Number.isFinite(finalSignal.db)
-              ? Number(finalSignal.db.toFixed(2))
-              : finalSignal.db,
-            peak: Number(finalSignal.peak.toFixed(4)),
-            dcOffset: Number(
-              finalSignal.dcOffset.toFixed(4),
-            ),
-          },
-        );
 
         try {
           onStopRef.current?.(

@@ -1,9 +1,9 @@
 import type {
-    FrequencyZoneStabilityParams,
+  FrequencyZoneStabilityParams,
 } from '@/constants/params';
 
 import type {
-    FrequencyZoneStabilityMeasurement,
+  FrequencyZoneStabilityMeasurement,
 } from '@/services/measurement/tone/frequencyZoneStability';
 import { clampScore } from '@/utils/math';
 
@@ -66,24 +66,6 @@ export function scoreFrequencyZoneStability(
     enoughDuration &&
     stableEnough &&
     score >= 60;
-
-  console.log(
-    '🎯 FREQUENCY ZONE STABILITY SCORE DEBUG:',
-    {
-      stabilityScore,
-      coverageScore,
-      durationScore,
-      stabilityWeight: 0.7,
-      coverageWeight: 0.2,
-      durationWeight: 0.1,
-      requiredStability,
-      enoughPitchData,
-      enoughCoverage,
-      enoughDuration,
-      finalScore: score,
-      passed,
-    },
-  );
 
   return {
     score,

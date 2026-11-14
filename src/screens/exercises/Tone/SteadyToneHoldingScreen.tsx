@@ -1,55 +1,55 @@
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { Alert, BackHandler, Text, View } from 'react-native';
 
 import {
-    STEADY_TONE_HOLDING_PARAMS,
-    type SteadyToneHoldingParams,
-    type Tier,
+  STEADY_TONE_HOLDING_PARAMS,
+  type SteadyToneHoldingParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExerciseCountdownScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-    measureSteadyToneHolding,
-    type SteadyToneHoldingMeasurement,
+  measureSteadyToneHolding,
+  type SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-    scoreSteadyToneHolding,
-    type SteadyToneHoldingScoreResult,
+  scoreSteadyToneHolding,
+  type SteadyToneHoldingScoreResult,
 } from '@/services/scoring/tone/steadyToneHolding';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -58,8 +58,8 @@ import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 
@@ -221,7 +221,7 @@ function RecordingScreen({
             <View style={exerciseStyles.liveDivider} />
 
             <View style={exerciseStyles.liveMetric}>
-              <Text style={exerciseStyles.liveLabelVariant4}>VOICE CLARITY</Text>
+              <Text style={exerciseStyles.liveLabelVariant4}>CLARITY</Text>
               <Text style={exerciseStyles.liveValueVariant1}>
                 {clarity !== null
                   ? `${Math.round(clarity)}%`
@@ -237,10 +237,6 @@ function RecordingScreen({
         </LiveToneMonitorCard>
 
         <View style={exerciseStyles.recordingProgressSectionVariant2}>
-          <View style={exerciseStyles.recordingProgressLabels}>
-            <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
-          </View>
-
           <View
             style={exerciseStyles.progressTrackVariant1}
             accessibilityRole="progressbar"

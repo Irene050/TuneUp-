@@ -284,26 +284,6 @@ export function measureDynamicRange(
     value => value > ACTIVE_VOICE_FLOOR_DBFS,
   );
 
-  console.log(
-    '[DynamicRange] Measurement summary',
-    {
-      actualRecordingDurationSeconds,
-      expectedDurationSeconds,
-      repetitionDurationSeconds,
-      availableWindowCount: allDbValues.length,
-      analyzedWindowCount: analyzedDbValues.length,
-      requestedRepetitions,
-      completedRepetitions: firstValues.length,
-      incompleteRepetitionCount,
-      firstPhaseAverage,
-      middlePhaseAverage,
-      finalPhaseAverage,
-      rangeAccuracy,
-      rampConsistency,
-      overallMeasurementQuality,
-    },
-  );
-
   return {
     dbValues: analyzedDbValues,
     rangeMin: activeDbValues.length

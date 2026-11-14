@@ -4,26 +4,26 @@ import { BackHandler, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
 import {
-    AUDIO_SAMPLE_RATE,
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
+  AUDIO_SAMPLE_RATE,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseRecordingScreen,
-    ExerciseResultsScreen,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseRecordingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -31,22 +31,22 @@ import { auth } from '@/services/firebase/config';
 import { measureVocalRunAccuracy } from '@/services/measurement/agility/vocalRunAccuracyTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 import {
-    AGILITY_NOTE_START_DELAY_MS,
-    getActiveSequenceNoteIndex,
+  AGILITY_NOTE_START_DELAY_MS,
+  getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 type Phase =
@@ -250,8 +250,6 @@ export default function VocalRunAccuracyTaskScreen() {
   >(null);
 
   const setExercisePhase = useCallback((next: Phase) => {
-    console.log(`[VocalRun] Phase: ${phaseRef.current} -> ${next}`);
-
     phaseRef.current = next;
     setPhase(next);
   }, []);
@@ -299,12 +297,6 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const handleAudioRecordingStop = useCallback(
     (samples: Float32Array, sampleRate: number) => {
-      console.log('[VocalRun] Shared recorder stopped:', {
-        sampleCount: samples.length,
-        sampleRate,
-        durationSeconds:
-          sampleRate > 0 ? samples.length / sampleRate : 0,
-      });
 
       if (
         !mountedRef.current ||
@@ -312,9 +304,6 @@ export default function VocalRunAccuracyTaskScreen() {
         showQuitModalRef.current ||
         quitInProgressRef.current
       ) {
-        console.log(
-          '[VocalRun] Ignoring stopped recording because exercise is paused or exiting.',
-        );
         return;
       }
 
@@ -562,15 +551,6 @@ export default function VocalRunAccuracyTaskScreen() {
       });
 
       if (!cancelled) {
-        console.log('[VocalRun] Adaptive parameters loaded:', {
-          tier,
-          hasVocalRange: isValidVocalRange(vocalRange),
-          noteCount: generated.frequencies.length,
-          repetitions: generated.repetitions,
-          noteDurationSec: generated.noteDurationSec,
-          gapSec: generated.gapSec,
-        });
-
         setConfig(generated);
         setIsLoadingParams(false);
       }
@@ -847,21 +827,6 @@ export default function VocalRunAccuracyTaskScreen() {
           config.frequencies,
         );
 
-        console.log('[VocalRun] Measurement:', {
-          sampleCount: samples.length,
-          sampleRate,
-          durationSeconds: samples.length / sampleRate,
-          targetNotes: measurement.targetNotes,
-          detectedNotes: measurement.detectedNotes,
-          pitchAccuracy: measurement.pitchAccuracy,
-          sequenceAccuracy: measurement.sequenceAccuracy,
-          noteCount: measurement.noteCount,
-          correctNoteCount: measurement.correctNoteCount,
-          transitionCount: measurement.transitionCount,
-          correctTransitionCount:
-            measurement.correctTransitionCount,
-        });
-
         if (
           !mountedRef.current ||
           runId !== exerciseRunIdRef.current ||
@@ -1050,8 +1015,6 @@ export default function VocalRunAccuracyTaskScreen() {
 
       setExercisePhase('recording');
 
-      console.log('[VocalRun] Starting shared audio recorder.');
-
       await startAudioRecording();
 
       if (
@@ -1061,17 +1024,11 @@ export default function VocalRunAccuracyTaskScreen() {
         quitInProgressRef.current ||
         runId !== exerciseRunIdRef.current
       ) {
-        console.log(
-          '[VocalRun] Recording start completed after cancellation. Discarding it.',
-        );
-
         await cancelActiveRecording();
         return;
       }
 
       recordingStartedAtRef.current = Date.now();
-
-      console.log('[VocalRun] Recording started successfully.');
 
       recordingTimerRef.current = setInterval(() => {
         const started = recordingStartedAtRef.current;
@@ -1104,10 +1061,6 @@ export default function VocalRunAccuracyTaskScreen() {
           recordingStartedAtRef.current = null;
 
           setExercisePhase('processing');
-
-          console.log(
-            '[VocalRun] Recording duration reached. Stopping recorder.',
-          );
 
           void stopActiveRecording();
         }

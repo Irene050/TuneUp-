@@ -516,13 +516,6 @@ export default function QuickIntervalJumpScreen() {
           offset += chunk.length;
         }
 
-        console.log('[Quick Interval Jump] Combined recording:', {
-          repetitions: audioChunks.length,
-          totalSamples,
-          sampleRate,
-          durationSeconds: totalSamples / sampleRate,
-        });
-
         if (!hasSufficientRecordedSignal(combinedSamples)) {
           setExercisePhase('listening');
           setShowNoAudioModal(true);
@@ -563,15 +556,6 @@ export default function QuickIntervalJumpScreen() {
             finalScore,
           );
 
-          console.log(
-            'Quick Interval Jump progress save call completed:',
-            {
-              componentId: 'agility',
-              templateId: 'quickIntervalJump',
-              tier,
-              scorePct: finalScore,
-            },
-          );
         } catch (errorMessage) {
           console.error(
             'Failed to save Quick Interval Jump progress:',
@@ -637,13 +621,6 @@ export default function QuickIntervalJumpScreen() {
       if (phaseRef.current !== 'recording') {
         return;
       }
-
-      console.log('[Quick Interval Jump] Repetition recording stopped:', {
-        repetition: currentRep,
-        sampleCount: samples.length,
-        sampleRate,
-        durationSeconds: samples.length / sampleRate,
-      });
 
       if (!hasSufficientRecordedSignal(samples)) {
         setExercisePhase('listening');

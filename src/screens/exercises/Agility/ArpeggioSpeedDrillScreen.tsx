@@ -394,15 +394,6 @@ const expectedNote =
       setLivePitchHz(null);
 
       try {
-        console.log('[Arpeggio Speed Drill] Recording received:', {
-          sampleRate,
-          sampleCount: samples.length,
-          durationSeconds: Number(
-            (samples.length / sampleRate).toFixed(2),
-          ),
-          repetition: currentRep,
-        });
-
         if (!hasSufficientRecordedSignal(samples)) {
           processingRef.current = false;
 
@@ -445,11 +436,6 @@ const expectedNote =
 
         attemptResultsRef.current = completedAttempts;
 
-        console.log(
-          `Arpeggio Speed Drill repetition ${currentRep}/${repetitionCount} completed:`,
-          repetitionResult,
-        );
-
         if (currentRep < repetitionCount) {
           if (!mountedRef.current) return;
 
@@ -477,11 +463,6 @@ const expectedNote =
             'agility',
             'arpeggioSpeedDrill',
             activeTier,
-            finalResult.overall,
-          );
-
-          console.log(
-            'Arpeggio Speed Drill full-set progress saved:',
             finalResult.overall,
           );
         } catch (saveError) {
@@ -924,16 +905,6 @@ const expectedNote =
 
           if (candidate) {
             arpeggio = candidate;
-
-            console.log(
-              'Using saved vocal range for Arpeggio Speed Drill:',
-              {
-                assessmentId: assessment.id,
-                lowHz,
-                highHz,
-                notes: candidate.notes,
-              },
-            );
 
             break;
           }

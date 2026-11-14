@@ -1,9 +1,9 @@
 import type {
-    WaveformSmoothnessParams,
+  WaveformSmoothnessParams,
 } from '@/constants/params';
 
 import type {
-    WaveformSmoothnessMeasurement,
+  WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import { clampScore } from '@/utils/math';
 
@@ -38,16 +38,6 @@ export function scoreWaveformSmoothnessDrill(
     centroidSmoothnessScore >= requiredThreshold &&
     amplitudeStabilityScore >= requiredThreshold &&
     score >= 60;
-
-  console.log('🎵 WAVEFORM SMOOTHNESS SCORE DEBUG:', {
-    centroidSmoothnessScore,
-    amplitudeStabilityScore,
-    requiredThreshold,
-    centroidWeight: 0.6,
-    amplitudeWeight: 0.4,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score: clampScore(score),

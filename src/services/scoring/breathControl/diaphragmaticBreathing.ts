@@ -51,15 +51,6 @@ export function scoreDiaphragmaticBreathing(
     consistencyScore >= params.consistencyThreshold &&
     score >= 75;
 
-  console.log('🌬️ DIAPHRAGMATIC BREATHING SCORE DEBUG:', {
-    exhaleDurationSec: measurement.exhaleDurationSec,
-    targetExhaleSec: params.exhaleSec,
-    durationScore,
-    consistencyScore,
-    finalScore: score,
-    passed,
-  });
-
   return {
     score,
     passed,

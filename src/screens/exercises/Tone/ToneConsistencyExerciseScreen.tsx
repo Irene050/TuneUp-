@@ -1,18 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, ScrollView, Text, View } from 'react-native';
 
 import type { Tier } from '@/constants/params';
 import {
-    TONE_CONSISTENCY_PARAMS,
-    type ToneConsistencyParams,
+  TONE_CONSISTENCY_PARAMS,
+  type ToneConsistencyParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
@@ -22,36 +22,36 @@ import { auth } from '@/services/firebase/config';
 import { measureToneConsistency } from '@/services/measurement/tone/toneConsistencyExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import {
-    disposeNotePlayer,
-    playSingleNote,
+  disposeNotePlayer,
+  playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-    getRandomPitchNote,
-    type VocalRange,
+  getRandomPitchNote,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
-    MetricCard,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  MetricCard,
 } from '../ExerciseScreen';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_FFT_HOP_SIZE,
-    EXERCISE_FFT_SIZE,
-    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_FFT_HOP_SIZE,
+  EXERCISE_FFT_SIZE,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
@@ -60,8 +60,8 @@ import { clamp } from '@/utils/math';
 import { formatFrequency } from '@/utils/numberFormatting';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 
@@ -1393,8 +1393,7 @@ export default function ToneConsistencyExerciseScreen({
             </View>
 
             <LiveToneMonitorCard>
-
-
+              
               <LiveToneWaveform
                 pitch={liveTone.pitch}
                 volume={liveTone.volume}
@@ -1436,30 +1435,10 @@ export default function ToneConsistencyExerciseScreen({
                   </Text>
                 </View>
 
-                <View style={exerciseStyles.liveDividerVariant1} />
-
-                <View style={exerciseStyles.liveMetricVariant1}>
-                  <Text style={exerciseStyles.liveLabelVariant5}>VOLUME</Text>
-
-                  <Text style={exerciseStyles.liveValueSmall}>
-                    {formatVolume(liveTone.volume)}
-                  </Text>
-
-                  <Text style={exerciseStyles.metricHintVariant2}>
-                    Live level
-                  </Text>
-                </View>
               </View>
             </LiveToneMonitorCard>
 
             <View style={exerciseStyles.recordingProgressSectionVariant3}>
-              <View style={exerciseStyles.repetitionHeader}>
-                <Text style={exerciseStyles.progressLabelVariant1}>
-                  RECORDING
-                </Text>
-
-              </View>
-
               <View
                 style={exerciseStyles.progressTrackVariant7}
                 accessibilityRole="progressbar"

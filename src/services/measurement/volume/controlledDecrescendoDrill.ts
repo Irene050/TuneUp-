@@ -390,50 +390,6 @@ export function measureControlledDecrescendo(
     100,
   );
 
-  console.log(
-    '[ControlledDecrescendo] Per-repetition results',
-    repetitionResults.map((result, index) => ({
-      repetition: index + 1,
-      startDb: result.startDb,
-      endDb: result.endDb,
-      achievedVolumeDecrease: result.decrease,
-      smoothness: result.smoothness,
-      startReached: result.startReached,
-      endReached: result.endReached,
-      directionCorrect: result.directionCorrect,
-      valid: result.valid,
-      validWindowCount: result.values.length,
-    })),
-  );
-
-  console.log(
-    '[ControlledDecrescendo] Measurement summary',
-    {
-      sampleRate,
-      sampleCount: samples.length,
-      actualDurationSeconds:
-        samples.length / sampleRate,
-      windowMs,
-      windowsPerRep,
-      repetitions,
-      expectedWindowCount,
-      availableWindowCount: dbValues.length,
-      validWindowCount,
-      measurementQuality,
-      repSmoothness,
-      smoothness,
-      startDb,
-      endDb,
-      minDb,
-      maxDb,
-      achievedVolumeDecrease,
-      targetStartReached,
-      targetEndReached,
-      targetReached,
-      directionCorrect,
-    },
-  );
-
   return {
     dbValues: effectiveValues,
     repSmoothness,

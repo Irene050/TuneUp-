@@ -1,29 +1,29 @@
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 import {
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_MAX_RECORDING_SECONDS
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_MAX_RECORDING_SECONDS
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-    RAPID_NOTE_TRANSITION_PARAMS,
-    type Tier,
+  RAPID_NOTE_TRANSITION_PARAMS,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExerciseListeningScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseRecordingScreen,
-    ExerciseResultsScreen,
+  ExerciseCountdownScreen,
+  ExerciseListeningScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseRecordingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -35,23 +35,23 @@ import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTr
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clampScore } from '@/utils/math';
 import {
-    AGILITY_NOTE_START_DELAY_MS,
-    disposeNotePlayer,
-    getActiveSequenceNoteIndex,
-    playNoteSequence,
-    type NoteToPlay,
+  AGILITY_NOTE_START_DELAY_MS,
+  disposeNotePlayer,
+  getActiveSequenceNoteIndex,
+  playNoteSequence,
+  type NoteToPlay,
 } from '@/utils/music/notePlayer';
 import {
-    createMusicalNote,
-    frequencyToMidi,
+  createMusicalNote,
+  frequencyToMidi,
 } from '@/utils/music/notes';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { BackHandler, ScrollView, Text, View } from 'react-native';
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
@@ -548,10 +548,6 @@ export default function RapidNoteTransitionExerciseScreen({
           averageTransitionTimeMs: measurement.averageTransitionTimeMs,
         };
       } catch (errorMessage) {
-        console.log(
-          'Rapid Note Transition attempt could not be scored:',
-          errorMessage instanceof Error ? errorMessage.message : String(errorMessage),
-        );
         attempt = createFailedAttempt(currentRep);
       }
       const updatedAttempts = [...attemptResultsRef.current, attempt];

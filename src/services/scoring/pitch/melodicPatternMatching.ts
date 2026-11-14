@@ -1,10 +1,9 @@
-
 import type {
-    MelodicPatternMatchingParams,
+  MelodicPatternMatchingParams,
 } from '@/constants/params';
 
 import type {
-    MelodicPatternMeasurement,
+  MelodicPatternMeasurement,
 } from '@/services/measurement/pitch/melodicPatternMatching';
 
 export interface MelodicPatternScoreResult {
@@ -163,20 +162,6 @@ export function scoreMelodicPatternMatching(
     patternAccuracy >= 75 &&
     rhythmAccuracy >= 60 &&
     score >= 75;
-
-  console.log('🎵 MELODIC PATTERN SCORE DEBUG:', {
-    targetFreqs,
-    detectedSegments: measurement.segmentFrequencies,
-    noteAccuracies,
-    notesHit,
-    hitCount,
-    noteCount,
-    tolerance,
-    patternAccuracy,
-    rhythmAccuracy,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score,

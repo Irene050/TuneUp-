@@ -37,7 +37,6 @@ function calculateSpeedScore(
   );
 }
 
-
 export function scoreQuickIntervalJump(
   measurement: QuickIntervalJumpMeasurement,
 ): QuickIntervalJumpScore {

@@ -5,14 +5,14 @@ import { CONTROLLED_CRESCENDO_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
+  ExerciseCountdownScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-    ResultItem,
-    VolumeRampRecordingContent,
+  ResultItem,
+  VolumeRampRecordingContent,
 } from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { generateControlledCrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -553,17 +553,6 @@ export default function ControlledCrescendoExercise({
               params.volumeIncreaseThreshold,
           },
         );
-
-        console.log('🎤 CRESCENDO MEASUREMENT:', {
-          validWindowCount: measurement.validWindowCount,
-          durationSeconds: measurement.durationSeconds,
-          startDb: measurement.startDb,
-          endDb: measurement.endDb,
-          meanDerivative: measurement.meanDerivative,
-          smoothness: measurement.smoothness,
-          targetReached: measurement.targetReached,
-          quality: measurement.overallMeasurementQuality,
-        });
 
         const result = scoreControlledCrescendo(measurement, {
           passingScore: smoothnessTarget,

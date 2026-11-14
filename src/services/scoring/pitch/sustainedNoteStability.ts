@@ -1,9 +1,9 @@
 import type {
-    SustainedNoteStabilityParams,
+  SustainedNoteStabilityParams,
 } from '@/constants/params';
 
 import type {
-    SustainedNoteStabilityMeasurement,
+  SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 
 export interface SustainedNoteStabilityScoreResult {
@@ -140,22 +140,6 @@ export function scoreSustainedNoteStability(
     stabilityCents <= threshold &&
     durationSec >= params.durationSec &&
     score >= 80;
-
-  console.log('🎵 SUSTAINED NOTE STABILITY DEBUG:', {
-    targetFrequencyHz,
-    measuredFrequencyHz,
-    pitchAccuracyCents,
-    pitchAccuracyScore,
-    stabilityCents,
-    threshold,
-    stabilityScore,
-    durationSec,
-    targetDurationSec: params.durationSec,
-    durationScore,
-    performanceScore,
-    finalScore: score,
-    passed,
-  });
 
   return {
     score,

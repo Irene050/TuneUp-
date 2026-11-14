@@ -51,7 +51,6 @@ export function saveCompletedExercise(
         Date.now(),
     };
 
-  // Keep result screens responsive while still reporting background save failures.
   void saveExerciseAndUpdateProgress(user.uid, record).catch(error => {
     console.error(
       '❌ Failed to save exercise progress:',

@@ -36,13 +36,6 @@ export function measureControlledBreathRelease(
         )
       : detectedPeaks;
 
-  console.log('🔎 MEASUREMENT RESULT:', {
-    detectedPulses: detectedPeaks.length,
-    usedPulses: limitedPeaks.length,
-    maxPulseCount,
-    sampleCount: samples.length,
-  });
-
   const intervalsSec: number[] = [];
 
   for (let i = 1; i < limitedPeaks.length; i += 1) {

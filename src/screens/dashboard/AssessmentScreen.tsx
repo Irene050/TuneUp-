@@ -452,15 +452,6 @@ export default function AssessmentScreen() {
       const durationSeconds =
         sampleRate > 0 ? samples.length / sampleRate : 0;
 
-      console.log('ASSESSMENT SECTION COMPLETE:', {
-        step: recordedStep,
-        samples: samples.length,
-        sampleRate,
-        durationSeconds,
-        rms: level.rms,
-        peak: level.peak,
-      });
-
       if (!level.usable) {
         setErrorMessage(
           'We could not hear enough microphone audio. Please make sure your microphone is working and sing closer to it.',
@@ -563,13 +554,6 @@ export default function AssessmentScreen() {
         highRecording.samples,
         lowRecording.sampleRate,
       );
-
-      console.log('DETECTED VOCAL RANGE:', {
-        lowHz: range.lowHz,
-        highHz: range.highHz,
-        lowNote: frequencyToNoteName(range.lowHz),
-        highNote: frequencyToNoteName(range.highHz),
-      });
 
       if (quittingRef.current) {
         return;
@@ -927,21 +911,6 @@ export default function AssessmentScreen() {
       }
 
       const audio = createAssessmentBundle();
-
-      console.log('PROCESSING ASSESSMENT AUDIO:', {
-        breathControl: audio.breathSamples.length,
-        pitch: audio.pitchSamples.length,
-        tone: audio.toneSamples.length,
-        volume: audio.volumeSamples.length,
-        agility: audio.agilitySamples.length,
-        low: audio.lowestComfortableNoteSamples.length,
-        high: audio.highestComfortableNoteSamples.length,
-        sampleRate: audio.sampleRate,
-        lowDuration:
-          audio.lowestComfortableNoteSamples.length / audio.sampleRate,
-        highDuration:
-          audio.highestComfortableNoteSamples.length / audio.sampleRate,
-      });
 
       const assessmentResult = await runAssessment(
         audio,

@@ -365,11 +365,6 @@ function buildAttempts(
     !Number.isFinite(targetRatio) ||
     targetRatio <= 1
   ) {
-    console.warn(
-      '🎵 INTERVAL: Invalid target ratio:',
-      targetRatio,
-    );
-
     return attempts;
   }
 
@@ -495,15 +490,6 @@ function buildAttempts(
     i = bestMatch.noteIndex + 1;
   }
 
-  console.log(
-    '🎵 INTERVAL PAIRING SUMMARY:',
-    {
-      detectedNotes: notes.length,
-      requestedRepetitions: requested,
-      acceptedAttempts: attempts.length,
-    },
-  );
-
   return attempts;
 }
 
@@ -536,43 +522,7 @@ export function measureIntervalRecognition(
 
     const notes = detectNotes(pitchFrames);
 
-    console.log(
-      '🎵 INTERVAL PITCH FRAMES:',
-      pitchFrames.length,
-    );
-
-    console.log(
-      '🎵 INTERVAL DETECTED NOTES:',
-      notes.map(note => ({
-        frequency:
-          Math.round(note.frequency * 100) / 100,
-
-        midi:
-          Math.round(
-            frequencyToMidi(note.frequency) * 100,
-          ) / 100,
-
-        clarity:
-          Math.round(note.clarity * 100) / 100,
-
-        duration:
-          Math.round(
-            (note.end - note.start) * 1000,
-          ) / 1000,
-
-        start:
-          Math.round(note.start * 1000) / 1000,
-
-        end:
-          Math.round(note.end * 1000) / 1000,
-      })),
-    );
-
     if (notes.length < 2) {
-      console.warn(
-        '🎵 INTERVAL: Fewer than two stable notes detected.',
-      );
-
       return emptyResult();
     }
 
@@ -580,32 +530,6 @@ export function measureIntervalRecognition(
       notes,
       expectedRepetitions,
       targetRatio,
-    );
-
-    console.log(
-      '🎵 INTERVAL ATTEMPTS:',
-      attempts.map(attempt => ({
-        freq1:
-          Math.round(attempt.freq1 * 100) / 100,
-
-        freq2:
-          Math.round(attempt.freq2 * 100) / 100,
-
-        ratio:
-          Math.round(
-            attempt.detectedRatio * 1000,
-          ) / 1000,
-
-        clarity1:
-          Math.round(
-            attempt.firstNoteClarity * 100,
-          ) / 100,
-
-        clarity2:
-          Math.round(
-            attempt.secondNoteClarity * 100,
-          ) / 100,
-      })),
     );
 
     if (attempts.length === 0) {
@@ -678,11 +602,6 @@ export function measureIntervalRecognition(
       attempts,
     };
   } catch (error) {
-    console.error(
-      'Interval recognition measurement error:',
-      error,
-    );
-
     return emptyResult();
   }
 }

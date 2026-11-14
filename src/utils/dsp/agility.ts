@@ -1,8 +1,6 @@
 import { fftComplex } from '@/utils/dsp/fft';
 import { frequencyToMidi } from '@/utils/music/notes';
 
-
-
 export interface PitchTransition {
   fromFreq: number;
   toFreq: number;

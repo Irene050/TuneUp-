@@ -19,16 +19,6 @@ export function measureScaleAccuracyDrill(
   sampleRate: number,
   minClarity = 0.70
 ): ScaleAccuracyMeasurement {
-  console.log(
-    '🎼 SCALE MEASUREMENT START:',
-    {
-      segments: noteSegments.length,
-      targets: targetFreqs.length,
-      sampleRate,
-      minClarity,
-    }
-  );
-
   const detectedFreqs: number[] = [];
   const clarityValues: number[] = [];
 
@@ -39,22 +29,7 @@ export function measureScaleAccuracyDrill(
   ) {
     const segment = noteSegments[index];
 
-    console.log(
-      `🎵 ANALYZING SEGMENT ${index + 1}:`,
-      {
-        length: segment.length,
-        duration:
-          sampleRate > 0
-            ? segment.length / sampleRate
-            : 0,
-      }
-    );
-
     if (!segment || segment.length === 0) {
-      console.warn(
-        `⚠️ SEGMENT ${index + 1} IS EMPTY`
-      );
-
       detectedFreqs.push(0);
       continue;
     }
@@ -68,25 +43,11 @@ export function measureScaleAccuracyDrill(
         sampleRate
       );
     } catch (error) {
-      console.error(
-        `❌ trackPitchOverTime FAILED ON SEGMENT ${index + 1}:`,
-        error
-      );
-
       detectedFreqs.push(0);
       continue;
     }
 
-    console.log(
-      `🔎 SEGMENT ${index + 1} FRAMES:`,
-      frames?.length
-    );
-
     if (!Array.isArray(frames)) {
-      console.error(
-        '❌ trackPitchOverTime DID NOT RETURN AN ARRAY'
-      );
-
       detectedFreqs.push(0);
       continue;
     }
@@ -99,19 +60,9 @@ export function measureScaleAccuracyDrill(
         minClarity
       );
     } catch (error) {
-      console.error(
-        `❌ filterByClarity FAILED ON SEGMENT ${index + 1}:`,
-        error
-      );
-
       detectedFreqs.push(0);
       continue;
     }
-
-    console.log(
-      `🎤 SEGMENT ${index + 1} VOICED FRAMES:`,
-      voicedFrames?.length
-    );
 
     if (
       !Array.isArray(voicedFrames) ||
@@ -146,11 +97,6 @@ export function measureScaleAccuracyDrill(
     }
   }
 
-  console.log(
-    '🎼 DETECTED FREQUENCIES:',
-    detectedFreqs
-  );
-
   let transitionSmoothness = 0;
 
   try {
@@ -168,11 +114,6 @@ export function measureScaleAccuracyDrill(
         detectedFreqs
       );
   } catch (error) {
-    console.error(
-      '❌ TRANSITION SMOOTHNESS FAILED:',
-      error
-    );
-
     transitionSmoothness =
       detectedFreqs.length <= 1 ? 100 : 0;
   }
@@ -192,16 +133,6 @@ export function measureScaleAccuracyDrill(
       Number.isFinite(frequency) &&
       frequency > 0
   ).length;
-
-  console.log(
-    '✅ SCALE MEASUREMENT COMPLETE:',
-    {
-      detectedFreqs,
-      transitionSmoothness,
-      averageClarity: roundedAverageClarity,
-      voicedNotes,
-    }
-  );
 
   return {
     detectedFreqs,

@@ -1,9 +1,9 @@
 import type {
-    VowelConsistencyParams,
+  VowelConsistencyParams,
 } from '@/constants/params';
 
 import type {
-    VowelConsistencyMeasurement,
+  VowelConsistencyMeasurement,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 import { clamp } from '@/utils/math';
 
@@ -43,16 +43,6 @@ export function scoreVowelConsistencyExercise(
   const passed =
     hasValidMeasurement &&
     score >= passingThreshold;
-
-  console.log('🎤 VOWEL CONSISTENCY SCORE DEBUG:', {
-    averageCentroidHz: averageCentroid,
-    vowel: params.vowel,
-    smoothnessScore,
-    passingThreshold,
-    finalScore: score,
-    passed,
-    hasValidMeasurement,
-  });
 
   return {
     score: clamp(score, 0, 100),

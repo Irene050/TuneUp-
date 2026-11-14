@@ -1,4 +1,3 @@
-
 import type { RapidScaleTrillMeasurement } from '@/services/measurement/agility/rapidScaleTrill';
 import { clamp } from '@/utils/math';
 

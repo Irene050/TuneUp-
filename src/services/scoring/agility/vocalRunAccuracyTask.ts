@@ -1,4 +1,3 @@
-
 import type { VocalRunAccuracyMeasurement } from '@/services/measurement/agility/vocalRunAccuracyTask';
 import { clamp } from '@/utils/math';
 

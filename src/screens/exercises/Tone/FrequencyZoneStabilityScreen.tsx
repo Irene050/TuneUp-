@@ -1,32 +1,32 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 
 import {
-    FREQUENCY_ZONE_STABILITY_PARAMS,
-    type FrequencyZoneStabilityParams,
-    type Tier,
+  FREQUENCY_ZONE_STABILITY_PARAMS,
+  type FrequencyZoneStabilityParams,
+  type Tier,
 } from '@/constants/params';
 import {
-    useAudioRecorder,
-    type LiveAudioFrame,
+  useAudioRecorder,
+  type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
 
 import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
-    type ExercisePreparationStep,
-    type ExerciseSummaryItem,
+  ExerciseCountdownScreen,
+  ExercisePreparingScreen,
+  ExerciseProcessingScreen,
+  ExerciseResultsScreen,
+  type ExercisePreparationStep,
+  type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateFrequencyZoneStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,30 +34,30 @@ import { auth } from '@/services/firebase/config';
 import { measureFrequencyZoneStability } from '@/services/measurement/tone/frequencyZoneStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-    fetchComponentProgress,
-    fetchExerciseRecords,
+  fetchComponentProgress,
+  fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreFrequencyZoneStability } from '@/services/scoring/tone/frequencyZoneStability';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-    classifyFrequencyZone,
-    type FrequencyZone,
+  classifyFrequencyZone,
+  type FrequencyZone,
 } from '@/utils/dsp/spectral';
 import { formatNumber } from '@/utils/numberFormatting';
 
 import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-    EXERCISE_RECORDING_INTERVAL_MS,
-    TONE_WAVEFORM_BAR_COUNT,
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_RECORDING_INTERVAL_MS,
+  TONE_WAVEFORM_BAR_COUNT,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { clamp } from '@/utils/math';
 
 import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
 } from '@/components/ExerciseModals';
 
 const REST_SECONDS = 2;
@@ -1343,11 +1343,6 @@ export default function FrequencyZoneStabilityScreen({
             </LiveToneMonitorCard>
 
             <View style={exerciseStyles.recordingProgressSectionVariant1}>
-              <View style={exerciseStyles.recordingProgressLabels}>
-                <Text style={exerciseStyles.progressLabel}>RECORDING</Text>
-
-              </View>
-
               <View
                 style={exerciseStyles.progressTrackVariant1}
                 accessibilityRole="progressbar"
