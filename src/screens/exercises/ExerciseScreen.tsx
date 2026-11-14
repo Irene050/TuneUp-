@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleProp, Text, View, ViewStyle } from 'react-native';
 
+import { ReferenceNoteSequence } from '@/components/SharedPitchComponent';
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
@@ -19,11 +20,11 @@ export type ExerciseSummaryItem = {
 
 type ExercisePhaseProps = {
   icon: keyof typeof Ionicons.glyphMap;
-  onBack?: () => void;
 };
 
 type CountdownScreenProps = ExercisePhaseProps & {
   title: string;
+  onBack?: () => void;
   currentRep?: number;
   repetitions?: number;
   countdown: number;
@@ -32,17 +33,13 @@ type CountdownScreenProps = ExercisePhaseProps & {
   contentStyle?: StyleProp<ViewStyle>;
 };
 
-type ListeningScreenProps = ExercisePhaseProps & {
+type ListeningScreenProps = {
   title: string;
-  currentRep?: number;
-  repetitions?: number;
-  elapsedSeconds?: number;
-  targetDuration?: number;
-  promptTitle: string;
   prompt: string;
-  liveContent?: ReactNode;
+  referenceNotes?: readonly string[];
+  referenceContent?: ReactNode;
+  activeNoteIndex?: number | null;
   errorMessage?: string | null;
-  progress?: number;
   isPlayingReference?: boolean;
   onPlayReference?: () => void;
   onReady?: () => void;
@@ -271,7 +268,7 @@ export default function ExerciseScreen({
           <Ionicons
             name="alert-circle-outline"
             size={21}
-            color="#A33A3A"
+            color={COLORS.alertIcon}
           />
 
           <Text style={exerciseStyles.errorText_Exercise}>
@@ -354,138 +351,43 @@ export function ExerciseCountdownScreen({
 }
 
 export function ExerciseListeningScreen({
-  icon,
   title,
-  currentRep,
-  repetitions,
-  elapsedSeconds,
-  targetDuration,
-  promptTitle,
   prompt,
-  liveContent,
+  referenceNotes,
+  referenceContent,
+  activeNoteIndex,
   errorMessage,
-  progress,
   isPlayingReference = false,
   onPlayReference,
   onReady,
-  onBack,
 }: ListeningScreenProps) {
-  const formatTime = (seconds: number) => {
-    const safeSeconds = Math.max(0, seconds);
-    const minutes = Math.floor(safeSeconds / 60);
-    const remainingSeconds = Math.floor(safeSeconds % 60);
-
-    return `${minutes}:${remainingSeconds
-      .toString()
-      .padStart(2, '0')}`;
-  };
-
-  const clampedProgress =
-    progress !== undefined
-      ? Math.max(0, Math.min(100, progress)) / 100
-      : targetDuration &&
-          elapsedSeconds !== undefined
-        ? Math.max(
-            0,
-            Math.min(1, elapsedSeconds / targetDuration),
-          )
-        : 0;
-
   return (
     <View style={exerciseStyles.listeningScreen}>
-      {onBack ? (
-        <Pressable
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          style={exerciseStyles.listeningBackButton}
-          onPress={onBack}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={25}
-            color={COLORS.brown}
+      <Text style={exerciseStyles.listeningTitle}>{title}</Text>
+      <Text style={exerciseStyles.listeningPrompt}>{prompt}</Text>
+
+      {referenceContent ? (
+        <View style={exerciseStyles.listeningReferenceContent}>
+          {referenceContent}
+        </View>
+      ) : (
+        <View style={exerciseStyles.listeningReferenceCard}>
+          <ReferenceNoteSequence
+            notes={referenceNotes ?? []}
+            activeIndex={
+              activeNoteIndex === undefined &&
+              referenceNotes?.length === 1
+                ? 0
+                : activeNoteIndex
+            }
           />
-        </Pressable>
-      ) : null}
+        </View>
+      )}
 
-      <View style={exerciseStyles.listeningHeader}>
-        <Text style={exerciseStyles.listeningExerciseTitle}>
-          {title}
+      {errorMessage ? (
+        <Text accessibilityRole="alert" style={exerciseStyles.listeningError}>
+          {errorMessage}
         </Text>
-
-        {currentRep !== undefined &&
-        repetitions !== undefined ? (
-          <Text style={exerciseStyles.exerciseSubtitle}>
-            Repetition {currentRep} of {repetitions}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={exerciseStyles.listeningMain}>
-        <View style={exerciseStyles.listeningCard}>
-          <View style={exerciseStyles.listeningIconCircle}>
-            <Ionicons
-              name={icon}
-              size={38}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={exerciseStyles.listeningCardTitle}>
-            {promptTitle}
-          </Text>
-
-          <Text style={exerciseStyles.listeningCardText}>
-            {prompt}
-          </Text>
-
-          {liveContent ? (
-            <View style={exerciseStyles.listeningLiveContent}>
-              {liveContent}
-            </View>
-          ) : null}
-          {errorMessage ? (
-            <Text accessibilityRole="alert" style={exerciseStyles.listeningError}>
-              {errorMessage}
-            </Text>
-          ) : null}
-
-        </View>
-
-        {elapsedSeconds !== undefined ? (
-          <View style={exerciseStyles.listeningTimeRow}>
-            <Text style={exerciseStyles.liveValueVariant1}>
-              {formatTime(elapsedSeconds)}
-            </Text>
-
-            {targetDuration !== undefined ? (
-              <Text style={exerciseStyles.listeningTimeTarget}>
-                / {formatTime(targetDuration)}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-      </View>
-
-      {progress !== undefined ||
-      targetDuration !== undefined ? (
-        <View style={exerciseStyles.listeningFooter}>
-          <View style={exerciseStyles.listeningProgressTrack}>
-            <View
-              style={[
-                exerciseStyles.progressFill,
-                {
-                  width: `${clampedProgress * 100}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <Text style={exerciseStyles.airflowHint}>
-            Get ready to sing
-          </Text>
-        </View>
       ) : null}
 
       {onPlayReference ? (
@@ -530,7 +432,6 @@ export function ExerciseListeningScreen({
           </Text>
         </Pressable>
       ) : null}
-
     </View>
   );
 }
@@ -539,28 +440,15 @@ export function ExerciseRecordingScreen({
   title,
   currentRep,
   repetitions,
-  onBack,
   children,
 }: {
   title: string;
   currentRep: number;
   repetitions: number;
-  onBack?: () => void;
   children: ReactNode;
 }) {
   return (
     <View style={exerciseStyles.agilityRecordingScreen}>
-      {onBack ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={exerciseStyles.agilityRecordingBackButton}
-          onPress={onBack}
-        >
-          <Ionicons name="chevron-back" size={25} color={COLORS.brown} />
-        </Pressable>
-      ) : null}
-
       <View style={exerciseStyles.phaseContent}>
         <View style={exerciseStyles.agilityRecordingIcon}>
           <Ionicons name="mic" size={34} color={COLORS.brown} />
@@ -729,29 +617,100 @@ export function ResultStat({
   );
 }
 
+export type ExerciseRepetitionScore = {
+  repetition: number;
+  score: number;
+  passed?: boolean;
+  components?: {
+    label: string;
+    value: string;
+  }[];
+};
+
+export function ExerciseRepetitionBreakdown({
+  repetitions,
+}: {
+  repetitions: ExerciseRepetitionScore[];
+}) {
+  return (
+    <View style={exerciseStyles.repetitionBreakdown}>
+      <Text style={exerciseStyles.repetitionBreakdownTitle}>
+        Repetition Breakdown
+      </Text>
+
+      {repetitions.map(item => (
+        <View
+          key={item.repetition}
+          style={exerciseStyles.repetitionBreakdownRow}
+        >
+          <View style={exerciseStyles.repetitionBreakdownHeader}>
+            <Text style={exerciseStyles.repResultTitle}>
+              Repetition {item.repetition}
+            </Text>
+            <View style={exerciseStyles.repetitionBreakdownScoreGroup}>
+              {item.passed != null ? (
+                <Text
+                  style={[
+                    exerciseStyles.repetitionBreakdownStatus,
+                    item.passed
+                      ? exerciseStyles.repetitionBreakdownPassed
+                      : exerciseStyles.repetitionBreakdownNeedsPractice,
+                  ]}
+                >
+                  {item.passed ? 'PASS' : 'PRACTICE'}
+                </Text>
+              ) : null}
+              <Text style={exerciseStyles.largeBrownValue}>
+                {Math.round(item.score)}%
+              </Text>
+            </View>
+          </View>
+          {item.components?.length ? (
+            <View style={exerciseStyles.repetitionBreakdownComponents}>
+              {item.components.map(component => (
+                <View
+                  key={`${item.repetition}-${component.label}`}
+                  style={exerciseStyles.repetitionBreakdownComponent}
+                >
+                  <Text style={exerciseStyles.scoreRowLabel}>
+                    {component.label}
+                  </Text>
+                  <Text style={exerciseStyles.smallSemiBoldBrownText}>
+                    {component.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 type ExerciseResultsScreenProps = {
   title: string;
   subtitle: string;
   score: number;
+  repetitionScores?: ExerciseRepetitionScore[];
   resultIcon: keyof typeof Ionicons.glyphMap;
   scoreSuffix?: string;
   scoreMessage?: string;
   scoreDetails?: ReactNode;
-  onBack?: () => void;
   onRetry: () => void;
   onExit: () => void;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export function ExerciseResultsScreen({
   title,
   subtitle,
   score,
+  repetitionScores,
   resultIcon,
   scoreSuffix = '%',
   scoreMessage,
   scoreDetails,
-  onBack,
   onRetry,
   onExit,
   children,
@@ -762,21 +721,6 @@ export function ExerciseResultsScreen({
       contentContainerStyle={exerciseStyles.content_Exercise}
       showsVerticalScrollIndicator={false}
     >
-      {onBack ? (
-        <Pressable
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          style={exerciseStyles.backButton_Exercise}
-          onPress={onBack}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={25}
-            color={COLORS.brown}
-          />
-        </Pressable>
-      ) : null}
-
       <View style={exerciseStyles.resultsHeader}>
         <View style={exerciseStyles.resultsIconCircle}>
           <Ionicons
@@ -826,6 +770,10 @@ export function ExerciseResultsScreen({
           </Text>
         ) : null}
       </View>
+
+      {repetitionScores?.length ? (
+        <ExerciseRepetitionBreakdown repetitions={repetitionScores} />
+      ) : null}
 
       {children}
 

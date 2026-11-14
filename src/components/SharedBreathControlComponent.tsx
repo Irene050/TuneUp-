@@ -3,17 +3,13 @@ import {
   View,
   type DimensionValue,
 } from 'react-native';
+import type { LiveVoiceDetection } from '@/utils/audioSignal';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-
-interface Props {
-  detected: boolean;
-  level: number;
-}
 
 export default function LiveVoiceDetectionVisualizer({
   detected,
   level,
-}: Props) {
+}: LiveVoiceDetection) {
   const fillWidth = `${Math.max(0, Math.min(1, level)) * 100}%` as DimensionValue;
 
   return (

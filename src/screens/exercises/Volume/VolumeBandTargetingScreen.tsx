@@ -5,6 +5,17 @@ import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+  VOLUME_ANALYSIS_WINDOW_MS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
   VOLUME_BAND_TARGETING_PARAMS,
   type Tier,
   type VolumeBandTargetingParams,
@@ -14,7 +25,7 @@ import {
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExercisePreparingScreen,
@@ -32,25 +43,12 @@ import {
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
   createMusicalNote,
   frequencyToMidi,
 } from '@/utils/music/notes';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  VOLUME_ANALYSIS_WINDOW_MS,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { clamp } from '@/utils/math';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
 const DEFAULT_TIER: Tier = 'beginner';
 const HISTORY_LIMIT = 60;
@@ -60,13 +58,7 @@ const LIVE_LEVEL_OFFSET = 70;
 const LIVE_SMOOTHING_ALPHA = 0.25;
 const MAX_QUIET_FRAMES = 2;
 
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 type VoiceStatus = 'low' | 'inside' | 'high' | 'none';
 type StopReason = 'none' | 'rep' | 'final' | 'cancel';
 
@@ -337,7 +329,7 @@ function StabilityHistory({
         <View style={exerciseStyles.historyBars}>
           {history.length === 0 && (
             <View style={exerciseStyles.historyEmpty}>
-              <Text style={exerciseStyles.scoreDescriptionVariant1}>
+              <Text style={exerciseStyles.scoreDescriptionCompact}>
                 Sing on “Ah” to see your live voice track.
               </Text>
             </View>
@@ -393,7 +385,7 @@ function ReferenceNoteButton({
         color={COLORS.brown}
       />
 
-      <Text style={exerciseStyles.referenceButtonText}>
+      <Text style={exerciseStyles.smallSemiBoldBrownText}>
         {playing ? 'Playing...' : label}
       </Text>
     </Pressable>
@@ -1564,7 +1556,7 @@ export default function VolumeBandTargeting({
             countdown={countdown}
             promptTitle={`Prepare to sing ${referenceNote.name}.`}
             prompt={`Repetition ${currentRep} of ${params.repetitions}. Start singing on “Ah” when the countdown reaches zero. Keep your volume inside the ${targetRangeText} target band for ${exerciseDurationSec} seconds.`}
-            onBack={pauseForExitPrompt}
+
           />
         </SafeAreaView>
       </>
@@ -1602,7 +1594,7 @@ export default function VolumeBandTargeting({
                 targetRange={params.targetDbRange}
               />
 
-                <View style={exerciseStyles.repTrack}>
+                <View style={[exerciseStyles.progressTrack, { marginTop: 12 }]}>
                   <View
                     style={[
                       exerciseStyles.progressFill,
@@ -1647,6 +1639,20 @@ export default function VolumeBandTargeting({
                   : `Focus on finding and staying inside the ${targetRangeText} zone.`
           }
           score={noVoiceDetected ? 0 : score}
+          repetitionScores={
+            noVoiceDetected
+              ? []
+              : repScores.map((repScore, index) => ({
+                  repetition: index + 1,
+                  score: repScore,
+                  components: [
+                    {
+                      label: 'Band compliance',
+                      value: `${repScore}%`,
+                    },
+                  ],
+                }))
+          }
           scoreSuffix={noVoiceDetected ? 'NO INPUT' : '/100'}
           resultIcon={
             noVoiceDetected
@@ -1664,19 +1670,7 @@ export default function VolumeBandTargeting({
           }
           scoreDetails={
             <View style={exerciseStyles.resultCardVariant3}>
-              {repScores.map((repScore, index) => (
-                <View key={`rep-${index}`} style={exerciseStyles.resultRowVariant3}>
-                  <Text style={exerciseStyles.resultLabel}>
-                    Repetition {index + 1}
-                  </Text>
-
-                  <Text style={exerciseStyles.resultValue}>
-                    {noVoiceDetected ? '—' : `${repScore}%`}
-                  </Text>
-                </View>
-              ))}
-
-              <View style={exerciseStyles.resultRowVariant3}>
+              <View style={exerciseStyles.volumeResultRow}>
                 <Text style={exerciseStyles.resultLabel}>Average Volume</Text>
 
                 <Text style={exerciseStyles.resultValue}>
@@ -1686,7 +1680,7 @@ export default function VolumeBandTargeting({
                 </Text>
               </View>
 
-              <View style={exerciseStyles.resultRowVariant3}>
+              <View style={exerciseStyles.volumeResultRow}>
                 <Text style={exerciseStyles.resultLabel}>Target</Text>
 
                 <Text style={exerciseStyles.resultValue}>
@@ -1694,7 +1688,7 @@ export default function VolumeBandTargeting({
                 </Text>
               </View>
 
-              <View style={exerciseStyles.resultRowVariant3}>
+              <View style={exerciseStyles.volumeResultRow}>
                 <Text style={exerciseStyles.resultLabel}>Consistency</Text>
 
                 <Text style={exerciseStyles.resultValue}>
@@ -1702,7 +1696,7 @@ export default function VolumeBandTargeting({
                 </Text>
               </View>
 
-              <View style={exerciseStyles.resultRowVariant3}>
+              <View style={exerciseStyles.volumeResultRow}>
                 <Text style={exerciseStyles.resultLabel}>Band Compliance</Text>
 
                 <Text style={exerciseStyles.resultValue}>
@@ -1714,7 +1708,7 @@ export default function VolumeBandTargeting({
                 </Text>
               </View>
 
-              <View style={[exerciseStyles.resultRowVariant3, exerciseStyles.metricRowLast]}>
+              <View style={[exerciseStyles.volumeResultRow, exerciseStyles.metricRowLast]}>
                 <View style={exerciseStyles.flex}>
                   <Text style={exerciseStyles.resultLabel}>
                     Measurement quality

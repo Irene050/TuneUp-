@@ -15,6 +15,8 @@ import {
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { RecordingExercisePhase } from '@/types/exercises';
 
 import {
   ExerciseCountdownScreen,
@@ -60,12 +62,7 @@ const RECORDING_DURATION_MS =
   MELODY_DURATION_MS + RECORDING_END_PADDING_MS;
 const RECORDING_DURATION_SECONDS = RECORDING_DURATION_MS / 1000;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
 function getCurrentMelodyNoteIndex(elapsedSeconds: number): number {
   const elapsedBeats = Math.max(0, elapsedSeconds) / BEAT_SECONDS;
@@ -227,6 +224,7 @@ export default function SingingAssessmentScreen() {
   const exitPromptOpenRef = useRef(false);
   const cancelInProgressRef = useRef(false);
   const mountedRef = useRef(false);
+  useMountedRefLifecycle(mountedRef);
   const backgroundNavigationRef = useRef(false);
 
   const processingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -732,10 +730,7 @@ export default function SingingAssessmentScreen() {
   }, [requestQuitAssessment]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       quitRequestedRef.current = true;
       cancelNextStopRef.current = true;
       finishRequestedRef.current = true;
@@ -1215,7 +1210,7 @@ export default function SingingAssessmentScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={20}
-              color="#A33A3A"
+              color={COLORS.alertIcon}
             />
             <Text style={exerciseStyles.errorText_SingingAssessment}>{errorMessage}</Text>
           </View>

@@ -406,7 +406,7 @@ export function ResetPasswordScreen() {
               autoCorrect={false}
               editable={!loading}
               placeholder="Enter new password"
-              placeholderTextColor="#A99C9A"
+              placeholderTextColor={COLORS.inputPlaceholder}
             />
             <Pressable
               style={exerciseStyles.eyeButton}
@@ -430,7 +430,7 @@ export function ResetPasswordScreen() {
               autoCorrect={false}
               editable={!loading}
               placeholder="Confirm new password"
-              placeholderTextColor="#A99C9A"
+              placeholderTextColor={COLORS.inputPlaceholder}
             />
             <Pressable
               style={exerciseStyles.eyeButton}

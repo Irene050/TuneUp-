@@ -33,6 +33,50 @@ const textStyleBases = {
   },
 };
 
+const scoreDescriptionBase = {
+  ...textStyleBases.regularMutedText,
+  fontSize: 11,
+  textAlign: 'center' as const,
+};
+
+const centeredLargeBrownTextBase = {
+  ...textStyleBases.boldBrownText,
+  fontSize: 22,
+  textAlign: 'center' as const,
+};
+
+const layoutStyleBases: Record<string, ViewStyle> = {
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flexible: {
+    flex: 1,
+  },
+  fullWidthCentered: {
+    width: '100%',
+    alignItems: 'center',
+  },
+};
+
+const spacingStyleBases: Record<string, ViewStyle> = {
+  sectionTop20: {
+    marginTop: 20,
+  },
+};
+
+const screenStyleBases: Record<string, ViewStyle> = {
+  white: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  centeredWhite: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    ...layoutStyleBases.centered,
+  },
+};
+
 const buttonStyleBases: Record<string, ViewStyle> = {
   pinkAction: {
     width: '100%',
@@ -63,10 +107,158 @@ const buttonStyleBases: Record<string, ViewStyle> = {
   },
 };
 
+const pillStartButtonBase: ViewStyle = {
+  width: '100%',
+  minHeight: 54,
+  borderRadius: 27,
+  ...buttonStyleBases.brownAction,
+  gap: 8,
+};
+
+const pillDoneButtonBase: ViewStyle = {
+  width: '100%',
+  height: 54,
+  borderRadius: 27,
+  backgroundColor: COLORS.lightGray,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 10,
+};
+
+const borderedSurface: ViewStyle = {
+  borderWidth: 1,
+  borderColor: COLORS.border,
+};
+
+const surfaceStyleBases: Record<string, ViewStyle> = {
+  bordered: borderedSurface,
+  outlinedBackground: {
+    backgroundColor: COLORS.background,
+    ...borderedSurface,
+  },
+  outlinedWhite: {
+    backgroundColor: COLORS.white,
+    ...borderedSurface,
+  },
+};
+
+const resultCardSurfaceBase: ViewStyle = {
+  width: '100%',
+  ...surfaceStyleBases.outlinedBackground,
+  borderRadius: 20,
+};
+
+const resultRowLayoutBase: ViewStyle = {
+  flexDirection: 'row',
+  alignItems: 'center',
+};
+
 export const exerciseStyles = StyleSheet.create({
   screen: {
-    flex: 1,
+    ...screenStyleBases.white,
+  },
+  rootBackButton: {
+    marginTop: 48,
+    position: 'absolute',
+    top: 40,
+    left: 16,
+    width: 44,
+    height: 44,
+    ...layoutStyleBases.centered,
+    zIndex: 999,
+    elevation: 999,
+  },
+  rootBackArrow: {
+    fontSize: 36,
+    fontFamily: 'FredokaLight',
+    color: COLORS.darkBrownText,
+    lineHeight: 40,
+  },
+  dashboardScreen: layoutStyleBases.flexible,
+  dashboardTabBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     backgroundColor: COLORS.white,
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 0,
+    elevation: 20,
+    shadowColor: COLORS.black,
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: -6,
+    },
+    overflow: 'visible',
+  },
+  dashboardTabButton: {
+    flex: 1,
+    height: 95,
+    ...layoutStyleBases.centered,
+    marginHorizontal: 0,
+  },
+  dashboardCenterTabButton: {
+    zIndex: 100,
+    elevation: 100,
+  },
+  dashboardIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 999,
+    ...layoutStyleBases.centered,
+  },
+  dashboardActiveCircle: {
+    backgroundColor: COLORS.lightGray,
+    borderRadius: 999,
+  },
+  dashboardIcon: {
+    width: 26,
+    height: 26,
+  },
+  dashboardCenterCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: COLORS.pink,
+    ...layoutStyleBases.centered,
+    position: 'absolute',
+    bottom: 18,
+    zIndex: 100,
+    elevation: 20,
+    shadowColor: COLORS.black,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: {
+      width: 0,
+      height: 7,
+    },
+  },
+  dashboardCenterActiveCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightGray,
+    ...layoutStyleBases.centered,
+  },
+  dashboardCenterIcon: {
+    width: 35,
+    height: 35,
+  },
+  appHeader: {
+    height: 130,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    paddingTop: 10,
+    marginBottom: -20,
+  },
+  appHeaderLogo: {
+    width: 45,
+    height: 45,
   },
   resultsWrapper: {
     flexGrow: 1,
@@ -102,10 +294,6 @@ export const exerciseStyles = StyleSheet.create({
     ...textStyleBases.regularMutedText,
     fontSize: 10,
     letterSpacing: 0.8,
-  },
-  timerFill: {
-    height: '100%',
-    backgroundColor: COLORS.pink,
   },
   resultIcon: {
     width: 82,
@@ -148,20 +336,23 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 52,
     marginVertical: 3,
   },
-  scoreDescriptionVariant1: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
+  scoreDescriptionCompact: {
+    ...scoreDescriptionBase,
     lineHeight: 16,
-    textAlign: 'center',
+  },
+  scoreDescriptionDefault: {
+    ...scoreDescriptionBase,
   },
   resultCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
+    ...resultCardSurfaceBase,
     padding: 18,
     marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  },
+  resultCardSurface: {
+    ...resultCardSurfaceBase,
+  },
+  resultCardInsetPadding: {
+    padding: 20,
   },
   resultCardTitle: {
     ...textStyleBases.boldBrownText,
@@ -187,10 +378,10 @@ export const exerciseStyles = StyleSheet.create({
     ...textStyleBases.boldBrownText,
     fontSize: 12,
   },
-  progressBackground: {
+  progressTrack: {
     width: '100%',
-    height: 8,
-    borderRadius: 4,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
   },
@@ -338,10 +529,8 @@ export const exerciseStyles = StyleSheet.create({
     lineHeight: 20,
   },
   infoCard: {
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 18,
     marginTop: 24,
   },
@@ -360,9 +549,7 @@ export const exerciseStyles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  infoText: {
-    flex: 1,
-  },
+  infoText: layoutStyleBases.flexible,
   infoDescription: {
     ...textStyleBases.regularMutedText,
     fontSize: 12,
@@ -463,17 +650,10 @@ export const exerciseStyles = StyleSheet.create({
   },
   liveCard: {
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 18,
     padding: 14,
     marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveLabelVariant1: {
-    ...textStyleBases.semiBoldMutedText,
-    fontSize: 10,
-    letterSpacing: 0.5,
   },
   liveValue: {
     ...textStyleBases.boldBrownText,
@@ -493,9 +673,7 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 17,
   },
   repCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedWhite,
     borderRadius: 18,
     padding: 15,
     marginBottom: 10,
@@ -516,33 +694,12 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 13,
     gap: 8,
   },
-  processingPauseButton: {
-    position: 'absolute',
-    right: 22,
-    top: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  processingPauseText: {
-    ...textStyleBases.semiBoldBrownText,
-    fontSize: 13,
-    marginLeft: 5,
-  },
   resultStatValue: {
     ...textStyleBases.boldBrownText,
     fontSize: 18,
   },
   centerScreen: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...screenStyleBases.centeredWhite,
     paddingHorizontal: 30,
   },
   recordingContent: {
@@ -597,13 +754,6 @@ export const exerciseStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 14,
   },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 18,
-  },
   sessionLabel: {
     ...textStyleBases.regularMutedText,
     fontSize: 12,
@@ -611,14 +761,6 @@ export const exerciseStyles = StyleSheet.create({
   progressTime: {
     ...textStyleBases.semiBoldBrownText,
     fontSize: 12,
-  },
-  scoreBar: {
-    width: '100%',
-    height: 10,
-    backgroundColor: COLORS.white,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginTop: 17,
   },
   summaryCard: {
     backgroundColor: COLORS.white,
@@ -628,29 +770,6 @@ export const exerciseStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-  },
-  repResultsCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  repResultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 11,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  repNumber: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   componentScore: {
     ...textStyleBases.boldBrownText,
@@ -763,21 +882,25 @@ export const exerciseStyles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  scoreDescriptionVariant2: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
-    textAlign: 'center',
-  },
   resultRow: {
-    flexDirection: 'row',
+    ...resultRowLayoutBase,
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: 8,
+  },
+  resultRowGap: {
+    gap: 12,
+  },
+  resultRowSeparator: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   resultRowValue: {
     ...textStyleBases.boldBrownText,
     fontSize: 13,
     marginLeft: 12,
+  },
+  resultRowValueNoShrink: {
+    flexShrink: 0,
   },
   doneButton: {
     width: '100%',
@@ -787,6 +910,13 @@ export const exerciseStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
+  },
+  doneButtonPill: {
+    ...pillDoneButtonBase,
+  },
+  doneButtonPillRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   sessionPart: {
     flex: 1,
@@ -819,25 +949,6 @@ export const exerciseStyles = StyleSheet.create({
     width: 1,
     backgroundColor: COLORS.border,
     alignSelf: 'stretch',
-  },
-  sharedListenNoteBox: {
-    minWidth: 180,
-    backgroundColor: COLORS.pink,
-    borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 30,
-    alignItems: 'center',
-    marginTop: 22,
-  },
-  largeNote: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 55,
-    marginTop: 10,
-  },
-  stateFrequency: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 12,
-    marginTop: 1,
   },
   resultsGrid: {
     width: '100%',
@@ -900,6 +1011,22 @@ export const exerciseStyles = StyleSheet.create({
     ...buttonStyleBases.brownAction,
     gap: 8,
   },
+  startButtonBottomMargin: {
+    marginBottom: 50,
+  },
+  startButtonPill: {
+    ...pillStartButtonBase,
+  },
+  startButtonPillFixedHeight: {
+    height: 54,
+  },
+  startButtonPillStandardSpacing: {
+    marginTop: 14,
+  },
+  startButtonPillResultSpacing: spacingStyleBases.sectionTop20,
+  startButtonPillHorizontalPadding: {
+    paddingHorizontal: 16,
+  },
   exerciseTopRow: {
     marginTop: 75,
     flexDirection: 'row',
@@ -908,10 +1035,8 @@ export const exerciseStyles = StyleSheet.create({
     marginBottom: 18,
   },
   liveCardVariant1: {
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 18,
     marginBottom: -70,
   },
@@ -964,10 +1089,7 @@ export const exerciseStyles = StyleSheet.create({
     opacity: 0.55,
   },
   centerScreenVariant1: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...screenStyleBases.centeredWhite,
     paddingHorizontal: 24,
   },
   recordingProgressLabels: {
@@ -980,13 +1102,6 @@ export const exerciseStyles = StyleSheet.create({
     ...textStyleBases.boldMutedText,
     fontSize: 11,
     letterSpacing: 0.8,
-  },
-  progressTrackVariant1: {
-    width: '100%',
-    height: 8,
-    overflow: 'hidden',
-    borderRadius: 8,
-    backgroundColor: COLORS.background,
   },
   remainingText: {
     marginTop: 7,
@@ -1152,7 +1267,7 @@ export const exerciseStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  referenceButtonText: {
+  smallSemiBoldBrownText: {
     ...textStyleBases.semiBoldBrownText,
     fontSize: 13,
   },
@@ -1172,10 +1287,8 @@ export const exerciseStyles = StyleSheet.create({
   },
   previewCard: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 14,
     marginTop: 10,
   },
@@ -1225,18 +1338,6 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  exerciseProgressTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  exerciseProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: COLORS.pink,
-  },
   exercisePrompt: {
     alignItems: 'center',
     marginBottom: 12,
@@ -1264,10 +1365,8 @@ export const exerciseStyles = StyleSheet.create({
   visualizerCard: {
     width: '100%',
     minHeight: 185,
-    backgroundColor: COLORS.white,
+    ...surfaceStyleBases.outlinedWhite,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 13,
   },
   resultDetailRow: {
@@ -1301,12 +1400,11 @@ export const exerciseStyles = StyleSheet.create({
   sessionRow: {
     minHeight: 60,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.bordered,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  sessionValue: {
+  largeBrownValue: {
     ...textStyleBases.boldBrownText,
     fontSize: 20,
     marginTop: 2,
@@ -1315,12 +1413,6 @@ export const exerciseStyles = StyleSheet.create({
     width: 1,
     height: 29,
     backgroundColor: COLORS.border,
-  },
-  referenceNoteVariant1: {
-    marginTop: 2,
-    ...textStyleBases.boldBrownText,
-    fontSize: 29,
-    lineHeight: 36,
   },
   resultLabel: {
     flex: 1,
@@ -1373,7 +1465,7 @@ export const exerciseStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingRight: 42,
     fontSize: 13,
-    color: 'COLORS.text',
+    color: COLORS.text,
     marginBottom: 14,
   },
   eyeButton: {
@@ -1408,7 +1500,7 @@ export const exerciseStyles = StyleSheet.create({
   buttonText_Login_forgotPassword: {
     fontSize: 11,
     fontFamily: 'FredokaBold',
-    color: '#4A302F',
+    color: COLORS.darkBrownText,
   },
   signupText: {
     textAlign: 'center',
@@ -1429,18 +1521,18 @@ export const exerciseStyles = StyleSheet.create({
   backArrow: {
     fontSize: 32,
     fontFamily: 'FredokaLight',
-    color: '#4A302F',
+    color: COLORS.darkBrownText,
   },
   title_Login_forgotPassword: {
     textAlign: 'center',
     fontSize: 22,
     fontFamily: 'FredokaBold',
-    color: '#4A302F',
+    color: COLORS.darkBrownText,
     marginBottom: 12,
   },
   label_Login_forgotPassword: {
     fontSize: 10,
-    color: '#4A302F',
+    color: COLORS.darkBrownText,
     marginBottom: 6,
   },
   input_Login_forgotPassword: {
@@ -2116,11 +2208,6 @@ export const exerciseStyles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 18,
   },
-  referenceNoteVariant2: {
-    marginTop: 2,
-    ...textStyleBases.boldBrownText,
-    fontSize: 28,
-  },
   scoreCard_Assessment: {
     backgroundColor: COLORS.background,
     borderRadius: 18,
@@ -2378,9 +2465,7 @@ export const exerciseStyles = StyleSheet.create({
     height: 34,
     backgroundColor: COLORS.border,
   },
-  progressComponents: {
-    marginTop: 20,
-  },
+  progressComponents: spacingStyleBases.sectionTop20,
   progressComponentsTitle: {
     ...textStyleBases.boldBrownText,
     fontSize: 15,
@@ -3812,34 +3897,12 @@ export const exerciseStyles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-  startButtonVariant1: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-  doneButtonVariant1: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
   liveCardVariant2: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 20,
     padding: 20,
     marginTop: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     alignItems: 'center',
   },
   targetNote: {
@@ -3852,33 +3915,6 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 15,
     marginTop: 3,
   },
-  timerTextVariant2: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 7,
-  },
-  timerTrack: {
-    marginTop: 12,
-    width: '100%',
-    height: 7,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  quitButtonTop: {
-    alignSelf: 'flex-end',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 8,
-  },
   resultsContentVariant2: {
     flexGrow: 1,
     width: '100%',
@@ -3887,54 +3923,12 @@ export const exerciseStyles = StyleSheet.create({
     paddingBottom: 50,
     alignItems: 'center',
   },
-  tipCardVariant1: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 15,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  tipTextVariant1: {
-    flex: 1,
-    ...textStyleBases.regularBrownText,
-    fontSize: 11,
-    lineHeight: 17,
-    marginLeft: 9,
-  },
-  startButtonVariant2: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
-  doneButtonVariant2: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.lightGray,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 8,
-  },
   liveCardVariant3: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 20,
     padding: 20,
     marginTop: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     alignItems: 'center',
   },
   liveCurrentNote: {
@@ -3949,42 +3943,17 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  timerTrackVariant1: {
-    marginTop: 10,
-    width: '100%',
-    height: 7,
-    backgroundColor: COLORS.background,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
   resultsWrapperVariant1: {
     flexGrow: 1,
     width: '100%',
     paddingBottom: 24,
   },
-  timerTextVariant3: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  timerTrackVariant2: {
-    width: '100%',
-    height: 8,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginTop: 12,
-  },
   liveCardVariant4: {
     width: '100%',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 20,
     padding: 16,
     marginTop: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     alignItems: 'center',
   },
   liveCurrentNoteVariant1: {
@@ -4018,9 +3987,7 @@ export const exerciseStyles = StyleSheet.create({
     width: '100%',
     padding: 18,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     marginTop: 20,
   },
   cardTitleVariant1: {
@@ -4031,33 +3998,16 @@ export const exerciseStyles = StyleSheet.create({
   liveCardVariant5: {
     width: '100%',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 20,
     padding: 18,
     marginTop: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   detectedPitchText: {
     ...textStyleBases.boldBrownText,
     fontSize: 42,
     textAlign: 'center',
     marginTop: 8,
-  },
-  timerTextVariant4: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
-    marginTop: 10,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  timerTrackVariant3: {
-    width: '100%',
-    height: 8,
-    backgroundColor: COLORS.background,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginTop: 10,
   },
   scoreDetailsText: {
     ...textStyleBases.regularMutedText,
@@ -4083,18 +4033,14 @@ export const exerciseStyles = StyleSheet.create({
   cardVariant1: {
     width: '100%',
     borderRadius: 20,
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.border,
-    borderWidth: 1,
+    ...surfaceStyleBases.outlinedBackground,
     padding: 18,
     marginBottom: 14,
   },
   recordingCard: {
     width: '100%',
     borderRadius: 20,
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.border,
-    borderWidth: 1,
+    ...surfaceStyleBases.outlinedBackground,
     paddingHorizontal: 14,
     paddingVertical: 14,
     marginBottom: 10,
@@ -4135,40 +4081,8 @@ export const exerciseStyles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 4,
   },
-  timerTextVariant5: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  progressTrackVariant2: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
   metricBlock: {
     marginBottom: 12,
-  },
-  backButtonVariant1: {
-    marginTop: 120,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startButtonVariant3: {
-    marginBottom: 50,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
   },
   exerciseTopRowVariant1: {
     marginTop: 90,
@@ -4179,10 +4093,8 @@ export const exerciseStyles = StyleSheet.create({
   },
   liveCardVariant6: {
     marginTop: -80,
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 18,
   },
   valueText: {
@@ -4202,16 +4114,6 @@ export const exerciseStyles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: COLORS.accent,
     minHeight: 12,
-  },
-  noteCardVariant1: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 50,
-    backgroundColor: COLORS.pink,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   stopButtonVariant1: {
     height: 52,
@@ -4256,23 +4158,6 @@ export const exerciseStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  recordingBadgeVariant1: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 15,
-    marginTop: 20,
-  },
-  progressTrackVariant3: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 14,
-  },
   rangeTarget: {
     ...textStyleBases.semiBoldBrownText,
     fontSize: 11,
@@ -4306,19 +4191,6 @@ export const exerciseStyles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
     marginTop: 3,
-  },
-  pulseProgressTrack: {
-    height: 6,
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 13,
-  },
-  pulseProgressFill: {
-    height: '100%',
-    backgroundColor: COLORS.accent,
-    borderRadius: 3,
   },
   pulseDots: {
     width: '100%',
@@ -4414,14 +4286,6 @@ export const exerciseStyles = StyleSheet.create({
     lineHeight: 21,
     textAlign: 'center',
   },
-  progressTrackVariant4: {
-    width: '100%',
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 30,
-  },
   volumeCard: {
     width: '100%',
     marginTop: 18,
@@ -4499,31 +4363,11 @@ export const exerciseStyles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 18,
   },
-  stabilityTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  stabilityFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: COLORS.accent,
-  },
   airflowHint: {
     marginTop: 8,
     ...textStyleBases.regularMutedText,
     fontSize: 12,
     textAlign: 'center',
-  },
-  progressTrackVariant5: {
-    width: '100%',
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 25,
   },
   smallHint: {
     marginTop: 16,
@@ -4668,11 +4512,7 @@ export const exerciseStyles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  quitModalTitle: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 22,
-    textAlign: 'center',
-  },
+  quitModalTitle: centeredLargeBrownTextBase,
   quitModalMessage: {
     ...textStyleBases.regularMutedText,
     fontSize: 15,
@@ -4864,10 +4704,7 @@ export const exerciseStyles = StyleSheet.create({
     justifyContent: 'center',
     gap: 9,
   },
-  phaseContent: {
-    width: '100%',
-    alignItems: 'center',
-  },
+  phaseContent: layoutStyleBases.fullWidthCentered,
   phaseIconCircle: {
     width: 96,
     height: 96,
@@ -4984,96 +4821,64 @@ export const exerciseStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
     paddingHorizontal: 24,
-    paddingTop: 58,
-    paddingBottom: 30,
-  },
-  listeningBackButton: {
-    position: 'absolute',
-    top: 14,
-    left: 16,
-    width: 44,
-    height: 44,
+    paddingVertical: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10,
   },
-  listeningHeader: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  listeningExerciseTitle: {
+  listeningTitle: {
     ...textStyleBases.boldBrownText,
     fontSize: 24,
     textAlign: 'center',
   },
-  listeningMain: {
-    flex: 1,
-    justifyContent: 'center',
-    width: '100%',
+  listeningPrompt: {
+    ...textStyleBases.regularMutedText,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 340,
+    marginTop: 8,
+    marginBottom: 20,
   },
-  listeningCard: {
+  listeningReferenceContent: layoutStyleBases.fullWidthCentered,
+  listeningReferenceCard: {
     width: '100%',
     backgroundColor: COLORS.background,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 22,
     alignItems: 'center',
   },
-  listeningIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.pink,
+  listeningReferenceNotes: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  listeningReferenceNote: {
+    minWidth: 88,
+    minHeight: 72,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    paddingHorizontal: 16,
   },
-  listeningCardTitle: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 21,
-    textAlign: 'center',
+  listeningReferenceNoteActive: {
+    backgroundColor: COLORS.pink,
+    borderColor: COLORS.pink,
   },
-  listeningCardText: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginTop: 7,
-    maxWidth: 300,
-  },
+  listeningReferenceNoteText: centeredLargeBrownTextBase,
   listeningError: {
     ...textStyleBases.regularErrorText,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',
     marginTop: 10,
-  },
-  listeningLiveContent: {
-    width: '100%',
-    marginTop: 20,
-  },
-  listeningTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    marginTop: 18,
-  },
-  listeningTimeTarget: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 15,
-    marginLeft: 4,
-  },
-  listeningFooter: {
-    width: '100%',
-    marginTop: 10,
-  },
-  listeningProgressTrack: {
-    width: '100%',
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
   },
   listeningReferenceButton: {
     width: '100%',
@@ -5102,17 +4907,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingTop: 120,
     paddingBottom: 24,
     alignItems: 'center',
-  },
-  agilityRecordingBackButton: {
-    position: 'absolute',
-    top: 24,
-    left: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
   },
   agilityRecordingIcon: {
     width: 64,
@@ -5182,6 +4976,51 @@ export const exerciseStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
+  repetitionBreakdown: {
+    ...resultCardSurfaceBase,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 18,
+  },
+  repetitionBreakdownTitle: {
+    ...textStyleBases.semiBoldBrownText,
+    fontSize: 17,
+    marginBottom: 8,
+  },
+  repetitionBreakdownRow: {
+    paddingVertical: 11,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  repetitionBreakdownHeader: {
+    ...resultRowLayoutBase,
+    justifyContent: 'space-between',
+  },
+  repetitionBreakdownScoreGroup: {
+    ...resultRowLayoutBase,
+    gap: 8,
+  },
+  repetitionBreakdownStatus: {
+    ...textStyleBases.semiBoldMutedText,
+    fontSize: 10,
+    letterSpacing: 0.4,
+  },
+  repetitionBreakdownPassed: {
+    color: COLORS.success,
+  },
+  repetitionBreakdownNeedsPractice: {
+    color: COLORS.accent,
+  },
+  repetitionBreakdownComponents: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    columnGap: 18,
+    rowGap: 6,
+  },
+  repetitionBreakdownComponent: {
+    minWidth: '40%',
+  },
   resultsRetryButton: {
     minHeight: 52,
     borderRadius: 26,
@@ -5208,8 +5047,7 @@ export const exerciseStyles = StyleSheet.create({
   },
   screenVariant2: {
     paddingTop: 100,
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
   },
   recordingContentVariant1: {
     flexGrow: 1,
@@ -5217,53 +5055,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingTop: 34,
     paddingBottom: 42,
     alignItems: 'center',
-  },
-  startButtonVariant4: {
-    width: '100%',
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  intervalPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 18,
-    marginTop: 28,
-  },
-  intervalNote: {
-    minWidth: 95,
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    paddingVertical: 17,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  intervalNoteLabel: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  intervalNoteName: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 27,
-    marginTop: 4,
-  },
-  intervalNameBadge: {
-    backgroundColor: COLORS.pink,
-    borderRadius: 15,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    marginTop: 18,
-  },
-  playbackSpinner: {
-    marginTop: 24,
   },
   intervalProgress: {
     width: '100%',
@@ -5291,14 +5082,6 @@ export const exerciseStyles = StyleSheet.create({
     backgroundColor: COLORS.lightGray,
     marginHorizontal: 8,
   },
-  recordingBar: {
-    width: '100%',
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-    marginTop: 13,
-  },
   intervalResultNote: {
     alignItems: 'center',
     minWidth: 72,
@@ -5319,23 +5102,9 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 3,
   },
   centerScreenVariant2: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...screenStyleBases.centeredWhite,
     paddingHorizontal: 30,
     paddingVertical: 24,
-  },
-  playbackNoteContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  playbackDescription: {
-    fontSize: 14,
-    ...textStyleBases.regularMutedText,
-    textAlign: 'center',
-    marginTop: 6,
   },
   noteList: {
     flexDirection: 'row',
@@ -5359,8 +5128,7 @@ export const exerciseStyles = StyleSheet.create({
   },
   recordingScreen: {
     paddingTop: 60,
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
   },
   recordingHeaderVariant1: {
     paddingTop: 58,
@@ -5385,29 +5153,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 28,
     gap: 14,
-  },
-  recordingProgressTrack: {
-    height: 8,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  liveCardVariant7: {
-    width: '100%',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-  },
-  liveCardHeaderVariant1: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    marginTop: -6,
   },
   liveHeaderText: {
     flex: 1,
@@ -5437,18 +5182,10 @@ export const exerciseStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
+    ...surfaceStyleBases.outlinedWhite,
     borderRadius: 17,
     paddingVertical: 16,
     paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveLabelVariant3: {
-    fontSize: 10,
-    ...textStyleBases.semiBoldMutedText,
-    letterSpacing: 0.6,
-    textAlign: 'center',
   },
   liveTarget: {
     fontSize: 29,
@@ -5488,30 +5225,17 @@ export const exerciseStyles = StyleSheet.create({
   },
   resultCardVariant1: {
     width: '100%',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedWhite,
     borderRadius: 18,
     padding: 17,
     marginBottom: 14,
   },
   targetPatternCard: {
     width: '100%',
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 18,
     padding: 17,
     marginBottom: 14,
-  },
-  resultRowVariant1: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
   resultLabelVariant1: {
     flex: 1,
@@ -5763,29 +5487,24 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 28,
     marginTop: 5,
   },
+  stabilityValueCompact: {
+    fontSize: 24,
+  },
+  stabilityValueAccent: {
+    color: COLORS.accent,
+    fontFamily: 'FredokaBold',
+    fontSize: 30,
+  },
   recordingScreenVariant1: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...screenStyleBases.centeredWhite,
     paddingHorizontal: 20,
     paddingVertical: 18,
   },
-  recordingSubtitleVariant1: {
+  recordingPhaseSubtitle: {
     ...textStyleBases.regularMutedText,
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
-    marginTop: 5,
-  },
-  liveCardVariant8: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 13,
-    marginTop: 19,
   },
   pitchGuideHeading: {
     flexDirection: 'row',
@@ -5798,11 +5517,6 @@ export const exerciseStyles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 7,
   },
-  pitchGuideTitleVariant1: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
   pitchStatusBadge: {
     borderRadius: 10,
     paddingHorizontal: 9,
@@ -5813,29 +5527,10 @@ export const exerciseStyles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.3,
   },
-  liveStatsVariant1: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    marginTop: 14,
-    paddingTop: 13,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  liveStatValueVariant2: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 15,
-    marginTop: 2,
-  },
   liveStatUnit: {
     ...textStyleBases.regularMutedText,
     fontSize: 9,
     marginTop: -1,
-  },
-  liveStatsDividerVariant1: {
-    height: 40,
-    width: 1,
-    backgroundColor: COLORS.border,
   },
   scalePreview: {
     flexDirection: 'row',
@@ -5878,24 +5573,6 @@ export const exerciseStyles = StyleSheet.create({
   statusTextSuccess: {
     color: COLORS.guideGreen,
   },
-  sharedScalePreview: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  sharedScaleNote: {
-    minWidth: 44,
-    height: 40,
-    paddingHorizontal: 9,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   noteResultRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5937,82 +5614,10 @@ export const exerciseStyles = StyleSheet.create({
     paddingTop: 70,
     paddingBottom: 40,
   },
-  startButtonVariant5: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  phaseSubtitleVariant1: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  targetCard: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    padding: 24,
-    marginTop: 28,
-  },
-  targetLabel: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
-  liveCardVariant9: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 20,
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  liveNoteVariant1: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 34,
-    marginTop: 3,
-  },
-  liveStatsVariant2: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 18,
-  },
-  liveStatValueVariant3: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 17,
-    marginTop: 2,
-  },
   progressContainer: {
     width: '100%',
     marginTop: 16,
     alignItems: 'center',
-  },
-  progressTrackVariant6: {
-    width: '100%',
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.lightGray,
-    overflow: 'hidden',
-  },
-  resultSubtitleVariant1: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 12,
-    marginTop: 3,
-    marginBottom: 22,
-    textAlign: 'center',
   },
   noteDisplay: {
     alignItems: 'center',
@@ -6021,28 +5626,6 @@ export const exerciseStyles = StyleSheet.create({
   resultNote: {
     ...textStyleBases.boldBrownText,
     fontSize: 31,
-  },
-  resultRowValueVariant1: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 13,
-    marginLeft: 12,
-    flexShrink: 0,
-  },
-  liveCardHeaderVariant2: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  pitchComparisonDividerVariant1: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
   },
   stabilityStatus: {
     fontFamily: 'FredokaBold',
@@ -6053,18 +5636,6 @@ export const exerciseStyles = StyleSheet.create({
     height: 1,
     backgroundColor: COLORS.border,
     marginVertical: 20,
-  },
-  stabilityTrackVariant1: {
-    height: 10,
-    width: '100%',
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginTop: 10,
-  },
-  stabilityFillVariant1: {
-    height: '100%',
-    borderRadius: 5,
   },
   stabilityFooter: {
     flexDirection: 'row',
@@ -6080,8 +5651,7 @@ export const exerciseStyles = StyleSheet.create({
     marginLeft: 9,
   },
   recordingScreenVariant2: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
     paddingHorizontal: 22,
     paddingTop: 160,
     paddingBottom: 20,
@@ -6128,8 +5698,7 @@ export const exerciseStyles = StyleSheet.create({
     marginVertical: 12,
   },
   recordingScreenVariant3: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
     paddingHorizontal: 22,
     paddingTop: 100,
     paddingBottom: 20,
@@ -6165,14 +5734,6 @@ export const exerciseStyles = StyleSheet.create({
     marginBottom: 5,
     textAlign: 'center',
   },
-  resultCardVariant2: {
-    width: '100%',
-    backgroundColor: COLORS.background,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 20,
-  },
   resultTip: {
     width: '100%',
     backgroundColor: COLORS.pink,
@@ -6186,8 +5747,7 @@ export const exerciseStyles = StyleSheet.create({
     lineHeight: 17,
   },
   recordingScreenVariant4: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
     paddingHorizontal: 22,
     paddingTop: 80,
     paddingBottom: 20,
@@ -6238,35 +5798,10 @@ export const exerciseStyles = StyleSheet.create({
     width: '110%',
     marginTop: 19,
   },
-  repetitionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  progressLabelVariant1: {
-    ...textStyleBases.semiBoldMutedText,
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-  progressTrackVariant7: {
-    height: 7,
-    borderRadius: 5,
-    overflow: 'hidden',
-    backgroundColor: COLORS.background,
-  },
-  remainingTextVariant1: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 10,
-    textAlign: 'right',
-    marginTop: 7,
-  },
   liveCardVariant10: {
     width: '110%',
-    backgroundColor: COLORS.background,
+    ...surfaceStyleBases.outlinedBackground,
     borderRadius: 23,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 15,
     marginTop: 16,
   },
@@ -6371,17 +5906,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingBottom: 45,
     alignItems: 'center',
   },
-  startButtonVariant6: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 20,
-  },
   secondaryButton: {
     width: '100%',
     minHeight: 50,
@@ -6420,10 +5944,8 @@ export const exerciseStyles = StyleSheet.create({
     marginBottom: 22,
   },
   scoreDescription: {
-    ...textStyleBases.regularMutedText,
-    fontSize: 11,
+    ...scoreDescriptionBase,
     lineHeight: 17,
-    textAlign: 'center',
   },
   resultTargetLarge: {
     ...textStyleBases.boldBrownText,
@@ -6444,13 +5966,6 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 16,
     gap: 10,
   },
-  resultRowVariant2: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
   repStatusIcon: {
     width: 32,
     height: 32,
@@ -6466,14 +5981,8 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 2,
     maxWidth: 220,
   },
-  resultRowValueVariant2: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 14,
-    marginLeft: 10,
-  },
   recordingScreenVariant5: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
     paddingHorizontal: 22,
     paddingTop: 120,
     paddingBottom: 20,
@@ -6491,25 +6000,8 @@ export const exerciseStyles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 10,
   },
-  referenceCardVariant2: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  referenceLabel: {
-    ...textStyleBases.boldMutedText,
-    fontSize: 12,
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
   recordingScreenVariant6: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+    ...screenStyleBases.white,
     paddingHorizontal: 22,
     paddingTop: 150,
     paddingBottom: 20,
@@ -6546,25 +6038,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     backgroundColor: COLORS.background,
-  },
-  repetitionCard: {
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  repetitionNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 8,
-  },
-  repetitionMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
   },
   referenceReadyText: {
     flex: 1,
@@ -6615,18 +6088,6 @@ export const exerciseStyles = StyleSheet.create({
     ...textStyleBases.regularMutedText,
     fontSize: 7,
   },
-  guideProgressTrack: {
-    height: 3,
-    marginTop: 5,
-    borderRadius: 2,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-  },
-  guideProgressFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: COLORS.accent,
-  },
   visualizerLegend: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6645,10 +6106,8 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 12,
   },
   previewCardVariant1: {
-    backgroundColor: COLORS.white,
+    ...surfaceStyleBases.outlinedWhite,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 14,
     marginTop: 12,
   },
@@ -6789,13 +6248,6 @@ export const exerciseStyles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 14,
   },
-  liveProgressTrack: {
-    height: 6,
-    marginTop: 10,
-    backgroundColor: COLORS.background,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
   resultsDetails: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -6824,16 +6276,6 @@ export const exerciseStyles = StyleSheet.create({
     borderColor: COLORS.border,
     overflow: 'hidden',
     justifyContent: 'center',
-  },
-  actualBars_SharedVolumeComponents: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
   },
   actualBar_SharedVolumeComponents: {
     flex: 1,
@@ -6893,9 +6335,7 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedWhite,
     gap: 9,
   },
   referenceInstructionVariant1: {
@@ -6941,13 +6381,6 @@ export const exerciseStyles = StyleSheet.create({
   liveContentVariant1: {
     paddingBottom: 12,
   },
-  repTrack: {
-    marginTop: 12,
-    height: 7,
-    borderRadius: 5,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-  },
   infoCardVariant1: {
     marginTop: 12,
     padding: 13,
@@ -6981,9 +6414,7 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 12,
     padding: 13,
     borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedWhite,
   },
   targetRange: {
     color: COLORS.waveform,
@@ -7087,15 +6518,12 @@ export const exerciseStyles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 3,
     borderRadius: 18,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    ...surfaceStyleBases.outlinedWhite,
   },
-  resultRowVariant3: {
+  volumeResultRow: {
+    ...resultRowLayoutBase,
     minHeight: 42,
     paddingVertical: 7,
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.pink,
@@ -7127,9 +6555,7 @@ export const exerciseStyles = StyleSheet.create({
     marginTop: 12,
     padding: 13,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    ...surfaceStyleBases.outlinedWhite,
   },
   referenceLabelVariant1: {
     ...textStyleBases.boldMutedText,
@@ -7157,9 +6583,7 @@ export const exerciseStyles = StyleSheet.create({
   liveCardVariant11: {
     padding: 20,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    ...surfaceStyleBases.outlinedWhite,
     marginBottom: 14,
   },
   liveCardHeaderVariant3: {
@@ -7205,24 +6629,6 @@ export const exerciseStyles = StyleSheet.create({
     fontFamily: 'FredokaBold',
     fontSize: 9,
     letterSpacing: 0.25,
-  },
-  stabilityValueVariant1: {
-    color: COLORS.accent,
-    fontFamily: 'FredokaBold',
-    fontSize: 30,
-  },
-  stabilityTrackVariant2: {
-    height: 14,
-    marginTop: 11,
-    borderRadius: 6,
-    backgroundColor: COLORS.pink,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  stabilityFillVariant2: {
-    height: '100%',
-    borderRadius: 6,
-    backgroundColor: COLORS.accent,
   },
   stabilityTargetMarker: {
     position: 'absolute',
@@ -7280,19 +6686,7 @@ export const exerciseStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 3,
     borderRadius: 15,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  resultRowVariant4: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.background,
-    gap: 10,
-    paddingVertical: 5,
+    ...surfaceStyleBases.outlinedWhite,
   },
   volumeDisplay: {
     flexDirection: 'row',
@@ -7319,10 +6713,5 @@ export const exerciseStyles = StyleSheet.create({
     ...textStyleBases.boldMutedText,
     fontSize: 9,
     letterSpacing: 1,
-  },
-  stabilityValueVariant2: {
-    ...textStyleBases.boldBrownText,
-    fontSize: 24,
-    marginTop: 5,
   },
 });

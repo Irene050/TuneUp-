@@ -1,98 +1,94 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, Text, View } from 'react-native';
 
 import {
-  type Tier,
-  WAVEFORM_SMOOTHNESS_PARAMS,
-  type WaveformSmoothnessParams,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+    createToneWaveformBars,
+    LiveToneMonitorCard,
+    type ToneWaveformProps,
+} from '@/components/SharedToneComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    type Tier,
+    WAVEFORM_SMOOTHNESS_PARAMS,
+    type WaveformSmoothnessParams,
 } from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-  generateWaveformSmoothnessParams,
+    generateWaveformSmoothnessParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureWaveformSmoothness,
-  type WaveformSmoothnessMeasurement,
+    measureWaveformSmoothness,
+    type WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
 import {
-  saveCompletedExercise,
+    saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreWaveformSmoothnessDrill,
-  type WaveformSmoothnessScoreResult,
+    scoreWaveformSmoothnessDrill,
+    type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  samplesToFFTFrames,
+    samplesToFFTFrames,
 } from '@/utils/dsp/fft';
+import { clamp } from '@/utils/math';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomPitchNote,
-  getSemitoneDistance,
-  type VocalRange,
+    frequencyToNoteName,
+    getRandomPitchNote,
+    getSemitoneDistance,
+    type VocalRange,
 } from '@/utils/music/notes';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  TONE_WAVEFORM_BAR_COUNT,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
+type Props = ExerciseTierProps;
 
-interface Props {
-  tier?: Tier;
-}
-
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 interface RepetitionResult {
   targetNote: string;
@@ -100,13 +96,10 @@ interface RepetitionResult {
   score: WaveformSmoothnessScoreResult;
 }
 
-function LiveWaveform({
-  frame,
-  targetFrequency,
-}: {
-  frame: LiveAudioFrame | null;
-  targetFrequency?: number;
-}) {
+function getWaveformSmoothnessDisplay(
+  frame: LiveAudioFrame | null,
+  targetFrequency?: number,
+): ToneWaveformProps {
   const pitch = frame?.pitch ?? 0;
   const hasPitch = Number.isFinite(pitch) && pitch > 0;
 
@@ -123,77 +116,24 @@ function LiveWaveform({
       ? COLORS.guideGreen
       : COLORS.guideYellow;
 
-  const bars = useMemo(
-    () =>
-      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
-        const distance = Math.abs(index - center) / center;
-        const envelope = 1 - distance * 0.65;
-        const phaseOffset = index * 0.72;
-
-        const variation = hasPitch
-          ? 0.35 +
-            Math.abs(Math.sin(phaseOffset + pitch * 0.001)) * 0.65
-          : 0.12 +
-            Math.abs(Math.sin(phaseOffset)) * 0.12;
-
-        return Math.max(
-          5,
-          Math.round(38 * envelope * variation),
-        );
-      }),
-    [hasPitch, pitch],
-  );
-
-  return (
-    <View style={exerciseStyles.waveformContainer}>
-      <View
-        style={exerciseStyles.waveformBars}
-        accessibilityLabel={
-          !hasPitch
-            ? 'No pitch detected'
-            : matchesTarget
-              ? 'Target pitch detected'
-              : 'A different pitch detected'
-        }
-      >
-        {bars.map((height, index) => (
-          <View
-            key={index}
-            style={[
-              exerciseStyles.waveformBar,
-              {
-                height,
-                backgroundColor: waveformColor,
-                opacity: hasPitch ? 0.9 : 0.45,
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      <View style={exerciseStyles.waveformStatusRow}>
-        <View
-          style={[
-            exerciseStyles.statusDot,
-            { backgroundColor: waveformColor },
-          ]}
-        />
-        <Text
-          style={[
-            exerciseStyles.waveformStatus,
-            { color: waveformColor },
-          ]}
-        >
-          {!hasPitch
-            ? 'Listening for your voice...'
-            : matchesTarget
-              ? 'Target note detected'
-              : 'Adjust toward the target note'}
-        </Text>
-      </View>
-    </View>
-  );
+  return {
+    bars: createToneWaveformBars(pitch, hasPitch),
+    color: waveformColor,
+    hasPitch,
+    accessibilityLabel:
+      !hasPitch
+        ? 'No pitch detected'
+        : matchesTarget
+          ? 'Target pitch detected'
+          : 'A different pitch detected',
+    statusText:
+      !hasPitch
+        ? 'Listening for your voice...'
+        : matchesTarget
+          ? 'Target note detected'
+          : 'Adjust toward the target note',
+    statusTextStyle: exerciseStyles.waveformStatus,
+  };
 }
 
 function RecordingScreen({
@@ -228,13 +168,13 @@ function RecordingScreen({
               Repetition {currentRep} of {repetitions}
         </Text>
         <View style={exerciseStyles.recordingBodyVariant1}>
-        <LiveToneMonitorCard>
+        <LiveToneMonitorCard
+          waveform={getWaveformSmoothnessDisplay(
+            liveAudioFrame,
+            targetFrequency,
+          )}
+        >
 
-
-          <LiveWaveform
-            frame={liveAudioFrame}
-            targetFrequency={targetFrequency}
-          />
 
           <View style={exerciseStyles.liveMetricsRow}>
             <View style={exerciseStyles.sessionPart}>
@@ -254,7 +194,7 @@ function RecordingScreen({
         </LiveToneMonitorCard>
 
         <View style={exerciseStyles.recordingProgressSection}>
-          <View style={exerciseStyles.progressTrackVariant1}>
+          <View style={exerciseStyles.progressTrack}>
             <View
               style={[
                 exerciseStyles.progressFill,
@@ -302,6 +242,7 @@ export default function WaveformSmoothnessDrillScreen({
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const leavingRef = useRef(false);
 
   const countdownTimerRef =
@@ -1092,10 +1033,7 @@ export default function WaveformSmoothnessDrillScreen({
   }, [handleBack]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       leavingRef.current = true;
       pausedRef.current = true;
       showQuitModalRef.current = false;
@@ -1253,7 +1191,7 @@ export default function WaveformSmoothnessDrillScreen({
               ? `Prepare to sing ${currentTarget.name}.`
               : 'Prepare to sing the assigned note.'
           }
-          onBack={handleBack}
+
         />
         {quitModal}
       </>
@@ -1264,28 +1202,9 @@ export default function WaveformSmoothnessDrillScreen({
     return (
       <>
         <ExerciseListeningScreen
-          icon="musical-note-outline"
           title="Waveform Smoothness"
-          currentRep={currentRep}
-          repetitions={params.repetitions}
-          promptTitle="Listen to the Reference"
           prompt="Listen carefully to the note, then sustain the same note smoothly."
-          liveContent={
-            <View style={exerciseStyles.referenceCardVariant2}>
-              <Text style={exerciseStyles.referenceLabel}>SING THIS NOTE</Text>
-
-              <Text style={exerciseStyles.resultTargetLarge}>
-                {currentTarget?.name ?? '--'}
-              </Text>
-
-              <Text style={exerciseStyles.frequencyText}>
-                {currentTarget
-                  ? `${formatNumber(currentTarget.frequency, 1)} Hz`
-                  : '--'}
-              </Text>
-            </View>
-          }
-          onBack={handleBack}
+          referenceNotes={currentTarget ? [currentTarget.name] : []}
         />
         {quitModal}
       </>
@@ -1351,6 +1270,22 @@ export default function WaveformSmoothnessDrillScreen({
         title="Exercise Complete"
         subtitle="Waveform Smoothness"
         score={score}
+        repetitionScores={repetitionResults.map((item, index) => ({
+          repetition: index + 1,
+          score: item.score.score,
+          passed: item.score.passed,
+          components: [
+            { label: 'Target note', value: item.targetNote },
+            {
+              label: 'Spectral smoothness',
+              value: `${Math.round(item.measurement.centroidSmoothnessPct)}%`,
+            },
+            {
+              label: 'Amplitude stability',
+              value: `${Math.round(item.measurement.amplitudeStabilityPct)}%`,
+            },
+          ],
+        }))}
         resultIcon={passed ? 'checkmark' : 'refresh-outline'}
         scoreMessage={
           passed
@@ -1389,57 +1324,7 @@ export default function WaveformSmoothnessDrillScreen({
         }
         onRetry={retryExercise}
         onExit={handleBack}
-      >
-        <View style={exerciseStyles.restIndicator}>
-          <Text style={exerciseStyles.feedbackTitle}>
-            Repetition Results
-          </Text>
-
-          {repetitionResults.map((item, index) => (
-            <View
-              key={`${item.targetNote}-${index}`}
-              style={exerciseStyles.repetitionCard}
-            >
-              <View style={exerciseStyles.repetitionHeader}>
-                <Text style={exerciseStyles.infoName}>
-                  Repetition {index + 1}
-                </Text>
-                <Text style={exerciseStyles.resultDetailValue}>
-                  {item.score.score}%
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.repetitionNoteRow}>
-                <Ionicons
-                  name="musical-note-outline"
-                  size={18}
-                  color={COLORS.brown}
-                />
-                <Text style={exerciseStyles.resultDetailValue}>
-                  {item.targetNote}
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.repetitionMetrics}>
-                <Text style={exerciseStyles.detailLabel}>
-                  Smoothness:{' '}
-                  {formatNumber(
-                    item.measurement.centroidSmoothnessPct,
-                  )}
-                  %
-                </Text>
-                <Text style={exerciseStyles.detailLabel}>
-                  Stability:{' '}
-                  {formatNumber(
-                    item.measurement.amplitudeStabilityPct,
-                  )}
-                  %
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </ExerciseResultsScreen>
+      />
       {quitModal}
     </>
   );

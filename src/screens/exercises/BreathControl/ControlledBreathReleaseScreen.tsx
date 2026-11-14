@@ -1,9 +1,17 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_BREATH_RELEASE_PARAMS, type ControlledBreathReleaseParams, type Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { ExerciseTierProps } from '@/types/exercises';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, ResultStat } from '@/screens/exercises/ExerciseScreen';
 import { generateControlledBreathReleaseParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -15,12 +23,8 @@ import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, Text, View } from 'react-native';
-import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric, ResultStat } from '../ExerciseScreen';
-import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+
+import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
 const EXTRA_RECORDING_TIME_SECONDS = 1;
 const GUIDE_TOLERANCE_SECONDS = 0.35;
@@ -34,9 +38,7 @@ type Phase =
   | 'processing'
   | 'results';
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
 interface RepetitionResult {
   rep: number;
@@ -75,6 +77,7 @@ export default function ControlledBreathReleaseScreen({
   );
 
   const mountedRef = useRef(false);
+  useMountedRefLifecycle(mountedRef);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const cancellingRef = useRef(false);
@@ -862,10 +865,7 @@ export default function ControlledBreathReleaseScreen({
   }, [startCountdown]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       cancellingRef.current = true;
       pausedRef.current = false;
       restartCurrentRepRef.current = false;
@@ -1117,30 +1117,7 @@ export default function ControlledBreathReleaseScreen({
           countdown={countdown}
           promptTitle="Prepare your breath"
           prompt="Take a comfortable breath. Release a short, gentle pulse whenever the guide cues you."
-          onBack={openQuitModal}
-        />
 
-        {quitConfirmationModal}
-        {noAudioModal}
-      </>
-    );
-  }
-
-  if (phase === 'finishing' || phase === 'processing') {
-    return (
-      <>
-        <ExerciseProcessingScreen
-          icon="analytics-outline"
-          title={
-            phase === 'finishing'
-              ? 'Finishing Audio Capture'
-              : 'Analyzing Your Breath Pulses'
-          }
-          message={
-            phase === 'finishing'
-              ? 'The pulse sequence is complete. Please relax while the recording finishes.'
-              : 'Checking pulse consistency and measuring the time between detected pulses...'
-          }
         />
 
         {quitConfirmationModal}
@@ -1189,7 +1166,7 @@ export default function ControlledBreathReleaseScreen({
               </View>
             </View>
 
-            <View style={exerciseStyles.recordingBadgeVariant1}>
+            <View style={[exerciseStyles.recordingBadge, { marginTop: 20 }]}>
               <View style={exerciseStyles.recordingDot} />
               <Text style={exerciseStyles.recordingBadgeText}>
                 RECORDING
@@ -1218,10 +1195,10 @@ export default function ControlledBreathReleaseScreen({
                       : 'Get ready for the next pulse.'}
               </Text>
 
-              <View style={exerciseStyles.pulseProgressTrack}>
+              <View style={[exerciseStyles.progressTrack, { marginTop: 13 }]}>
                 <View
                   style={[
-                    exerciseStyles.pulseProgressFill,
+                    exerciseStyles.progressFill,
                     { width: `${pulseGuideProgress * 100}%` },
                   ]}
                 />
@@ -1249,7 +1226,7 @@ export default function ControlledBreathReleaseScreen({
               </View>
             </View>
 
-             <View style={exerciseStyles.progressTrackVariant3}>
+             <View style={[exerciseStyles.progressTrack, { marginTop: 14 }]}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1270,12 +1247,73 @@ export default function ControlledBreathReleaseScreen({
     );
   }
 
+  if (phase === 'finishing' || phase === 'processing') {
+    return (
+      <>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title={
+            phase === 'finishing'
+              ? 'Finishing Audio Capture'
+              : 'Analyzing Your Breath Pulses'
+          }
+          message={
+            phase === 'finishing'
+              ? 'The pulse sequence is complete. Please relax while the recording finishes.'
+              : 'Checking pulse consistency and measuring the time between detected pulses...'
+          }
+        />
+
+        {quitConfirmationModal}
+        {noAudioModal}
+      </>
+    );
+  }
+
   return (
     <>
       <ExerciseResultsScreen
         title="Exercise Complete"
         subtitle="Your controlled breath release results"
         score={averageScore}
+        repetitionScores={repetitionResults.map(item => ({
+          repetition: item.rep,
+          score: item.score.score,
+          passed: item.score.passed,
+          components: [
+            {
+              label: 'Pulse consistency',
+              value: `${Math.round(item.measurement.pulseConsistencyPct)}%`,
+            },
+            {
+              label: 'Interval accuracy',
+              value: `${Math.round(item.measurement.intervalAccuracyPct)}%`,
+            },
+            {
+              label: 'Detected pulses',
+              value: `${item.measurement.peaks.length}/${params.pulseCount}`,
+            },
+            {
+              label: 'Pulse intervals',
+              value:
+                item.measurement.peaks.length >= 2
+                  ? item.measurement.peaks
+                      .slice(1)
+                      .map((peak, index) =>
+                        `${(
+                          peak.timestamp -
+                          item.measurement.peaks[index].timestamp
+                        ).toFixed(2)}s`,
+                      )
+                      .join(', ')
+                  : 'Not enough detected pulses',
+            },
+            {
+              label: 'Target interval',
+              value: `${params.intervalSec.toFixed(2)}s`,
+            },
+          ],
+        }))}
         resultIcon={
           averageScore >= 70 ? 'checkmark' : 'analytics-outline'
         }
@@ -1288,7 +1326,7 @@ export default function ControlledBreathReleaseScreen({
                 ? 'Good effort!'
                 : 'Keep practicing!'
         }
-        onBack={openQuitModal}
+
         onRetry={retryExercise}
         onExit={exitExercise}
       >
@@ -1319,97 +1357,6 @@ export default function ControlledBreathReleaseScreen({
             />
           </View>
 
-          <Text style={exerciseStyles.resultsSectionTitle}>
-            Repetition Results
-          </Text>
-
-          {repetitionResults.map(item => (
-            <View key={item.rep} style={exerciseStyles.repCard}>
-              <View style={exerciseStyles.rowBetween}>
-                <Text style={exerciseStyles.cardTitle}>
-                  Repetition {item.rep}
-                </Text>
-
-                <View
-                  style={[
-                    exerciseStyles.passBadge,
-                    !item.score.passed && exerciseStyles.resultIconFailed,
-                  ]}
-                >
-                  <Text style={exerciseStyles.passBadgeText}>
-                    {item.score.passed
-                      ? 'PASS'
-                      : 'KEEP PRACTICING'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={exerciseStyles.repMetrics}>
-                <Metric
-                  label="Pulses"
-                  value={`${item.measurement.peaks.length}/${params.pulseCount}`}
-                />
-
-                <Metric
-                  label="Consistency"
-                  value={`${Math.round(item.measurement.pulseConsistencyPct)}%`}
-                />
-
-                <Metric
-                  label="Interval Accuracy"
-                  value={`${Math.round(item.measurement.intervalAccuracyPct)}%`}
-                />
-
-                <Metric
-                  label="Score"
-                  value={`${item.score.score}%`}
-                />
-              </View>
-
-              <View style={exerciseStyles.intervalsCard}>
-                <Text style={exerciseStyles.intervalsTitle}>
-                  Detected Pulse Intervals
-                </Text>
-
-                {item.measurement.peaks.length >= 2 ? (
-                  item.measurement.peaks.slice(1).map(
-                    (peak, index) => {
-                      const previousPeak =
-                        item.measurement.peaks[index];
-
-                      return (
-                        <View
-                          key={`${item.rep}-${index}`}
-                          style={exerciseStyles.intervalRow}
-                        >
-                          <Text style={exerciseStyles.sessionLabel}>
-                            Pulse {index + 1} → {index + 2}
-                          </Text>
-
-                          <Text style={exerciseStyles.referenceButtonText}>
-                            {(
-                              peak.timestamp - previousPeak.timestamp
-                            ).toFixed(2)}{' '}
-                            s
-                          </Text>
-                        </View>
-                      );
-                    },
-                  )
-                ) : (
-                  <Text style={exerciseStyles.referenceInstruction}>
-                    Not enough detected pulses to calculate intervals.
-                  </Text>
-                )}
-
-                {item.measurement.peaks.length >= 2 && (
-                  <Text style={exerciseStyles.targetIntervalText}>
-                    Target interval: {params.intervalSec.toFixed(2)}s
-                  </Text>
-                )}
-              </View>
-            </View>
-          ))}
         </View>
       </ExerciseResultsScreen>
 

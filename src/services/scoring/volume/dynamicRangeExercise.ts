@@ -1,16 +1,16 @@
 import type { DynamicRangeMeasurement } from '@/services/measurement/volume/dynamicRangeExercise';
 import { clampFinite } from '@/utils/math';
+import type { VolumeScoreOptions } from './types';
 
 export interface DynamicRangeScore {
   rangeAccuracy: number;
   rampConsistency: number;
   overallScore: number;
   passed: boolean;
+  repetitionScores: number[];
 }
 
-interface ScoreOptions {
-  passingScore?: number;
-}
+type ScoreOptions = VolumeScoreOptions;
 
 function round(value: number): number {
   return Math.round(value);
@@ -50,5 +50,16 @@ export function scoreDynamicRange(
     rampConsistency: round(rampConsistency),
     overallScore: round(overallScore),
     passed: overallScore >= passingScore,
+    repetitionScores: measurement.repetitionRangeScores.map(
+      (repetitionRangeAccuracy, index) =>
+        round(
+          clampFinite(
+            repetitionRangeAccuracy * 0.4 +
+              measurement.repetitionRampScores[index] * 0.6,
+            0,
+            100,
+          ),
+        ),
+    ),
   };
 }

@@ -1,89 +1,81 @@
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { Alert, BackHandler, Text, View } from 'react-native';
 
 import {
-  STEADY_TONE_HOLDING_PARAMS,
-  type SteadyToneHoldingParams,
-  type Tier,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+    createToneWaveformBars,
+    LiveToneMonitorCard,
+    type ToneWaveformProps,
+} from '@/components/SharedToneComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    STEADY_TONE_HOLDING_PARAMS,
+    type SteadyToneHoldingParams,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { ExerciseTierProps, RecordingExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyToneHoldingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureSteadyToneHolding,
-  type SteadyToneHoldingMeasurement,
+    measureSteadyToneHolding,
+    type SteadyToneHoldingMeasurement,
 } from '@/services/measurement/tone/steadyToneHolding';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreSteadyToneHolding,
-  type SteadyToneHoldingScoreResult,
+    scoreSteadyToneHolding,
+    type SteadyToneHoldingScoreResult,
 } from '@/services/scoring/tone/steadyToneHolding';
-import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { frequencyToNoteName } from '@/utils/music/notes';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  TONE_WAVEFORM_BAR_COUNT,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { clamp } from '@/utils/math';
+import { frequencyToNoteName } from '@/utils/music/notes';
 import { formatNumber } from '@/utils/numberFormatting';
 
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
+type Props = ExerciseTierProps;
 
-interface Props {
-  tier?: Tier;
-}
-
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
 interface ProcessingResult {
   measurement: SteadyToneHoldingMeasurement;
   result: SteadyToneHoldingScoreResult;
 }
 
-function LiveWaveform({
-  frame,
-}: {
-  frame: LiveAudioFrame | null;
-}) {
+function getLiveToneWaveform(
+  frame: LiveAudioFrame | null,
+): ToneWaveformProps {
   const pitch = frame?.pitch ?? 0;
   const volume = frame?.volume ?? -60;
   const hasPitch = Number.isFinite(pitch) && pitch > 0;
@@ -92,70 +84,22 @@ function LiveWaveform({
     ? clamp((volume + 60) / 60, 0, 1)
     : 0;
 
-  const bars = useMemo(
-    () =>
-      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
-        const distance = Math.abs(index - center) / center;
-        const envelope = 1 - distance * 0.65;
-
-        const variation = hasPitch
-          ? 0.35 +
-            Math.abs(Math.sin(index * 0.72 + pitch * 0.001)) *
-              (0.35 + volumeLevel * 0.3)
-          : 0.12 + Math.abs(Math.sin(index * 0.72)) * 0.12;
-
-        return Math.max(
-          5,
-          Math.round(38 * envelope * variation),
-        );
-      }),
-    [hasPitch, pitch, volumeLevel],
-  );
-
-  return (
-    <View style={exerciseStyles.waveformContainer}>
-      <View
-        style={exerciseStyles.waveformBars}
-        accessibilityLabel={
-          hasPitch ? 'Voice detected in waveform' : 'Waiting for voice'
-        }
-      >
-        {bars.map((height, index) => (
-          <View
-            key={index}
-            style={[
-              exerciseStyles.waveformBar,
-              {
-                height,
-                backgroundColor: waveformColor,
-                opacity: hasPitch ? 0.9 : 0.45,
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      <View style={exerciseStyles.waveformStatusRow}>
-        <View
-          style={[
-            exerciseStyles.statusDot,
-            { backgroundColor: waveformColor },
-          ]}
-        />
-        <Text
-          style={[
-            exerciseStyles.waveformStatusVariant1,
-            { color: waveformColor },
-          ]}
-        >
-          {hasPitch
-            ? 'Voice detected — keep your tone steady'
-            : 'Listening for your voice...'}
-        </Text>
-      </View>
-    </View>
-  );
+  return {
+    bars: createToneWaveformBars(
+      pitch,
+      hasPitch,
+      0.35 + volumeLevel * 0.3,
+    ),
+    color: waveformColor,
+    hasPitch,
+    accessibilityLabel:
+      hasPitch ? 'Voice detected in waveform' : 'Waiting for voice',
+    statusText:
+      hasPitch
+        ? 'Voice detected — keep your tone steady'
+        : 'Listening for your voice...',
+    statusTextStyle: exerciseStyles.waveformStatusVariant1,
+  };
 }
 
 function RecordingScreen({
@@ -200,10 +144,8 @@ function RecordingScreen({
             STEADY TONE · SINGLE ATTEMPT
           </Text>
       <View style={exerciseStyles.sessionPart}>
-        <LiveToneMonitorCard>
+        <LiveToneMonitorCard waveform={getLiveToneWaveform(liveAudioFrame)}>
 
-
-          <LiveWaveform frame={liveAudioFrame} />
 
           <View style={exerciseStyles.liveMetricsRow}>
             <View style={exerciseStyles.liveMetric}>
@@ -238,7 +180,7 @@ function RecordingScreen({
 
         <View style={exerciseStyles.recordingProgressSectionVariant2}>
           <View
-            style={exerciseStyles.progressTrackVariant1}
+            style={exerciseStyles.progressTrack}
             accessibilityRole="progressbar"
             accessibilityLabel="Recording progress"
             accessibilityValue={{
@@ -289,6 +231,7 @@ export default function SteadyToneHoldingScreen({
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const paramsRef = useRef(params);
   const tierRef = useRef(currentTier);
 
@@ -985,10 +928,7 @@ export default function SteadyToneHoldingScreen({
   }, [pauseForExitPrompt]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       discardNextStopRef.current = true;
@@ -1010,20 +950,19 @@ export default function SteadyToneHoldingScreen({
 
   const elapsedSeconds = elapsedMs / 1000;
 
-  const quitMessage =
-    pausedPhaseRef.current === 'recording'
-      ? 'Your exercise is paused. Your current recording will be discarded, and you will restart this attempt if you continue.'
-      : pausedPhaseRef.current === 'processing'
-        ? 'Your exercise is paused while we analyze your performance. Continue to return to your results when processing is complete.'
-        : pausedPhaseRef.current === 'results'
-          ? 'Are you sure you want to leave this exercise? Your completed result has already been saved.'
-          : 'Are you sure you want to leave Steady Tone Holding? Your progress is saved after a completed recording is analyzed.';
-
   const quitModal = (
     <ExerciseQuitModal
         visible={showQuitModal}
         title={"Leave Exercise?"}
-        message={quitMessage}
+        message={
+          pausedPhaseRef.current === 'recording'
+            ? 'Your exercise is paused. Your current recording will be discarded, and you will restart this attempt if you continue.'
+            : pausedPhaseRef.current === 'processing'
+              ? 'Your exercise is paused while we analyze your performance. Continue to return to your results when processing is complete.'
+              : pausedPhaseRef.current === 'results'
+                ? 'Are you sure you want to leave this exercise? Your completed result has already been saved.'
+                : 'Are you sure you want to leave Steady Tone Holding? Your progress is saved after a completed recording is analyzed.'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={quitExercise}
@@ -1123,7 +1062,7 @@ export default function SteadyToneHoldingScreen({
           countdown={countdown}
           promptTitle="Get Ready"
           prompt="Prepare to sustain one comfortable note."
-          onBack={goBack}
+
         />
         {quitModal}
       </>
@@ -1164,6 +1103,7 @@ export default function SteadyToneHoldingScreen({
           title={result.passed ? 'Great Tone Control!' : 'Keep Practicing'}
           subtitle="Your steady-tone performance"
           score={result.score}
+          repetitionScores={[{ repetition: 1, score: result.score }]}
           resultIcon={
             result.passed
               ? 'checkmark-circle-outline'
@@ -1176,9 +1116,14 @@ export default function SteadyToneHoldingScreen({
           }
           onRetry={retry}
           onExit={goBack}
-          onBack={goBack}
+
         >
-          <View style={exerciseStyles.resultCardVariant2}>
+          <View
+            style={[
+              exerciseStyles.resultCardSurface,
+              exerciseStyles.resultCardInsetPadding,
+            ]}
+          >
             <Text style={exerciseStyles.resultCardTitle}>
               Your Performance
             </Text>

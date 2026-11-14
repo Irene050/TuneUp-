@@ -1,22 +1,19 @@
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
 import { calcRMSConsistency } from '@/utils/dsp/rms';
 
-export interface SustainedExhaleMeasurement {
+export interface SustainedBreathMeasurement {
   actualDurationSec: number;
   consistencyPct: number;
   detected: boolean;
 }
 
-export function measureSustainedExhale(
+export function measureSustainedBreath(
   samples: Float32Array,
   threshold: number,
-  sampleRate: number
-): SustainedExhaleMeasurement {
-  const { onsetIndex, offsetIndex, durationSeconds } = detectOnsetOffset(
-    samples,
-    threshold,
-    sampleRate
-  );
+  sampleRate: number,
+): SustainedBreathMeasurement {
+  const { onsetIndex, offsetIndex, durationSeconds } =
+    detectOnsetOffset(samples, threshold, sampleRate);
 
   if (durationSeconds === 0) {
     return {
@@ -26,11 +23,15 @@ export function measureSustainedExhale(
     };
   }
 
-  const exhaleSegment = samples.subarray(onsetIndex, offsetIndex);
+  const sustainedSegment = samples.subarray(onsetIndex, offsetIndex);
 
   return {
     actualDurationSec: durationSeconds,
-    consistencyPct: calcRMSConsistency(exhaleSegment, 50, sampleRate),
+    consistencyPct: calcRMSConsistency(
+      sustainedSegment,
+      50,
+      sampleRate,
+    ),
     detected: true,
   };
 }

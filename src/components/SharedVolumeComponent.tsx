@@ -4,12 +4,23 @@ import { ScrollView, Text, View } from 'react-native';
 import { COLORS, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { clamp } from '@/utils/math';
+import type { VolumeRampDirection } from '@/utils/dsp/volumeAnalysis';
 
 type VolumeVisualizerVariant =
   | 'crescendo'
   | 'decrescendo'
   | 'freeMode';
-type ResultItemVariant = 'crescendo' | 'decrescendo';
+
+export function getVolumeRampTargetHeight(
+  index: number,
+  direction: VolumeRampDirection,
+): number {
+  const progress = index / Math.max(1, VOLUME_RAMP_BAR_COUNT - 1);
+
+  return direction === 'crescendo'
+    ? 0.18 + progress * 0.65
+    : 0.83 - progress * 0.65;
+}
 
 export function VolumeVisualizer({
   liveHistory,
@@ -49,7 +60,7 @@ export function VolumeVisualizer({
 
   return (
     <View style={exerciseStyles.visualizer_SharedVolumeComponents}>
-      <View style={exerciseStyles.actualBars_SharedVolumeComponents}>
+      <View style={exerciseStyles.actualBars}>
         {actualBars.map((height, index) => (
           <View
             key={`actual-${index}`}
@@ -177,10 +188,10 @@ export function VolumeRampRecordingContent({
               </Text>
             </View>
 
-            <View style={exerciseStyles.guideProgressTrack}>
+            <View style={[exerciseStyles.progressTrack, { marginTop: 5 }]}>
               <View
                 style={[
-                  exerciseStyles.guideProgressFill,
+                  exerciseStyles.progressFill,
                   { width: `${guideProgress * 100}%` },
                 ]}
               />
@@ -227,7 +238,7 @@ export function VolumeRampRecordingContent({
           <View style={exerciseStyles.sessionRow}>
             <View style={exerciseStyles.sessionPart}>
               <Text style={exerciseStyles.sessionLabel}>REPETITION</Text>
-              <Text style={exerciseStyles.sessionValue}>
+              <Text style={exerciseStyles.largeBrownValue}>
                 {currentRep} / {repetitions}
               </Text>
             </View>
@@ -236,16 +247,16 @@ export function VolumeRampRecordingContent({
 
             <View style={exerciseStyles.sessionPart}>
               <Text style={exerciseStyles.sessionLabel}>SMOOTHNESS</Text>
-              <Text style={exerciseStyles.sessionValue}>
+              <Text style={exerciseStyles.largeBrownValue}>
                 {liveSmoothness}%
               </Text>
             </View>
           </View>
 
-          <View style={exerciseStyles.exerciseProgressTrack}>
+          <View style={[exerciseStyles.progressTrack, { marginBottom: 16 }]}>
             <View
               style={[
-                exerciseStyles.exerciseProgressFill,
+                exerciseStyles.progressFill,
                 { width: `${progress * 100}%` },
               ]}
             />
@@ -263,7 +274,7 @@ export function ResultItem({
 }: {
   label: string;
   value: string;
-  variant: ResultItemVariant;
+  variant: VolumeRampDirection;
 }) {
   return (
     <View

@@ -1,31 +1,36 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
 import {
-  AGILITY_CLOSE_NOTE_SEMITONES,
-  AGILITY_GOOD_NOTE_SEMITONES,
-  AUDIO_SAMPLE_RATE,
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    ExerciseConfirmationModal,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { AgilitySequenceGuide } from '@/components/SharedAgilityComponent';
+import {
+    AUDIO_SAMPLE_RATE,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  QUICK_INTERVAL_JUMP_PARAMS,
-  type Tier,
+    QUICK_INTERVAL_JUMP_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseRepetitionBreakdown,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateQuickIntervalJumpParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -33,35 +38,25 @@ import { auth } from '@/services/firebase/config';
 import { measureQuickIntervalJump } from '@/services/measurement/agility/quickIntervalJump';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  getActiveSequenceNoteIndex,
+    AGILITY_NOTE_START_DELAY_MS,
+    getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getSemitoneDistance,
+    frequencyToNoteName,
+    isValidVocalRange,
+    type VocalRange,
 } from '@/utils/music/notes';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
 const MAX_RECORDING_SECONDS = 15;
 
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 type ExerciseResult = {
   overall: number;
@@ -69,13 +64,17 @@ type ExerciseResult = {
   intervalScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
   noteCount: number;
   correctNoteCount: number;
   transitionCount: number;
   correctTransitionCount: number;
   averageTransitionTimeMs: number;
   durationMs: number;
+  repetitionScores: {
+    repetition: number;
+    score: number;
+    components: { label: string; value: string }[];
+  }[];
 };
 
 type QuickIntervalJumpSettings = {
@@ -138,10 +137,6 @@ export default function QuickIntervalJumpScreen() {
   const [livePitchHz, setLivePitchHz] = useState<number | null>(null);
   const [liveDetectedNote, setLiveDetectedNote] =
     useState<string | null>(null);
-  const [liveStatus, setLiveStatus] = useState(
-    'Sing a clear, sustained note.',
-  );
-
   const [result, setResult] = useState<ExerciseResult | null>(null);
 
   const [confirmation, setConfirmation] = useState<'tryAgain' | null>(
@@ -160,6 +155,7 @@ export default function QuickIntervalJumpScreen() {
   const processingRef = useRef(false);
   const recordingStopRequestedRef = useRef(false);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const countdownTokenRef = useRef(0);
   const playbackTokenRef = useRef(0);
   const startCountdownRef =
@@ -215,7 +211,6 @@ export default function QuickIntervalJumpScreen() {
   const resetLivePitch = useCallback(() => {
     setLivePitchHz(null);
     setLiveDetectedNote(null);
-    setLiveStatus('Sing a clear, sustained note.');
   }, []);
 
   const updateLivePitch = useCallback(
@@ -237,40 +232,16 @@ export default function QuickIntervalJumpScreen() {
       if (pitchHz === null) {
         setLivePitchHz(null);
         setLiveDetectedNote(null);
-        setLiveStatus('Listening for a clear note…');
         return;
       }
 
       const detectedNote =
         frame.note || frequencyToNoteName(pitchHz);
 
-      let closestDistance = Infinity;
-
-      adaptiveConfig.frequencies.forEach((targetFrequency) => {
-        const distance = getSemitoneDistance(
-          pitchHz,
-          targetFrequency,
-        );
-
-        if (distance < closestDistance) {
-          closestDistance = distance;
-        }
-      });
-
       setLivePitchHz(pitchHz);
       setLiveDetectedNote(detectedNote);
-
-      if (closestDistance <= AGILITY_GOOD_NOTE_SEMITONES) {
-        setLiveStatus('Great! You are matching a target note.');
-      } else if (
-        closestDistance <= AGILITY_CLOSE_NOTE_SEMITONES
-      ) {
-        setLiveStatus('Close! Adjust your pitch slightly.');
-      } else {
-        setLiveStatus('Try matching one of the target notes.');
-      }
     },
-    [adaptiveConfig.frequencies],
+    [],
   );
 
   useEffect(() => {
@@ -382,10 +353,7 @@ export default function QuickIntervalJumpScreen() {
         );
       }
 
-      let vocalRange: {
-        lowHz: number;
-        highHz: number;
-      } | null = null;
+      let vocalRange: VocalRange | null = null;
 
       try {
         const assessment = await getLatestAssessment();
@@ -400,15 +368,11 @@ export default function QuickIntervalJumpScreen() {
           assessment?.vocalRange?.highHz ??
           assessment?.vocalRangeHighHz;
 
-        if (
-          typeof lowHz === 'number' &&
-          Number.isFinite(lowHz) &&
-          lowHz > 0 &&
-          typeof highHz === 'number' &&
-          Number.isFinite(highHz) &&
-          highHz > lowHz
-        ) {
-          vocalRange = { lowHz, highHz };
+        if (typeof lowHz === 'number' && typeof highHz === 'number') {
+          const candidate = { lowHz, highHz };
+          if (isValidVocalRange(candidate)) {
+            vocalRange = candidate;
+          }
         }
       } catch (errorMessage) {
         console.warn(
@@ -535,18 +499,39 @@ export default function QuickIntervalJumpScreen() {
 
         const scored = scoreQuickIntervalJump(measurement);
         const finalScore = Math.round(scored.overall);
+        const repetitionScores = audioChunks.map((chunk, index) => {
+          const repetitionMeasurement = measureQuickIntervalJump(
+            chunk,
+            sampleRate,
+            adaptiveConfig.frequencies,
+          );
+          const repetitionScore =
+            scoreQuickIntervalJump(repetitionMeasurement);
+
+          return {
+            repetition: index + 1,
+            score: repetitionScore.overall,
+            components: [
+              {
+                label: 'Pitch accuracy',
+                value: `${Math.round(repetitionScore.pitchScore)}%`,
+              },
+              {
+                label: 'Interval accuracy',
+                value: `${Math.round(repetitionScore.intervalScore)}%`,
+              },
+              {
+                label: 'Transition speed',
+                value: `${Math.round(repetitionScore.speedScore)}%`,
+              },
+            ],
+          };
+        });
 
         const accuracyScore =
           (scored.pitchScore + scored.intervalScore) / 2;
 
         const passed = accuracyScore >= accuracyTarget;
-
-        const feedback =
-          passed === scored.passed
-            ? scored.feedback
-            : passed
-              ? `You met the ${accuracyTarget}% accuracy target for the ${tier} level. Keep practicing smooth, precise interval jumps.`
-              : `Aim for at least ${accuracyTarget}% accuracy for the ${tier} level. Sing each sequence in order and focus on precise pitch changes.`;
 
         try {
           await saveCompletedExercise(
@@ -571,7 +556,6 @@ export default function QuickIntervalJumpScreen() {
           intervalScore: scored.intervalScore,
           speedScore: scored.speedScore,
           passed,
-          feedback,
           noteCount: measurement.noteCount,
           correctNoteCount: measurement.correctNoteCount,
           transitionCount: measurement.transitionCount,
@@ -580,6 +564,7 @@ export default function QuickIntervalJumpScreen() {
           averageTransitionTimeMs:
             measurement.averageTransitionTimeMs,
           durationMs: measurement.durationMs,
+          repetitionScores,
         });
 
         setExercisePhase('results');
@@ -710,10 +695,7 @@ export default function QuickIntervalJumpScreen() {
   }, [cancelAudioRecording, clearRecordingTimer]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
 
       countdownTokenRef.current += 1;
       playbackTokenRef.current += 1;
@@ -1252,13 +1234,9 @@ export default function QuickIntervalJumpScreen() {
 
   const renderReference = () => (
     <ExerciseListeningScreen
-      icon="swap-horizontal-outline"
       title="Quick Interval Jump"
-      currentRep={currentRep}
-      repetitions={repetitions}
-      promptTitle="Listen to the Reference"
       prompt="Listen to the note sequence, then sing the same notes in order."
-      liveContent={
+      referenceContent={
         <AgilitySequenceGuide
           names={adaptiveConfig.frequencies.map(
             frequencyToNoteName,
@@ -1272,7 +1250,6 @@ export default function QuickIntervalJumpScreen() {
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
       onReady={() => void startCountdownRef.current?.()}
-      onBack={() => void pauseForExitPrompt()}
     />
   );
 
@@ -1285,7 +1262,7 @@ export default function QuickIntervalJumpScreen() {
       countdown={countdown}
       promptTitle="Prepare to sing"
       prompt={`Get ready for repetition ${currentRep} of ${repetitions}.`}
-      onBack={() => void pauseForExitPrompt()}
+
     />
   );
 
@@ -1302,36 +1279,12 @@ export default function QuickIntervalJumpScreen() {
       gapSec,
     );
 
-    const activeTargetFrequency =
-      activeRecordingNoteIndex !== null
-        ? adaptiveConfig.frequencies[
-            activeRecordingNoteIndex
-          ]
-        : null;
-
-    const activeTargetDistance =
-      livePitchHz !== null && activeTargetFrequency !== null
-        ? getSemitoneDistance(
-            livePitchHz,
-            activeTargetFrequency,
-          )
-        : Infinity;
-
-    const liveStatusColor =
-      livePitchHz === null || activeTargetFrequency === null
-        ? COLORS.muted
-        : activeTargetDistance <= AGILITY_GOOD_NOTE_SEMITONES
-          ? COLORS.guideGreen
-          : activeTargetDistance <= AGILITY_CLOSE_NOTE_SEMITONES
-            ? COLORS.guideYellow
-            : COLORS.guideRed;
-
     return (
       <ExerciseRecordingScreen
         title="Jump Between Notes"
         currentRep={currentRep}
         repetitions={repetitions}
-        onBack={() => void pauseForExitPrompt()}
+
       >
         <AgilitySequenceGuide
           names={adaptiveConfig.frequencies.map(
@@ -1370,10 +1323,10 @@ export default function QuickIntervalJumpScreen() {
           </Text>
         </View>
 
-        <View style={exerciseStyles.timerTrackVariant1}>
+        <View style={[exerciseStyles.progressTrack, { marginTop: 10 }]}>
           <View
             style={[
-              exerciseStyles.timerFill,
+              exerciseStyles.progressFill,
               { width: `${progress * 100}%` },
             ]}
           />
@@ -1403,7 +1356,7 @@ export default function QuickIntervalJumpScreen() {
         </Text>
       </View>
 
-      <View style={exerciseStyles.progressBackground}>
+      <View style={exerciseStyles.progressTrack}>
         <View
           style={[
             exerciseStyles.progressFill,
@@ -1440,20 +1393,6 @@ export default function QuickIntervalJumpScreen() {
 
     return (
       <View style={exerciseStyles.resultsContentVariant2}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to exercises"
-          hitSlop={10}
-          style={exerciseStyles.quitButtonTop}
-          onPress={() => void pauseForExitPrompt()}
-        >
-          <Ionicons
-            name="close"
-            size={22}
-            color={COLORS.brown}
-          />
-        </Pressable>
-
         <View
           style={[
             exerciseStyles.resultIcon,
@@ -1484,10 +1423,14 @@ export default function QuickIntervalJumpScreen() {
             {Math.round(result.overall)}
           </Text>
 
-          <Text style={exerciseStyles.scoreDescriptionVariant1}>
+          <Text style={exerciseStyles.scoreDescriptionCompact}>
             out of 100
           </Text>
         </View>
+
+        <ExerciseRepetitionBreakdown
+          repetitions={result.repetitionScores}
+        />
 
         <View style={exerciseStyles.resultCard}>
           <Text style={exerciseStyles.resultCardTitle}>
@@ -1537,17 +1480,11 @@ export default function QuickIntervalJumpScreen() {
           )}
         </View>
 
-        <View style={exerciseStyles.tipCardVariant1}>
-          <Ionicons
-            name="bulb-outline"
-            size={20}
-            color={COLORS.brown}
-          />
-          <Text style={exerciseStyles.tipTextVariant1}>{result.feedback}</Text>
-        </View>
-
         <Pressable
-          style={exerciseStyles.startButtonVariant2}
+          style={[
+            exerciseStyles.startButtonPill,
+            exerciseStyles.startButtonPillStandardSpacing,
+          ]}
           onPress={() => setConfirmation('tryAgain')}
           accessibilityRole="button"
           accessibilityLabel="Try the exercise again"
@@ -1561,7 +1498,10 @@ export default function QuickIntervalJumpScreen() {
         </Pressable>
 
         <Pressable
-          style={exerciseStyles.doneButtonVariant2}
+          style={[
+            exerciseStyles.doneButtonPill,
+            exerciseStyles.doneButtonPillRow,
+          ]}
           onPress={() => void pauseForExitPrompt()}
           accessibilityRole="button"
           accessibilityLabel="Back to exercises"
@@ -1615,8 +1555,8 @@ export default function QuickIntervalJumpScreen() {
       ) : (
         <View style={exerciseStyles.screen}>
           {phase === 'instructions' && renderInstructions()}
-          {phase === 'listening' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
+          {phase === 'listening' && renderReference()}
           {phase === 'recording' && renderRecording()}
           {phase === 'processing' && renderProcessing()}
         </View>
@@ -1666,60 +1606,16 @@ export default function QuickIntervalJumpScreen() {
         isQuitting={isQuitting}
       />
 
-      <Modal
+      <ExerciseConfirmationModal
         visible={confirmation === 'tryAgain'}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={closeTryAgainConfirmation}
-      >
-        <View style={exerciseStyles.modalOverlay}>
-          <View style={exerciseStyles.modalCard}>
-            <View style={exerciseStyles.modalIcon}>
-              <Ionicons
-                name="refresh"
-                size={30}
-                color={COLORS.brown}
-              />
-            </View>
-
-            <Text style={exerciseStyles.modalTitle}>Try again?</Text>
-
-            <Text style={exerciseStyles.modalMessage}>
-              Are you sure you want to repeat this exercise? Your
-              current result will be cleared.
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cancel try again"
-              onPress={closeTryAgainConfirmation}
-              style={({ pressed }) => [
-                exerciseStyles.continueButton,
-                pressed && exerciseStyles.disabledButton,
-              ]}
-            >
-              <Text style={exerciseStyles.cardTitle}>
-                Cancel
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Confirm try again"
-              onPress={handleTryAgainConfirmation}
-              style={({ pressed }) => [
-                exerciseStyles.quitButton,
-                pressed && exerciseStyles.disabledButton,
-              ]}
-            >
-              <Text style={exerciseStyles.quitButtonText}>
-                Try Again
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        title="Try again?"
+        message="Are you sure you want to repeat this exercise? Your current result will be cleared."
+        icon="refresh"
+        onCancel={closeTryAgainConfirmation}
+        onConfirm={handleTryAgainConfirmation}
+        cancelLabel="Cancel"
+        confirmLabel="Try Again"
+      />
     </>
   );
 }

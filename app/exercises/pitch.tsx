@@ -1,10 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
 
 import ExerciseListScreen from '../../src/screens/exercises/ExerciseListScreen';
+import PitchFreeModeScreen from '../../src/screens/exercises/FreeMode/PitchFreeModeScreen';
 import IntervalRecognitionTaskScreen from '../../src/screens/exercises/Pitch/IntervalRecognitionTaskScreen';
 import MelodicPatternMatchingScreen from '../../src/screens/exercises/Pitch/MelodicPatternMatchingScreen';
 import NoteMatchingScreen from '../../src/screens/exercises/Pitch/NoteMatchingScreen';
-import PitchFreeModeScreen from '../../src/screens/exercises/Pitch/PitchFreeModeScreen';
 import ScaleAccuracyDrillScreen from '../../src/screens/exercises/Pitch/ScaleAccuracyDrillScreen';
 import SustainedNoteStabilityScreen from '../../src/screens/exercises/Pitch/SustainedNoteStabilityScreen';
 

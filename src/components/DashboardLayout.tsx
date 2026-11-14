@@ -1,10 +1,9 @@
-import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import {
   Image,
   Pressable,
-  StyleSheet,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,10 +51,10 @@ export default function DashboardLayout({
     activeTab === 'profile';
 
   return (
-    <View style={styles.container}>
+    <View style={exerciseStyles.screen}>
       <View
       style={[
-        styles.screen,
+      exerciseStyles.dashboardScreen,
         { paddingBottom: showTabBar ? 95 + bottomInset : 0 },
       ]}
     >
@@ -65,7 +64,7 @@ export default function DashboardLayout({
   {showTabBar && (
     <View
         style={[
-          styles.tabBar,
+          exerciseStyles.dashboardTabBar,
             {
               bottom: bottomInset,
               height: 95,
@@ -84,22 +83,22 @@ export default function DashboardLayout({
             accessibilityRole="button"
             accessibilityState={{ selected: focused }}
               style={[
-                styles.tabButton,
-                centerTab && styles.centerTabButton,
+                exerciseStyles.dashboardTabButton,
+                centerTab && exerciseStyles.dashboardCenterTabButton,
               ]}
               onPress={() => router.setParams({ tab: tabItem.name })}
             >
             
             {centerTab ? (
-              <View style={styles.centerCircle}>
+              <View style={exerciseStyles.dashboardCenterCircle}>
                 <View
                   style={
-                    focused ? styles.centerActiveCircle : undefined
+                    focused ? exerciseStyles.dashboardCenterActiveCircle : undefined
                   }
                   >
                   <Image
                     source={tabItem.icon}
-                    style={styles.centerIcon}
+                    style={exerciseStyles.dashboardCenterIcon}
                     resizeMode="contain"
                   />
                 </View>
@@ -107,13 +106,13 @@ export default function DashboardLayout({
               ) : (
               <View
                 style={[
-                  styles.iconContainer,
-                  focused && styles.activeCircle,
+                  exerciseStyles.dashboardIconContainer,
+                  focused && exerciseStyles.dashboardActiveCircle,
                 ]}
                 >
                 <Image
                   source={tabItem.icon}
-                  style={styles.icon}
+                  style={exerciseStyles.dashboardIcon}
                   resizeMode="contain"
                   />
               </View>
@@ -126,90 +125,3 @@ export default function DashboardLayout({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  screen: {
-    flex: 1,
-  },
-  tabBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 0,
-    elevation: 20,
-    shadowColor: '#000000',
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: -6,
-    },
-    overflow: 'visible',
-  },
-  tabButton: {
-    flex: 1,
-    height: 95,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 0,
-  },
-  centerTabButton: {
-    zIndex: 100,
-    elevation: 100,
-  },
-  iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeCircle: {
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 999,
-  },
-  icon: {
-    width: 26,
-    height: 26,
-  },
-  centerCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 999,
-    backgroundColor: COLORS.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-    bottom: 18,
-    zIndex: 100,
-    elevation: 20,
-    shadowColor: '#000000',
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    shadowOffset: {
-      width: 0,
-      height: 7,
-    },
-  },
-  centerActiveCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 999,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerIcon: {
-    width: 35,
-    height: 35,
-  },
-});

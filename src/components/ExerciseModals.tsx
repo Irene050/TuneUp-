@@ -100,6 +100,122 @@ type ExerciseNoAudioModalProps = {
   isQuitting: boolean;
 };
 
+type ExerciseConfirmationModalProps = {
+  visible: boolean;
+  title: string;
+  message: ReactNode;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel: string;
+  cancelLabel: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  confirmFirst?: boolean;
+  isDisabled?: boolean;
+  statusBarTranslucent?: boolean;
+};
+
+export function ExerciseConfirmationModal({
+  visible,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel,
+  cancelLabel,
+  icon = 'help-circle-outline',
+  confirmFirst = false,
+  isDisabled = false,
+  statusBarTranslucent = true,
+}: ExerciseConfirmationModalProps) {
+  const cancelButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={cancelLabel}
+      disabled={isDisabled}
+      onPress={onCancel}
+      style={({ pressed }) => [
+        confirmFirst
+          ? exerciseStyles.quitButton
+          : exerciseStyles.continueButton,
+        pressed && exerciseStyles.buttonPressed,
+        isDisabled && exerciseStyles.buttonDisabled,
+      ]}
+    >
+      <Text
+        style={
+          confirmFirst
+            ? exerciseStyles.quitButtonText
+            : exerciseStyles.cardTitle
+        }
+      >
+        {cancelLabel}
+      </Text>
+    </Pressable>
+  );
+  const confirmButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={confirmLabel}
+      disabled={isDisabled}
+      onPress={onConfirm}
+      style={({ pressed }) => [
+        confirmFirst
+          ? exerciseStyles.continueButton
+          : exerciseStyles.quitButton,
+        pressed && exerciseStyles.buttonPressed,
+        isDisabled && exerciseStyles.buttonDisabled,
+      ]}
+    >
+      <Text
+        style={
+          confirmFirst
+            ? exerciseStyles.cardTitle
+            : exerciseStyles.quitButtonText
+        }
+      >
+        {confirmLabel}
+      </Text>
+    </Pressable>
+  );
+  const actionButtons = confirmFirst ? (
+    <>
+      {confirmButton}
+      {cancelButton}
+    </>
+  ) : (
+    <>
+      {cancelButton}
+      {confirmButton}
+    </>
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent={statusBarTranslucent}
+      onRequestClose={onCancel}
+    >
+      <View style={exerciseStyles.modalOverlay}>
+        <View
+          accessibilityRole="alert"
+          accessibilityLabel={title}
+          style={exerciseStyles.modalCard}
+        >
+          <View style={exerciseStyles.modalIcon}>
+            <Ionicons name={icon} size={30} color={COLORS.brown} />
+          </View>
+
+          <Text style={exerciseStyles.modalTitle}>{title}</Text>
+          <Text style={exerciseStyles.modalMessage}>{message}</Text>
+          {actionButtons}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function ExerciseNoAudioModal({
   visible,
   onRedo,

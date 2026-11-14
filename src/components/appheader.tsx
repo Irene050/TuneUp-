@@ -1,29 +1,15 @@
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
+
+import { exerciseStyles } from '@/constants/exerciseStyles';
 
 export default function AppHeader() {
   return (
-    <View style={styles.header}>
+    <View style={exerciseStyles.appHeader}>
       <Image
         source={require('@/assets/images/tabIcons/tuneup-logo.png')}
-        style={styles.logo}
+        style={exerciseStyles.appHeaderLogo}
         resizeMode="contain"
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    height: 130,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingTop: 10,
-    marginBottom: -20
-  },
-
-  logo: {
-    width: 45,
-    height: 45,
-  },
-});

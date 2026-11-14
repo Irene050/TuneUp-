@@ -1,82 +1,72 @@
 import {
-    CONTROLLED_BREATH_RELEASE_PARAMS,
-    DIAPHRAGMATIC_BREATHING_PARAMS,
-    STEADY_AIRFLOW_PARAMS,
-    SUSTAINED_EXHALE_PARAMS,
-    SUSTAINED_SSSS_PARAMS,
-    type ControlledBreathReleaseParams,
-    type DiaphragmaticBreathingParams,
-    type SteadyAirflowParams,
-    type SustainedExhaleParams,
-    type Tier,
-} from '@/constants/params';
-
-import {
-    INTERVAL_RECOGNITION_PARAMS,
-    MELODIC_PATTERN_MATCHING_PARAMS,
-    NOTE_MATCHING_PARAMS,
-    SCALE_ACCURACY_PARAMS,
-    SUSTAINED_NOTE_STABILITY_PARAMS,
-    type IntervalRecognitionParams,
-    type MelodicPatternMatchingParams,
-    type NoteMatchingParams,
-    type ScaleAccuracyParams,
-    type SustainedNoteStabilityParams,
-} from '@/constants/params';
-
-import {
-    FREQUENCY_ZONE_STABILITY_PARAMS,
-    STEADY_TONE_HOLDING_PARAMS,
-    TONE_CONSISTENCY_PARAMS,
-    VOWEL_CONSISTENCY_PARAMS,
-    WAVEFORM_SMOOTHNESS_PARAMS,
-    type FrequencyZoneStabilityParams,
-    type SteadyToneHoldingParams,
-    type ToneConsistencyParams,
-    type VowelConsistencyParams,
-    type WaveformSmoothnessParams,
-} from '@/constants/params';
-
-import {
-    CONTROLLED_CRESCENDO_PARAMS,
-    CONTROLLED_DECRESCENDO_PARAMS,
-    DYNAMIC_RANGE_PARAMS,
-    VOLUME_BAND_TARGETING_PARAMS,
-    VOLUME_CONTROL_STABILITY_PARAMS,
-    type ControlledCrescendoParams,
-    type ControlledDecrescendoParams,
-    type DynamicRangeParams,
-    type VolumeBandTargetingParams,
-    type VolumeControlStabilityParams,
-} from '@/constants/params';
-
-import {
-    ARPEGGIO_SPEED_DRILL_PARAMS,
-    QUICK_INTERVAL_JUMP_PARAMS,
-    RAPID_NOTE_TRANSITION_PARAMS,
-    RAPID_SCALE_TRILL_PARAMS,
-    VOCAL_RUN_ACCURACY_PARAMS,
+  ARPEGGIO_SPEED_DRILL_PARAMS,
+  CONTROLLED_BREATH_RELEASE_PARAMS,
+  CONTROLLED_CRESCENDO_PARAMS,
+  CONTROLLED_DECRESCENDO_PARAMS,
+  DIAPHRAGMATIC_BREATHING_PARAMS,
+  DYNAMIC_RANGE_PARAMS,
+  FREQUENCY_ZONE_STABILITY_PARAMS,
+  INTERVAL_RECOGNITION_PARAMS,
+  MELODIC_PATTERN_MATCHING_PARAMS,
+  NOTE_MATCHING_PARAMS,
+  QUICK_INTERVAL_JUMP_PARAMS,
+  RAPID_NOTE_TRANSITION_PARAMS,
+  RAPID_SCALE_TRILL_PARAMS,
+  SCALE_ACCURACY_PARAMS,
+  STEADY_AIRFLOW_PARAMS,
+  STEADY_TONE_HOLDING_PARAMS,
+  SUSTAINED_BREATH_PARAMS,
+  SUSTAINED_NOTE_STABILITY_PARAMS,
+  TONE_CONSISTENCY_PARAMS,
+  VOLUME_BAND_TARGETING_PARAMS,
+  VOLUME_CONTROL_STABILITY_PARAMS,
+  VOCAL_RUN_ACCURACY_PARAMS,
+  VOWEL_CONSISTENCY_PARAMS,
+  WAVEFORM_SMOOTHNESS_PARAMS,
+  type ControlledBreathReleaseParams,
+  type ControlledCrescendoParams,
+  type ControlledDecrescendoParams,
+  type DiaphragmaticBreathingParams,
+  type DynamicRangeParams,
+  type FrequencyZoneStabilityParams,
+  type IntervalRecognitionParams,
+  type MelodicPatternMatchingParams,
+  type NoteMatchingParams,
+  type ScaleAccuracyParams,
+  type SteadyAirflowParams,
+  type SteadyToneHoldingParams,
+  type SustainedBreathParams,
+  type SustainedExhaleParams,
+  type SustainedSSSSParams,
+  type SustainedNoteStabilityParams,
+  type Tier,
+  type ToneConsistencyParams,
+  type VolumeBandTargetingParams,
+  type VolumeControlStabilityParams,
+  type VowelConsistencyParams,
+  type WaveformSmoothnessParams,
 } from '@/constants/params';
 import {
   frequencyToMidi,
   midiToFrequency,
 } from '@/utils/music/notes';
-
 import {
-    calculateAdjustedParameterBounds,
+  calculateAdjustedParameterBounds,
 } from './adaptiveDifficultyScaling';
 
-
-export interface GenerateSustainedExhaleParamsInput {
+export interface AdaptiveParameterInput {
   tier: Tier;
   recentScores: number[];
 }
-export function generateSustainedExhaleParams({
+
+
+export type GenerateSustainedExhaleParamsInput = AdaptiveParameterInput;
+function generateSustainedBreathParams({
   tier,
   recentScores,
-}: GenerateSustainedExhaleParamsInput): SustainedExhaleParams {
+}: AdaptiveParameterInput): SustainedBreathParams {
   const baseParams =
-    SUSTAINED_EXHALE_PARAMS[tier];
+    SUSTAINED_BREATH_PARAMS[tier];
 
   const adjustedDuration =
     calculateAdjustedParameterBounds(
@@ -98,41 +88,20 @@ export function generateSustainedExhaleParams({
   };
 }
 
-export interface GenerateSustainedSSSSParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
-export function generateSustainedSSSSParams({
-  tier,
-  recentScores,
-}: GenerateSustainedSSSSParamsInput): SustainedExhaleParams {
-  const baseParams =
-    SUSTAINED_SSSS_PARAMS[tier];
-
-  const adjustedDuration =
-    calculateAdjustedParameterBounds(
-      recentScores,
-      {
-        min: baseParams.durationRangeSec[0],
-        max: baseParams.durationRangeSec[1],
-      },
-      'higher',
-    );
-
-  return {
-    ...baseParams,
-
-    durationRangeSec: [
-      adjustedDuration.min,
-      adjustedDuration.max,
-    ],
-  };
+export function generateSustainedExhaleParams(
+  input: GenerateSustainedExhaleParamsInput,
+): SustainedExhaleParams {
+  return generateSustainedBreathParams(input);
 }
 
-export interface GenerateDiaphragmaticBreathingParamsInput {
-  tier: Tier;
-  recentScores: number[];
+export type GenerateSustainedSSSSParamsInput = AdaptiveParameterInput;
+export function generateSustainedSSSSParams(
+  input: GenerateSustainedSSSSParamsInput,
+): SustainedSSSSParams {
+  return generateSustainedBreathParams(input);
 }
+
+export type GenerateDiaphragmaticBreathingParamsInput = AdaptiveParameterInput;
 export function generateDiaphragmaticBreathingParams({
   tier,
   recentScores,
@@ -166,10 +135,7 @@ export function generateDiaphragmaticBreathingParams({
   };
 }
 
-export interface GenerateSteadyAirflowParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateSteadyAirflowParamsInput = AdaptiveParameterInput;
 export function generateSteadyAirflowParams({
   tier,
   recentScores,
@@ -203,10 +169,7 @@ export function generateSteadyAirflowParams({
   };
 }
 
-export interface GenerateControlledBreathReleaseParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateControlledBreathReleaseParamsInput = AdaptiveParameterInput;
 export function generateControlledBreathReleaseParams({
   tier,
   recentScores,
@@ -266,10 +229,7 @@ export function generateControlledBreathReleaseParams({
   };
 }
 
-export interface GenerateNoteMatchingParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateNoteMatchingParamsInput = AdaptiveParameterInput;
 export function generateNoteMatchingParams({
   tier,
   recentScores,
@@ -354,10 +314,7 @@ export function generateNoteMatchingParams({
   };
 }
 
-export interface GenerateScaleAccuracyParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateScaleAccuracyParamsInput = AdaptiveParameterInput;
 export function generateScaleAccuracyParams({
   tier,
   recentScores,
@@ -466,10 +423,7 @@ export function generateScaleAccuracyParams({
   };
 }
 
-export interface GenerateSustainedNoteStabilityParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateSustainedNoteStabilityParamsInput = AdaptiveParameterInput;
 export function generateSustainedNoteStabilityParams({
   tier,
   recentScores,
@@ -556,10 +510,7 @@ export function generateSustainedNoteStabilityParams({
   };
 }
 
-export interface GenerateIntervalRecognitionParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateIntervalRecognitionParamsInput = AdaptiveParameterInput;
 export function generateIntervalRecognitionParams({
   tier,
   recentScores,
@@ -644,10 +595,7 @@ export function generateIntervalRecognitionParams({
   };
 }
 
-export interface GenerateMelodicPatternMatchingParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateMelodicPatternMatchingParamsInput = AdaptiveParameterInput;
 export function generateMelodicPatternMatchingParams({
   tier,
   recentScores,
@@ -731,10 +679,7 @@ export function generateMelodicPatternMatchingParams({
   };
 }
 
-export interface GenerateVowelConsistencyParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateVowelConsistencyParamsInput = AdaptiveParameterInput;
 export function generateVowelConsistencyParams({
   tier,
   recentScores,
@@ -839,10 +784,7 @@ export function generateVowelConsistencyParams({
   };
 }
 
-export interface GenerateWaveformSmoothnessParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateWaveformSmoothnessParamsInput = AdaptiveParameterInput;
 export function generateWaveformSmoothnessParams({
   tier,
   recentScores,
@@ -901,10 +843,7 @@ export function generateWaveformSmoothnessParams({
   };
 }
 
-export interface GenerateFrequencyZoneStabilityParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateFrequencyZoneStabilityParamsInput = AdaptiveParameterInput;
 export function generateFrequencyZoneStabilityParams({
   tier,
   recentScores,
@@ -965,10 +904,7 @@ export function generateFrequencyZoneStabilityParams({
   };
 }
 
-export interface GenerateToneConsistencyParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateToneConsistencyParamsInput = AdaptiveParameterInput;
 export function generateToneConsistencyParams({
   tier,
   recentScores,
@@ -1057,10 +993,7 @@ export function generateToneConsistencyParams({
   };
 }
 
-export interface GenerateSteadyToneHoldingParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateSteadyToneHoldingParamsInput = AdaptiveParameterInput;
 export function generateSteadyToneHoldingParams({
   tier,
   recentScores,
@@ -1148,10 +1081,7 @@ export function generateSteadyToneHoldingParams({
   };
 }
 
-export interface GenerateDynamicRangeParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateDynamicRangeParamsInput = AdaptiveParameterInput;
 export function generateDynamicRangeParams({
   tier,
   recentScores,
@@ -1277,10 +1207,7 @@ export function generateDynamicRangeParams({
   };
 }
 
-export interface GenerateControlledCrescendoParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateControlledCrescendoParamsInput = AdaptiveParameterInput;
 export function generateControlledCrescendoParams({
   tier,
   recentScores,
@@ -1391,10 +1318,7 @@ export function generateControlledCrescendoParams({
   };
 }
 
-export interface GenerateControlledDecrescendoParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateControlledDecrescendoParamsInput = AdaptiveParameterInput;
 export function generateControlledDecrescendoParams({
   tier,
   recentScores,
@@ -1543,10 +1467,7 @@ export function generateControlledDecrescendoParams({
   };
 }
 
-export interface GenerateVolumeBandTargetingParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateVolumeBandTargetingParamsInput = AdaptiveParameterInput;
 export function generateVolumeBandTargetingParams({
   tier,
   recentScores,
@@ -1701,10 +1622,7 @@ export function generateVolumeBandTargetingParams({
   };
 }
 
-export interface GenerateVolumeControlStabilityParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateVolumeControlStabilityParamsInput = AdaptiveParameterInput;
 export function generateVolumeControlStabilityParams({
   tier,
   recentScores,
@@ -1801,10 +1719,7 @@ export function generateVolumeControlStabilityParams({
   };
 }
 
-export interface GenerateRapidNoteTransitionParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateRapidNoteTransitionParamsInput = AdaptiveParameterInput;
 export function generateRapidNoteTransitionParams({
   tier,
   recentScores,
@@ -2038,10 +1953,7 @@ export function generateRapidScaleTrillParams({
   };
 }
 
-export interface GenerateArpeggioSpeedDrillParamsInput {
-  tier: Tier;
-  recentScores: number[];
-}
+export type GenerateArpeggioSpeedDrillParamsInput = AdaptiveParameterInput;
 export function generateArpeggioSpeedDrillParams({
   tier,
   recentScores,

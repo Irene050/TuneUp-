@@ -5,7 +5,7 @@ export type Tier =
   | 'intermediate'
   | 'advanced';
 
-export interface SustainedExhaleParams {
+export interface SustainedBreathParams {
   durationRangeSec: [number, number];
   pacingGuideMs: number;
   repetitions: number;
@@ -13,9 +13,12 @@ export interface SustainedExhaleParams {
   detectionThreshold: number;
 }
 
-export const SUSTAINED_EXHALE_PARAMS: Record<
+export type SustainedExhaleParams = SustainedBreathParams;
+export type SustainedSSSSParams = SustainedBreathParams;
+
+export const SUSTAINED_BREATH_PARAMS: Record<
   Tier,
-  SustainedExhaleParams
+  SustainedBreathParams
 > = {
   beginner: {
     durationRangeSec: [10, 12],
@@ -42,8 +45,10 @@ export const SUSTAINED_EXHALE_PARAMS: Record<
   },
 };
 
+export const SUSTAINED_EXHALE_PARAMS =
+  SUSTAINED_BREATH_PARAMS;
 export const SUSTAINED_SSSS_PARAMS =
-  SUSTAINED_EXHALE_PARAMS;
+  SUSTAINED_BREATH_PARAMS;
 
 export interface DiaphragmaticBreathingParams {
   inhaleSec: number;

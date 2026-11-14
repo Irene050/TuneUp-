@@ -11,21 +11,21 @@ import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, Text, View, us
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { COLORS } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
     type LiveAudioFrame,
     useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { FreeModePhase } from '@/types/exercises';
 import { measurePitchFreeModeFrame } from '@/services/measurement/freeMode/pitch';
 import { frequencyToNoteName } from '@/utils/music/notes';
 
-import { COLORS } from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-
-import {
-    ExerciseQuitModal,
-} from '@/components/ExerciseModals';
-
-type Phase = 'ready' | 'exercise';
+type Phase = FreeModePhase;
 
 const WAVE_COUNT = 18;
 const PITCH_HISTORY_LIMIT = 19;
@@ -51,6 +51,7 @@ export default function PitchFreeModeScreen() {
 
   const isRecordingRef = useRef(false);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const leaveRequestedRef = useRef(false);
@@ -130,10 +131,7 @@ export default function PitchFreeModeScreen() {
   });
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       isRecordingRef.current = false;
     };
   }, []);
@@ -494,18 +492,6 @@ export default function PitchFreeModeScreen() {
           { paddingHorizontal: horizontalPadding },
         ]}
       >
-        <Pressable
-          style={exerciseStyles.backButton}
-          onPress={handleBack}
-          disabled={isQuitting}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={COLORS.brown}
-          />
-        </Pressable>
-
         <View style={exerciseStyles.headerSpacer} />
       </View>
 

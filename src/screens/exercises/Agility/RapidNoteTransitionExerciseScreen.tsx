@@ -1,29 +1,44 @@
+import { router } from 'expo-router';
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
+
+import {
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
 } from '@/components/ExerciseModals';
+import { AgilitySequenceGuide } from '@/components/SharedAgilityComponent';
 import {
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_MAX_RECORDING_SECONDS
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_MAX_RECORDING_SECONDS
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  RAPID_NOTE_TRANSITION_PARAMS,
-  type Tier,
+    RAPID_NOTE_TRANSITION_PARAMS,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateRapidNoteTransitionParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -35,36 +50,22 @@ import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTr
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average, clampScore } from '@/utils/math';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  disposeNotePlayer,
-  getActiveSequenceNoteIndex,
-  playNoteSequence,
-  type NoteToPlay,
+    AGILITY_NOTE_START_DELAY_MS,
+    disposeNotePlayer,
+    getActiveSequenceNoteIndex,
+    playNoteSequence,
+    type NoteToPlay,
 } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  frequencyToMidi,
+    createMusicalNote,
+    frequencyToMidi,
+    isValidVocalRange,
+    type VocalRange,
 } from '@/utils/music/notes';
-import { router } from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { BackHandler, ScrollView, Text, View } from 'react-native';
 const REFERENCE_NOTE_GAP_SECONDS = 0.08;
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
-type Props = {
-  tier?: Tier;
-};
+type Phase = StandardExercisePhase;
+
+type Props = ExerciseTierProps;
 type LiveState = {
   pitch: number;
   note: string;
@@ -82,7 +83,7 @@ type AttemptResult = {
   sequenceScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
+  analysisFailed: boolean;
   transitionCount: number;
   transitionsPerSecond: number;
   averageTransitionTimeMs: number;
@@ -93,7 +94,6 @@ type ExerciseResult = {
   sequenceScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
   transitionCount: number;
   transitionsPerSecond: number;
   averageTransitionTimeMs: number;
@@ -134,8 +134,7 @@ function createFailedAttempt(repetition: number): AttemptResult {
     sequenceScore: 0,
     speedScore: 0,
     passed: false,
-    feedback:
-      'We could not detect enough usable notes for this repetition, so it received 0%. Sing clearly near the microphone in a quiet area.',
+    analysisFailed: true,
     transitionCount: 0,
     transitionsPerSecond: 0,
     averageTransitionTimeMs: 0,
@@ -172,18 +171,12 @@ function buildExerciseResult(
     overall >= accuracyThreshold &&
     pitchScore >= 60 &&
     sequenceScore >= 60;
-  const feedback = forceFail
-    ? `You completed all ${attempts.length} repetitions. One or more attempts could not be analyzed, so those attempts received 0%. Check your microphone and try again in a quiet area.`
-    : passed
-      ? `You completed all ${attempts.length} repetitions and met the ${accuracyThreshold}% exercise goal. Keep practicing for smoother, more consistent transitions.`
-      : `You completed all ${attempts.length} repetitions. Your average score was ${overall}%, below the ${accuracyThreshold}% exercise goal. Focus on accurate notes before increasing speed.`;
   return {
     overall,
     pitchScore,
     sequenceScore,
     speedScore,
     passed,
-    feedback,
     transitionCount,
     transitionsPerSecond,
     averageTransitionTimeMs,
@@ -199,10 +192,8 @@ export default function RapidNoteTransitionExerciseScreen({
   );
   const [adaptiveParams, setAdaptiveParams] = useState(baseParams);
   const [isLoadingParams, setIsLoadingParams] = useState(true);
-  const [assessedVocalRangeHz, setAssessedVocalRangeHz] = useState<{
-    lowHz: number;
-    highHz: number;
-  } | null>(null);
+  const [assessedVocalRangeHz, setAssessedVocalRangeHz] =
+    useState<VocalRange | null>(null);
   const [exerciseConfigVersion, setExerciseConfigVersion] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -245,19 +236,20 @@ export default function RapidNoteTransitionExerciseScreen({
           const highHz =
             latestAssessment?.vocalRange?.highHz ??
             latestAssessment?.vocalRangeHighHz;
-          const validRange =
-            typeof lowHz === 'number' &&
-            Number.isFinite(lowHz) &&
-            lowHz > 0 &&
-            typeof highHz === 'number' &&
-            Number.isFinite(highHz) &&
-            highHz > lowHz &&
-            Math.floor(frequencyToMidi(highHz)) -
-              Math.ceil(frequencyToMidi(lowHz)) >=
-              2;
-          setAssessedVocalRangeHz(
-            validRange ? { lowHz, highHz } : null,
-          );
+          const vocalRange =
+            typeof lowHz === 'number' && typeof highHz === 'number'
+              ? { lowHz, highHz }
+              : null;
+          if (!isValidVocalRange(vocalRange)) {
+            setAssessedVocalRangeHz(null);
+          } else {
+            const availableSemitones =
+              Math.floor(frequencyToMidi(vocalRange.highHz)) -
+              Math.ceil(frequencyToMidi(vocalRange.lowHz));
+            setAssessedVocalRangeHz(
+              availableSemitones >= 2 ? vocalRange : null,
+            );
+          }
         } catch (errorMessage) {
           setAssessedVocalRangeHz(null);
           console.warn('Could not load assessment vocal range:', errorMessage);
@@ -436,6 +428,7 @@ export default function RapidNoteTransitionExerciseScreen({
   const [result, setResult] = useState<ExerciseResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
@@ -542,12 +535,12 @@ export default function RapidNoteTransitionExerciseScreen({
           sequenceScore: clampScore(scored.sequenceScore),
           speedScore: clampScore(scored.speedScore),
           passed: scored.passed,
-          feedback: scored.feedback,
+          analysisFailed: false,
           transitionCount: measurement.transitionCount,
           transitionsPerSecond: measurement.transitionsPerSecond,
           averageTransitionTimeMs: measurement.averageTransitionTimeMs,
         };
-      } catch (errorMessage) {
+      } catch {
         attempt = createFailedAttempt(currentRep);
       }
       const updatedAttempts = [...attemptResultsRef.current, attempt];
@@ -564,9 +557,8 @@ export default function RapidNoteTransitionExerciseScreen({
         setPhase('listening');
         return;
       }
-      const failedAttemptFeedback = createFailedAttempt(1).feedback;
       const hasFailedAttempt = updatedAttempts.some(
-        item => item.feedback === failedAttemptFeedback,
+        item => item.analysisFailed,
       );
       const finalResult = buildExerciseResult(
         updatedAttempts,
@@ -600,7 +592,7 @@ export default function RapidNoteTransitionExerciseScreen({
       tier,
     ],
   );
-  const { startRecording, stopRecording, isRecording } = useAudioRecorder({
+  const { startRecording, stopRecording } = useAudioRecorder({
     onFrame: handleLiveFrame,
     onStop: handleRecordingStop,
   });
@@ -777,9 +769,7 @@ export default function RapidNoteTransitionExerciseScreen({
     };
   }, [phase, clearTimers]);
   useEffect(() => {
-    mountedRef.current = true;
     return () => {
-      mountedRef.current = false;
       clearTimers();
       void disposeNotePlayer();
       void stopRecording();
@@ -810,29 +800,6 @@ export default function RapidNoteTransitionExerciseScreen({
     resetLiveState,
     setPhase,
   ]);
-  const finishRecording = useCallback(async () => {
-    if (
-      finishingRef.current ||
-      !isRecording ||
-      phaseRef.current !== 'recording'
-    ) {
-      return;
-    }
-    finishingRef.current = true;
-    clearTimers();
-    try {
-      await stopRecording();
-    } catch (errorMessage) {
-      console.error('Failed to stop recording:', errorMessage);
-      if (!mountedRef.current) {
-        return;
-      }
-      setErrorMessage(
-        'We could not stop the recording. Please restart the exercise.',
-      );
-      setPhase('instructions');
-    }
-  }, [clearTimers, isRecording, setPhase, stopRecording]);
   const retryExercise = useCallback(() => {
     clearTimers();
     resetLiveState();
@@ -949,13 +916,9 @@ export default function RapidNoteTransitionExerciseScreen({
   );
   const renderListening = () => (
     <ExerciseListeningScreen
-      icon="musical-notes-outline"
       title="Rapid Note Transition"
-      currentRep={currentRep}
-      repetitions={exerciseConfig.repetitions}
-      promptTitle="Listen to the Reference"
       prompt="Listen to the sequence, then sing the same notes in order. Replay it as often as you need before you begin."
-      liveContent={
+      referenceContent={
         <AgilitySequenceGuide
           names={exerciseConfig.sequence.names}
           activeIndex={currentGuideNoteIndex}
@@ -968,10 +931,6 @@ export default function RapidNoteTransitionExerciseScreen({
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReferenceSequence()}
       onReady={() => setPhase('countdown')}
-      onBack={() => {
-        playingSequenceRef.current = false;
-        setConfirmation('quit');
-      }}
     />
   );
   const renderCountdown = () => (
@@ -983,7 +942,7 @@ export default function RapidNoteTransitionExerciseScreen({
       countdown={countdown}
       promptTitle="Prepare to sing"
       prompt={`Sing the same ${exerciseConfig.sequence.names.length} notes in order, keeping your pitch accurate as you move between notes.`}
-      onBack={() => setConfirmation('quit')}
+
     />
   );
   const renderRecording = () => {
@@ -993,7 +952,7 @@ export default function RapidNoteTransitionExerciseScreen({
         title="Sing the Sequence"
         currentRep={currentRep}
         repetitions={exerciseConfig.repetitions}
-        onBack={() => setConfirmation('quit')}
+
       >
         <AgilitySequenceGuide
           names={exerciseConfig.sequence.names}
@@ -1011,8 +970,8 @@ export default function RapidNoteTransitionExerciseScreen({
             {livePitch.pitch > 0 ? `${livePitch.pitch.toFixed(1)} Hz` : '--'}
           </Text>
         </View>
-        <View style={exerciseStyles.timerTrackVariant2}>
-          <View style={[exerciseStyles.timerFill, { width: `${progress * 100}%` }]} />
+        <View style={[exerciseStyles.progressTrack, { marginTop: 12 }]}>
+          <View style={[exerciseStyles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
       </ExerciseRecordingScreen>
     );
@@ -1033,13 +992,22 @@ export default function RapidNoteTransitionExerciseScreen({
         title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
         subtitle="Rapid Note Transition Result"
         score={result.overall}
+        repetitionScores={result.attempts.map(attempt => ({
+          repetition: attempt.repetition,
+          score: attempt.overall,
+          passed: attempt.passed,
+          components: [
+            { label: 'Pitch accuracy', value: `${Math.round(attempt.pitchScore)}%` },
+            { label: 'Sequence accuracy', value: `${Math.round(attempt.sequenceScore)}%` },
+            { label: 'Transition speed', value: `${Math.round(attempt.speedScore)}%` },
+          ],
+        }))}
         scoreSuffix="/ 100"
         resultIcon={result.passed ? 'checkmark-circle-outline' : 'refresh-circle-outline'}
-        scoreMessage={result.feedback}
         scoreDetails={`${result.attempts.length} of ${exerciseConfig.repetitions} repetitions completed`}
         onRetry={() => setConfirmation('tryAgain')}
         onExit={() => setConfirmation('quit')}
-        onBack={() => setConfirmation('quit')}
+
       >
         <View style={exerciseStyles.resultCard}>
           <Text style={exerciseStyles.resultCardTitle}>Repetition Scores</Text>
@@ -1187,7 +1155,7 @@ function ScoreBar({
         <Text style={exerciseStyles.scoreRowLabel}>{label}</Text>
         <Text style={exerciseStyles.scoreRowValue}>{Math.round(safeValue)}%</Text>
       </View>
-      <View style={exerciseStyles.progressBackground}>
+      <View style={exerciseStyles.progressTrack}>
         <View
           style={[
             exerciseStyles.progressFill,

@@ -1,10 +1,21 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/components/SharedPitchComponent';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, PITCH_GUIDE_MAX_CENTS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { NOTE_MATCHING_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
+import ExerciseScreen, { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '@/screens/exercises/ExerciseScreen';
 import { generateNoteMatchingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -16,29 +27,21 @@ import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { calcLiveStability, calcPitchAccuracy } from '@/utils/dsp/pitch';
 import { clamp } from '@/utils/math';
 import { disposeNotePlayer, playSingleNote } from '@/utils/music/notePlayer';
-import { frequencyToNoteName, getRandomPitchNote, type VocalRange } from '@/utils/music/notes';
+import {
+    frequencyToNoteName,
+    getPitchDifferenceCents,
+    getRandomPitchNote,
+    type VocalRange,
+} from '@/utils/music/notes';
 import { formatFrequency } from '@/utils/numberFormatting';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, ScrollView, Text, View } from 'react-native';
-import ExerciseScreen, { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '../ExerciseScreen';
 
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;
 const GUIDE_TRACE_LIMIT = 18;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
-type Props = {
-  tier?: Tier;
-};
+type Props = ExerciseTierProps;
 
 type LivePitchState = {
   pitch: number;
@@ -54,28 +57,16 @@ type ExerciseResult = {
   voicedFrames: number;
 };
 
-type PitchGuideStatus = {
-  label: string;
-  color: string;
-  cents: number | null;
-  position: number;
-  hint: string;
-};
-
 function calculateCentsDifference(
   detectedFrequency: number,
   targetFrequency: number,
 ): number {
-  if (
-    !Number.isFinite(detectedFrequency) ||
-    !Number.isFinite(targetFrequency) ||
-    detectedFrequency <= 0 ||
-    targetFrequency <= 0
-  ) {
-    return 0;
-  }
+  const difference = getPitchDifferenceCents(
+    detectedFrequency,
+    targetFrequency,
+  );
 
-  return 1200 * Math.log2(detectedFrequency / targetFrequency);
+  return Number.isFinite(difference) ? difference : 0;
 }
 
 
@@ -136,8 +127,12 @@ export default function NoteMatchingScreen({ tier }: Props) {
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const [pitchTrace, setPitchTrace] = useState<number[]>([]);
+  const [repetitionResults, setRepetitionResults] = useState<
+    ExerciseResult[]
+  >([]);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const pausedRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const showQuitModalRef = useRef(false);
@@ -511,6 +506,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
           ...repetitionResultsRef.current,
           repetitionResult,
         ];
+        setRepetitionResults(repetitionResultsRef.current);
 
         if (
           !mountedRef.current ||
@@ -842,45 +838,6 @@ export default function NoteMatchingScreen({ tier }: Props) {
     return () => subscription.remove();
   }, [openQuitModal]);
 
-  const startExercise = useCallback(() => {
-    if (
-      startingRef.current ||
-      isLoadingParams ||
-      pausedRef.current ||
-      quitInProgressRef.current
-    ) {
-      return;
-    }
-
-    clearTimers();
-
-    startingRef.current = false;
-    finishingRef.current = false;
-    pausedRef.current = false;
-    quitInProgressRef.current = false;
-    showQuitModalRef.current = false;
-    discardNextStopRef.current = false;
-
-    pitchHistoryRef.current = [];
-    repetitionResultsRef.current = [];
-    currentRepRef.current = 1;
-
-    setCurrentRep(1);
-    setErrorMessage('');
-    setResult(null);
-    setShowQuitModal(false);
-    setIsQuitting(false);
-    setElapsedSeconds(0);
-    setCountdown(EXERCISE_COUNTDOWN_SECONDS);
-    resetLivePitch();
-    beginCountdown();
-  }, [
-    beginCountdown,
-    clearTimers,
-    isLoadingParams,
-    resetLivePitch,
-  ]);
-
   const retryExercise = useCallback(() => {
     clearTimers();
 
@@ -904,6 +861,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
 
     pitchHistoryRef.current = [];
     repetitionResultsRef.current = [];
+    setRepetitionResults([]);
     currentRepRef.current = 1;
 
     setShowQuitModal(false);
@@ -920,10 +878,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
   }, [setPhase, clearTimers, resetLivePitch]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       discardNextStopRef.current = true;
@@ -1067,28 +1022,15 @@ export default function NoteMatchingScreen({ tier }: Props) {
           countdown={countdown}
           promptTitle="Your target note is"
           prompt={`${targetNote} • ${formatFrequency(targetFrequency)}`}
-          onBack={goBack}
+
         />
       )}
 
       {phase === 'listening' && (
         <ExerciseListeningScreen
-          icon="volume-high-outline"
           title="Listen to the Note"
-          currentRep={currentRep}
-          repetitions={adaptiveParams.repetitions}
-          promptTitle="Listen to the reference note"
           prompt="Listen to the reference note, then sing the same note."
-          liveContent={
-            <View style={exerciseStyles.sharedListenNoteBox}>
-              <Text style={exerciseStyles.liveLabel}>TARGET NOTE</Text>
-              <Text style={exerciseStyles.largeNote}>{targetNote}</Text>
-              <Text style={exerciseStyles.stateFrequency}>
-                {formatFrequency(targetFrequency)}
-              </Text>
-            </View>
-          }
-          progress={100}
+          referenceNotes={[targetNote]}
         />
       )}
 
@@ -1156,10 +1098,10 @@ export default function NoteMatchingScreen({ tier }: Props) {
               </View>
             </ExerciseLivePitchIndicator>
 
-            <View style={exerciseStyles.timerTrack}>
+            <View style={[exerciseStyles.progressTrack, { marginTop: 12 }]}>
               <View
                 style={[
-                  exerciseStyles.timerFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${
                       clamp(
@@ -1193,6 +1135,27 @@ export default function NoteMatchingScreen({ tier }: Props) {
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={`Note Matching Result • ${adaptiveParams.repetitions} repetitions`}
           score={result.score}
+          repetitionScores={repetitionResults.map(
+            (repetition, index) => ({
+              repetition: index + 1,
+              score: repetition.score,
+              passed: repetition.passed,
+              components: [
+                {
+                  label: 'Pitch accuracy',
+                  value: `${repetition.score}%`,
+                },
+                {
+                  label: 'Pitch clarity',
+                  value: `${Math.round(repetition.averageClarity * 100)}%`,
+                },
+                {
+                  label: 'Voiced frames',
+                  value: String(repetition.voicedFrames),
+                },
+              ],
+            }),
+          )}
           resultIcon={result.passed ? 'checkmark' : 'refresh'}
           scoreMessage={
             result.passed

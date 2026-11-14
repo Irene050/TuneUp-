@@ -1,80 +1,78 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
-  SUSTAINED_NOTE_STABILITY_PARAMS,
-  type SustainedNoteStabilityParams,
-  type Tier,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/components/SharedPitchComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_RECORDING_INTERVAL_MS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    SUSTAINED_NOTE_STABILITY_PARAMS,
+    type SustainedNoteStabilityParams,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { ExerciseTierProps } from '@/types/exercises';
 import {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  default as ExerciseScreen,
-  MetricCard,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRepetitionBreakdown,
+    default as ExerciseScreen,
+    MetricCard,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedNoteStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import {
-  measureSustainedNoteStability,
-  type SustainedNoteStabilityMeasurement,
+    measureSustainedNoteStability,
+    type SustainedNoteStabilityMeasurement,
 } from '@/services/measurement/pitch/sustainedNoteStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreSustainedNoteStabilityRepetitions,
-  type SustainedNoteStabilityScoreResult,
+    scoreSustainedNoteStabilityRepetitions,
+    type SustainedNoteStabilityScoreResult,
 } from '@/services/scoring/pitch/sustainedNoteStability';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
+    calcLiveStability,
+    calcPitchAccuracy,
 } from '@/utils/dsp/pitch';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  createMusicalNote,
-  getRandomPitchNote,
+    createMusicalNote,
+    getRandomPitchNote,
 } from '@/utils/music/notes';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_RECORDING_INTERVAL_MS,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
 const EXERCISE_ID = 'sustainedNoteStability' as const;
 const COMPONENT_ID = 'pitch' as const;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
 type Phase =
   | 'instructions'
@@ -117,6 +115,7 @@ export default function SustainedNoteStabilityScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
   const isRecordingRef = useRef(false);
   const startingRecordingRef = useRef(false);
@@ -336,10 +335,7 @@ export default function SustainedNoteStabilityScreen({
   }, [clearRecordingTimer]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       navigatingAwayRef.current = true;
@@ -1086,23 +1082,27 @@ export default function SustainedNoteStabilityScreen({
 
   const liveStability = calcLiveStability(liveFrequencies);
 
-  const quitMessage = isStoppingForModal
-    ? 'Your exercise is paused while the microphone stops safely. The interrupted recording will not be scored, and your completed repetitions will be kept.'
-    : pausedPhaseRef.current === 'instructions'
-      ? 'Are you sure you want to leave Sustained Note Stability?'
-      : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
   const quitModal = (
     <>
-      <QuitExerciseModal
+      <ExerciseQuitModal
         visible={showQuitModal}
-        message={quitMessage}
+        title="Quit exercise?"
+        message={
+          isStoppingForModal
+            ? 'Your exercise is paused while the microphone stops safely. The interrupted recording will not be scored, and your completed repetitions will be kept.'
+            : pausedPhaseRef.current === 'instructions'
+              ? 'Are you sure you want to leave Sustained Note Stability?'
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
+        }
+        isQuitting={false}
         onContinue={continueExercise}
         onQuit={() => {
           void quitExercise();
         }}
+        continueLabel="Continue Exercise"
+        quitLabel="Quit Exercise"
       />
       <ExerciseNoAudioModal
         visible={showNoAudioModal}
@@ -1200,7 +1200,7 @@ export default function SustainedNoteStabilityScreen({
           countdown={countdown}
           promptTitle="Get ready"
           prompt="A reference note will play next."
-          onBack={requestPause}
+
         />
         {quitModal}
       </>
@@ -1211,21 +1211,9 @@ export default function SustainedNoteStabilityScreen({
     return (
       <>
         <ExerciseListeningScreen
-          icon="volume-high-outline"
           title="Listen Carefully"
-          currentRep={currentRep}
-          repetitions={params.repetitions}
-          promptTitle="Listen to the reference note"
           prompt="Listen to the reference note, then sing it steadily."
-          liveContent={
-            <View style={exerciseStyles.targetCard}>
-              <Text style={exerciseStyles.targetLabel}>TARGET NOTE</Text>
-              <Text style={exerciseStyles.targetNote}>{targetNote.name}</Text>
-              <Text style={exerciseStyles.repResultDetails}>
-                {Math.round(targetNote.frequency)} Hz
-              </Text>
-            </View>
-          }
+          referenceNotes={[targetNote.name]}
         />
         {quitModal}
       </>
@@ -1249,7 +1237,7 @@ export default function SustainedNoteStabilityScreen({
             Sustain the Note
           </Text>
 
-          <Text style={exerciseStyles.phaseSubtitleVariant1}>
+          <Text style={exerciseStyles.recordingPhaseSubtitle}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
@@ -1301,7 +1289,7 @@ export default function SustainedNoteStabilityScreen({
           </ExerciseLivePitchIndicator>
 
           <View style={exerciseStyles.progressContainer}>
-            <View style={exerciseStyles.progressTrackVariant6}>
+            <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1355,14 +1343,21 @@ export default function SustainedNoteStabilityScreen({
             {result.passed ? 'Great Job!' : 'Keep Practicing!'}
           </Text>
 
-          <Text style={exerciseStyles.resultSubtitleVariant1}>
+          <Text style={[exerciseStyles.resultSubtitle, { textAlign: 'center' }]}>
             Sustained Note Stability Result
           </Text>
+
+            <ExerciseRepetitionBreakdown
+              repetitions={result.repetitionScores.map((score, index) => ({
+                repetition: index + 1,
+                score,
+              }))}
+            />
 
           <View style={exerciseStyles.scoreCard}>
             <Text style={exerciseStyles.scoreLabel}>Overall Score</Text>
             <Text style={exerciseStyles.scoreValue}>{result.score}%</Text>
-            <Text style={exerciseStyles.scoreDescriptionVariant2}>
+            <Text style={exerciseStyles.scoreDescriptionDefault}>
               {result.passed
                 ? 'Your pitch stability reached the target level across all repetitions.'
                 : 'Focus on keeping your pitch steadier and maintaining the required duration across repetitions.'}
@@ -1406,20 +1401,6 @@ export default function SustainedNoteStabilityScreen({
             />
           </View>
 
-          <View style={exerciseStyles.resultCard}>
-            <Text style={exerciseStyles.resultCardTitle}>
-              Scores by Repetition
-            </Text>
-
-            {result.repetitionScores.map((repetitionScore, index) => (
-              <ResultRow
-                key={`repetition-${index}`}
-                label={`Repetition ${index + 1}`}
-                value={`${repetitionScore}%`}
-              />
-            ))}
-          </View>
-
           <View style={exerciseStyles.tipCard}>
             <Ionicons name="bulb-outline" size={21} color={COLORS.brown} />
             <Text style={exerciseStyles.tipText}>
@@ -1429,7 +1410,13 @@ export default function SustainedNoteStabilityScreen({
             </Text>
           </View>
 
-          <Pressable style={exerciseStyles.startButtonVariant5} onPress={retry}>
+          <Pressable
+            style={[
+              exerciseStyles.startButtonPill,
+              exerciseStyles.startButtonPillHorizontalPadding,
+            ]}
+            onPress={retry}
+          >
             <Text style={exerciseStyles.startButtonText}>Try Again</Text>
             <Ionicons name="refresh" size={18} color={COLORS.white} />
           </Pressable>
@@ -1450,34 +1437,6 @@ export default function SustainedNoteStabilityScreen({
   return null;
 }
 
-
-
-
-function QuitExerciseModal({
-  visible,
-  message,
-  onContinue,
-  onQuit,
-}: {
-  visible: boolean;
-  message: string;
-  onContinue: () => void;
-  onQuit: () => void;
-}) {
-  return (
-    <ExerciseQuitModal
-        visible={visible}
-        title={"Quit exercise?"}
-        message={message}
-        isQuitting={false}
-        onContinue={onContinue}
-        onQuit={onQuit}
-        continueLabel={"Continue Exercise"}
-        quitLabel={"Quit Exercise"}
-      />
-  );
-}
-
 function ResultRow({
   label,
   value,
@@ -1488,7 +1447,14 @@ function ResultRow({
   return (
     <View style={exerciseStyles.resultRow}>
       <Text style={exerciseStyles.resultRowLabel}>{label}</Text>
-      <Text style={exerciseStyles.resultRowValueVariant1}>{value}</Text>
+      <Text
+        style={[
+          exerciseStyles.resultRowValue,
+          exerciseStyles.resultRowValueNoShrink,
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }

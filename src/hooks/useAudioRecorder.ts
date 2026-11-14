@@ -11,6 +11,7 @@ import {
 } from 'react-native-audio-api';
 
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
+import { getPitchDifferenceCents } from '@/utils/music/notes';
 import {
   calcRMS,
   rmsToDb,
@@ -52,22 +53,6 @@ interface LiveSignalMetrics {
   rms: number;
   db: number;
   peak: number;
-}
-
-function centsBetween(
-  frequencyA: number,
-  frequencyB: number,
-): number {
-  if (
-    !Number.isFinite(frequencyA) ||
-    !Number.isFinite(frequencyB) ||
-    frequencyA <= 0 ||
-    frequencyB <= 0
-  ) {
-    return Infinity;
-  }
-
-  return 1200 * Math.log2(frequencyA / frequencyB);
 }
 
 function calculatePeak(samples: Float32Array): number {
@@ -529,7 +514,7 @@ export function useAudioRecorder(
 
               if (previousPitch > 0) {
                 const pitchDifferenceCents = Math.abs(
-                  centsBetween(
+                  getPitchDifferenceCents(
                     detectedPitch,
                     previousPitch,
                   ),
@@ -547,7 +532,7 @@ export function useAudioRecorder(
                   const matchesPendingPitch =
                     pendingPitch !== null &&
                     Math.abs(
-                      centsBetween(
+                      getPitchDifferenceCents(
                         detectedPitch,
                         pendingPitch,
                       ),

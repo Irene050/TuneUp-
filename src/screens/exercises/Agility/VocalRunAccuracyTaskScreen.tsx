@@ -4,26 +4,31 @@ import { BackHandler, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
 import {
-  AUDIO_SAMPLE_RATE,
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { AgilitySequenceGuide } from '@/components/SharedAgilityComponent';
+import {
+    AUDIO_SAMPLE_RATE,
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
 } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateVocalRunAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -31,36 +36,25 @@ import { auth } from '@/services/firebase/config';
 import { measureVocalRunAccuracy } from '@/services/measurement/agility/vocalRunAccuracyTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  getActiveSequenceNoteIndex,
+    AGILITY_NOTE_START_DELAY_MS,
+    getActiveSequenceNoteIndex,
 } from '@/utils/music/notePlayer';
-import { frequencyToNoteName } from '@/utils/music/notes';
-
 import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
+    frequencyToNoteName,
+    getPitchDifferenceCents,
+    isValidVocalRange,
+    type VocalRange,
+} from '@/utils/music/notes';
 
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
-
-type VocalRange = {
-  lowHz: number;
-  highHz: number;
-};
+type Phase = StandardExercisePhase;
 
 type Config = ReturnType<typeof generateVocalRunAccuracyParams>;
 
@@ -75,7 +69,6 @@ type ExerciseResult = {
   sequenceScore: number;
   transitionScore: number;
   passed: boolean;
-  feedback: string;
   noteCount: number;
   correctNoteCount: number;
   transitionCount: number;
@@ -83,6 +76,11 @@ type ExerciseResult = {
   notesPerSecond: number;
   durationMs: number;
   repetitionsCompleted: number;
+  repetitionScores: {
+    repetition: number;
+    score: number;
+    components: { label: string; value: string }[];
+  }[];
 };
 
 type PitchStatus =
@@ -90,18 +88,6 @@ type PitchStatus =
   | 'close'
   | 'notInTune'
   | 'listening';
-
-function isValidVocalRange(
-  range: VocalRange | null | undefined,
-): range is VocalRange {
-  return (
-    !!range &&
-    Number.isFinite(range.lowHz) &&
-    Number.isFinite(range.highHz) &&
-    range.lowHz > 0 &&
-    range.highHz > range.lowHz
-  );
-}
 
 function getRecentVocalRunScores(
   records: Awaited<ReturnType<typeof fetchExerciseRecords>>,
@@ -171,8 +157,10 @@ function getPitchAccuracy(
     return null;
   }
 
-  const cents =
-    1200 * Math.log2(detectedFrequency / targetFrequency);
+  const cents = getPitchDifferenceCents(
+    detectedFrequency,
+    targetFrequency,
+  );
 
   const absoluteCents = Math.abs(cents);
 
@@ -214,6 +202,7 @@ export default function VocalRunAccuracyTaskScreen() {
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -394,10 +383,7 @@ export default function VocalRunAccuracyTaskScreen() {
   }, []);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
 
       exerciseRunIdRef.current += 1;
       countdownRunIdRef.current += 1;
@@ -925,12 +911,6 @@ export default function VocalRunAccuracyTaskScreen() {
           return;
         }
 
-        const feedback = score.passed
-          ? score.feedback
-          : sequenceScore < config.accuracyThreshold
-            ? `Sequence accuracy must reach at least ${config.accuracyThreshold}% for the ${config.label.toLowerCase()} level.`
-            : score.feedback;
-
         await saveCompletedExercise(
           'agility',
           'vocalRunAccuracy',
@@ -952,7 +932,6 @@ export default function VocalRunAccuracyTaskScreen() {
           sequenceScore: score.sequenceScore,
           transitionScore: score.transitionScore,
           passed: score.passed,
-          feedback,
           noteCount: totalNoteCount,
           correctNoteCount: totalCorrectNoteCount,
           transitionCount: totalTransitionCount,
@@ -960,6 +939,32 @@ export default function VocalRunAccuracyTaskScreen() {
           notesPerSecond,
           durationMs: totalDurationMs,
           repetitionsCompleted: measurements.length,
+          repetitionScores: measurements.map((measurement, index) => {
+            const repetitionScore = scoreVocalRunAccuracy(
+              measurement,
+              config.accuracyThreshold,
+            );
+
+            return {
+              repetition: index + 1,
+              score: repetitionScore.overall,
+              passed: repetitionScore.passed,
+              components: [
+                {
+                  label: 'Pitch accuracy',
+                  value: `${Math.round(repetitionScore.pitchScore)}%`,
+                },
+                {
+                  label: 'Sequence accuracy',
+                  value: `${Math.round(repetitionScore.sequenceScore)}%`,
+                },
+                {
+                  label: 'Transition accuracy',
+                  value: `${Math.round(repetitionScore.transitionScore)}%`,
+                },
+              ],
+            };
+          }),
         });
 
         setExercisePhase('results');
@@ -1392,18 +1397,6 @@ export default function VocalRunAccuracyTaskScreen() {
     return () => subscription.remove();
   }, [handleBack]);
 
-  const quitModalMessage =
-    pausedPhaseRef.current === 'instructions' ||
-    pausedPhaseRef.current === 'results'
-      ? 'Are you sure you want to leave Vocal Run Accuracy?'
-      : pausedPhaseRef.current === 'recording'
-        ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
-        : pausedPhaseRef.current === 'countdown'
-          ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
-          : pausedPhaseRef.current === 'listening'
-            ? 'Your completed repetitions will be kept. Continue to return to the listening sequence.'
-            : 'Your completed repetitions will be kept. Continue to resume your exercise.';
-
   const renderInstructions = () => (
     <ExerciseScreen
       title="Vocal Run Accuracy"
@@ -1465,13 +1458,9 @@ export default function VocalRunAccuracyTaskScreen() {
 
   const renderReference = () => (
     <ExerciseListeningScreen
-      icon="musical-notes-outline"
       title="Vocal Run Accuracy"
-      currentRep={currentRep}
-      repetitions={config!.repetitions}
-      promptTitle="Listen to the Sequence"
       prompt="Listen to the full reference run, then sing the notes in the same order."
-      liveContent={
+      referenceContent={
         <AgilitySequenceGuide
           names={config!.frequencies.map(frequencyToNoteName)}
           activeIndex={activeReferenceNoteIndex}
@@ -1484,7 +1473,6 @@ export default function VocalRunAccuracyTaskScreen() {
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
       onReady={() => void startCountdownRef.current?.()}
-      onBack={handleBack}
     />
   );
 
@@ -1505,7 +1493,7 @@ export default function VocalRunAccuracyTaskScreen() {
       title="Sing the Vocal Run"
       currentRep={currentRep}
       repetitions={config!.repetitions}
-      onBack={handleBack}
+
     >
       <AgilitySequenceGuide
         names={config!.frequencies.map(frequencyToNoteName)}
@@ -1548,7 +1536,7 @@ export default function VocalRunAccuracyTaskScreen() {
       </View>
 
       <View style={exerciseStyles.timerContainer}>
-        <View style={exerciseStyles.progressTrackVariant2}>
+        <View style={[exerciseStyles.progressTrack, { marginBottom: 4 }]}>
           <View
             style={[
               exerciseStyles.progressFill,
@@ -1615,20 +1603,20 @@ export default function VocalRunAccuracyTaskScreen() {
         title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
         subtitle="VOCAL RUN ACCURACY RESULT"
         score={Math.round(result.overall)}
+        repetitionScores={result.repetitionScores}
         scoreSuffix=" / 100"
         resultIcon={
           result.passed
             ? 'checkmark-circle-outline'
             : 'refresh-outline'
         }
-        scoreMessage={result.feedback}
         scoreDetails={
           <Text style={exerciseStyles.hint}>
             {result.repetitionsCompleted} of {config!.repetitions}{' '}
             repetitions completed
           </Text>
         }
-        onBack={handleBack}
+
         onRetry={resetExercise}
         onExit={handleBack}
       >
@@ -1645,7 +1633,7 @@ export default function VocalRunAccuracyTaskScreen() {
                 </Text>
               </View>
 
-              <View style={exerciseStyles.progressTrackVariant2}>
+              <View style={[exerciseStyles.progressTrack, { marginBottom: 4 }]}>
                 <View
                   style={[
                     exerciseStyles.progressFill,
@@ -1684,7 +1672,18 @@ export default function VocalRunAccuracyTaskScreen() {
     <ExerciseQuitModal
       visible={showQuitModal}
       title="Quit exercise?"
-      message={quitModalMessage}
+      message={
+        pausedPhaseRef.current === 'instructions' ||
+        pausedPhaseRef.current === 'results'
+          ? 'Are you sure you want to leave Vocal Run Accuracy?'
+          : pausedPhaseRef.current === 'recording'
+            ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
+            : pausedPhaseRef.current === 'countdown'
+              ? 'Your completed repetitions will be kept. The current repetition will restart when you continue.'
+              : pausedPhaseRef.current === 'listening'
+                ? 'Your completed repetitions will be kept. Continue to return to the listening sequence.'
+                : 'Your completed repetitions will be kept. Continue to resume your exercise.'
+      }
       isQuitting={isQuitting}
       onContinue={() => void continueExercise()}
       onQuit={() => void quitExercise()}
@@ -1722,29 +1721,44 @@ export default function VocalRunAccuracyTaskScreen() {
     );
   }
 
+  const activeContent =
+    phase === 'instructions'
+      ? renderInstructions()
+      : phase === 'countdown'
+        ? renderCountdown()
+        : phase === 'listening'
+          ? (
+              <ScrollView
+                key={phase}
+                style={exerciseStyles.screen}
+                contentContainerStyle={exerciseStyles.scrollContent_Register}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {renderReference()}
+              </ScrollView>
+            )
+          : phase === 'recording'
+            ? (
+                <ScrollView
+                  key={phase}
+                  style={exerciseStyles.screen}
+                  contentContainerStyle={exerciseStyles.scrollContent_Register}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {renderRecording()}
+                </ScrollView>
+              )
+            : phase === 'processing'
+              ? renderProcessing()
+              : phase === 'results'
+                ? renderResults()
+                : null;
+
   return (
     <View style={exerciseStyles.screen}>
-      {phase === 'instructions' ? (
-        renderInstructions()
-      ) : phase === 'countdown' ? (
-        renderCountdown()
-      ) : phase === 'processing' ? (
-        renderProcessing()
-      ) : phase === 'results' ? (
-        renderResults()
-      ) : (
-        <ScrollView
-          key={phase}
-          style={exerciseStyles.screen}
-          contentContainerStyle={exerciseStyles.scrollContent_Register}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {phase === 'listening' && renderReference()}
-          {phase === 'recording' && renderRecording()}
-        </ScrollView>
-      )}
-
+      {activeContent}
       {quitModal}
       {noAudioModal}
     </View>

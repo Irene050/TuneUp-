@@ -518,7 +518,7 @@ export default function ProgressScreen() {
 
                 {previousAssessment && (
                   <Text style={exerciseStyles.comparisonHint}>
-                    CompaCOLORS.error with your previous assessment
+                    Compared with your previous assessment
                   </Text>
                 )}
               </View>

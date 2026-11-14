@@ -1,3 +1,5 @@
+import type { Tier } from '@/constants/params';
+
 export interface MusicalNote {
   name: string;
   frequency: number;
@@ -8,7 +10,33 @@ export interface VocalRange {
   highHz: number;
 }
 
-type Tier = 'beginner' | 'intermediate' | 'advanced';
+export function getPitchDifferenceCents(
+  detectedFrequency: number,
+  targetFrequency: number,
+): number {
+  if (
+    !Number.isFinite(detectedFrequency) ||
+    !Number.isFinite(targetFrequency) ||
+    detectedFrequency <= 0 ||
+    targetFrequency <= 0
+  ) {
+    return Infinity;
+  }
+
+  return 1200 * Math.log2(detectedFrequency / targetFrequency);
+}
+
+export function isValidVocalRange(
+  range: VocalRange | null | undefined,
+): range is VocalRange {
+  return (
+    !!range &&
+    Number.isFinite(range.lowHz) &&
+    Number.isFinite(range.highHz) &&
+    range.lowHz > 0 &&
+    range.highHz > range.lowHz
+  );
+}
 
 interface MidiBounds {
   minMidi: number;

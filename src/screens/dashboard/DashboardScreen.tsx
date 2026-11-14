@@ -432,7 +432,12 @@ export default function DashboardScreen() {
 
           <Pressable
             style={exerciseStyles.progressAction}
-            onPress={() => router.push('/progress')}
+            onPress={() =>
+              router.push({
+                pathname: '/dashboard',
+                params: { tab: 'progress' },
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="Explore my progress"
           >

@@ -7,7 +7,6 @@ export type VocalRunAccuracyScore = {
   sequenceScore: number;
   transitionScore: number;
   passed: boolean;
-  feedback: string;
 };
 
 export function scoreVocalRunAccuracy(
@@ -48,37 +47,11 @@ export function scoreVocalRunAccuracy(
     sequenceScore >=
       clamp(requiredSequenceAccuracy, 0, 100);
 
-  let feedback = '';
-
-  if (overall >= 90) {
-    feedback =
-      'Excellent vocal run! Your pitch and note transitions were very accurate.';
-  } else if (overall >= 80) {
-    feedback =
-      'Great job! Your vocal run was accurate with good note transitions.';
-  } else if (overall >= 70) {
-    feedback =
-      'Good work! Keep practicing your pitch accuracy and transitions.';
-  } else if (pitchScore < 60) {
-    feedback =
-      'Focus on matching each target note more accurately.';
-  } else if (sequenceScore < requiredSequenceAccuracy) {
-    feedback =
-      'Practice the complete note sequence slowly until you can perform it accurately.';
-  } else if (transitionScore < 60) {
-    feedback =
-      'Practice moving smoothly and accurately between consecutive notes.';
-  } else {
-    feedback =
-      'Keep practicing the vocal run slowly before increasing your speed.';
-  }
-
   return {
     overall,
     pitchScore,
     sequenceScore,
     transitionScore,
     passed,
-    feedback,
   };
 }

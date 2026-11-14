@@ -10,6 +10,8 @@ export interface DynamicRangeMeasurement {
   rangeMax: number;
   validWindowCount: number;
   rangeAccuracy: number;
+  repetitionRangeScores: number[];
+  repetitionRampScores: number[];
   firstPhaseAverage: number;
   middlePhaseAverage: number;
   finalPhaseAverage: number;
@@ -253,6 +255,16 @@ export function measureDynamicRange(
     0,
     100,
   );
+  const repetitionRampScores = risingConsistencies.map(
+    (rising, index) =>
+      clamp(
+        rising * 0.4 +
+          fallingConsistencies[index] * 0.4 +
+          peakAccuracies[index] * 0.2,
+        0,
+        100,
+      ),
+  );
 
   const expectedWindowCount = Math.max(
     1,
@@ -294,6 +306,8 @@ export function measureDynamicRange(
       : 0,
     validWindowCount: activeDbValues.length,
     rangeAccuracy,
+    repetitionRangeScores: repetitionScores,
+    repetitionRampScores,
     firstPhaseAverage,
     middlePhaseAverage,
     finalPhaseAverage,
@@ -422,6 +436,8 @@ function createEmptyMeasurement(): DynamicRangeMeasurement {
     rangeMax: 0,
     validWindowCount: 0,
     rangeAccuracy: 0,
+    repetitionRangeScores: [],
+    repetitionRampScores: [],
     firstPhaseAverage: 0,
     middlePhaseAverage: 0,
     finalPhaseAverage: 0,

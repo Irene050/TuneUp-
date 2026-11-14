@@ -33,10 +33,13 @@ import {
   frequencyToMidi,
   getSemitoneDistance,
   midiToFrequency,
+  type VocalRange,
 } from '@/utils/music/notes';
 
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
 import { average, clampPercentage } from '@/utils/math';
+
+export type { VocalRange };
 
 export type ComponentId =
   | 'breathControl'
@@ -56,11 +59,6 @@ export type RecommendationBand =
   | 'needsSignificantImprovement'
   | 'moderateImprovement'
   | 'goodFoundation';
-
-export interface VocalRange {
-  lowHz: number;
-  highHz: number;
-}
 
 export interface TargetNotes {
   rootHz: number;

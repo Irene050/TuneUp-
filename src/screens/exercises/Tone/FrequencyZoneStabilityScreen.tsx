@@ -1,32 +1,50 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 
 import {
-  FREQUENCY_ZONE_STABILITY_PARAMS,
-  type FrequencyZoneStabilityParams,
-  type Tier,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+    createToneWaveformBars,
+    LiveToneMonitorCard,
+    type ToneWaveformProps,
+} from '@/components/SharedToneComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_RECORDING_INTERVAL_MS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    FREQUENCY_ZONE_STABILITY_PARAMS,
+    type FrequencyZoneStabilityParams,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  RepetitionExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  type ExercisePreparationStep,
-  type ExerciseSummaryItem,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    type ExercisePreparationStep,
+    type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import { generateFrequencyZoneStabilityParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
@@ -34,45 +52,23 @@ import { auth } from '@/services/firebase/config';
 import { measureFrequencyZoneStability } from '@/services/measurement/tone/frequencyZoneStability';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreFrequencyZoneStability } from '@/services/scoring/tone/frequencyZoneStability';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  classifyFrequencyZone,
-  type FrequencyZone,
+    classifyFrequencyZone,
+    type FrequencyZone,
 } from '@/utils/dsp/spectral';
-import { formatNumber } from '@/utils/numberFormatting';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_RECORDING_INTERVAL_MS,
-  TONE_WAVEFORM_BAR_COUNT,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { clamp } from '@/utils/math';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
+import { formatNumber } from '@/utils/numberFormatting';
 
 const REST_SECONDS = 2;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'rest'
-  | 'processing'
-  | 'results';
+type Phase = RepetitionExercisePhase;
 
 interface RepetitionResult {
   measurement: ReturnType<typeof measureFrequencyZoneStability>;
@@ -85,42 +81,15 @@ function zoneLabel(zone: FrequencyZone) {
     .replace(/\b\w/g, character => character.toUpperCase());
 }
 
-function FrequencyLiveWaveform({
-  pitch,
-  zone,
-  color,
-}: {
-  pitch: number | null;
-  zone: FrequencyZone | null;
-  color: string;
-}) {
+function getFrequencyToneWaveform(
+  pitch: number | null,
+  zone: FrequencyZone | null,
+  color: string,
+): ToneWaveformProps {
   const hasPitch =
     pitch !== null &&
     Number.isFinite(pitch) &&
     pitch > 0;
-
-  const bars = useMemo(
-    () =>
-      Array.from({ length: TONE_WAVEFORM_BAR_COUNT }, (_, index) => {
-        const center = (TONE_WAVEFORM_BAR_COUNT - 1) / 2;
-        const distance = Math.abs(index - center) / center;
-        const envelope = 1 - distance * 0.65;
-
-        const variation = hasPitch
-          ? 0.35 +
-            Math.abs(
-              Math.sin(index * 0.72 + (pitch ?? 0) * 0.001),
-            ) *
-              0.65
-          : 0.12 + Math.abs(Math.sin(index * 0.72)) * 0.12;
-
-        return Math.max(
-          5,
-          Math.round(38 * envelope * variation),
-        );
-      }),
-    [hasPitch, pitch],
-  );
 
   const statusText = !hasPitch
     ? 'Listening for your voice...'
@@ -128,52 +97,21 @@ function FrequencyLiveWaveform({
       ? `Frequency zone: ${zoneLabel(zone)}`
       : 'Voice detected — checking frequency';
 
-  return (
-    <View style={exerciseStyles.waveformContainer}>
-      <View
-        style={exerciseStyles.waveformBars}
-        accessibilityLabel={
-          !hasPitch
-            ? 'No pitch detected'
-            : zone
-              ? `Frequency detected in ${zoneLabel(zone)} zone`
-              : 'Frequency detected'
-        }
-      >
-        {bars.map((height, index) => (
-          <View
-            key={index}
-            style={[
-              exerciseStyles.waveformBar,
-              {
-                height,
-                backgroundColor: hasPitch ? color : COLORS.guideRed,
-                opacity: hasPitch ? 0.9 : 0.45,
-              },
-            ]}
-          />
-        ))}
-      </View>
+  const waveformColor = hasPitch ? color : COLORS.guideRed;
 
-      <View style={exerciseStyles.waveformStatusRow}>
-        <View
-          style={[
-            exerciseStyles.statusDot,
-            { backgroundColor: hasPitch ? color : COLORS.guideRed },
-          ]}
-        />
-
-        <Text
-          style={[
-            exerciseStyles.waveformStatus,
-            { color: hasPitch ? color : COLORS.guideRed },
-          ]}
-        >
-          {statusText}
-        </Text>
-      </View>
-    </View>
-  );
+  return {
+    bars: createToneWaveformBars(pitch ?? 0, hasPitch),
+    color: waveformColor,
+    hasPitch,
+    accessibilityLabel:
+      !hasPitch
+        ? 'No pitch detected'
+        : zone
+          ? `Frequency detected in ${zoneLabel(zone)} zone`
+          : 'Frequency detected',
+    statusText,
+    statusTextStyle: exerciseStyles.waveformStatus,
+  };
 }
 
 export default function FrequencyZoneStabilityScreen({
@@ -220,6 +158,7 @@ export default function FrequencyZoneStabilityScreen({
 
   const tierRef = useRef<Tier>(tier ?? 'beginner');
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
   const countdownTimerRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1051,10 +990,7 @@ export default function FrequencyZoneStabilityScreen({
   }, [handleBack]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       discardNextStopRef.current = true;
@@ -1265,7 +1201,7 @@ export default function FrequencyZoneStabilityScreen({
           countdown={countdown}
           promptTitle="Get Ready"
           prompt="Prepare to sing steadily and maintain a consistent frequency zone."
-          onBack={handleBack}
+
         />
 
         {quitModal}
@@ -1275,7 +1211,6 @@ export default function FrequencyZoneStabilityScreen({
   }
 
   if (phase === 'recording') {
-    const elapsedSeconds = elapsedMs / 1000;
     return (
       <>
         <View style={exerciseStyles.recordingScreenVariant2}>
@@ -1291,14 +1226,14 @@ export default function FrequencyZoneStabilityScreen({
               <Text style={exerciseStyles.repPillText}>
                 Repetition {currentRep} of {params.repetitions}
               </Text>
-            <LiveToneMonitorCard>
+            <LiveToneMonitorCard
+              waveform={getFrequencyToneWaveform(
+                livePitch,
+                liveZone,
+                liveIndicator.color,
+              )}
+            >
 
-
-              <FrequencyLiveWaveform
-                pitch={livePitch}
-                zone={liveZone}
-                color={liveIndicator.color}
-              />
 
               <View style={exerciseStyles.liveMetricsRow}>
                 <View style={exerciseStyles.liveMetric}>
@@ -1344,7 +1279,7 @@ export default function FrequencyZoneStabilityScreen({
 
             <View style={exerciseStyles.recordingProgressSectionVariant1}>
               <View
-                style={exerciseStyles.progressTrackVariant1}
+                style={exerciseStyles.progressTrack}
                 accessibilityRole="progressbar"
                 accessibilityLabel="Recording progress"
                 accessibilityValue={{
@@ -1383,7 +1318,7 @@ export default function FrequencyZoneStabilityScreen({
           countdown={restCountdown}
           promptTitle="Rest"
           prompt="Relax your voice and prepare for the next repetition."
-          onBack={handleBack}
+
         />
 
         {quitModal}
@@ -1414,6 +1349,25 @@ export default function FrequencyZoneStabilityScreen({
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle="Frequency Zone Stability"
           score={result.score}
+          repetitionScores={repetitionResults.map((item, index) => ({
+            repetition: index + 1,
+            score: item.score.score,
+            passed: item.score.passed,
+            components: [
+              {
+                label: 'Stability',
+                value: `${Math.round(item.measurement.stabilityPct)}%`,
+              },
+              {
+                label: 'Detection coverage',
+                value: `${Math.round(item.measurement.detectionCoveragePct)}%`,
+              },
+              {
+                label: 'Duration',
+                value: `${item.measurement.durationSec.toFixed(1)}s`,
+              },
+            ],
+          }))}
           resultIcon={
             result.passed ? 'checkmark-circle' : 'refresh-circle'
           }

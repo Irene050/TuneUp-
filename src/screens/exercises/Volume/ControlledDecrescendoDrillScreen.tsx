@@ -1,19 +1,26 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import {
+    getVolumeRampTargetHeight,
+    ResultItem,
+    VolumeRampRecordingContent,
+} from '@/components/SharedVolumeComponent';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_DECRESCENDO_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import type { ExerciseTierProps } from '@/types/exercises';
 import ExerciseScreen, {
     ExerciseCountdownScreen,
     ExercisePreparingScreen,
     ExerciseProcessingScreen,
     ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-import {
-    ResultItem,
-    VolumeRampRecordingContent,
-} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { generateControlledDecrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -22,13 +29,13 @@ import { saveCompletedExercise } from '@/services/progress/exerciseProgressServi
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import {
+    estimateVolumeRampSmoothness,
+    normalizeVolumeDbfs,
+} from '@/utils/dsp/volumeAnalysis';
 import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
 
 type ControlledDecrescendoParams =
   typeof CONTROLLED_DECRESCENDO_PARAMS.beginner;
@@ -41,108 +48,7 @@ type Phase =
   | 'processing'
   | 'results';
 
-interface ControlledDecrescendoExerciseProps {
-  tier?: Tier;
-}
-
-interface QuitExerciseModalProps {
-  visible: boolean;
-  isQuitting: boolean;
-  onContinue: () => void;
-  onQuit: () => void;
-}
-
-function normalizeVolume(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  return clamp(
-    (value - VOLUME_DBFS_MIN) / (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
-    0,
-    1,
-  );
-}
-
-function targetHeight(index: number): number {
-  const progress = index / Math.max(1, VOLUME_RAMP_BAR_COUNT - 1);
-  return 0.83 - progress * 0.65;
-}
-
-function calculateLiveSmoothness(values: number[]): number {
-  if (values.length < 3) {
-    return 0;
-  }
-
-  const changes: number[] = [];
-
-  for (let index = 1; index < values.length; index += 1) {
-    changes.push(values[index] - values[index - 1]);
-  }
-
-  const meaningfulChanges = changes.filter(
-    (change) => Math.abs(change) >= 0.15,
-  );
-
-  if (meaningfulChanges.length === 0) {
-    return 0;
-  }
-
-  const downwardChanges = meaningfulChanges.filter(
-    (change) => change < 0,
-  ).length;
-
-  const directionalConsistency =
-    (downwardChanges / meaningfulChanges.length) * 100;
-
-  const totalDecrease = values[0] - values[values.length - 1];
-
-  if (!Number.isFinite(totalDecrease) || totalDecrease <= 0) {
-    return 0;
-  }
-
-  const decreaseStrength = clamp((totalDecrease / 8) * 100, 0, 100);
-
-  return Math.round(
-    clamp(
-      directionalConsistency * 0.8 + decreaseStrength * 0.2,
-      0,
-      100,
-    ),
-  );
-}
-
-function estimateLiveSmoothness(history: number[]): number {
-  if (history.length < 4) {
-    return 0;
-  }
-
-  const dbValues = history.map(
-    (value) => VOLUME_DBFS_MIN + value * (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
-  );
-
-  return calculateLiveSmoothness(dbValues);
-}
-
-function QuitExerciseModal({
-  visible,
-  isQuitting,
-  onContinue,
-  onQuit,
-}: QuitExerciseModalProps) {
-  return (
-    <ExerciseQuitModal
-        visible={visible}
-        title={"Quit exercise?"}
-        message={"Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise."}
-        isQuitting={isQuitting}
-        onContinue={onContinue}
-        onQuit={onQuit}
-        continueLabel={"Continue Exercise"}
-        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
-      />
-  );
-}
+type ControlledDecrescendoExerciseProps = ExerciseTierProps;
 
 export default function ControlledDecrescendoDrill({
   tier,
@@ -172,11 +78,12 @@ export default function ControlledDecrescendoDrill({
   const [seconds, setSeconds] = useState(0);
   const [guideElapsed, setGuideElapsed] = useState(0);
 
-  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
+  const [, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
 
   const [smoothness, setSmoothness] = useState(0);
   const [actualSmoothness, setActualSmoothness] = useState(0);
+  const [repetitionScores, setRepetitionScores] = useState<number[]>([]);
 
   const [rangeReached, setRangeReached] = useState(false);
   const [directionCorrect, setDirectionCorrect] = useState(false);
@@ -446,7 +353,11 @@ export default function ControlledDecrescendoDrill({
 
       setLiveAudioFrame(frame);
 
-      const normalized = normalizeVolume(frame.volume);
+      const normalized = normalizeVolumeDbfs(
+        frame.volume,
+        VOLUME_DBFS_MIN,
+        VOLUME_DBFS_MAX,
+      );
 
       setLiveHistory((previous) => {
         const next = [...previous, normalized];
@@ -546,6 +457,7 @@ export default function ControlledDecrescendoDrill({
         const finalScore = Math.round(result.overallScore);
 
         setSmoothness(finalScore);
+        setRepetitionScores(measurement.repSmoothness);
         setActualSmoothness(Math.round(measurement.smoothness));
         setRangeReached(result.targetReached);
         setDirectionCorrect(result.directionCorrect);
@@ -913,6 +825,7 @@ export default function ControlledDecrescendoDrill({
     setGuideElapsed(0);
 
     setSmoothness(0);
+    setRepetitionScores([]);
     setActualSmoothness(0);
 
     setRangeReached(false);
@@ -959,7 +872,12 @@ export default function ControlledDecrescendoDrill({
     return () => clearTimeout(timeout);
   }, [phase]);
 
-  const liveSmoothness = estimateLiveSmoothness(liveHistory);
+  const liveSmoothness = estimateVolumeRampSmoothness(
+    liveHistory,
+    VOLUME_DBFS_MIN,
+    VOLUME_DBFS_MAX,
+    'decrescendo',
+  );
 
   const instruction =
     seconds < 1
@@ -984,11 +902,15 @@ export default function ControlledDecrescendoDrill({
 
   const quitModal = (
     <>
-      <QuitExerciseModal
+      <ExerciseQuitModal
         visible={showQuitModal}
+        title="Quit exercise?"
+        message="Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise."
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={() => void quitExercise()}
+        continueLabel="Continue Exercise"
+        quitLabel={isQuitting ? 'Stopping...' : 'Quit Exercise'}
       />
       <ExerciseNoAudioModal
         visible={showNoAudioModal}
@@ -1064,7 +986,7 @@ export default function ControlledDecrescendoDrill({
             <View style={exerciseStyles.referenceTopRowVariant1}>
               <View style={exerciseStyles.infoText}>
                 <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={exerciseStyles.referenceNoteVariant1}>
+                <Text style={[exerciseStyles.referenceNote, { lineHeight: 36 }]}>
                   {referenceNote.name}
                 </Text>
               </View>
@@ -1098,7 +1020,7 @@ export default function ControlledDecrescendoDrill({
                 <Ionicons name="play" size={17} color={COLORS.brown} />
               )}
 
-              <Text style={exerciseStyles.referenceButtonText}>
+              <Text style={exerciseStyles.smallSemiBoldBrownText}>
                 {referencePlaying
                   ? 'Playing...'
                   : `Play ${referenceNote.name}`}
@@ -1121,7 +1043,7 @@ export default function ControlledDecrescendoDrill({
                   key={`preview-${index}`}
                   style={[
                     exerciseStyles.previewBar,
-                    { height: `${targetHeight(index) * 80}%` },
+                    { height: `${getVolumeRampTargetHeight(index, 'decrescendo') * 80}%` },
                   ]}
                 />
               ))}
@@ -1163,7 +1085,7 @@ export default function ControlledDecrescendoDrill({
               ? 'Take a breath. Begin loudly, then gradually lower your volume.'
               : 'Prepare your voice. Begin comfortably loud when the countdown ends.'
           }
-          onBack={openQuitModal}
+
         />
 
         {quitModal}
@@ -1214,6 +1136,16 @@ export default function ControlledDecrescendoDrill({
             : 'Keep practicing to make your volume decrease more smoothly.'
         }
         score={smoothness}
+        repetitionScores={repetitionScores.map((repetitionScore, index) => ({
+          repetition: index + 1,
+          score: repetitionScore,
+          components: [
+            {
+              label: 'Smoothness',
+              value: `${Math.round(repetitionScore)}%`,
+            },
+          ],
+        }))}
         scoreSuffix="%"
         scoreMessage={passed ? 'Exercise Passed' : 'Needs More Practice'}
         resultIcon={
@@ -1260,7 +1192,7 @@ export default function ControlledDecrescendoDrill({
             />
           </View>
         }
-        onBack={() => router.back()}
+
         onRetry={tryAgain}
         onExit={() => router.replace('/exercises/volume')}
       >

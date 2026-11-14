@@ -1,16 +1,19 @@
-import type { SustainedExhaleParams } from '@/constants/params';
-import type { SustainedExhaleMeasurement } from '@/services/measurement/breathControl/sustainedExhale';
+import type { SustainedBreathParams } from '@/constants/params';
+import type { SustainedBreathMeasurement } from '@/services/measurement/breathControl/sustainedBreath';
 
-export interface SustainedExhaleScoreResult {
+export interface SustainedBreathScoreResult {
   score: number;
   passed: boolean;
   detected: boolean;
 }
 
-export function scoreSustainedExhale(
-  measurement: SustainedExhaleMeasurement,
-  params: SustainedExhaleParams,
-): SustainedExhaleScoreResult {
+type DurationRequirement = 'minimum' | 'minimumAndMaximum';
+
+export function scoreSustainedBreath(
+  measurement: SustainedBreathMeasurement,
+  params: SustainedBreathParams,
+  durationRequirement: DurationRequirement,
+): SustainedBreathScoreResult {
   if (!measurement.detected) {
     return {
       score: 0,
@@ -19,8 +22,8 @@ export function scoreSustainedExhale(
     };
   }
 
-  const minDurationSec = params.durationRangeSec[0];
-  const maxDurationSec = params.durationRangeSec[1];
+  const [minDurationSec, maxDurationSec] =
+    params.durationRangeSec;
 
   const actualDurationSec = Number.isFinite(
     measurement.actualDurationSec,
@@ -43,13 +46,15 @@ export function scoreSustainedExhale(
     : 0;
 
   const score = Math.round(
-    durationScore * 0.3 +
-      consistencyScore * 0.7,
+    durationScore * 0.3 + consistencyScore * 0.7,
   );
 
-  const passed =
+  const durationPassed =
     actualDurationSec >= minDurationSec &&
-    actualDurationSec >= maxDurationSec &&
+    (durationRequirement === 'minimum' ||
+      actualDurationSec >= maxDurationSec);
+  const passed =
+    durationPassed &&
     consistencyScore >= Math.max(params.consistencyThreshold, 85) &&
     score >= 85;
 

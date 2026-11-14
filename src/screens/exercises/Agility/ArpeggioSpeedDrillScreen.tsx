@@ -1,82 +1,74 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_MAX_RECORDING_SECONDS
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { AgilitySequenceGuide } from '@/components/SharedAgilityComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_MAX_RECORDING_SECONDS
 } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
-  ARPEGGIO_SPEED_DRILL_PARAMS,
-  type Tier,
+    ARPEGGIO_SPEED_DRILL_PARAMS,
+    type Tier,
 } from '@/constants/params';
-import { usePhaseState } from '@/hooks/usePhaseState';
-
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
-
+import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseRecordingScreen,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRecordingScreen,
+    ExerciseRepetitionBreakdown,
 } from '@/screens/exercises/ExerciseScreen';
-
 import { generateArpeggioSpeedDrillParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
-  getRecentAssessments,
+    getLatestAssessment,
+    getRecentAssessments,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureArpeggioSpeed } from '@/services/measurement/agility/arpeggioSpeedDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreArpeggioSpeed } from '@/services/scoring/agility/arpeggioSpeedDrill';
-
-import { exerciseStyles } from '@/constants/exerciseStyles';
 import { sleep } from '@/utils/async';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
 import {
-  AGILITY_NOTE_START_DELAY_MS,
-  getActiveSequenceNoteIndex,
-  playNoteSequence,
+    AGILITY_NOTE_START_DELAY_MS,
+    getActiveSequenceNoteIndex,
+    playNoteSequence,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToMidi,
-  frequencyToNoteName,
-  getSemitoneDistance,
-  midiToFrequency,
+    frequencyToMidi,
+    frequencyToNoteName,
+    getSemitoneDistance,
+    isValidVocalRange,
+    midiToFrequency,
 } from '@/utils/music/notes';
 
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
-
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 type ArpeggioExerciseConfig = {
   notes: string[];
@@ -172,12 +164,7 @@ const generateArpeggioFromVocalRange = (
   notes: string[];
   frequencies: number[];
 } | null => {
-  if (
-    !Number.isFinite(lowHz) ||
-    !Number.isFinite(highHz) ||
-    lowHz <= 0 ||
-    highHz <= lowHz
-  ) {
+  if (!isValidVocalRange({ lowHz, highHz })) {
     return null;
   }
 
@@ -319,6 +306,7 @@ export default function ArpeggioSpeedDrillScreen() {
   const [currentRep, setCurrentRep] = useState(1);
 
   const [result, setResult] = useState<ExerciseResult | null>(null);
+  const [attemptResults, setAttemptResults] = useState<ExerciseResult[]>([]);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
@@ -349,6 +337,7 @@ export default function ArpeggioSpeedDrillScreen() {
     useRef<(() => Promise<void>) | null>(null);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
 const noteCycleDuration = config.noteDurationSec + config.gapSec;
 const sequenceCycleDuration =
@@ -435,6 +424,7 @@ const expectedNote =
         ];
 
         attemptResultsRef.current = completedAttempts;
+        setAttemptResults(completedAttempts);
 
         if (currentRep < repetitionCount) {
           if (!mountedRef.current) return;
@@ -488,6 +478,7 @@ const expectedNote =
 
         processingRef.current = false;
         attemptResultsRef.current = [];
+        setAttemptResults([]);
         setCurrentRep(1);
         setPhase('instructions');
       }
@@ -1005,6 +996,7 @@ const expectedNote =
 
   const beginExercise = useCallback(() => {
     attemptResultsRef.current = [];
+    setAttemptResults([]);
 
     setCurrentRep(1);
     setResult(null);
@@ -1031,6 +1023,7 @@ const expectedNote =
     processingRef.current = false;
 
     attemptResultsRef.current = [];
+    setAttemptResults([]);
 
     setCurrentRep(1);
     setLivePitchHz(null);
@@ -1043,10 +1036,7 @@ const expectedNote =
   }, [cancelActiveRecording, setPhase]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
 
       countdownRunIdRef.current += 1;
 
@@ -1134,17 +1124,11 @@ const expectedNote =
 
   const renderReference = () => (
     <ExerciseListeningScreen
-      icon="musical-notes-outline"
       title="Arpeggio Speed Drill"
-      currentRep={currentRep}
-      repetitions={repetitionCount}
-      promptTitle="Listen to the Reference"
       prompt="Listen to the full arpeggio, then sing the notes in order while following its timing."
-      liveContent={
+      referenceContent={
         <AgilitySequenceGuide
-          names={config.frequencies.map(
-            frequencyToNoteName,
-          )}
+          names={config.frequencies.map(frequencyToNoteName)}
           activeIndex={referenceNoteIndex}
           noteDurationSec={config.noteDurationSec}
           gapSec={config.gapSec}
@@ -1153,7 +1137,6 @@ const expectedNote =
       isPlayingReference={isPlayingReference}
       onPlayReference={() => void playReference()}
       onReady={() => void startCountdownRef.current?.()}
-      onBack={pauseForExitPrompt}
     />
   );
 
@@ -1166,7 +1149,7 @@ const expectedNote =
       countdown={countdown}
       promptTitle="Prepare to sing"
       prompt="Sing the arpeggio in sequence."
-      onBack={pauseForExitPrompt}
+
     />
   );
 
@@ -1198,7 +1181,7 @@ const renderRecording = () => {
       title="Sing the Arpeggio"
       currentRep={currentRep}
       repetitions={repetitionCount}
-      onBack={pauseForExitPrompt}
+
     >
       <AgilitySequenceGuide
         names={config.notes}
@@ -1234,10 +1217,10 @@ const renderRecording = () => {
         </Text>
       </View>
 
-      <View style={exerciseStyles.timerTrack}>
+      <View style={[exerciseStyles.progressTrack, { marginTop: 12 }]}>
         <View
           style={[
-            exerciseStyles.timerFill,
+            exerciseStyles.progressFill,
             { width: `${progress * 100}%` },
           ]}
         />
@@ -1294,10 +1277,23 @@ const renderRecording = () => {
             {result.overall}
           </Text>
 
-          <Text style={exerciseStyles.scoreDescriptionVariant1}>
+          <Text style={exerciseStyles.scoreDescriptionCompact}>
             out of 100 · Average across {repetitionCount} repetitions
           </Text>
         </View>
+
+        <ExerciseRepetitionBreakdown
+          repetitions={attemptResults.map((attempt, index) => ({
+            repetition: index + 1,
+            score: attempt.overall,
+            passed: attempt.passed,
+            components: [
+              { label: 'Pitch accuracy', value: `${attempt.pitchScore}%` },
+              { label: 'Sequence accuracy', value: `${attempt.sequenceScore}%` },
+              { label: 'Speed', value: `${attempt.speedScore}%` },
+            ],
+          }))}
+        />
 
         <View style={exerciseStyles.resultCard}>
           <Text style={exerciseStyles.resultCardTitle}>
@@ -1315,7 +1311,7 @@ const renderRecording = () => {
               </Text>
             </View>
 
-            <View style={exerciseStyles.progressBackground}>
+            <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1341,7 +1337,7 @@ const renderRecording = () => {
               </Text>
             </View>
 
-            <View style={exerciseStyles.progressBackground}>
+            <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1367,7 +1363,7 @@ const renderRecording = () => {
               </Text>
             </View>
 
-            <View style={exerciseStyles.progressBackground}>
+            <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1438,7 +1434,11 @@ const renderRecording = () => {
         </View>
 
         <Pressable
-          style={exerciseStyles.startButtonVariant1}
+          style={[
+            exerciseStyles.startButtonPill,
+            exerciseStyles.startButtonPillFixedHeight,
+            exerciseStyles.startButtonPillStandardSpacing,
+          ]}
           onPress={resetExercise}
         >
           <Ionicons
@@ -1453,7 +1453,7 @@ const renderRecording = () => {
         </Pressable>
 
         <Pressable
-          style={exerciseStyles.doneButtonVariant1}
+          style={exerciseStyles.doneButtonPill}
           onPress={pauseForExitPrompt}
         >
           <Text style={exerciseStyles.infoName}>
@@ -1478,10 +1478,10 @@ const renderRecording = () => {
   const activeContent =
     phase === 'instructions'
       ? renderInstructions()
-      : phase === 'listening'
-        ? renderReference()
-        : phase === 'countdown'
-          ? renderCountdown()
+      : phase === 'countdown'
+        ? renderCountdown()
+        : phase === 'listening'
+          ? renderReference()
           : phase === 'recording'
             ? renderRecording()
             : phase === 'processing'

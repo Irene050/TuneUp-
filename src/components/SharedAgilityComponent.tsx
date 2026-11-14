@@ -158,7 +158,7 @@ export function AgilitySequenceGuide({
                 : null;
 
             const noteColor = active
-              ? feedbackColor ?? COLORS.waveform
+              ? feedbackColor ?? COLORS.pink
               : COLORS.brown;
 
             const haloBorderColor = active

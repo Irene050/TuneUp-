@@ -1,5 +1,6 @@
 export const COLORS = {
   brown: '#4E2F1F',
+  darkBrownText: '#4A302F',
   dark: '#5A343D',
   pink: '#FCD6DD',
   otherpink: '#EAA5B6',
@@ -8,6 +9,7 @@ export const COLORS = {
   accent: '#D86C89',
   text: '#4E2F1F',
   muted: '#8E7770',
+  inputPlaceholder: '#A99C9A',
   border: '#F2DDE5',
   gray: '#A9A0A0',
   lightGray: '#F2F2F2',
@@ -15,6 +17,7 @@ export const COLORS = {
   successBackground: '#EFF8F2',
   warning: '#F9A825',
   error: '#A04444',
+  alertIcon: '#A33A3A',
   guideGreen: '#4F9B67',
   guideYellow: '#D9A72E',
   lightYellow: '#FBE6B8',

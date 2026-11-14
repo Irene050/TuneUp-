@@ -1,16 +1,20 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, VOLUME_DBFS_MIN } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { FreeModePhase } from '@/types/exercises';
 import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, Text, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeVolumeDbfs } from '@/utils/dsp/volumeAnalysis';
 
-type Phase = 'ready' | 'exercise';
+type Phase = FreeModePhase;
 
 const FLOW_HISTORY_BAR_COUNT = 20;
 
@@ -30,6 +34,7 @@ export default function BreathControlFreeModeScreen() {
   );
 
   const mountedRef = useRef(false);
+  useMountedRefLifecycle(mountedRef);
   const startInProgressRef = useRef(false);
   const recordingStopRequestedRef = useRef(false);
   const leaveRequestedRef = useRef(false);
@@ -54,9 +59,10 @@ export default function BreathControlFreeModeScreen() {
 
     setVolumeDb(reading.volumeDb);
 
-    const normalizedFlow = Math.max(
+    const normalizedFlow = normalizeVolumeDbfs(
+      reading.volumeDb,
+      VOLUME_DBFS_MIN,
       0,
-      Math.min(1, (reading.volumeDb - VOLUME_DBFS_MIN) / 60),
     );
 
     setFlowHistory(previous => [
@@ -304,10 +310,7 @@ export default function BreathControlFreeModeScreen() {
   );
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       recordingStopRequestedRef.current = true;
 
       void waitForStartAndStop().catch(errorMessage => {
@@ -319,22 +322,24 @@ export default function BreathControlFreeModeScreen() {
     };
   }, [waitForStartAndStop]);
 
-  const renderHeader = (onBack: () => void) => (
+  const renderHeader = (onBack?: () => void) => (
     <View
       style={[
         exerciseStyles.header,
         { paddingHorizontal: horizontalPadding },
       ]}
     >
-      <Pressable
-        style={exerciseStyles.backButtonVariant1}
-        onPress={onBack}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        disabled={isQuitting}
-      >
-        <Ionicons name="arrow-back" size={20} color={COLORS.brown} />
-      </Pressable>
+      {onBack ? (
+        <Pressable
+          style={[exerciseStyles.backButton, { marginTop: 120 }]}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          disabled={isQuitting}
+        >
+          <Ionicons name="arrow-back" size={20} color={COLORS.brown} />
+        </Pressable>
+      ) : null}
 
       <View style={exerciseStyles.headerSpacer} />
     </View>
@@ -448,7 +453,8 @@ export default function BreathControlFreeModeScreen() {
           {renderBottomAction(
             <Pressable
               style={[
-                exerciseStyles.startButtonVariant3,
+                exerciseStyles.startButton,
+                exerciseStyles.startButtonBottomMargin,
                 (isStarting || isStopping || isQuitting) &&
                   exerciseStyles.disabledButton,
               ]}
@@ -490,13 +496,7 @@ export default function BreathControlFreeModeScreen() {
     volumeDb <= VOLUME_DBFS_MIN
       ? null
       : Math.round(
-          Math.max(
-            0,
-            Math.min(
-              100,
-              ((volumeDb - VOLUME_DBFS_MIN) / 60) * 100,
-            ),
-          ),
+          normalizeVolumeDbfs(volumeDb, VOLUME_DBFS_MIN, 0) * 100,
         );
 
   return (
@@ -507,7 +507,7 @@ export default function BreathControlFreeModeScreen() {
           { paddingBottom: insets.bottom },
         ]}
       >
-        {renderHeader(handleBack)}
+        {renderHeader()}
 
         <View
           style={[
@@ -556,7 +556,7 @@ export default function BreathControlFreeModeScreen() {
             </View>
           </View>
 
-          <View style={exerciseStyles.noteCardVariant1}>
+          <View style={[exerciseStyles.noteCard, { marginBottom: 50 }]}>
             <Ionicons
               name="flower-outline"
               size={18}

@@ -10,13 +10,24 @@ import { BackHandler, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  ExerciseNoAudioModal,
+  ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+  COLORS,
+  EXERCISE_COUNTDOWN_SECONDS,
+  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
   VOLUME_CONTROL_STABILITY_PARAMS,
   type Tier,
   type VolumeControlStabilityParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
   ExerciseCountdownScreen,
   ExercisePreparingScreen,
@@ -33,6 +44,11 @@ import {
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeControlStability } from '@/services/scoring/volume/volumeControlStability';
+import {
+  concatenateRepetitions,
+  fixedDurationSamples,
+  hasSufficientRecordedSignal,
+} from '@/utils/audioSignal';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
   createMusicalNote,
@@ -40,34 +56,11 @@ import {
   midiToNoteName,
 } from '@/utils/music/notes';
 
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import {
-  concatenateRepetitions,
-  fixedDurationSamples,
-  hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
-
 const DEFAULT_REFERENCE_MIDI = 60;
 const MAX_LIVE_HISTORY = 40;
 const MIN_VOICE_CLARITY = 0.45;
 
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 type MeasurementResult =
   ReturnType<typeof measureVolumeControlStability>;
@@ -129,7 +122,7 @@ export default function VolumeControlStabilityScreen({
 }: {
   tier?: Tier;
 }) {
-  const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
+  const { phase, setPhase } = usePhaseState<Phase>('instructions');
 
   const [referenceMidi, setReferenceMidi] =
     useState(DEFAULT_REFERENCE_MIDI);
@@ -140,7 +133,7 @@ export default function VolumeControlStabilityScreen({
   const [countdown, setCountdown] =
     useState(EXERCISE_COUNTDOWN_SECONDS);
 
-  const [remainingSeconds, setRemainingSeconds] =
+  const [, setRemainingSeconds] =
     useState(0);
 
   const [liveVolume, setLiveVolume] =
@@ -198,6 +191,7 @@ export default function VolumeControlStabilityScreen({
 
   const liveHistoryRef = useRef<number[]>([]);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
   const exerciseStartedAtRef =
     useRef<number | null>(null);
@@ -228,14 +222,6 @@ export default function VolumeControlStabilityScreen({
 
   const totalExerciseSeconds =
     durationSeconds * repetitions;
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1178,7 +1164,7 @@ export default function VolumeControlStabilityScreen({
                   OPTIONAL REFERENCE NOTE
                 </Text>
 
-                <Text style={exerciseStyles.referenceNoteVariant2}>
+                <Text style={[exerciseStyles.referenceNote, { fontSize: 28 }]}>
                   {NOTE}
                 </Text>
               </View>
@@ -1219,7 +1205,7 @@ export default function VolumeControlStabilityScreen({
                 color={ COLORS.brown}
               />
 
-              <Text style={exerciseStyles.referenceButtonText}>
+              <Text style={exerciseStyles.smallSemiBoldBrownText}>
                 {referencePlaying
                   ? 'Playing...'
                   : `Play ${NOTE}`}
@@ -1242,7 +1228,7 @@ export default function VolumeControlStabilityScreen({
           countdown={countdown}
           promptTitle={`Prepare to sing ${NOTE}.`}
           prompt={`Start singing on “Ah” when the countdown reaches zero. Keep your volume steady for ${durationSeconds} seconds per repetition.`}
-          onBack={() => void pauseForExitPrompt()}
+
         />
 
         {quitModal}
@@ -1315,15 +1301,15 @@ export default function VolumeControlStabilityScreen({
                 </Text>
               </View>
 
-              <Text style={exerciseStyles.stabilityValueVariant1}>
+              <Text style={exerciseStyles.stabilityValueAccent}>
                 {Math.round(clampedStability)}%
               </Text>
             </View>
 
-            <View style={exerciseStyles.stabilityTrackVariant2}>
+            <View style={[exerciseStyles.progressTrack, { marginTop: 11, position: 'relative' }]}>
               <View
                 style={[
-                  exerciseStyles.stabilityFillVariant2,
+                  exerciseStyles.progressFill,
                   {
                     width: `${clampedStability}%`,
                   },
@@ -1412,7 +1398,7 @@ export default function VolumeControlStabilityScreen({
                 {liveVolumeDisplay}
               </Text>
 
-              <Text style={exerciseStyles.scoreDescriptionVariant2}>
+              <Text style={exerciseStyles.scoreDescriptionDefault}>
                 / 70 level
               </Text>
             </View>
@@ -1481,7 +1467,7 @@ export default function VolumeControlStabilityScreen({
               </Text>
             </View>
           </View>
-          <View style={exerciseStyles.progressTrackVariant7}>
+          <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1586,6 +1572,18 @@ export default function VolumeControlStabilityScreen({
           'Your result reflects volume consistency and sustained vocal coverage during the recording.'
         }
         score={Math.round(finalScore)}
+        repetitionScores={
+          measurement?.repStability.map((stability, index) => ({
+            repetition: index + 1,
+            score: stability,
+            components: [
+              {
+                label: 'Volume stability',
+                value: `${Math.round(stability)}%`,
+              },
+            ],
+          })) ?? []
+        }
         scoreSuffix="/100"
         resultIcon={
           resultPassed
@@ -1607,7 +1605,7 @@ export default function VolumeControlStabilityScreen({
       <View
         key={item.label}
         style={[
-          exerciseStyles.resultRowVariant4,
+          exerciseStyles.volumeResultRow,
           index === resultRows.length - 1 &&
             exerciseStyles.metricRowLast,
         ]}

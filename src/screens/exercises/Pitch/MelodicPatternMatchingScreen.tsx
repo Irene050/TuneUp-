@@ -1,11 +1,25 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import {
+    LivePitchIndicator as ExerciseLivePitchIndicator,
+    NoteChip,
+    RecordingNoteSequence,
+} from '@/components/SharedPitchComponent';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { MELODIC_PATTERN_MATCHING_PARAMS, type MelodicPatternMatchingParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
 import { ExerciseCountdownScreen, ExerciseListeningScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, default as ExerciseScreen } from '@/screens/exercises/ExerciseScreen';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureMelodicPatternMatching } from '@/services/measurement/pitch/melodicPatternMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -15,22 +29,10 @@ import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, getRandomPitchNote, type VocalRange } from '@/utils/music/notes';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 interface GeneratedPattern {
   notes: ReturnType<typeof createMusicalNote>[];
@@ -41,14 +43,6 @@ interface ResultRowProps {
   value: string;
   last?: boolean;
 }
-
-interface NoteChipProps {
-  note: string;
-  active?: boolean;
-  size?: number;
-}
-
-
 
 const NOTE_DURATION_SECONDS = 0.7;
 const NOTE_GAP_SECONDS = 0.12;
@@ -78,7 +72,9 @@ function ResultRow({
   return (
     <View
       style={[
-        exerciseStyles.resultRowVariant1,
+        exerciseStyles.resultRow,
+        exerciseStyles.resultRowGap,
+        exerciseStyles.resultRowSeparator,
         last && exerciseStyles.metricRowLast,
       ]}
     >
@@ -87,43 +83,6 @@ function ResultRow({
     </View>
   );
 }
-
-function NoteChip({
-  note,
-  active = false,
-  size = 60,
-}: NoteChipProps) {
-  const fontSize =
-    size >= 60 ? 18 :
-    size >= 54 ? 16 :
-    14;
-
-  return (
-    <View
-      style={[
-        exerciseStyles.noteChip,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-        },
-        active && exerciseStyles.resultIconPassed,
-      ]}
-    >
-      <Text
-        style={[
-          exerciseStyles.noteChipText,
-          { fontSize },
-          active && exerciseStyles.periodTextActive,
-        ]}
-      >
-        {note}
-      </Text>
-    </View>
-  );
-}
-
-
 
 export default function MelodicPatternMatchingScreen({
   tier,
@@ -156,6 +115,9 @@ export default function MelodicPatternMatchingScreen({
 
   const [currentRep, setCurrentRep] = useState(1);
 
+  const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
+    useState<number | null>(null);
+
   const [result, setResult] =
     useState<MelodicPatternScoreResult | null>(null);
 
@@ -171,6 +133,7 @@ export default function MelodicPatternMatchingScreen({
     useState(false);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const pausedRef = useRef(false);
   const playbackRunIdRef = useRef(0);
 
@@ -330,10 +293,7 @@ export default function MelodicPatternMatchingScreen({
   }, [tier]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       playbackRunIdRef.current += 1;
       showQuitModalRef.current = false;
@@ -723,6 +683,7 @@ export default function MelodicPatternMatchingScreen({
 
       try {
         setPhase('listening');
+        setActiveReferenceNoteIndex(null);
 
         for (
           let index = 0;
@@ -734,6 +695,22 @@ export default function MelodicPatternMatchingScreen({
           await playSingleNote(
             pattern.notes[index].frequency,
             NOTE_DURATION_SECONDS,
+            () => {
+              if (
+                mountedRef.current &&
+                runId === playbackRunIdRef.current
+              ) {
+                setActiveReferenceNoteIndex(index);
+              }
+            },
+            () => {
+              if (
+                mountedRef.current &&
+                runId === playbackRunIdRef.current
+              ) {
+                setActiveReferenceNoteIndex(null);
+              }
+            },
           );
 
           if (playbackWasInterrupted()) return;
@@ -749,6 +726,7 @@ export default function MelodicPatternMatchingScreen({
 
         if (playbackWasInterrupted()) return;
 
+        setActiveReferenceNoteIndex(null);
         await beginRecording();
       } catch (errorMessage) {
         console.error('Failed to play melodic pattern:', errorMessage);
@@ -1181,21 +1159,20 @@ export default function MelodicPatternMatchingScreen({
     Number.isFinite(liveAudioFrame.pitch) &&
     liveAudioFrame.pitch > 0;
 
-  const quitModalMessage =
-    pausedPhaseRef.current === 'instructions'
-      ? 'Are you sure you want to leave Melodic Pattern Matching?'
-      : pausedPhaseRef.current === 'results'
-        ? 'You have completed this exercise. Are you sure you want to leave?'
-        : pausedPhaseRef.current === 'recording'
-          ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-          : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
   const quitExerciseModal = (
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
         title={"Quit exercise?"}
-        message={quitModalMessage}
+        message={
+          pausedPhaseRef.current === 'instructions'
+            ? 'Are you sure you want to leave Melodic Pattern Matching?'
+            : pausedPhaseRef.current === 'results'
+              ? 'You have completed this exercise. Are you sure you want to leave?'
+              : pausedPhaseRef.current === 'recording'
+                ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+                : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
+        }
         isQuitting={isStoppingForQuitModal}
         onContinue={continueExercise}
         onQuit={() => void quitExercise()}
@@ -1302,66 +1279,19 @@ export default function MelodicPatternMatchingScreen({
         countdown={countdown}
         promptTitle="Listen carefully"
         prompt="You will hear the reference melody before singing it."
-        onBack={handleBack}
+
       />
     );
   } else if (phase === 'listening') {
     screenContent = (
       <View style={exerciseStyles.screen}>
         <ExerciseListeningScreen
-          icon="musical-notes-outline"
           title="Listen to the Pattern"
-          currentRep={currentRep}
-          repetitions={repetitionCount}
-          elapsedSeconds={0}
-          targetDuration={
-            params.noteCount *
-            (NOTE_DURATION_SECONDS + NOTE_GAP_SECONDS)
+          prompt="Listen to the complete melody and remember the note order. Recording begins afterward."
+          referenceNotes={
+            currentPattern?.notes.map(note => note.name) ?? []
           }
-          promptTitle="Remember the notes"
-          prompt="Listen to the complete melody and remember the order. Recording will begin automatically afterward."
-          liveContent={
-            <View style={exerciseStyles.playbackNoteContainer}>
-              <View style={exerciseStyles.resultsIconCircle}>
-                <Ionicons
-                  name="musical-notes-outline"
-                  size={38}
-                  color={COLORS.brown}
-                />
-              </View>
-
-              <Text style={exerciseStyles.modalTitle}>
-                Reference Melody
-              </Text>
-
-              <Text style={exerciseStyles.playbackDescription}>
-                Repetition {currentRep} of {repetitionCount}
-              </Text>
-
-              <View
-                style={[
-                  exerciseStyles.noteList,
-                  { gap: noteChipGap },
-                ]}
-              >
-                {currentPattern?.notes.map((note, index) => (
-                  <NoteChip
-                    key={`${note.name}-${index}`}
-                    note={note.name}
-                    size={noteChipSize}
-                  />
-                ))}
-              </View>
-
-              <ActivityIndicator
-                size="large"
-                color={COLORS.brown}
-                style={exerciseStyles.playbackSpinner}
-              />
-            </View>
-          }
-          progress={0}
-          onBack={handleBack}
+          activeNoteIndex={activeReferenceNoteIndex}
         />
       </View>
     );
@@ -1383,21 +1313,13 @@ export default function MelodicPatternMatchingScreen({
           </Text>
         </View>
 
-        <View
-              style={[
-                exerciseStyles.recordingNoteList,
-                { gap: noteChipGap },
-              ]}
-            >
-              {currentPattern?.notes.map((note, index) => (
-                <NoteChip
-                  key={`${note.name}-${index}`}
-                  note={note.name}
-                  active={index === currentNoteIndex}
-                  size={noteChipSize}
-                />
-              ))}
-            </View>
+        <RecordingNoteSequence
+          variant="melody"
+          notes={currentPattern?.notes.map(note => note.name) ?? []}
+          activeIndex={currentNoteIndex}
+          noteSize={noteChipSize}
+          gap={noteChipGap}
+        />
 
         <ScrollView
           style={exerciseStyles.infoText}
@@ -1434,7 +1356,7 @@ export default function MelodicPatternMatchingScreen({
               </View>
             </View>
           </ExerciseLivePitchIndicator>
-          <View style={exerciseStyles.recordingProgressTrack}>
+          <View style={exerciseStyles.progressTrack}>
               <View
                 style={[
                   exerciseStyles.progressFill,
@@ -1456,15 +1378,6 @@ export default function MelodicPatternMatchingScreen({
   } else if (phase === 'results' && result) {
     screenContent = (
       <View style={exerciseStyles.screen}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Quit exercise"
-          onPress={handleBack}
-          style={exerciseStyles.quitButtonTopVariant1}
-        >
-          <Ionicons name="exit-outline" size={22} color={COLORS.brown} />
-        </Pressable>
-
         <ExerciseResultsScreen
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={
@@ -1473,6 +1386,20 @@ export default function MelodicPatternMatchingScreen({
               : 'Review your results and try again to improve your accuracy.'
           }
           score={result.score}
+          repetitionScores={result.repetitionScores.map((score, index) => ({
+            repetition: index + 1,
+            score,
+            components: [
+              {
+                label: 'Pattern accuracy',
+                value: `${Math.round(result.patternAccuracy)}%`,
+              },
+              {
+                label: 'Rhythm accuracy',
+                value: `${Math.round(result.rhythmAccuracy)}%`,
+              },
+            ],
+          }))}
           resultIcon={result.passed ? 'checkmark' : 'refresh-outline'}
           scoreDetails={
             <View style={exerciseStyles.scoreDetails}>
@@ -1506,18 +1433,6 @@ export default function MelodicPatternMatchingScreen({
               value={`${Math.round(result.rhythmAccuracy)}%`}
               last
             />
-          </View>
-
-          <View style={exerciseStyles.resultCardVariant1}>
-            <Text style={exerciseStyles.resultCardTitle}>Repetition Scores</Text>
-            {result.repetitionScores.map((score, index) => (
-              <ResultRow
-                key={`repetition-${index}`}
-                label={`Repetition ${index + 1}`}
-                value={`${score}%`}
-                last={index === result.repetitionScores.length - 1}
-              />
-            ))}
           </View>
 
           <View style={exerciseStyles.resultCardVariant1}>

@@ -1,45 +1,45 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, ScrollView, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-import type { SustainedExhaleParams, Tier } from '@/constants/params';
+import type { SustainedSSSSParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  RecordingExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, MetricCard } from '@/screens/exercises/ExerciseScreen';
 import { generateSustainedSSSSParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
-import { measureSustainedSSSS, type SustainedSSSSMeasurement } from '@/services/measurement/breathControl/sustainedSSSS';
+import { measureSustainedBreath, type SustainedBreathMeasurement } from '@/services/measurement/breathControl/sustainedBreath';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
-import { scoreSustainedSSSS, type SustainedSSSSScoreResult } from '@/services/scoring/breathControl/sustainedSSSS';
+import { scoreSustainedBreath, type SustainedBreathScoreResult } from '@/services/scoring/breathControl/sustainedBreath';
 import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
-import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+
+import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
 const PROCESSING_DELAY_MS = 1200;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
 interface RepetitionResult {
   rep: number;
-  measurement: SustainedSSSSMeasurement;
-  score: SustainedSSSSScoreResult;
+  measurement: SustainedBreathMeasurement;
+  score: SustainedBreathScoreResult;
 }
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
 export default function SustainedSSSSScreen({
   tier: initialTier,
@@ -50,7 +50,7 @@ export default function SustainedSSSSScreen({
   );
 
   const [params, setParams] =
-    useState<SustainedExhaleParams | null>(null);
+    useState<SustainedSSSSParams | null>(null);
 
   const [isLoadingParams, setIsLoadingParams] = useState(true);
   const { phase, setPhase, phaseRef } = usePhaseState<Phase>('instructions');
@@ -69,7 +69,7 @@ export default function SustainedSSSSScreen({
   const [isQuitting, setIsQuitting] = useState(false);
   const [showNoAudioModal, setShowNoAudioModal] = useState(false);
 
-  const paramsRef = useRef<SustainedExhaleParams | null>(null);
+  const paramsRef = useRef<SustainedSSSSParams | null>(null);
 
   const tierRef = useRef<Tier | null>(
     initialTier ?? null,
@@ -85,6 +85,7 @@ export default function SustainedSSSSScreen({
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
   const pausedRef = useRef(false);
@@ -428,15 +429,16 @@ export default function SustainedSSSSScreen({
       }
 
       try {
-        const measurement = measureSustainedSSSS(
+        const measurement = measureSustainedBreath(
           samples,
           adaptiveParams.detectionThreshold,
           sampleRate,
         );
 
-        const score = scoreSustainedSSSS(
+        const score = scoreSustainedBreath(
           measurement,
           adaptiveParams,
+          'minimum',
         );
 
         const result: RepetitionResult = {
@@ -912,10 +914,7 @@ export default function SustainedSSSSScreen({
   }, [openQuitModal, showNoAudioModal]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
 
       pausedRef.current = true;
 
@@ -925,19 +924,18 @@ export default function SustainedSSSSScreen({
     };
   }, [clearTimers]);
 
-  const quitMessage =
-    pausedPhaseRef.current === 'instructions' ||
-    pausedPhaseRef.current === 'results'
-      ? 'Are you sure you want to leave Sustained "SSSS"?'
-      : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
   const quitModal = (
     <ExerciseQuitModal
       visible={showQuitModal}
       title="Quit exercise?"
-      message={quitMessage}
+      message={
+        pausedPhaseRef.current === 'instructions' ||
+        pausedPhaseRef.current === 'results'
+          ? 'Are you sure you want to leave Sustained "SSSS"?'
+          : pausedPhaseRef.current === 'recording'
+            ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+            : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
+      }
       isQuitting={isQuitting}
       onContinue={continueExercise}
       onQuit={() => {
@@ -1083,7 +1081,7 @@ export default function SustainedSSSSScreen({
           countdown={countdown}
           promptTitle="Prepare to make a steady SSSS sound"
           prompt="Keep the hiss smooth and continuous."
-          onBack={goBack}
+
         />
       </>
     );
@@ -1144,7 +1142,7 @@ export default function SustainedSSSSScreen({
             {elapsedSeconds.toFixed(1)}s
           </Text>
 
-          <View style={exerciseStyles.progressTrack}>
+          <View style={[exerciseStyles.progressTrack, { marginTop: 18 }]}>
             <View
               style={[
                 exerciseStyles.progressFill,
@@ -1184,22 +1182,6 @@ export default function SustainedSSSSScreen({
           }
         />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Pause exercise"
-          style={exerciseStyles.processingPauseButton}
-          onPress={openQuitModal}
-        >
-          <Ionicons
-            name="pause-circle-outline"
-            size={25}
-            color={COLORS.brown}
-          />
-
-          <Text style={exerciseStyles.processingPauseText}>
-            Pause
-          </Text>
-        </Pressable>
       </>
     );
   }
@@ -1213,9 +1195,24 @@ export default function SustainedSSSSScreen({
         title="Exercise Complete"
         subtitle={'Sustained "SSSS"'}
         score={averageScore}
+        repetitionScores={repetitionResults.map(result => ({
+          repetition: result.rep,
+          score: result.score.score,
+          passed: result.score.passed,
+          components: [
+            {
+              label: 'Duration',
+              value: `${result.measurement.actualDurationSec.toFixed(1)}s`,
+            },
+            {
+              label: 'Consistency',
+              value: `${Math.round(result.measurement.consistencyPct)}%`,
+            },
+          ],
+        }))}
         resultIcon="checkmark"
         scoreDetails={
-          <View style={exerciseStyles.scoreBar}>
+          <View style={[exerciseStyles.progressTrack, { marginTop: 17 }]}>
             <View
               style={[
                 exerciseStyles.progressFill,
@@ -1264,57 +1261,6 @@ export default function SustainedSSSSScreen({
                 value={`${passedReps}/${repetitionResults.length}`}
               />
             </View>
-          </View>
-
-          <View style={exerciseStyles.repResultsCard}>
-            <Text style={exerciseStyles.sectionTitle}>
-              Repetition Results
-            </Text>
-
-            {repetitionResults.map(result => (
-              <View
-                key={`rep-${result.rep}`}
-                style={exerciseStyles.repResultRow}
-              >
-                <View
-                  style={[
-                    exerciseStyles.repNumber,
-                    result.score.passed &&
-                      exerciseStyles.resultIconPassed,
-                  ]}
-                >
-                  <Text style={exerciseStyles.componentScore}>
-                    {result.rep}
-                  </Text>
-                </View>
-
-                <View style={exerciseStyles.repResultInfo}>
-                  <Text style={exerciseStyles.repResultTitle}>
-                    Repetition {result.rep}
-                  </Text>
-
-                  <Text style={exerciseStyles.repResultDetails}>
-                    {result.measurement.actualDurationSec.toFixed(1)}
-                    s
-                    {' • '}
-                    {Math.round(
-                      result.measurement.consistencyPct,
-                    )}
-                    % consistency
-                  </Text>
-                </View>
-
-                <View style={exerciseStyles.repScoreContainer}>
-                  <Text style={exerciseStyles.resultStatValue}>
-                    {result.score.score}
-                  </Text>
-
-                  <Text style={exerciseStyles.repScorePercent}>
-                    %
-                  </Text>
-                </View>
-              </View>
-            ))}
           </View>
 
           <View style={exerciseStyles.feedbackCardVariant1}>

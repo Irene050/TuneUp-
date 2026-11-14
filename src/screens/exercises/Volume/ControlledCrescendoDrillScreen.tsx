@@ -1,19 +1,29 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import {
+    getVolumeRampTargetHeight,
+    ResultItem,
+    VolumeRampRecordingContent,
+} from '@/components/SharedVolumeComponent';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { CONTROLLED_CRESCENDO_PARAMS, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import type {
+  ExerciseTierProps,
+  RecordingExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
 } from '@/screens/exercises/ExerciseScreen';
-import {
-  ResultItem,
-  VolumeRampRecordingContent,
-} from '@/screens/exercises/Volume/SharedVolumeComponents';
 import { generateControlledCrescendoParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -22,116 +32,20 @@ import { saveCompletedExercise } from '@/services/progress/exerciseProgressServi
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledCrescendo } from '@/services/scoring/volume/controlledCrescendoDrill';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { average, clamp } from '@/utils/math';
+import {
+    estimateVolumeRampSmoothness,
+    normalizeVolumeDbfs,
+} from '@/utils/dsp/volumeAnalysis';
+import { clamp } from '@/utils/math';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Text, TouchableOpacity, View } from 'react-native';
 
 type ControlledCrescendoParams =
   typeof CONTROLLED_CRESCENDO_PARAMS.beginner;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
-interface ControlledCrescendoExerciseProps {
-  tier?: Tier;
-}
-
-function normalizeVolume(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  const dbfs =
-    value >= 0 && value <= 1
-      ? 20 * Math.log10(Math.max(value, 0.001))
-      : value;
-
-  return clamp(
-    (dbfs - VOLUME_DBFS_MIN) / (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
-    0,
-    1,
-  );
-}
-
-function targetHeight(index: number): number {
-  const progress = index / (VOLUME_RAMP_BAR_COUNT - 1);
-  return 0.18 + progress * 0.65;
-}
-
-function calculateLiveSmoothness(values: number[]): number {
-  if (values.length < 4) {
-    return 0;
-  }
-
-  const netRise = values[values.length - 1] - values[0];
-
-  if (!Number.isFinite(netRise) || netRise < 1.5) {
-    return 0;
-  }
-
-  const derivatives: number[] = [];
-
-  for (let index = 1; index < values.length; index += 1) {
-    derivatives.push(values[index] - values[index - 1]);
-  }
-
-  const upwardChange = derivatives.reduce(
-    (sum, value) => sum + Math.max(value, 0),
-    0,
-  );
-
-  const downwardChange = derivatives.reduce(
-    (sum, value) => sum + Math.abs(Math.min(value, 0)),
-    0,
-  );
-
-  const totalChange = upwardChange + downwardChange;
-
-  if (totalChange === 0) {
-    return 0;
-  }
-
-  const directionConsistency = upwardChange / totalChange;
-
-  const meanDerivative = average(derivatives);
-
-  const derivativeVariance =
-    derivatives.reduce(
-      (sum, value) => sum + (value - meanDerivative) ** 2,
-      0,
-    ) / derivatives.length;
-
-  const derivativeStdDev = Math.sqrt(derivativeVariance);
-
-  const rampConsistency =
-    1 / (1 + derivativeStdDev / Math.max(meanDerivative, 0.5));
-
-  return clamp(
-    directionConsistency * 65 + rampConsistency * 35,
-    0,
-    100,
-  );
-}
-
-function estimateLiveSmoothness(history: number[]): number {
-  if (history.length < 4) {
-    return 0;
-  }
-
-  const values = history.map(
-    value => VOLUME_DBFS_MIN + value * (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
-  );
-
-  return Math.round(calculateLiveSmoothness(values));
-}
+type ControlledCrescendoExerciseProps = ExerciseTierProps;
 
 export default function ControlledCrescendoExercise({
   tier,
@@ -461,7 +375,12 @@ export default function ControlledCrescendoExercise({
 
       setLiveAudioFrame(frame);
 
-      const normalized = normalizeVolume(frame.volume);
+      const normalized = normalizeVolumeDbfs(
+        frame.volume,
+        VOLUME_DBFS_MIN,
+        VOLUME_DBFS_MAX,
+        true,
+      );
 
       setLiveHistory(previous => {
         const next = [...previous, normalized];
@@ -1105,7 +1024,12 @@ export default function ControlledCrescendoExercise({
     );
   }
 
-  const liveSmoothness = estimateLiveSmoothness(liveHistory);
+  const liveSmoothness = estimateVolumeRampSmoothness(
+    liveHistory,
+    VOLUME_DBFS_MIN,
+    VOLUME_DBFS_MAX,
+    'crescendo',
+  );
 
   const instruction =
     seconds < 1
@@ -1199,7 +1123,7 @@ export default function ControlledCrescendoExercise({
                 <Ionicons name="play" size={17} color={COLORS.brown} />
               )}
 
-              <Text style={exerciseStyles.referenceButtonText}>
+              <Text style={exerciseStyles.smallSemiBoldBrownText}>
                 {referencePlaying
                   ? 'Playing...'
                   : `Play ${referenceNote.name}`}
@@ -1236,7 +1160,7 @@ export default function ControlledCrescendoExercise({
                   style={[
                     exerciseStyles.previewBar,
                     {
-                      height: `${targetHeight(index) * 80}%`,
+                      height: `${getVolumeRampTargetHeight(index, 'crescendo') * 80}%`,
                     },
                   ]}
                 />
@@ -1265,7 +1189,7 @@ export default function ControlledCrescendoExercise({
           countdown={countdown}
           promptTitle={`Repetition ${currentRep} of ${repetitions}`}
           prompt="Take a breath. Begin softly when the countdown ends."
-          onBack={handleBack}
+
         />
         {quitModal}
       </>
@@ -1314,6 +1238,13 @@ export default function ControlledCrescendoExercise({
             : 'Keep practicing to make your volume increase smoother.'
         }
         score={smoothness}
+        repetitionScores={repetitionResults.map((value, index) => ({
+          repetition: index + 1,
+          score: value,
+          components: [
+            { label: 'Smoothness', value: `${value}%` },
+          ],
+        }))}
         scoreSuffix="%"
         scoreMessage={passed ? 'Exercise Passed' : 'Needs More Practice'}
         resultIcon={
@@ -1323,14 +1254,6 @@ export default function ControlledCrescendoExercise({
         }
         scoreDetails={
           <View style={exerciseStyles.referenceCard}>
-            {repetitionResults.map((value, index) => (
-              <ResultItem
-                key={`rep-${index}`}
-                label={`Repetition ${index + 1}`}
-                value={`${value}%`}
-                variant="crescendo"
-              />
-            ))}
             <ResultItem
               label="Observed range"
               value={`${minDb} → ${maxDb} dB`}
@@ -1353,7 +1276,7 @@ export default function ControlledCrescendoExercise({
             />
           </View>
         }
-        onBack={handleBack}
+
         onRetry={tryAgain}
         onExit={handleBack}
       >

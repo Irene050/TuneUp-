@@ -1,32 +1,21 @@
-import { ExerciseQuitModal } from '@/components/ExerciseModals';
-import { COLORS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
-import { usePhaseState } from '@/hooks/usePhaseState';
-import { VolumeVisualizer } from '@/screens/exercises/Volume/SharedVolumeComponents';
-import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Phase = 'ready' | 'exercise';
+import { ExerciseQuitModal } from '@/components/ExerciseModals';
+import { VolumeVisualizer } from '@/components/SharedVolumeComponent';
+import { COLORS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
+import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { FreeModePhase } from '@/types/exercises';
+import { measureFreeModeFrame } from '@/services/measurement/freeMode/freeMode';
+import { normalizeVolumeDbfs } from '@/utils/dsp/volumeAnalysis';
 
-
-function normalizeVolume(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  return Math.max(
-    0,
-    Math.min(
-      1,
-      (value - VOLUME_DBFS_MIN) / (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN),
-    ),
-  );
-}
+type Phase = FreeModePhase;
 
 export default function VolumeFreeModeScreen() {
   const insets = useSafeAreaInsets();
@@ -41,6 +30,7 @@ export default function VolumeFreeModeScreen() {
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const leaveRequestedRef = useRef(false);
@@ -48,10 +38,7 @@ export default function VolumeFreeModeScreen() {
   const startTaskRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       phaseRef.current = 'ready';
     };
   }, []);
@@ -72,7 +59,11 @@ export default function VolumeFreeModeScreen() {
 
     setLiveVolume(reading.volumeDb);
 
-    const normalized = normalizeVolume(reading.volumeDb);
+    const normalized = normalizeVolumeDbfs(
+      reading.volumeDb,
+      VOLUME_DBFS_MIN,
+      VOLUME_DBFS_MAX,
+    );
 
     setLiveHistory(previous =>
       [...previous, normalized].slice(-VOLUME_HISTORY_BAR_COUNT),
@@ -447,20 +438,6 @@ export default function VolumeFreeModeScreen() {
             { paddingHorizontal: horizontalPadding },
           ]}
         >
-          <Pressable
-            style={exerciseStyles.backButton}
-            onPress={handleBack}
-            disabled={isQuitting}
-            accessibilityRole="button"
-            accessibilityLabel="Quit exercise"
-          >
-            <Ionicons
-              name="arrow-back"
-              size={20}
-              color={COLORS.brown}
-            />
-          </Pressable>
-
           <View style={exerciseStyles.headerSpacer} />
         </View>
 
@@ -548,7 +525,12 @@ export default function VolumeFreeModeScreen() {
                 LIVE INPUT LEVEL
               </Text>
 
-              <Text style={exerciseStyles.stabilityValueVariant2}>
+              <Text
+                style={[
+                  exerciseStyles.stabilityValue,
+                  exerciseStyles.stabilityValueCompact,
+                ]}
+              >
                 {liveVolume !== null
                   ? `${liveVolume.toFixed(1)} dBFS`
                   : '--'}

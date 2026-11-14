@@ -1,5 +1,8 @@
 import { average } from '@/utils/math';
-import { frequencyToNoteName } from '@/utils/music/notes';
+import {
+  frequencyToNoteName,
+  getPitchDifferenceCents,
+} from '@/utils/music/notes';
 import { PitchDetector } from 'pitchy';
 
 const MIN_TRACKING_CLARITY = 0.70;
@@ -180,7 +183,7 @@ export function calcPitchAccuracy(
   }
 
   const deviationCents = Math.abs(
-    1200 * Math.log2(detectedFreq / targetFreq),
+    getPitchDifferenceCents(detectedFreq, targetFreq),
   );
 
   return Math.max(

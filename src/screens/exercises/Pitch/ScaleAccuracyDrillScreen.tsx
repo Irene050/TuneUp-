@@ -1,90 +1,87 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { Alert, BackHandler, Text, View } from 'react-native';
 
 import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_RECORDING_INTERVAL_MS,
-} from '@/constants/appConstants';
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
 import {
-  SCALE_ACCURACY_PARAMS,
-  type ScaleAccuracyParams,
-  type Tier,
+    LivePitchIndicator as ExerciseLivePitchIndicator,
+    RecordingNoteSequence,
+} from '@/components/SharedPitchComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_RECORDING_INTERVAL_MS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    SCALE_ACCURACY_PARAMS,
+    type ScaleAccuracyParams,
+    type Tier,
 } from '@/constants/params';
 import {
-  useAudioRecorder,
-  type LiveAudioFrame,
+    useAudioRecorder,
+    type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
+import ExerciseScreen, {
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    MetricCard,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateScaleAccuracyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureScaleAccuracyDrill } from '@/services/measurement/pitch/scaleAccuracyDrill';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreScaleAccuracyDrill,
-  type ScaleAccuracyScoreResult,
+    scoreScaleAccuracyDrill,
+    type ScaleAccuracyScoreResult,
 } from '@/services/scoring/pitch/scaleAccuracyDrill';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import {
-  calcLiveStability,
-  calcPitchAccuracy,
-  segmentIntoNotes,
+    calcLiveStability,
+    calcPitchAccuracy,
+    segmentIntoNotes,
 } from '@/utils/dsp/pitch';
 import { averageFinite } from '@/utils/math';
 import {
-  disposeNotePlayer,
-  playNoteSequence,
+    disposeNotePlayer,
+    playNoteSequence,
 } from '@/utils/music/notePlayer';
 import {
-  frequencyToNoteName,
-  getRandomScale,
-  type VocalRange,
+    frequencyToNoteName,
+    getRandomScale,
+    type VocalRange,
 } from '@/utils/music/notes';
-
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
-
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  MetricCard,
-} from '../ExerciseScreen';
-
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
 const NOTE_DURATION_SECONDS = 0.8;
 const RECORDING_MIN_DURATION_MS = 5000;
 const RECORDING_MS_PER_NOTE = 1250;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 interface SavedRecording {
   samples: Float32Array;
@@ -208,6 +205,9 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const [result, setResult] = useState<ScaleAccuracyScoreResult | null>(
     null,
   );
+  const [repetitionResults, setRepetitionResults] = useState<
+    ScaleAccuracyScoreResult[]
+  >([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -215,6 +215,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   const [isQuitting, setIsQuitting] = useState(false);
 
   const mountedRef = useRef(false);
+  useMountedRefLifecycle(mountedRef);
   const showQuitModalRef = useRef(false);
   const isQuittingRef = useRef(false);
   const pausedRef = useRef(false);
@@ -453,6 +454,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
         }
 
         const finalResult = aggregateScaleResults(scores, targetFreqs);
+        setRepetitionResults(scores);
 
         await saveCompletedExercise(
           'pitch',
@@ -653,14 +655,27 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     try {
       setPhase('listening');
-      setCurrentNoteIndex(0);
+      setCurrentNoteIndex(-1);
 
       const sequence = targetNotesRef.current.map(note => ({
         frequencyHz: note.frequency,
         durationSec: NOTE_DURATION_SECONDS,
       }));
 
-      await playNoteSequence(sequence);
+      await playNoteSequence(
+        sequence,
+        undefined,
+        noteIndex => {
+          if (mountedRef.current) {
+            setCurrentNoteIndex(noteIndex ?? -1);
+          }
+        },
+        () =>
+          mountedRef.current &&
+          !pausedRef.current &&
+          !showQuitModalRef.current &&
+          !isQuittingRef.current,
+      );
 
       if (
         !mountedRef.current ||
@@ -792,6 +807,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     resetRecordingState();
     setResult(null);
+    setRepetitionResults([]);
     setErrorMessage(null);
     beginRepCountdown();
   }, [
@@ -845,6 +861,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
     resetRecordingState();
     setResult(null);
+    setRepetitionResults([]);
     setErrorMessage(null);
     setPhase('instructions');
     pausedRef.current = false;
@@ -988,10 +1005,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
   }, [openQuitModal]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       resumeAfterDiscardRef.current = false;
@@ -1172,22 +1186,21 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
   const liveStability = calcLiveStability(liveFrequencies);
 
-  const modalMessage =
-    pausedPhaseRef.current === 'instructions' ||
-    pausedPhaseRef.current === 'results'
-      ? 'Are you sure you want to leave Scale Accuracy Drill?'
-      : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Completed repetitions will be kept, and the current repetition will restart when you continue.'
-        : pausedPhaseRef.current === 'processing'
-          ? 'Your exercise is paused while your recordings are being analyzed. Continue to return to your exercise.'
-          : 'Your exercise is paused. Completed repetitions will be kept. Continue to resume your exercise.';
-
   const quitModal = (
     <>
       <ExerciseQuitModal
         visible={showQuitModal}
         title="Quit exercise?"
-        message={modalMessage}
+        message={
+          pausedPhaseRef.current === 'instructions' ||
+          pausedPhaseRef.current === 'results'
+            ? 'Are you sure you want to leave Scale Accuracy Drill?'
+            : pausedPhaseRef.current === 'recording'
+              ? 'Your exercise is paused. Completed repetitions will be kept, and the current repetition will restart when you continue.'
+              : pausedPhaseRef.current === 'processing'
+                ? 'Your exercise is paused while your recordings are being analyzed. Continue to return to your exercise.'
+                : 'Your exercise is paused. Completed repetitions will be kept. Continue to resume your exercise.'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={() => {
@@ -1280,7 +1293,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           countdown={countdown}
           promptTitle="Listen carefully"
           prompt="Listen carefully to the target scale."
-          onBack={goBack}
+
         />
 
         {quitModal}
@@ -1292,27 +1305,12 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
     return (
       <>
         <ExerciseListeningScreen
-          icon="volume-high-outline"
           title="Listen to the Scale"
-          currentRep={currentRep}
-          repetitions={params.repetitions}
-          promptTitle="Listen to the target scale"
-          prompt="Listen to the target scale first. After it finishes, sing the notes back in the same order."
-          liveContent={
-            <View style={exerciseStyles.sharedScalePreview}>
-              {targetNotes.map((note, index) => (
-                <View
-                  key={`${note.name}-${index}`}
-                  style={exerciseStyles.sharedScaleNote}
-                >
-                  <Text style={exerciseStyles.scoreRowValue}>
-                    {note.name}
-                  </Text>
-                </View>
-              ))}
-            </View>
+          prompt="Listen to the target scale, then sing the notes back in the same order."
+          referenceNotes={targetNotes.map(note => note.name)}
+          activeNoteIndex={
+            currentNoteIndex >= 0 ? currentNoteIndex : null
           }
-          progress={100}
         />
 
         {quitModal}
@@ -1339,46 +1337,15 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
 
           <Text style={exerciseStyles.phaseTitleVariant1}>Sing the Scale</Text>
 
-          <Text style={exerciseStyles.recordingSubtitleVariant1}>
+          <Text style={[exerciseStyles.recordingPhaseSubtitle, { marginTop: 5 }]}>
             Repetition {currentRep} of {params.repetitions}
           </Text>
 
-          <View style={exerciseStyles.scalePreview}>
-            {targetNotes.map((note, index) => {
-              const active = index === currentNoteIndex;
-              const completed = index < currentNoteIndex;
-
-              return (
-                <View
-                  key={`${note.name}-${index}`}
-                  style={[
-                    exerciseStyles.previewNote,
-                    completed && exerciseStyles.previewNoteCompleted,
-                    active && exerciseStyles.previewNoteActive,
-                  ]}
-                >
-                  {completed && (
-                    <Ionicons
-                      name="checkmark"
-                      size={11}
-                      color={COLORS.guideGreen}
-                      style={exerciseStyles.previewCheck}
-                    />
-                  )}
-
-                  <Text
-                    style={[
-                      exerciseStyles.previewNoteText,
-                      completed && exerciseStyles.statusTextSuccess,
-                      active && exerciseStyles.liveNoteDetected,
-                    ]}
-                  >
-                    {note.name}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          <RecordingNoteSequence
+            variant="scale"
+            notes={targetNotes.map(note => note.name)}
+            activeIndex={currentNoteIndex}
+          />
 
           <ExerciseLivePitchIndicator
             targetNote={currentTarget?.name ?? '--'}
@@ -1418,7 +1385,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           </ExerciseLivePitchIndicator>
 
           <View
-            style={exerciseStyles.timerTrack}
+            style={[exerciseStyles.progressTrack, { marginTop: 12 }]}
             accessibilityRole="progressbar"
             accessibilityLabel="Recording progress"
             accessibilityValue={{
@@ -1429,7 +1396,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           >
             <View
               style={[
-                exerciseStyles.timerFill,
+                exerciseStyles.progressFill,
                 { width: `${recordingProgress * 100}%` },
               ]}
             />
@@ -1462,10 +1429,29 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={`Scale Accuracy Result • ${params.repetitions} repetitions`}
           score={result.score}
+          repetitionScores={repetitionResults.map((repetition, index) => ({
+            repetition: index + 1,
+            score: repetition.score,
+            passed: repetition.passed,
+            components: [
+              {
+                label: 'Note accuracy',
+                value: `${Math.round(repetition.noteAccuracy)}%`,
+              },
+              {
+                label: 'Transition smoothness',
+                value: `${Math.round(repetition.transitionSmoothness)}%`,
+              },
+              {
+                label: 'Correct notes',
+                value: `${repetition.correctNotes}/${repetition.totalNotes}`,
+              },
+            ],
+          }))}
           resultIcon={result.passed ? 'checkmark' : 'refresh'}
           scoreSuffix="%"
           scoreMessage={`${result.correctNotes} of ${result.totalNotes} notes matched across all repetitions`}
-          onBack={goBack}
+
           onRetry={retry}
           onExit={goBack}
         >

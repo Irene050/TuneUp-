@@ -1220,7 +1220,7 @@ export default function AssessmentScreen() {
         <View style={exerciseStyles.rangeCard_Assessment}>
           <Text style={exerciseStyles.sectionTitle}>Vocal Range</Text>
 
-          <Text style={exerciseStyles.referenceNoteVariant2}>
+          <Text style={[exerciseStyles.referenceNote, { fontSize: 28 }]}>
             {frequencyToNoteName(result.vocalRangeLowHz)}
             {'  –  '}
             {frequencyToNoteName(result.vocalRangeHighHz)}

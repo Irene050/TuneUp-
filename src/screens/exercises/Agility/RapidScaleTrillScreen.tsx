@@ -1,9 +1,14 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, BackHandler, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
+import {
+    ExerciseConfirmationModal,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { AgilitySequenceGuide } from '@/components/SharedAgilityComponent';
 import {
     AGILITY_CLOSE_NOTE_SEMITONES,
     AGILITY_GOOD_NOTE_SEMITONES,
@@ -18,8 +23,8 @@ import {
 } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import { AgilitySequenceGuide } from '@/screens/exercises/Agility/AgilitySequenceGuide';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { StandardExercisePhase } from '@/types/exercises';
 import ExerciseScreen, {
     ExerciseCountdownScreen,
     ExerciseListeningScreen,
@@ -47,12 +52,9 @@ import {
 import {
     frequencyToNoteName,
     getSemitoneDistance,
+    isValidVocalRange,
+    type VocalRange,
 } from '@/utils/music/notes';
-
-import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
 const MIN_RECORDING_SECONDS = 0.25;
 const MIN_RECORDING_RMS = 0.001;
@@ -60,18 +62,7 @@ const MIN_RECORDING_RMS = 0.001;
 const MIN_PITCH_HZ = 65;
 const MAX_PITCH_HZ = 1000;
 
-type VocalRange = {
-  lowHz: number;
-  highHz: number;
-};
-
-type Phase =
-  | 'instructions'
-  | 'listening'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 type Confirmation = 'tryAgain' | 'quit' | null;
 
@@ -88,7 +79,6 @@ type RapidScaleTrillResult = {
   transitionScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
   noteCount: number;
   correctNoteCount: number;
   transitionCount: number;
@@ -96,6 +86,11 @@ type RapidScaleTrillResult = {
   averageTransitionTimeMs: number;
   notesPerSecond: number;
   durationMs: number;
+  repetitionScores: {
+    repetition: number;
+    score: number;
+    components: { label: string; value: string }[];
+  }[];
 };
 
 function getPitchStatus(
@@ -121,21 +116,6 @@ function getPitchStatus(
   return '--';
 }
 
-function getPitchStatusColor(
-  status: PitchStatus,
-): string | null {
-  switch (status) {
-    case 'match':
-      return COLORS.guideGreen;
-    case 'close':
-      return COLORS.guideYellow;
-    case '--':
-      return COLORS.guideRed;
-    default:
-      return null;
-  }
-}
-
 function getAssessmentVocalRange(
   assessment: any,
 ): VocalRange | null {
@@ -147,18 +127,12 @@ function getAssessmentVocalRange(
     assessment?.vocalRange?.highHz ??
     assessment?.vocalRangeHighHz;
 
-  if (
-    typeof lowHz !== 'number' ||
-    typeof highHz !== 'number' ||
-    !Number.isFinite(lowHz) ||
-    !Number.isFinite(highHz) ||
-    lowHz <= 0 ||
-    highHz <= lowHz
-  ) {
+  if (typeof lowHz !== 'number' || typeof highHz !== 'number') {
     return null;
   }
 
-  return { lowHz, highHz };
+  const vocalRange = { lowHz, highHz };
+  return isValidVocalRange(vocalRange) ? vocalRange : null;
 }
 
 export default function RapidScaleTrillScreen() {
@@ -230,6 +204,7 @@ export default function RapidScaleTrillScreen() {
   const resumeInterruptedRepetitionRef = useRef(false);
   const quitInProgressRef = useRef(false);
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
 
   const frequencies = config?.frequencies ?? [];
   const noteDurationSec = config?.noteDurationSec ?? 0;
@@ -285,14 +260,6 @@ export default function RapidScaleTrillScreen() {
     }
 
     recordingStartedAtRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -572,7 +539,7 @@ export default function RapidScaleTrillScreen() {
   );
 
   const showZeroScoreResult = useCallback(
-    (feedback: string, durationMs: number) => {
+    (durationMs: number) => {
       if (
         !mountedRef.current ||
         quitInProgressRef.current ||
@@ -590,7 +557,6 @@ export default function RapidScaleTrillScreen() {
         transitionScore: 0,
         speedScore: 0,
         passed: false,
-        feedback,
         noteCount: targetNoteCount,
         correctNoteCount: 0,
         transitionCount: Math.max(0, targetNoteCount - 1),
@@ -598,6 +564,19 @@ export default function RapidScaleTrillScreen() {
         averageTransitionTimeMs: 0,
         notesPerSecond: 0,
         durationMs: Math.max(0, durationMs),
+        repetitionScores: Array.from(
+          { length: config?.repetitions ?? 1 },
+          (_, index) => ({
+            repetition: index + 1,
+            score: 0,
+            components: [
+              { label: 'Pitch accuracy', value: '0%' },
+              { label: 'Sequence accuracy', value: '0%' },
+              { label: 'Transition accuracy', value: '0%' },
+              { label: 'Speed', value: '0%' },
+            ],
+          }),
+        ),
       };
 
       setResult(zeroResult);
@@ -619,7 +598,7 @@ export default function RapidScaleTrillScreen() {
         });
       }
     },
-    [expectedTargetNoteCount, setExercisePhase, tier],
+    [config, expectedTargetNoteCount, setExercisePhase, tier],
   );
 
   const processRecording = useCallback(
@@ -655,10 +634,7 @@ export default function RapidScaleTrillScreen() {
           samples.length <
           sampleRate * MIN_RECORDING_SECONDS
         ) {
-          showZeroScoreResult(
-            'Your recording was too short to detect singing. Your score is 0%. Please sing the full pattern and try again.',
-            durationMs,
-          );
+          showZeroScoreResult(durationMs);
           return;
         }
 
@@ -671,10 +647,7 @@ export default function RapidScaleTrillScreen() {
         const rms = Math.sqrt(sumSquares / samples.length);
 
         if (!Number.isFinite(rms) || rms < MIN_RECORDING_RMS) {
-          showZeroScoreResult(
-            'No clear singing was detected. Move closer to the microphone and sing in a quiet area.',
-            durationMs,
-          );
+          showZeroScoreResult(durationMs);
           return;
         }
 
@@ -705,7 +678,6 @@ export default function RapidScaleTrillScreen() {
           transitionScore: scored.transitionScore,
           speedScore: scored.speedScore,
           passed: scored.passed,
-          feedback: scored.feedback,
           noteCount: measurement.noteCount,
           correctNoteCount: measurement.correctNoteCount,
           transitionCount: measurement.transitionCount,
@@ -715,6 +687,7 @@ export default function RapidScaleTrillScreen() {
             measurement.averageTransitionTimeMs,
           notesPerSecond: measurement.notesPerSecond,
           durationMs: measurement.durationMs,
+          repetitionScores: scored.repetitionScores,
         };
 
         setResult(finalResult);
@@ -859,11 +832,16 @@ export default function RapidScaleTrillScreen() {
 
       recordingStartedAtRef.current = null;
 
-      activeExerciseNoteIndexRef.current = null;
+      const firstNoteIndex = getActiveSequenceNoteIndex(
+        0,
+        frequencies.length,
+        noteDurationSec,
+      );
+      activeExerciseNoteIndexRef.current = firstNoteIndex;
 
       setLivePitchHz(null);
       setLivePitchStatus(null);
-      setActiveExerciseNoteIndex(null);
+      setActiveExerciseNoteIndex(firstNoteIndex);
       setElapsedSeconds(0);
       setExercisePhase('recording');
 
@@ -957,6 +935,8 @@ export default function RapidScaleTrillScreen() {
       }
 
       recordingStopRequestedRef.current = false;
+      activeExerciseNoteIndexRef.current = null;
+      setActiveExerciseNoteIndex(null);
       setExercisePhase('listening');
 
       Alert.alert(
@@ -1271,8 +1251,6 @@ export default function RapidScaleTrillScreen() {
 
   useEffect(() => {
     return () => {
-      mountedRef.current = false;
-
       countdownRunRef.current += 1;
       referenceRunRef.current += 1;
 
@@ -1367,13 +1345,9 @@ export default function RapidScaleTrillScreen() {
 
   const renderReference = () => (
     <ExerciseListeningScreen
-      icon="musical-notes-outline"
       title="Rapid Scale Trill"
-      currentRep={currentRep}
-      repetitions={repetitions}
-      promptTitle="Listen to the Reference"
       prompt="Listen to the full sequence, then sing the same notes in order."
-      liveContent={
+      referenceContent={
         <AgilitySequenceGuide
           names={frequencies.map(frequencyToNoteName)}
           activeIndex={activeReferenceNoteIndex}
@@ -1385,7 +1359,6 @@ export default function RapidScaleTrillScreen() {
       isPlayingReference={referencePlaying}
       onPlayReference={() => void playReference()}
       onReady={() => void startCountdownRef.current?.()}
-      onBack={pauseForExitPrompt}
     />
   );
 
@@ -1398,7 +1371,7 @@ export default function RapidScaleTrillScreen() {
       countdown={countdown}
       promptTitle="Prepare to Sing"
       prompt={`Get ready to sing repetition ${currentRep} of ${repetitions}.`}
-      onBack={pauseForExitPrompt}
+
     />
   );
 
@@ -1416,7 +1389,7 @@ export default function RapidScaleTrillScreen() {
         title="Sing the Scale"
         currentRep={currentRep}
         repetitions={repetitions}
-        onBack={pauseForExitPrompt}
+
       >
         <AgilitySequenceGuide
           names={frequencies.map(frequencyToNoteName)}
@@ -1466,7 +1439,7 @@ export default function RapidScaleTrillScreen() {
           </Text>
         </View>
 
-        <View style={exerciseStyles.timerTrackVariant3}>
+        <View style={[exerciseStyles.progressTrack, { marginTop: 10 }]}>
           <View
             style={[
               exerciseStyles.progressFill,
@@ -1513,16 +1486,16 @@ export default function RapidScaleTrillScreen() {
         title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
         subtitle="Rapid Scale Trill Result"
         score={Math.round(result.overall)}
+        repetitionScores={result.repetitionScores}
         scoreSuffix="/ 100"
         resultIcon={result.passed ? 'checkmark' : 'refresh'}
-        scoreMessage={result.feedback}
         scoreDetails={
           <Text style={exerciseStyles.scoreDetailsText}>
             Correct notes: {result.correctNoteCount}/
             {result.noteCount}
           </Text>
         }
-        onBack={pauseForExitPrompt}
+
         onRetry={() => setCurrentConfirmation('tryAgain')}
         onExit={pauseForExitPrompt}
       >
@@ -1543,7 +1516,7 @@ export default function RapidScaleTrillScreen() {
                 </Text>
               </View>
 
-              <View style={exerciseStyles.timerTrackVariant3}>
+              <View style={[exerciseStyles.progressTrack, { marginTop: 10 }]}>
                 <View
                   style={[
                     exerciseStyles.progressFill,
@@ -1594,16 +1567,6 @@ export default function RapidScaleTrillScreen() {
   const isPreparing =
     isLoadingTier || isLoadingParams;
 
-  const quitMessage =
-    pausedPhaseRef.current === 'instructions' ||
-    pausedPhaseRef.current === 'results'
-      ? 'Are you sure you want to leave Rapid Scale Trill?'
-      : pausedPhaseRef.current === 'recording'
-        ? 'Your exercise is paused. Your current recording will be discarded. Continue to restart the current repetition.'
-        : pausedPhaseRef.current === 'countdown'
-          ? 'Your exercise is paused. Continue to restart the countdown for the current repetition.'
-          : 'Your exercise is paused. Continue to resume your exercise.';
-
   return (
     <>
       {isPreparing ? (
@@ -1616,8 +1579,8 @@ export default function RapidScaleTrillScreen() {
       ) : (
         <View style={exerciseStyles.screen}>
           {phase === 'instructions' && renderInstructions()}
-          {phase === 'listening' && renderReference()}
           {phase === 'countdown' && renderCountdown()}
+          {phase === 'listening' && renderReference()}
           {phase === 'recording' && renderRecording()}
           {phase === 'processing' && renderProcessing()}
 
@@ -1636,7 +1599,16 @@ export default function RapidScaleTrillScreen() {
       <ExerciseQuitModal
         visible={confirmation === 'quit'}
         title="Quit exercise?"
-        message={quitMessage}
+        message={
+          pausedPhaseRef.current === 'instructions' ||
+          pausedPhaseRef.current === 'results'
+            ? 'Are you sure you want to leave Rapid Scale Trill?'
+            : pausedPhaseRef.current === 'recording'
+              ? 'Your exercise is paused. Your current recording will be discarded. Continue to restart the current repetition.'
+              : pausedPhaseRef.current === 'countdown'
+                ? 'Your exercise is paused. Continue to restart the countdown for the current repetition.'
+                : 'Your exercise is paused. Continue to resume your exercise.'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={() => void quitExercise()}
@@ -1671,64 +1643,18 @@ export default function RapidScaleTrillScreen() {
         isQuitting={isQuitting}
       />
 
-      <Modal
+      <ExerciseConfirmationModal
         visible={confirmation === 'tryAgain'}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setCurrentConfirmation(null)}
-      >
-        <View style={exerciseStyles.modalOverlay}>
-          <View style={exerciseStyles.modalCard}>
-            <View style={exerciseStyles.modalIcon}>
-              <Ionicons
-                name="refresh-outline"
-                size={30}
-                color={COLORS.brown}
-              />
-            </View>
-
-            <Text style={exerciseStyles.modalTitle}>
-              Try Again?
-            </Text>
-
-            <Text style={exerciseStyles.modalMessage}>
-              Your current result will be cleared so you can repeat
-              the exercise.
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={isQuitting}
-              onPress={resetExercise}
-              style={({ pressed }) => [
-                exerciseStyles.continueButton,
-                pressed && exerciseStyles.buttonPressed,
-                isQuitting && exerciseStyles.buttonDisabled,
-              ]}
-            >
-              <Text style={exerciseStyles.cardTitle}>
-                Restart Exercise
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={isQuitting}
-              onPress={() => setCurrentConfirmation(null)}
-              style={({ pressed }) => [
-                exerciseStyles.quitButton,
-                pressed && exerciseStyles.buttonPressed,
-                isQuitting && exerciseStyles.buttonDisabled,
-              ]}
-            >
-              <Text style={exerciseStyles.quitButtonText}>
-                Cancel
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        title="Try Again?"
+        message="Your current result will be cleared so you can repeat the exercise."
+        icon="refresh-outline"
+        onCancel={() => setCurrentConfirmation(null)}
+        onConfirm={resetExercise}
+        cancelLabel="Cancel"
+        confirmLabel="Restart Exercise"
+        confirmFirst
+        isDisabled={isQuitting}
+      />
     </>
   );
 }

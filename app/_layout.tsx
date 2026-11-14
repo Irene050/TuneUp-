@@ -7,7 +7,9 @@ import {
 } from '@expo-google-fonts/fredoka';
 import { useFonts } from 'expo-font';
 import { router, Slot, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+
+import { exerciseStyles } from '@/constants/exerciseStyles';
 
 export default function RootLayout() {
   const pathname = usePathname();
@@ -28,13 +30,13 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={exerciseStyles.screen}>
       {showBackButton && (
         <Pressable
-          style={styles.backButton}
+          style={exerciseStyles.rootBackButton}
           onPress={() => router.back()}
         >
-          <Text style={styles.backArrow}>‹</Text>
+          <Text style={exerciseStyles.rootBackArrow}>‹</Text>
         </Pressable>
       )}
 
@@ -42,30 +44,3 @@ export default function RootLayout() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-
-  backButton: {
-    marginTop: 48,
-    position: 'absolute',
-    top: 40,
-    left: 16,
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-    elevation: 999,
-  },
-
-  backArrow: {
-    fontSize: 36,
-    fontFamily: 'FredokaLight',
-    color: '#4A302F',
-    lineHeight: 40,
-  },
-});

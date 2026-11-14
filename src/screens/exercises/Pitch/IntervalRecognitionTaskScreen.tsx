@@ -1,17 +1,31 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
+import {
+    LivePitchIndicator as ExerciseLivePitchIndicator,
+    RecordingNoteSequence,
+} from '@/components/SharedPitchComponent';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_RECORDING_BUFFER_SECONDS, PITCH_GUIDE_MAX_CENTS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { INTERVAL_RECOGNITION_PARAMS, type IntervalRecognitionParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  MetricCard,
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRepetitionBreakdown,
+    MetricCard,
 } from '@/screens/exercises/ExerciseScreen';
-import { LivePitchIndicator as ExerciseLivePitchIndicator } from '@/screens/exercises/Pitch/LivePitchIndicator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { measureIntervalRecognition } from '@/services/measurement/pitch/intervalRecognitionTask';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
@@ -22,26 +36,20 @@ import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { calcLiveStability, calcPitchAccuracy } from '@/utils/dsp/pitch';
 import { clamp } from '@/utils/math';
 import { playNoteSequence } from '@/utils/music/notePlayer';
-import { createMusicalNote, frequencyToNoteName, getRandomIntervalNotes, type VocalRange } from '@/utils/music/notes';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+    createMusicalNote,
+    frequencyToNoteName,
+    getPitchDifferenceCents,
+    getRandomIntervalNotes,
+    type VocalRange,
+} from '@/utils/music/notes';
 
 const MIN_RESPONSE_TIME_PER_REPETITION_SECONDS = 1.8;
 const PRE_RECORDING_DELAY_MS = 1500;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = StandardExercisePhase;
 
 interface IntervalDefinition {
   name: string;
@@ -54,16 +62,6 @@ interface GeneratedInterval {
   targetNote: ReturnType<typeof createMusicalNote>;
   interval: IntervalDefinition;
 }
-
-interface QuitExerciseModalProps {
-  visible: boolean;
-  interruptedPhase: Phase;
-  isQuitting: boolean;
-  onContinue: () => void;
-  onQuit: () => void;
-}
-
-
 
 const INTERVALS: IntervalDefinition[] = [
   {
@@ -130,30 +128,6 @@ function generateInterval(
   };
 }
 
-
-
-function QuitExerciseModal({
-  visible,
-  isQuitting,
-  onContinue,
-  onQuit,
-}: QuitExerciseModalProps) {
-  return (
-    <ExerciseQuitModal
-        visible={visible}
-        title={"Leave Exercise?"}
-        message={"Your current exercise progress may be lost. Are you sure you want to leave?"}
-        isQuitting={isQuitting}
-        onContinue={onContinue}
-        onQuit={onQuit}
-        continueLabel={isQuitting ? 'Please wait...' : 'Continue Exercise'}
-        quitLabel="Quit Exercise"
-        quittingLabel="Leaving..."
-        statusBarTranslucent={false}
-      />
-  );
-}
-
 export default function IntervalRecognitionTaskScreen({
   tier,
 }: Props) {
@@ -183,6 +157,9 @@ export default function IntervalRecognitionTaskScreen({
     createMusicalNote(67),
   );
 
+  const [activeReferenceNoteIndex, setActiveReferenceNoteIndex] =
+    useState<number | null>(null);
+
   const [interval, setIntervalValue] =
     useState<IntervalDefinition>(INTERVALS[2]);
 
@@ -205,6 +182,7 @@ export default function IntervalRecognitionTaskScreen({
     useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const showQuitModalRef = useRef(false);
   const pausedRef = useRef(false);
   const leavingRef = useRef(false);
@@ -381,10 +359,7 @@ export default function IntervalRecognitionTaskScreen({
   }, [tier]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       playbackRunRef.current += 1;
       clearTimers();
@@ -742,6 +717,7 @@ export default function IntervalRecognitionTaskScreen({
 
       try {
         setPhase('listening');
+        setActiveReferenceNoteIndex(null);
 
         const repetitions = Math.max(
           1,
@@ -759,16 +735,33 @@ export default function IntervalRecognitionTaskScreen({
             return;
           }
 
-          await playNoteSequence([
-            {
-              frequencyHz: exercise.rootNote.frequency,
-              durationSec: 0.8,
+          await playNoteSequence(
+            [
+              {
+                frequencyHz: exercise.rootNote.frequency,
+                durationSec: 0.8,
+              },
+              {
+                frequencyHz: exercise.targetNote.frequency,
+                durationSec: 0.8,
+              },
+            ],
+            undefined,
+            noteIndex => {
+              if (
+                mountedRef.current &&
+                runId === playbackRunRef.current
+              ) {
+                setActiveReferenceNoteIndex(noteIndex);
+              }
             },
-            {
-              frequencyHz: exercise.targetNote.frequency,
-              durationSec: 0.8,
-            },
-          ]);
+            () =>
+              mountedRef.current &&
+              !pausedRef.current &&
+              !showQuitModalRef.current &&
+              !leavingRef.current &&
+              runId === playbackRunRef.current,
+          );
 
           if (
             !mountedRef.current ||
@@ -1096,6 +1089,23 @@ export default function IntervalRecognitionTaskScreen({
     />
   );
 
+  const quitModal = (
+    <ExerciseQuitModal
+      visible={showQuitModal}
+      title="Leave Exercise?"
+      message="Your current exercise progress may be lost. Are you sure you want to leave?"
+      isQuitting={isQuitting}
+      onContinue={continueExercise}
+      onQuit={() => {
+        void quitExercise();
+      }}
+      continueLabel={isQuitting ? 'Please wait...' : 'Continue Exercise'}
+      quitLabel="Quit Exercise"
+      quittingLabel="Leaving..."
+      statusBarTranslucent={false}
+    />
+  );
+
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -1218,7 +1228,7 @@ export default function IntervalRecognitionTaskScreen({
       }
 
       return clamp(
-        (1200 * Math.log2(frequency / liveTarget.frequency)) /
+        getPitchDifferenceCents(frequency, liveTarget.frequency) /
           PITCH_GUIDE_MAX_CENTS,
         -1,
         1,
@@ -1236,15 +1246,7 @@ export default function IntervalRecognitionTaskScreen({
           containerStyle={exerciseStyles.centerScreen}
         />
 
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
@@ -1296,15 +1298,7 @@ export default function IntervalRecognitionTaskScreen({
           />
         </View>
 
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
@@ -1320,15 +1314,7 @@ export default function IntervalRecognitionTaskScreen({
           promptTitle="Listen carefully"
           prompt="You will hear the reference interval before singing it."
         />
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
@@ -1338,59 +1324,13 @@ export default function IntervalRecognitionTaskScreen({
     return (
       <>
         <ExerciseListeningScreen
-          icon="volume-high-outline"
           title="Interval Recognition Task"
-          promptTitle="Listen to the Interval"
-          prompt={`The same interval is being repeated ${repetitionCount} times.`}
-          onBack={requestQuit}
-          liveContent={
-            <>
-              <View style={exerciseStyles.intervalPreview}>
-                <View style={exerciseStyles.intervalNote}>
-                  <Text style={exerciseStyles.intervalNoteLabel}>START</Text>
-                  <Text style={exerciseStyles.intervalNoteName}>
-                    {rootNote.name}
-                  </Text>
-                </View>
-
-                <Ionicons
-                  name="arrow-forward"
-                  size={25}
-                  color={COLORS.brown}
-                />
-
-                <View style={exerciseStyles.intervalNote}>
-                  <Text style={exerciseStyles.intervalNoteLabel}>TARGET</Text>
-                  <Text style={exerciseStyles.intervalNoteName}>
-                    {targetNote.name}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={exerciseStyles.intervalNameBadge}>
-                <Text style={exerciseStyles.componentScore}>
-                  {interval.name}
-                </Text>
-              </View>
-
-              <ActivityIndicator
-                size="small"
-                color={COLORS.brown}
-                style={exerciseStyles.playbackSpinner}
-              />
-            </>
-          }
+          prompt="Listen to the two notes in order, then sing the interval."
+          referenceNotes={[rootNote.name, targetNote.name]}
+          activeNoteIndex={activeReferenceNoteIndex}
         />
 
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
@@ -1420,41 +1360,11 @@ export default function IntervalRecognitionTaskScreen({
                 Repetition {currentRep} of {repetitionCount}
             </Text>
 
-            <View style={exerciseStyles.intervalProgress}>
-              <View
-                style={[
-                  exerciseStyles.intervalProgressNote,
-                  firstHalf && exerciseStyles.resultIconPassed,
-                ]}
-              >
-                <Text
-                  style={[
-                    exerciseStyles.intervalProgressText,
-                    firstHalf && exerciseStyles.liveNoteDetected,
-                  ]}
-                >
-                  {rootNote.name}
-                </Text>
-              </View>
-
-              <View style={exerciseStyles.progressLine} />
-
-              <View
-                style={[
-                  exerciseStyles.intervalProgressNote,
-                  !firstHalf && exerciseStyles.resultIconPassed,
-                ]}
-              >
-                <Text
-                  style={[
-                    exerciseStyles.intervalProgressText,
-                    !firstHalf && exerciseStyles.liveNoteDetected,
-                  ]}
-                >
-                  {targetNote.name}
-                </Text>
-              </View>
-            </View>
+            <RecordingNoteSequence
+              variant="interval"
+              notes={[rootNote.name, targetNote.name]}
+              activeIndex={firstHalf ? 0 : 1}
+            />
 
             <ExerciseLivePitchIndicator
               targetNote={liveTarget.name}
@@ -1501,10 +1411,10 @@ export default function IntervalRecognitionTaskScreen({
               </View>
             </ExerciseLivePitchIndicator>
 
-            <View style={exerciseStyles.recordingBar}>
+            <View style={[exerciseStyles.progressTrack, { marginTop: 13 }]}>
               <View
                 style={[
-                  exerciseStyles.exerciseProgressFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${Math.round(recordingProgress * 100)}%`,
                   },
@@ -1514,15 +1424,7 @@ export default function IntervalRecognitionTaskScreen({
           </ScrollView>
         </View>
 
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
@@ -1537,15 +1439,7 @@ export default function IntervalRecognitionTaskScreen({
           message="Checking your repeated interval accuracy."
         />
 
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-/>
+{quitModal}
 {noAudioModal}
       </>
     );
@@ -1593,12 +1487,19 @@ export default function IntervalRecognitionTaskScreen({
 
               <Text style={exerciseStyles.scoreValue}>{result.score}%</Text>
 
-              <Text style={exerciseStyles.scoreDescriptionVariant2}>
+              <Text style={exerciseStyles.scoreDescriptionDefault}>
                 {result.passed
                   ? 'Your repeated interval attempts were within the target tolerance.'
                   : 'Try to reproduce the distance between the notes more accurately.'}
               </Text>
             </View>
+
+            <ExerciseRepetitionBreakdown
+              repetitions={result.repetitionScores.map((score, index) => ({
+                repetition: index + 1,
+                score,
+              }))}
+            />
 
             <View style={exerciseStyles.resultCard}>
               <Text style={exerciseStyles.resultCardTitle}>
@@ -1661,20 +1562,6 @@ export default function IntervalRecognitionTaskScreen({
                 </Text>
               </View>
 
-              {result.repetitionScores.map((repetitionScore, index) => (
-                <View
-                  key={`repetition-${index}`}
-                  style={exerciseStyles.resultRow}
-                >
-                  <Text style={exerciseStyles.resultRowLabel}>
-                    Repetition {index + 1}
-                  </Text>
-
-                  <Text style={exerciseStyles.resultRowValue}>
-                    {repetitionScore}%
-                  </Text>
-                </View>
-              ))}
             </View>
 
             <View style={exerciseStyles.resultCard}>
@@ -1766,7 +1653,10 @@ export default function IntervalRecognitionTaskScreen({
             </View>
 
             <Pressable
-              style={exerciseStyles.startButtonVariant4}
+              style={[
+                exerciseStyles.startButtonPill,
+                exerciseStyles.startButtonPillFixedHeight,
+              ]}
               onPress={retry}
             >
               <Text style={exerciseStyles.startButtonText}>
@@ -1788,30 +1678,14 @@ export default function IntervalRecognitionTaskScreen({
             </Pressable>
           </ScrollView>
         </View>
-        <QuitExerciseModal
-          visible={showQuitModal}
-          interruptedPhase={pausedPhaseRef.current}
-          isQuitting={isQuitting}
-          onContinue={continueExercise}
-          onQuit={() => {
-            void quitExercise();
-          }}
-        />
+        {quitModal}
         {noAudioModal}
       </>
     );
   }
   return (
     <>
-      <QuitExerciseModal
-        visible={showQuitModal}
-        interruptedPhase={pausedPhaseRef.current}
-        isQuitting={isQuitting}
-        onContinue={continueExercise}
-        onQuit={() => {
-          void quitExercise();
-        }}
-      />
+      {quitModal}
       {noAudioModal}
     </>
   );

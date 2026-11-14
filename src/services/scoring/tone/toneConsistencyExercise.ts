@@ -14,6 +14,7 @@ import { clampScore } from '@/utils/math';
 export interface ToneConsistencyScoreResult {
   score: number;
   passed: boolean;
+  repetitionScores: number[];
 }
 
 export function scoreToneConsistencyExercise(
@@ -43,8 +44,42 @@ export function scoreToneConsistencyExercise(
     return {
       score: 0,
       passed: false,
+      repetitionScores: measurement.centroids.map(() => 0),
     };
   }
+
+  const meanCentroid =
+    validCentroids.reduce((sum, value) => sum + value, 0) /
+    validCentroids.length;
+  const meanAmplitude =
+    validAmplitudes.reduce((sum, value) => sum + value, 0) /
+    validAmplitudes.length;
+  const repetitionScores = measurement.centroids.map(
+    (centroid, index) => {
+      const amplitude = measurement.amplitudes[index];
+      if (
+        !Number.isFinite(centroid) ||
+        centroid <= 0 ||
+        !Number.isFinite(amplitude) ||
+        amplitude <= 0
+      ) {
+        return 0;
+      }
+
+      const relativeCentroidDeviation =
+        Math.abs(centroid - meanCentroid) / meanCentroid;
+      const relativeAmplitudeDeviation =
+        Math.abs(amplitude - meanAmplitude) / meanAmplitude;
+      const consistency =
+        100 -
+        ((relativeCentroidDeviation +
+          relativeAmplitudeDeviation) /
+          2) *
+          100;
+
+      return Math.round(clampScore(consistency * 0.96));
+    },
+  );
 
   const consistency =
     calcCrossRepConsistency(
@@ -61,5 +96,6 @@ export function scoreToneConsistencyExercise(
     passed:
       score >=
       params.consistencyThreshold,
+    repetitionScores,
   };
 }

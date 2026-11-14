@@ -2,6 +2,7 @@ import type {
   ControlledCrescendoMeasurement,
 } from '@/services/measurement/volume/controlledCrescendoDrill';
 import { clamp } from '@/utils/math';
+import type { VolumeScoreOptions } from './types';
 
 export interface ControlledCrescendoScore {
   smoothness: number;
@@ -11,9 +12,7 @@ export interface ControlledCrescendoScore {
   measurementQuality: number;
 }
 
-interface ScoreOptions {
-  passingScore?: number;
-}
+type ScoreOptions = VolumeScoreOptions;
 
 const DEFAULT_PASSING_SCORE = 75;
 

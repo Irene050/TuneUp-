@@ -21,6 +21,7 @@ export type RapidScaleTrillMeasurement = {
   averageTransitionTimeMs: number;
   durationMs: number;
   notesPerSecond: number;
+  repetitionCount: number;
 };
 
 const MIN_FREQUENCY = 70;
@@ -35,6 +36,7 @@ const NOTE_TOLERANCE_SEMITONES = 1;
 function createEmptyMeasurement(
   targetNotes: number[],
   durationMs: number,
+  repetitionCount: number,
 ): RapidScaleTrillMeasurement {
   return {
     detectedPitches: [],
@@ -51,6 +53,7 @@ function createEmptyMeasurement(
     averageTransitionTimeMs: 0,
     durationMs,
     notesPerSecond: 0,
+    repetitionCount,
   };
 }
 
@@ -93,6 +96,7 @@ export function measureRapidScaleTrill(
     return createEmptyMeasurement(
       targetNotes,
       durationMs,
+      repetitionCount,
     );
   }
 
@@ -131,6 +135,7 @@ export function measureRapidScaleTrill(
       ...createEmptyMeasurement(
         targetNotes,
         durationMs,
+        repetitionCount,
       ),
       detectedPitches,
     };
@@ -252,5 +257,6 @@ export function measureRapidScaleTrill(
     averageTransitionTimeMs,
     durationMs,
     notesPerSecond,
+    repetitionCount,
   };
 }

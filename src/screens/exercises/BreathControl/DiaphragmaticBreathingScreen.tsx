@@ -6,14 +6,32 @@ import {
     useRef,
     useState,
 } from 'react';
-import { BackHandler, Pressable, Text, View } from 'react-native';
+import { BackHandler, Text, View } from 'react-native';
 
+import {
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
     type DiaphragmaticBreathingParams,
     type Tier,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type { ExerciseTierProps } from '@/types/exercises';
+import ExerciseScreen, {
+    ExerciseCountdownScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    ResultStat,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateDiaphragmaticBreathingParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -30,36 +48,15 @@ import {
     scoreDiaphragmaticBreathing,
     type DiaphragmaticBreathingScoreResult,
 } from '@/services/scoring/breathControl/diaphragmaticBreathing';
-
-import ExerciseScreen, {
-    ExerciseCountdownScreen,
-    ExercisePreparingScreen,
-    ExerciseProcessingScreen,
-    ExerciseResultsScreen,
-    Metric,
-    ResultStat,
-} from '../ExerciseScreen';
-
-import {
-    COLORS,
-    EXERCISE_COUNTDOWN_SECONDS,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
 import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
 } from '@/utils/audioSignal';
 
-import {
-    ExerciseNoAudioModal,
-    ExerciseQuitModal,
-} from '@/components/ExerciseModals';
-import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
 type Phase =
   | 'instructions'
@@ -111,6 +108,7 @@ export default function DiaphragmaticBreathingScreen({
   const repetitionResultsRef = useRef<RepetitionResult[]>([]);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const cancellingRef = useRef(false);
   const processingRef = useRef(false);
   const startingRef = useRef(false);
@@ -906,10 +904,7 @@ export default function DiaphragmaticBreathingScreen({
   }, [handleBack]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       cancellingRef.current = true;
       pausedRef.current = false;
       restartCurrentRepRef.current = false;
@@ -929,20 +924,19 @@ export default function DiaphragmaticBreathingScreen({
     };
   }, [clearTimers]);
 
-  const quitMessage =
-    phaseRef.current === 'instructions' ||
-    phaseRef.current === 'results'
-      ? 'Are you sure you want to leave Diaphragmatic Breathing?'
-      : phaseRef.current === 'exhale' ||
-          restartCurrentRepRef.current
-        ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
-        : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.';
-
   const quitModal = (
     <ExerciseQuitModal
         visible={showQuitModal}
         title={"Quit exercise?"}
-        message={quitMessage}
+        message={
+          phaseRef.current === 'instructions' ||
+          phaseRef.current === 'results'
+            ? 'Are you sure you want to leave Diaphragmatic Breathing?'
+            : phaseRef.current === 'exhale' ||
+                restartCurrentRepRef.current
+              ? 'Your exercise is paused. Your completed repetitions will be kept, and you will restart the current repetition when you continue.'
+              : 'Your exercise is paused. Your completed repetitions will be kept. Continue to resume your exercise.'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={quitExercise}
@@ -1066,7 +1060,7 @@ export default function DiaphragmaticBreathingScreen({
           countdown={countdown}
           promptTitle="Prepare to breathe"
           prompt="Relax your shoulders and get ready to inhale slowly."
-          onBack={handleBack}
+
         />
       )}
 
@@ -1130,30 +1124,11 @@ export default function DiaphragmaticBreathingScreen({
       )}
 
       {phase === 'processing' && (
-        <>
-          <ExerciseProcessingScreen
-            icon="analytics-outline"
-            title="Analyzing Your Breathing"
-            message="Measuring breath duration and consistency..."
-          />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Pause exercise"
-            style={exerciseStyles.processingPauseButton}
-            onPress={handleBack}
-          >
-            <Ionicons
-              name="pause-circle-outline"
-              size={25}
-              color={COLORS.brown}
-            />
-
-            <Text style={exerciseStyles.processingPauseText}>
-              Pause
-            </Text>
-          </Pressable>
-        </>
+        <ExerciseProcessingScreen
+          icon="analytics-outline"
+          title="Analyzing Your Breathing"
+          message="Measuring breath duration and consistency..."
+        />
       )}
 
       {phase === 'results' && (
@@ -1161,6 +1136,27 @@ export default function DiaphragmaticBreathingScreen({
           title="Exercise Complete"
           subtitle="Your diaphragmatic breathing results"
           score={averageScore}
+          repetitionScores={repetitionResults.map(item => ({
+            repetition: item.rep,
+            score: item.score.score,
+            passed: item.score.passed,
+            components: [
+              {
+                label: 'Breath duration',
+                value: `${item.measurement.exhaleDurationSec.toFixed(1)}s`,
+              },
+              {
+                label: 'Breathing consistency',
+                value: `${Math.round(item.measurement.consistencyPct)}%`,
+              },
+              {
+                label: 'Average volume',
+                value: Number.isFinite(item.measurement.volumeDb)
+                  ? `${Math.round(item.measurement.volumeDb)} dB`
+                  : '--',
+              },
+            ],
+          }))}
           resultIcon={
             averageScore >= 70
               ? 'checkmark'
@@ -1175,7 +1171,7 @@ export default function DiaphragmaticBreathingScreen({
                   ? 'Good effort!'
                   : 'Keep practicing!'
           }
-          onBack={handleBack}
+
           onRetry={retryExercise}
           onExit={quitExercise}
         >
@@ -1193,52 +1189,6 @@ export default function DiaphragmaticBreathingScreen({
 
             </View>
 
-            <Text style={exerciseStyles.resultsSectionTitle}>
-              Repetition Results
-            </Text>
-
-            {repetitionResults.map(result => (
-              <View
-                key={`rep-${result.rep}`}
-                style={exerciseStyles.repCard}
-              >
-                <View style={exerciseStyles.resultDetailRow}>
-                  <Text style={exerciseStyles.cardTitle}>
-                    Repetition {result.rep}
-                  </Text>
-
-                  <View
-                    style={[
-                      exerciseStyles.passBadge,
-                      !result.score.passed && exerciseStyles.resultIconFailed,
-                    ]}
-                  >
-                    <Text style={exerciseStyles.passBadgeText}>
-                      {result.score.passed
-                        ? 'PASS'
-                        : 'KEEP PRACTICING'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={exerciseStyles.repMetrics}>
-                  <Metric
-                    label="Exhale"
-                    value={`${result.measurement.exhaleDurationSec.toFixed(1)}s`}
-                  />
-
-                  <Metric
-                    label="Consistency"
-                    value={`${Math.round(result.measurement.consistencyPct)}%`}
-                  />
-
-                  <Metric
-                    label="Score"
-                    value={`${result.score.score}%`}
-                  />
-                </View>
-              </View>
-            ))}
           </View>
         </ExerciseResultsScreen>
       )}
@@ -1248,7 +1198,7 @@ export default function DiaphragmaticBreathingScreen({
 
 function ProgressBar({ progress }: { progress: number }) {
   return (
-    <View style={exerciseStyles.progressTrackVariant4}>
+    <View style={[exerciseStyles.progressTrack, { marginTop: 30 }]}>
       <View
         style={[
           exerciseStyles.progressFill,

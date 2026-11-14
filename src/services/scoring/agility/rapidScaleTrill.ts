@@ -8,7 +8,11 @@ export type RapidScaleTrillScore = {
   transitionScore: number;
   speedScore: number;
   passed: boolean;
-  feedback: string;
+  repetitionScores: {
+    repetition: number;
+    score: number;
+    components: { label: string; value: string }[];
+  }[];
 };
 
 function calculateSpeedScore(
@@ -80,30 +84,118 @@ export function scoreRapidScaleTrill(
     pitchScore >= 60 &&
     sequenceScore >= 60;
 
-  let feedback: string;
+  const repetitionCount = Math.max(
+    1,
+    measurement.repetitionCount,
+  );
+  const notesPerRepetition = Math.ceil(
+    measurement.targetNotes.length / repetitionCount,
+  );
+  const repetitionScores = Array.from(
+    { length: repetitionCount },
+    (_, index) => {
+      const start = index * notesPerRepetition;
+      const targetNotes = measurement.targetNotes.slice(
+        start,
+        start + notesPerRepetition,
+      );
+      const detectedNotes = measurement.detectedNotes.slice(
+        start,
+        start + notesPerRepetition,
+      );
+      const comparedCount = Math.min(
+        targetNotes.length,
+        detectedNotes.length,
+      );
+      let correctNotes = 0;
+      let totalSemitoneError = 0;
 
-  if (measurement.noteCount === 0) {
-    feedback =
-      'No clear notes were detected. Try singing closer to the microphone in a quiet area.';
-  } else if (pitchScore < 60) {
-    feedback =
-      'Focus on matching each target pitch before increasing your speed.';
-  } else if (sequenceScore < 60) {
-    feedback =
-      'Practice the notes in the correct order. Listen to the reference sequence again before trying.';
-  } else if (transitionScore < 60) {
-    feedback =
-      'Work on moving cleanly between neighboring notes without skipping or adding notes.';
-  } else if (speedScore < 50) {
-    feedback =
-      'Gradually increase the pace while keeping each note clear and accurate.';
-  } else if (passed) {
-    feedback =
-      'Great work! Your pitch, note order, and transitions are coming together. Keep practicing for consistency.';
-  } else {
-    feedback =
-      'You are making progress. Keep the notes accurate and in order, then gradually increase your speed.';
-  }
+      for (let noteIndex = 0; noteIndex < comparedCount; noteIndex++) {
+        const error = Math.abs(
+          detectedNotes[noteIndex] - targetNotes[noteIndex],
+        );
+        totalSemitoneError += error;
+        if (error <= 1) {
+          correctNotes++;
+        }
+      }
+
+      const repetitionPitchScore =
+        comparedCount > 0
+          ? clamp(
+              100 -
+                (totalSemitoneError / comparedCount) * 50,
+              0,
+              100,
+            )
+          : 0;
+      const repetitionSequenceScore =
+        targetNotes.length > 0
+          ? (correctNotes / targetNotes.length) * 100
+          : 0;
+      let correctTransitions = 0;
+
+      for (
+        let noteIndex = 1;
+        noteIndex < comparedCount;
+        noteIndex++
+      ) {
+        const detectedInterval =
+          detectedNotes[noteIndex] -
+          detectedNotes[noteIndex - 1];
+        const targetInterval =
+          targetNotes[noteIndex] -
+          targetNotes[noteIndex - 1];
+        if (Math.abs(detectedInterval - targetInterval) <= 1) {
+          correctTransitions++;
+        }
+      }
+
+      const targetTransitionCount = Math.max(
+        0,
+        targetNotes.length - 1,
+      );
+      const repetitionTransitionScore =
+        targetTransitionCount > 0
+          ? (correctTransitions / targetTransitionCount) * 100
+          : 0;
+      const repetitionDurationSeconds =
+        measurement.durationMs / repetitionCount / 1000;
+      const repetitionSpeedScore = calculateSpeedScore(
+        repetitionDurationSeconds > 0
+          ? detectedNotes.length / repetitionDurationSeconds
+          : 0,
+      );
+      const repetitionOverall =
+        repetitionPitchScore * 0.35 +
+        repetitionSequenceScore * 0.3 +
+        repetitionTransitionScore * 0.2 +
+        repetitionSpeedScore * 0.15;
+
+      return {
+        repetition: index + 1,
+        score: Math.round(repetitionOverall),
+        components: [
+          {
+            label: 'Pitch accuracy',
+            value: `${Math.round(repetitionPitchScore)}%`,
+          },
+          {
+            label: 'Sequence accuracy',
+            value: `${Math.round(repetitionSequenceScore)}%`,
+          },
+          {
+            label: 'Transition accuracy',
+            value: `${Math.round(repetitionTransitionScore)}%`,
+          },
+          {
+            label: 'Speed',
+            value: `${Math.round(repetitionSpeedScore)}%`,
+          },
+        ],
+      };
+    },
+  );
 
   return {
     overall: roundedOverall,
@@ -112,6 +204,6 @@ export function scoreRapidScaleTrill(
     transitionScore,
     speedScore,
     passed,
-    feedback,
+    repetitionScores,
   };
 }

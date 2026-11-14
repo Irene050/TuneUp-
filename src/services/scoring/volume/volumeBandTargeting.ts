@@ -2,6 +2,7 @@ import type {
   VolumeBandMeasurement,
 } from '@/services/measurement/volume/volumeBandTargeting';
 import { clamp } from '@/utils/math';
+import type { VolumeScoreOptions } from './types';
 
 const DEFAULT_PASSING_SCORE = 60;
 const MIN_MEASUREMENT_QUALITY = 50;
@@ -14,8 +15,7 @@ export interface VolumeBandScore {
   measurementQuality: number;
 }
 
-interface ScoreOptions {
-  passingScore?: number;
+interface ScoreOptions extends VolumeScoreOptions {
   minimumMeasurementQuality?: number;
 }
 

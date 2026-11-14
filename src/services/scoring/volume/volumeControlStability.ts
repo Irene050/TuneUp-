@@ -2,6 +2,7 @@ import type {
   VolumeControlStabilityMeasurement,
 } from '@/services/measurement/volume/volumeControlStability';
 import { clampFinite } from '@/utils/math';
+import type { VolumeScoreOptions } from './types';
 
 export interface VolumeControlStabilityScore {
   overallScore: number;
@@ -15,9 +16,8 @@ export interface VolumeControlStabilityScore {
 const DEFAULT_TARGET_STABILITY = 70;
 const MIN_VOICED_COVERAGE = 20;
 
-export interface VolumeControlStabilityScoreOptions {
-  passingScore?: number;
-}
+export type VolumeControlStabilityScoreOptions =
+  VolumeScoreOptions;
 
 export function scoreVolumeControlStability(
   measurement: VolumeControlStabilityMeasurement,

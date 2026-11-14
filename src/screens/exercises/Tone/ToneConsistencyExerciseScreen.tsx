@@ -1,81 +1,75 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 import { BackHandler, ScrollView, Text, View } from 'react-native';
 
+import {
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import { LiveToneMonitorCard } from '@/components/SharedToneComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+    EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
+    TONE_WAVEFORM_BAR_COUNT,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { Tier } from '@/constants/params';
 import {
-  TONE_CONSISTENCY_PARAMS,
-  type ToneConsistencyParams,
+    TONE_CONSISTENCY_PARAMS,
+    type ToneConsistencyParams,
 } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  StandardExercisePhase,
+} from '@/types/exercises';
+import ExerciseScreen, {
+    ExerciseCountdownScreen,
+    ExerciseListeningScreen,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseResultsScreen,
+    MetricCard,
+} from '@/screens/exercises/ExerciseScreen';
 import { generateToneConsistencyParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import { measureToneConsistency } from '@/services/measurement/tone/toneConsistencyExercise';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
+import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
+import { clamp } from '@/utils/math';
 import {
-  disposeNotePlayer,
-  playSingleNote,
+    disposeNotePlayer,
+    playSingleNote,
 } from '@/utils/music/notePlayer';
 import {
-  getRandomPitchNote,
-  type VocalRange,
+    getRandomPitchNote,
+    type VocalRange,
 } from '@/utils/music/notes';
-
-import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  ExerciseListeningScreen,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  ExerciseResultsScreen,
-  MetricCard,
-} from '../ExerciseScreen';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-  EXERCISE_REFERENCE_NOTE_DURATION_SECONDS,
-  TONE_WAVEFORM_BAR_COUNT,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { clamp } from '@/utils/math';
 import { formatFrequency } from '@/utils/numberFormatting';
 
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
 
+type Phase = StandardExercisePhase;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'listening'
-  | 'recording'
-  | 'processing'
-  | 'results';
-
-type Props = {
-  tier?: Tier;
-};
+type Props = ExerciseTierProps;
 
 type LiveToneState = {
   pitch: number;
@@ -89,15 +83,9 @@ type ExerciseResult = {
   passed: boolean;
   averageCentroidHz: number;
   averageAmplitude: number;
+  repetitionScores: number[];
+  repetitionMetrics: { centroid: number; amplitude: number }[];
 };
-
-function formatVolume(volume: number): string {
-  if (!Number.isFinite(volume) || volume <= -100) {
-    return '--';
-  }
-
-  return `${Math.round(volume)} dB`;
-}
 
 function LiveToneWaveform({
   pitch,
@@ -238,6 +226,7 @@ export default function ToneConsistencyExerciseScreen({
   const targetNote = activeTarget.name;
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const exitingRef = useRef(false);
   const startingRef = useRef(false);
   const finishingRef = useRef(false);
@@ -770,6 +759,13 @@ export default function ToneConsistencyExerciseScreen({
           passed: scored.passed,
           averageCentroidHz: averageCentroid,
           averageAmplitude: averageAmplitudeValue,
+          repetitionScores: scored.repetitionScores,
+          repetitionMetrics: measurement.centroids.map(
+            (centroid, index) => ({
+              centroid,
+              amplitude: measurement.amplitudes[index] ?? 0,
+            }),
+          ),
         });
 
         setExercisePhase('results');
@@ -1141,10 +1137,7 @@ export default function ToneConsistencyExerciseScreen({
   }, [openQuitModal]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       exitingRef.current = true;
@@ -1178,24 +1171,23 @@ export default function ToneConsistencyExerciseScreen({
       ? clamp(elapsedSeconds / params.intervalSec, 0, 1)
       : 0;
 
-  const quitMessage =
-    phase === 'recording'
-      ? 'Your current repetition will be discarded. If you continue, the exercise will restart from the countdown.'
-      : phase === 'listening'
-        ? 'Reference-note playback will stop. If you continue, the exercise will restart from the countdown.'
-        : phase === 'countdown'
-          ? 'Your countdown will restart if you continue the exercise.'
-          : phase === 'processing'
-            ? 'Your completed repetitions are being analyzed. You can return to the exercise while analysis continues.'
-            : phase === 'results'
-              ? 'Are you sure you want to leave Tone Consistency? Your completed result has already been saved.'
-              : 'Are you sure you want to leave Tone Consistency?';
-
   const quitModal = (
     <ExerciseQuitModal
         visible={showQuitModal}
         title={"Quit Exercise?"}
-        message={quitMessage}
+        message={
+          phase === 'recording'
+            ? 'Your current repetition will be discarded. If you continue, the exercise will restart from the countdown.'
+            : phase === 'listening'
+              ? 'Reference-note playback will stop. If you continue, the exercise will restart from the countdown.'
+              : phase === 'countdown'
+                ? 'Your countdown will restart if you continue the exercise.'
+                : phase === 'processing'
+                  ? 'Your completed repetitions are being analyzed. You can return to the exercise while analysis continues.'
+                  : phase === 'results'
+                    ? 'Are you sure you want to leave Tone Consistency? Your completed result has already been saved.'
+                    : 'Are you sure you want to leave Tone Consistency?'
+        }
         isQuitting={isQuitting}
         onContinue={continueExercise}
         onQuit={quitExercise}
@@ -1307,7 +1299,7 @@ export default function ToneConsistencyExerciseScreen({
           countdown={countdown}
           promptTitle="Your target note is"
           prompt={`${targetNote} • ${formatFrequency(targetFrequency)}`}
-          onBack={goBack}
+
         />
 
         {quitModal}
@@ -1319,24 +1311,9 @@ export default function ToneConsistencyExerciseScreen({
     return (
       <>
         <ExerciseListeningScreen
-          icon="volume-high-outline"
           title="Listen to the Note"
-          currentRep={currentRep}
-          repetitions={params.repetitions}
-          elapsedSeconds={listenElapsedSeconds}
-          targetDuration={EXERCISE_REFERENCE_NOTE_DURATION_SECONDS}
-          promptTitle="Listen to the reference note"
           prompt="Listen carefully. After the note finishes, sing the same note."
-          liveContent={
-            <View style={exerciseStyles.sharedListenNoteBox}>
-              <Text style={exerciseStyles.liveLabel}>TARGET NOTE</Text>
-              <Text style={exerciseStyles.largeNote}>{targetNote}</Text>
-              <Text style={exerciseStyles.stateFrequency}>
-                {formatFrequency(targetFrequency)}
-              </Text>
-            </View>
-          }
-          progress={listenProgress}
+          referenceNotes={[targetNote]}
         />
 
         {quitModal}
@@ -1440,7 +1417,7 @@ export default function ToneConsistencyExerciseScreen({
 
             <View style={exerciseStyles.recordingProgressSectionVariant3}>
               <View
-                style={exerciseStyles.progressTrackVariant7}
+                style={exerciseStyles.progressTrack}
                 accessibilityRole="progressbar"
                 accessibilityLabel="Repetition recording progress"
                 accessibilityValue={{
@@ -1488,6 +1465,20 @@ export default function ToneConsistencyExerciseScreen({
           title={result.passed ? 'Great Job!' : 'Keep Practicing!'}
           subtitle={`Tone Consistency Result • ${params.repetitions} repetitions`}
           score={result.score}
+          repetitionScores={result.repetitionScores.map((score, index) => ({
+            repetition: index + 1,
+            score,
+            components: [
+              {
+                label: 'Spectral centroid',
+                value: `${Math.round(result.repetitionMetrics[index]?.centroid ?? 0)} Hz`,
+              },
+              {
+                label: 'Amplitude',
+                value: (result.repetitionMetrics[index]?.amplitude ?? 0).toFixed(3),
+              },
+            ],
+          }))}
           resultIcon={result.passed ? 'checkmark' : 'refresh'}
           scoreMessage={
             result.passed
@@ -1496,7 +1487,7 @@ export default function ToneConsistencyExerciseScreen({
           }
           onRetry={retryExercise}
           onExit={goBack}
-          onBack={goBack}
+
         >
           <View style={exerciseStyles.resultCard}>
             <Text style={exerciseStyles.resultCardTitle}>

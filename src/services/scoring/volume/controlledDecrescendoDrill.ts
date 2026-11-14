@@ -1,5 +1,6 @@
 import type { ControlledDecrescendoMeasurement } from '@/services/measurement/volume/controlledDecrescendoDrill';
 import { clamp } from '@/utils/math';
+import type { VolumeScoreOptions } from './types';
 
 const DEFAULT_PASSING_SCORE = 75;
 const MIN_VALID_WINDOWS = 20;
@@ -14,9 +15,7 @@ export interface ControlledDecrescendoScore {
   measurementQuality: number;
 }
 
-interface ScoreOptions {
-  passingScore?: number;
-}
+type ScoreOptions = VolumeScoreOptions;
 
 function roundScore(value: number): number {
   return Math.round(clamp(value, 0, 100));

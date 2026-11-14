@@ -1,9 +1,19 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_REFERENCE_NOTE_DURATION_SECONDS, VOLUME_ANALYSIS_WINDOW_MS, VOLUME_DBFS_MAX, VOLUME_DBFS_MIN, VOLUME_HISTORY_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import { DYNAMIC_RANGE_PARAMS, type DynamicRangeParams, type Tier } from '@/constants/params';
 import { useAudioRecorder, type LiveAudioFrame } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  RecordingExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
     ExerciseCountdownScreen,
     ExercisePreparingScreen,
@@ -19,34 +29,19 @@ import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progres
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
 import { sleep } from '@/utils/async';
 import { concatenateRepetitions, fixedDurationSamples, hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { normalizeVolumeDbfs } from '@/utils/dsp/volumeAnalysis';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 const PHASES_PER_REPETITION = 3;
 const PROCESSING_MIN_DURATION_MS = 100;
 const TIMER_TICK_MS = 100;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
 type CountdownFor = 'start' | 'repetition';
 
-interface DynamicRangeExerciseProps {
-  tier?: Tier;
-}
-
-function normalizeVolume(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, (value - VOLUME_DBFS_MIN) / (VOLUME_DBFS_MAX - VOLUME_DBFS_MIN)));
-}
+type DynamicRangeExerciseProps = ExerciseTierProps;
 
 function referenceHeight(index: number): number {
   const middle = (VOLUME_HISTORY_BAR_COUNT - 1) / 2;
@@ -96,9 +91,10 @@ export default function DynamicRangeExercise({
   const [countdownFor, setCountdownFor] = useState<CountdownFor>('start');
   const [currentRep, setCurrentRep] = useState(1);
   const [seconds, setSeconds] = useState(0);
-  const [liveAudioFrame, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
+  const [, setLiveAudioFrame] = useState<LiveAudioFrame | null>(null);
   const [liveHistory, setLiveHistory] = useState<number[]>([]);
   const [score, setScore] = useState(0);
+  const [repetitionScores, setRepetitionScores] = useState<number[]>([]);
   const [rangeAccuracy, setRangeAccuracy] = useState(0);
   const [rampConsistency, setRampConsistency] = useState(0);
   const [passed, setPassed] = useState(false);
@@ -122,6 +118,7 @@ export default function DynamicRangeExercise({
   );
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const countdownRunIdRef = useRef(0);
   const shouldSaveResultRef = useRef(false);
   const finishingRef = useRef(false);
@@ -347,7 +344,11 @@ export default function DynamicRangeExercise({
       }
 
       setLiveAudioFrame(frame);
-      const normalized = normalizeVolume(frame.volume);
+      const normalized = normalizeVolumeDbfs(
+        frame.volume,
+        VOLUME_DBFS_MIN,
+        VOLUME_DBFS_MAX,
+      );
       setLiveHistory(previous => {
         const next = [...previous, normalized];
         return next.length > VOLUME_HISTORY_BAR_COUNT ? next.slice(-VOLUME_HISTORY_BAR_COUNT) : next;
@@ -493,6 +494,7 @@ export default function DynamicRangeExercise({
           setRangeAccuracy(result.rangeAccuracy);
           setRampConsistency(result.rampConsistency);
           setScore(Math.round(result.overallScore));
+          setRepetitionScores(result.repetitionScores);
           setPassed(result.passed);
           setPhase('results');
 
@@ -550,10 +552,7 @@ export default function DynamicRangeExercise({
   }, [isRecording]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       countdownRunIdRef.current += 1;
       acceptFramesRef.current = false;
       shouldSaveResultRef.current = false;
@@ -575,6 +574,7 @@ export default function DynamicRangeExercise({
     setCurrentRep(1);
     setSeconds(0);
     setScore(0);
+    setRepetitionScores([]);
     setRangeAccuracy(0);
     setRampConsistency(0);
     setPassed(false);
@@ -1092,7 +1092,9 @@ export default function DynamicRangeExercise({
             <View style={exerciseStyles.referenceTopRow}>
               <View style={exerciseStyles.infoText}>
                 <Text style={exerciseStyles.eyebrow}>REFERENCE NOTE</Text>
-                <Text style={exerciseStyles.referenceNoteVariant1}>{referenceNote.name}</Text>
+                <Text style={[exerciseStyles.referenceNote, { lineHeight: 36 }]}>
+                  {referenceNote.name}
+                </Text>
               </View>
               <View style={exerciseStyles.referenceIconCircle}>
                 <Ionicons name="musical-note" size={22} color={COLORS.brown} />
@@ -1113,7 +1115,7 @@ export default function DynamicRangeExercise({
               ) : (
                 <Ionicons name="play" size={17} color={COLORS.brown} />
               )}
-              <Text style={exerciseStyles.referenceButtonText}>
+              <Text style={exerciseStyles.smallSemiBoldBrownText}>
                 {referencePlaying ? 'Playing...' : `Play ${referenceNote.name}`}
               </Text>
             </TouchableOpacity>
@@ -1123,7 +1125,7 @@ export default function DynamicRangeExercise({
           </View>
 
           <View style={exerciseStyles.previewCardVariant1}>
-            <Text style={exerciseStyles.referenceButtonText}>Follow this pattern</Text>
+            <Text style={exerciseStyles.smallSemiBoldBrownText}>Follow this pattern</Text>
             <View style={exerciseStyles.previewVisualizerVariant1}>
               {Array.from({ length: VOLUME_HISTORY_BAR_COUNT }, (_, index) => (
                 <View
@@ -1161,7 +1163,7 @@ export default function DynamicRangeExercise({
             repetitionCountdown ? 'Get ready to repeat' : 'Get ready to begin'
           }
           prompt={`Sing ${referenceNote.name}. Start softly, then follow the volume prompts.`}
-          onBack={handleBack}
+
         />
         {quitModal}
       </>
@@ -1208,12 +1210,12 @@ export default function DynamicRangeExercise({
             <View style={exerciseStyles.sessionRowVariant1}>
               <View style={exerciseStyles.sessionPart}>
                 <Text style={exerciseStyles.sessionLabel}>REPETITION</Text>
-                <Text style={exerciseStyles.sessionValue}>{currentRep} / {repetitions}</Text>
+                <Text style={exerciseStyles.largeBrownValue}>{currentRep} / {repetitions}</Text>
               </View>
             </View>
 
-            <View style={exerciseStyles.liveProgressTrack}>
-              <View style={[exerciseStyles.exerciseProgressFill, { width: `${progress}%` }]} />
+            <View style={[exerciseStyles.progressTrack, { marginTop: 10 }]}>
+              <View style={[exerciseStyles.progressFill, { width: `${progress}%` }]} />
             </View>
           </ScrollView>
         </View>
@@ -1245,6 +1247,10 @@ export default function DynamicRangeExercise({
             : 'Keep practicing smooth and controlled volume changes.'
         }
         score={score}
+        repetitionScores={repetitionScores.map((repetitionScore, index) => ({
+          repetition: index + 1,
+          score: repetitionScore,
+        }))}
         resultIcon={passed ? 'checkmark-circle-outline' : 'refresh-outline'}
         scoreMessage={
           passed

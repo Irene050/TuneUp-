@@ -1,6 +1,7 @@
 import {
   calcIntervalRatio,
   trackPitchOverTime,
+  type PitchFrame,
 } from '@/utils/dsp/pitch';
 import { median } from '@/utils/math';
 
@@ -58,12 +59,6 @@ function emptyResult(): IntervalRecognitionMeasurement {
   };
 }
 
-interface PitchPoint {
-  frequency: number;
-  clarity: number;
-  timestamp: number;
-}
-
 interface DetectedNote {
   frequency: number;
   clarity: number;
@@ -75,7 +70,7 @@ function getPitchFrames(
   samples: Float32Array,
   sampleRate: number,
   minClarity: number,
-): PitchPoint[] {
+): PitchFrame[] {
   const frames = trackPitchOverTime(
     samples,
     FRAME_MS,
@@ -105,7 +100,7 @@ function getPitchFrames(
 }
 
 function createDetectedNote(
-  frames: PitchPoint[],
+  frames: PitchFrame[],
 ): DetectedNote | null {
   if (frames.length < MIN_NOTE_FRAMES) {
     return null;
@@ -142,11 +137,11 @@ function createDetectedNote(
 }
 
 function detectRawNotes(
-  frames: PitchPoint[],
+  frames: PitchFrame[],
 ): DetectedNote[] {
   const notes: DetectedNote[] = [];
 
-  let currentFrames: PitchPoint[] = [];
+  let currentFrames: PitchFrame[] = [];
 
   const flushCurrentNote = () => {
     if (currentFrames.length === 0) {
@@ -327,7 +322,7 @@ function mergeSamePitchFragments(
 }
 
 function detectNotes(
-  frames: PitchPoint[],
+  frames: PitchFrame[],
 ): DetectedNote[] {
   const rawNotes = detectRawNotes(frames);
 

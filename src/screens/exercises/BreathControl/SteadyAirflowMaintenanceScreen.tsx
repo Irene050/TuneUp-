@@ -1,10 +1,20 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Text, View } from 'react-native';
+
 import { ExerciseNoAudioModal, ExerciseQuitModal } from '@/components/ExerciseModals';
 import { COLORS, EXERCISE_COUNTDOWN_SECONDS, EXERCISE_FINAL_RESULT_DELAY_MS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
 import type { SteadyAirflowParams, Tier } from '@/constants/params';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen, Metric } from '@/screens/exercises/ExerciseScreen';
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  RecordingExercisePhase,
+} from '@/types/exercises';
+import ExerciseScreen, { ExerciseCountdownScreen, ExercisePreparingScreen, ExerciseProcessingScreen, ExerciseResultsScreen } from '@/screens/exercises/ExerciseScreen';
 import { generateSteadyAirflowParams } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import { getLatestAssessment } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
@@ -14,26 +24,16 @@ import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progres
 import { scoreSteadyAirflow, type SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
 import { getLiveVoiceDetection, hasSufficientRecordedSignal } from '@/utils/audioSignal';
 import { average } from '@/utils/math';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Text, View } from 'react-native';
-import LiveVoiceDetectionVisualizer from './LiveVoiceDetectionVisualizer';
+
+import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
 const STABILITY_WINDOW_SIZE = 20;
 const MIN_STABILITY_READINGS = 5;
 const PROCESSING_DELAY_MS = 700;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'processing'
-  | 'results';
+type Phase = RecordingExercisePhase;
 
 interface RepetitionResult {
   rep: number;
@@ -66,6 +66,7 @@ export default function SteadyAirflowMaintenanceScreen({
   const paramsRef = useRef<SteadyAirflowParams | null>(null);
   const tierRef = useRef<Tier>(initialTier ?? 'beginner');
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const currentRepRef = useRef(1);
   const repetitionResultsRef = useRef<RepetitionResult[]>([]);
   const recentVolumeRef = useRef<number[]>([]);
@@ -774,10 +775,7 @@ export default function SteadyAirflowMaintenanceScreen({
   ]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       exitRequestedRef.current = true;
       restartCurrentRepRef.current = true;
       showQuitModalRef.current = false;
@@ -944,7 +942,7 @@ export default function SteadyAirflowMaintenanceScreen({
           countdown={countdown}
           promptTitle="Get Ready"
           prompt="Take a comfortable breath and get ready to exhale steadily."
-          onBack={handleBack}
+
         />
         {quitModal}
         {noAudioModal}
@@ -998,10 +996,10 @@ export default function SteadyAirflowMaintenanceScreen({
               </Text>
             </View>
 
-            <View style={exerciseStyles.stabilityTrack}>
+            <View style={[exerciseStyles.progressTrack, { marginTop: 8 }]}>
               <View
                 style={[
-                  exerciseStyles.stabilityFill,
+                  exerciseStyles.progressFill,
                   {
                     width: `${
                       airflowDetected ? airflowStability : 0
@@ -1020,7 +1018,7 @@ export default function SteadyAirflowMaintenanceScreen({
             </Text>
           </View>
 
-          <View style={exerciseStyles.progressTrackVariant5}>
+          <View style={[exerciseStyles.progressTrack, { marginTop: 25 }]}>
             <View
               style={[
                 exerciseStyles.progressFill,
@@ -1061,6 +1059,25 @@ export default function SteadyAirflowMaintenanceScreen({
         title="Exercise Complete"
         subtitle="Your steady airflow results"
         score={averageScore}
+        repetitionScores={repetitionResults.map(result => ({
+          repetition: result.rep,
+          score: result.score.score,
+          passed: result.score.passed,
+          components: [
+            {
+              label: 'Airflow stability',
+              value: `${Math.round(result.measurement.stabilityPct)}%`,
+            },
+            {
+              label: 'Duration',
+              value: `${result.measurement.durationSec.toFixed(1)}s`,
+            },
+            {
+              label: 'Airflow detected',
+              value: result.measurement.detected ? 'Yes' : 'No',
+            },
+          ],
+        }))}
         resultIcon={
           averageScore >= 70
             ? 'checkmark'
@@ -1075,7 +1092,7 @@ export default function SteadyAirflowMaintenanceScreen({
                 ? 'Good effort!'
                 : 'Keep practicing!'
         }
-        onBack={handleBack}
+
         onRetry={retryExercise}
         onExit={() => {
           void quitExercise();
@@ -1119,61 +1136,6 @@ export default function SteadyAirflowMaintenanceScreen({
           </View>
         </View>
 
-        <Text style={exerciseStyles.resultsSectionTitle}>
-          Repetition Results
-        </Text>
-
-        {repetitionResults.map(result => (
-          <View
-            key={`rep-${result.rep}`}
-            style={exerciseStyles.repCard}
-          >
-            <View style={exerciseStyles.resultDetailRow}>
-              <Text style={exerciseStyles.cardTitle}>
-                Repetition {result.rep}
-              </Text>
-
-              <View
-                style={[
-                  exerciseStyles.passBadge,
-                  !result.score.passed && exerciseStyles.resultIconFailed,
-                ]}
-              >
-                <Text style={exerciseStyles.passBadgeText}>
-                  {result.score.passed
-                    ? 'PASS'
-                    : 'KEEP PRACTICING'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={exerciseStyles.repMetrics}>
-              <Metric
-                label="Stability"
-                value={`${Math.round(
-                  result.measurement.stabilityPct,
-                )}%`}
-              />
-
-              <Metric
-                label="Duration"
-                value={`${result.measurement.durationSec.toFixed(1)}s`}
-              />
-
-              <Metric
-                label="Score"
-                value={`${result.score.score}%`}
-              />
-
-              <Metric
-                label="Detected"
-                value={
-                  result.measurement.detected ? 'Yes' : 'No'
-                }
-              />
-            </View>
-          </View>
-        ))}
       </ExerciseResultsScreen>
 
       {quitModal}

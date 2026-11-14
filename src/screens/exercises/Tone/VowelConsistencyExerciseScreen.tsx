@@ -1,84 +1,83 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
-  type Tier,
-  VOWEL_CONSISTENCY_PARAMS,
-  type VowelConsistencyParams,
+    ExerciseNoAudioModal,
+    ExerciseQuitModal,
+} from '@/components/ExerciseModals';
+import {
+    createToneWaveformBars,
+    LiveToneMonitorCard,
+    type ToneWaveformProps,
+} from '@/components/SharedToneComponent';
+import {
+    COLORS,
+    EXERCISE_COUNTDOWN_SECONDS,
+    EXERCISE_FFT_HOP_SIZE,
+    EXERCISE_FFT_SIZE,
+} from '@/constants/appConstants';
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import {
+    type Tier,
+    VOWEL_CONSISTENCY_PARAMS,
+    type VowelConsistencyParams,
 } from '@/constants/params';
 import {
-  type LiveAudioFrame,
-  useAudioRecorder,
+    type LiveAudioFrame,
+    useAudioRecorder,
 } from '@/hooks/useAudioRecorder';
 import { usePhaseState } from '@/hooks/usePhaseState';
-
+import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import type {
+  ExerciseTierProps,
+  RepetitionExercisePhase,
+} from '@/types/exercises';
 import ExerciseScreen, {
-  ExerciseCountdownScreen,
-  type ExercisePreparationStep,
-  ExercisePreparingScreen,
-  ExerciseProcessingScreen,
-  type ExerciseSummaryItem,
+    ExerciseCountdownScreen,
+    type ExercisePreparationStep,
+    ExercisePreparingScreen,
+    ExerciseProcessingScreen,
+    ExerciseRepetitionBreakdown,
+    type ExerciseSummaryItem,
 } from '@/screens/exercises/ExerciseScreen';
 import {
-  generateVowelConsistencyParams,
+    generateVowelConsistencyParams,
 } from '@/services/adaptiveDifficultyScaling/parameterGenerator';
 import {
-  getLatestAssessment,
+    getLatestAssessment,
 } from '@/services/assessment/assessmentRepository';
 import { auth } from '@/services/firebase/config';
 import {
-  measureVowelConsistency,
+    measureVowelConsistency,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
 import {
-  saveCompletedExercise,
+    saveCompletedExercise,
 } from '@/services/progress/exerciseProgressService';
 import {
-  fetchComponentProgress,
-  fetchExerciseRecords,
+    fetchComponentProgress,
+    fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import {
-  scoreVowelConsistencyExercise,
-  type VowelConsistencyScoreResult,
+    scoreVowelConsistencyExercise,
+    type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
-import { samplesToFFTFrames } from '@/utils/dsp/fft';
-
-import {
-  COLORS,
-  EXERCISE_COUNTDOWN_SECONDS,
-  EXERCISE_FFT_HOP_SIZE,
-  EXERCISE_FFT_SIZE,
-} from '@/constants/appConstants';
-import { exerciseStyles } from '@/constants/exerciseStyles';
-import { LiveToneMonitorCard } from '@/screens/exercises/Tone/LiveToneMonitorCard';
 import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { samplesToFFTFrames } from '@/utils/dsp/fft';
 import { clamp } from '@/utils/math';
 import { formatNumber } from '@/utils/numberFormatting';
 
-import {
-  ExerciseNoAudioModal,
-  ExerciseQuitModal,
-} from '@/components/ExerciseModals';
-
 const REST_MS = 1200;
 
-interface Props {
-  tier?: Tier;
-}
+type Props = ExerciseTierProps;
 
-type Phase =
-  | 'instructions'
-  | 'countdown'
-  | 'recording'
-  | 'rest'
-  | 'processing'
-  | 'results';
+type Phase = RepetitionExercisePhase;
 
 interface RepetitionResult {
   score: number;
@@ -93,11 +92,9 @@ function vowelDisplay(vowel: string) {
   return vowel.toUpperCase();
 }
 
-function VowelLiveWaveform({
-  frame,
-}: {
-  frame: LiveAudioFrame | null;
-}) {
+function getVowelToneWaveform(
+  frame: LiveAudioFrame | null,
+): ToneWaveformProps {
   const pitch = frame?.pitch ?? 0;
   const hasPitch = Number.isFinite(pitch) && pitch > 0;
   const clarity =
@@ -119,63 +116,20 @@ function VowelLiveWaveform({
         ? 'Keep your voice relaxed and steady'
         : 'Try making a clearer vowel sound';
 
-  const bars = Array.from({ length: 30 }, (_, index) => {
-    const center = 14.5;
-    const distance = Math.abs(index - center) / center;
-    const envelope = 1 - distance * 0.65;
-    const variation = hasPitch
-      ? 0.35 +
-        Math.abs(Math.sin(index * 0.72 + pitch * 0.001)) * 0.65
-      : 0.12 + Math.abs(Math.sin(index * 0.72)) * 0.12;
-
-    return Math.max(5, Math.round(38 * envelope * variation));
-  });
-
-  return (
-    <View style={exerciseStyles.waveformContainer}>
-      <View
-        style={exerciseStyles.waveformBars}
-        accessibilityLabel={
-          !hasPitch
-            ? 'No pitch detected'
-            : clarity >= 0.75
-              ? 'Clear voice detected'
-              : 'Voice detected'
-        }
-      >
-        {bars.map((height, index) => (
-          <View
-            key={`vowel-wave-${index}`}
-            style={[
-              exerciseStyles.waveformBar,
-              {
-                height,
-                backgroundColor: waveformColor,
-                opacity: hasPitch ? 0.9 : 0.45,
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      <View style={exerciseStyles.waveformStatusRow}>
-        <View
-          style={[
-            exerciseStyles.statusDot,
-            { backgroundColor: waveformColor },
-          ]}
-        />
-        <Text
-          style={[
-            exerciseStyles.waveformStatus,
-            { color: waveformColor },
-          ]}
-        >
-          {statusText}
-        </Text>
-      </View>
-    </View>
-  );
+  return {
+    bars: createToneWaveformBars(pitch, hasPitch),
+    color: waveformColor,
+    hasPitch,
+    accessibilityLabel:
+      !hasPitch
+        ? 'No pitch detected'
+        : clarity >= 0.75
+          ? 'Clear voice detected'
+          : 'Voice detected',
+    statusText,
+    statusTextStyle: exerciseStyles.waveformStatus,
+    barKeyPrefix: 'vowel-wave',
+  };
 }
 
 export default function VowelConsistencyExerciseScreen({
@@ -208,6 +162,7 @@ export default function VowelConsistencyExerciseScreen({
   const repetitions = Math.max(1, params.repetitions);
 
   const mountedRef = useRef(true);
+  useMountedRefLifecycle(mountedRef);
   const pausedPhaseRef = useRef<Phase>('instructions');
 
   const pausedRef = useRef(false);
@@ -378,10 +333,7 @@ export default function VowelConsistencyExerciseScreen({
   }, [initialTier, tier]);
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
-      mountedRef.current = false;
       pausedRef.current = true;
       showQuitModalRef.current = false;
       discardNextStopRef.current = true;
@@ -1060,46 +1012,8 @@ export default function VowelConsistencyExerciseScreen({
           countdown={countdown}
           promptTitle="Target Vowel"
           prompt={vowelDisplay(params.vowel)}
-          onBack={goBack}
+
         />
-        {quitModal}
-      </>
-    );
-  }
-
-  if (phase === 'rest') {
-    return (
-      <>
-        <View style={exerciseStyles.centerScreenVariant1}>
-          <View style={exerciseStyles.iconCircle}>
-            <Ionicons
-              name="pause-outline"
-              size={34}
-              color={COLORS.brown}
-            />
-          </View>
-
-          <Text style={exerciseStyles.phaseTitleVariant1}>Take a Little Rest</Text>
-
-          <Text style={exerciseStyles.phaseSubtitle}>
-            Repetition {currentRep - 1} complete. Relax your
-            voice before the next one.
-          </Text>
-
-          <Text style={exerciseStyles.largeVowel}>
-            {vowelDisplay(params.vowel)}
-          </Text>
-
-          <Text style={exerciseStyles.restHint}>
-            Get ready for repetition {currentRep}
-          </Text>
-
-          <ActivityIndicator
-            size="small"
-            color={COLORS.brown}
-            style={exerciseStyles.restIndicator}
-          />
-        </View>
         {quitModal}
       </>
     );
@@ -1143,10 +1057,10 @@ export default function VowelConsistencyExerciseScreen({
               Repetition {currentRep} of {repetitions}
             </Text>
 
-          <LiveToneMonitorCard>
+          <LiveToneMonitorCard
+            waveform={getVowelToneWaveform(liveAudioFrame)}
+          >
 
-
-            <VowelLiveWaveform frame={liveAudioFrame} />
 
             <View style={exerciseStyles.liveMetricsRow}>
               <View style={exerciseStyles.liveMetric}>
@@ -1175,7 +1089,7 @@ export default function VowelConsistencyExerciseScreen({
 
           <View style={exerciseStyles.recordingProgressSection}>
             <View
-              style={exerciseStyles.progressTrackVariant1}
+              style={exerciseStyles.progressTrack}
               accessibilityRole="progressbar"
               accessibilityValue={{
                 min: 0,
@@ -1199,6 +1113,44 @@ export default function VowelConsistencyExerciseScreen({
     </>
   );
 }
+
+  if (phase === 'rest') {
+    return (
+      <>
+        <View style={exerciseStyles.centerScreenVariant1}>
+          <View style={exerciseStyles.iconCircle}>
+            <Ionicons
+              name="pause-outline"
+              size={34}
+              color={COLORS.brown}
+            />
+          </View>
+
+          <Text style={exerciseStyles.phaseTitleVariant1}>Take a Little Rest</Text>
+
+          <Text style={exerciseStyles.phaseSubtitle}>
+            Repetition {currentRep - 1} complete. Relax your
+            voice before the next one.
+          </Text>
+
+          <Text style={exerciseStyles.largeVowel}>
+            {vowelDisplay(params.vowel)}
+          </Text>
+
+          <Text style={exerciseStyles.restHint}>
+            Get ready for repetition {currentRep}
+          </Text>
+
+          <ActivityIndicator
+            size="small"
+            color={COLORS.brown}
+            style={exerciseStyles.restIndicator}
+          />
+        </View>
+        {quitModal}
+      </>
+    );
+  }
 
   if (phase === 'processing') {
     const isFinalRep = currentRep >= repetitions;
@@ -1260,6 +1212,20 @@ export default function VowelConsistencyExerciseScreen({
               You finished your Vowel Consistency exercise
             </Text>
 
+            <ExerciseRepetitionBreakdown
+              repetitions={repetitionResults.map((item, index) => ({
+                repetition: index + 1,
+                score: item.score,
+                passed: item.passed,
+                components: [
+                  {
+                    label: 'Target vowel',
+                    value: vowelDisplay(params.vowel),
+                  },
+                ],
+              }))}
+            />
+
             <View style={exerciseStyles.scoreCard}>
               <Text style={exerciseStyles.scoreLabel}>
                 YOUR OVERALL SCORE
@@ -1314,57 +1280,10 @@ export default function VowelConsistencyExerciseScreen({
               </View>
             </View>
 
-            <View style={exerciseStyles.resultCard}>
-              <Text style={exerciseStyles.resultCardTitle}>
-                How You Did Each Time
-              </Text>
-
-              {repetitionResults.map((item, index) => (
-                <View
-                  style={exerciseStyles.resultRowVariant2}
-                  key={`rep-${index}`}
-                >
-                  <View
-                    style={[
-                      exerciseStyles.repStatusIcon,
-                      item.passed
-                        ? exerciseStyles.repStatusPassed
-                        : exerciseStyles.repStatusNeedsPractice,
-                    ]}
-                  >
-                    <Ionicons
-                      name={
-                        item.passed
-                          ? 'checkmark'
-                          : 'refresh-outline'
-                      }
-                      size={17}
-                      color={COLORS.brown}
-                    />
-                  </View>
-
-                  <View style={exerciseStyles.infoText}>
-                    <Text style={exerciseStyles.scoreRowValue}>
-                      Repetition {index + 1}
-                    </Text>
-
-                    <Text style={exerciseStyles.resultRowHint}>
-                      {item.passed
-                        ? 'Exercise target reached'
-                        : 'Keep practicing this vowel'}
-                    </Text>
-                  </View>
-
-                  <Text style={exerciseStyles.resultRowValueVariant2}>
-                    {item.score}%
-                  </Text>
-                </View>
-              ))}
-            </View>
-
             <Pressable
               style={({ pressed }) => [
-                exerciseStyles.startButtonVariant6,
+                exerciseStyles.startButtonPill,
+                exerciseStyles.startButtonPillResultSpacing,
                 pressed && exerciseStyles.buttonPressed,
               ]}
               onPress={retry}
