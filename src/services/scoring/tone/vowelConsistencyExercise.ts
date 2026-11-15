@@ -5,7 +5,7 @@ import type {
 import type {
   VowelConsistencyMeasurement,
 } from '@/services/measurement/tone/vowelConsistencyExercise';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 
 export interface VowelConsistencyScoreResult {
   score: number;

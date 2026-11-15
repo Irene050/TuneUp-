@@ -40,9 +40,9 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVocalRunAccuracy } from '@/services/scoring/agility/vocalRunAccuracyTask';
-import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { average } from '@/utils/math';
+import { sleep } from '@/utils/utils';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
+import { average } from '@/utils/utils';
 import {
     AGILITY_NOTE_START_DELAY_MS,
     getActiveSequenceNoteIndex,
@@ -1618,7 +1618,7 @@ export default function VocalRunAccuracyTaskScreen() {
         }
 
         onRetry={resetExercise}
-        onExit={handleBack}
+        onExit={quitExercise}
       >
         <View style={exerciseStyles.cardVariant1}>
           <Text style={exerciseStyles.cardTitleVariant2}>Accuracy Breakdown</Text>

@@ -22,7 +22,7 @@ import { scoreControlledBreathRelease, type ControlledBreathReleaseScoreResult }
 import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
+} from '@/utils/utils';
 
 import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 

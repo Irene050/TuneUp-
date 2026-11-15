@@ -1,5 +1,5 @@
 import type { ControlledDecrescendoMeasurement } from '@/services/measurement/volume/controlledDecrescendoDrill';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import type { VolumeScoreOptions } from './types';
 
 const DEFAULT_PASSING_SCORE = 75;

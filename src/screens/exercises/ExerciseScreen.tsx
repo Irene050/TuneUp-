@@ -779,7 +779,10 @@ export function ExerciseResultsScreen({
 
       <Pressable
         accessibilityRole="button"
-        style={exerciseStyles.resultsRetryButton}
+        style={({ pressed }) => [
+          exerciseStyles.primaryButton,
+          pressed && exerciseStyles.buttonPressed,
+        ]}
         onPress={onRetry}
       >
         <Ionicons
@@ -795,10 +798,13 @@ export function ExerciseResultsScreen({
 
       <Pressable
         accessibilityRole="button"
-        style={exerciseStyles.resultsExitButton}
+        style={({ pressed }) => [
+          exerciseStyles.secondaryButton,
+          pressed && exerciseStyles.buttonPressed,
+        ]}
         onPress={onExit}
       >
-        <Text style={exerciseStyles.resultsExitText}>
+        <Text style={exerciseStyles.quitButtonText}>
           Back to Exercises
         </Text>
       </Pressable>

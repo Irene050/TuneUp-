@@ -22,8 +22,8 @@ import { measureSteadyAirflow, type SteadyAirflowMeasurement } from '@/services/
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreSteadyAirflow, type SteadyAirflowScoreResult } from '@/services/scoring/breathControl/steadyAirflowMaintenance';
-import { getLiveVoiceDetection, hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { average } from '@/utils/math';
+import { getLiveVoiceDetection, hasSufficientRecordedSignal } from '@/utils/utils';
+import { average } from '@/utils/utils';
 
 import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
@@ -636,7 +636,7 @@ export default function SteadyAirflowMaintenanceScreen({
     startCountdown();
   }, [resetAirflowIndicator, startCountdown]);
 
-  const retryExercise = useCallback(() => {
+  const retryExercise = useCallback((showInstructions = false) => {
     if (!paramsRef.current) return;
 
     exitRequestedRef.current = false;
@@ -652,8 +652,12 @@ export default function SteadyAirflowMaintenanceScreen({
     setElapsedSeconds(0);
     resetAirflowIndicator();
 
-    startCountdown();
-  }, [resetAirflowIndicator, startCountdown]);
+    if (showInstructions) {
+      setPhase('instructions');
+    } else {
+      startCountdown();
+    }
+  }, [resetAirflowIndicator, setPhase, startCountdown]);
 
   const handleBack = useCallback(() => {
     if (
@@ -1093,7 +1097,7 @@ export default function SteadyAirflowMaintenanceScreen({
                 : 'Keep practicing!'
         }
 
-        onRetry={retryExercise}
+        onRetry={() => retryExercise(true)}
         onExit={() => {
           void quitExercise();
         }}

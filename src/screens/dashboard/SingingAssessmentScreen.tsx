@@ -1,21 +1,26 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
-import { BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  BackHandler,
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
 import {
   useAudioRecorder,
   type LiveAudioFrame,
 } from '@/hooks/useAudioRecorder';
-import { usePhaseState } from '@/hooks/usePhaseState';
 import { useMountedRefLifecycle } from '@/hooks/useMountedRefLifecycle';
+import { usePhaseState } from '@/hooks/usePhaseState';
 import type { RecordingExercisePhase } from '@/types/exercises';
 
 import {
@@ -30,7 +35,9 @@ import {
   SINGING_ASSESSMENT_BPM,
   type SingingAssessmentResult,
 } from '@/services/assessment/singingAssessment';
-import { auth, db } from '@/services/firebase/config';
+import {
+  saveSingingAssessment,
+} from '@/services/assessment/singingAssessmentRepository';
 import {
   midiToFrequency,
   midiToNoteName,
@@ -276,39 +283,14 @@ export default function SingingAssessmentScreen() {
     async (assessment: SingingAssessmentResult) => {
       if (quitRequestedRef.current) return;
 
-      const user = auth.currentUser;
-
-      if (!user) {
-        if (mountedRef.current && !quitRequestedRef.current) {
-          setSaveMessage(
-            'Assessment complete. Sign in to save this attempt to your account.',
-          );
-        }
-        return;
-      }
-
       try {
-        await addDoc(
-          collection(db, 'users', user.uid, 'singingAssessments'),
-          {
-            assessmentType: 'maryHadALittleLamb',
-            guideMode: 'beat',
-            tempoBpm: SINGING_ASSESSMENT_BPM,
-            overallScore: assessment.overallScore,
-            pitchAccuracy: assessment.pitchAccuracy,
-            pitchStability: assessment.pitchStability,
-            vocalConsistency: assessment.vocalConsistency,
-            voicedFrameCount: assessment.voicedFrameCount,
-            detectedNoteCount: assessment.detectedNoteCount,
-            durationSeconds: assessment.durationSeconds,
-            feedback: assessment.feedback,
-            timestamp: serverTimestamp(),
-          },
-        );
+        const assessmentId = await saveSingingAssessment(assessment);
 
         if (mountedRef.current && !quitRequestedRef.current) {
           setSaveMessage(
-            'Your singing assessment has been saved to your singing assessment history.',
+            assessmentId
+              ? 'Your singing assessment has been saved to your singing assessment history.'
+              : 'Assessment complete. Sign in to save this attempt to your account.',
           );
         }
       } catch (saveError) {

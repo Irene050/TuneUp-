@@ -1,6 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  Text,
+  View
+} from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
@@ -64,7 +69,7 @@ export function ExerciseQuitModal({
             disabled={isQuitting}
             onPress={onContinue}
             style={({ pressed }) => [
-              exerciseStyles.noAudioRedoButton,
+              exerciseStyles.primaryButton,
               pressed && exerciseStyles.buttonPressed,
               isQuitting && exerciseStyles.quitModalButtonDisabled,
             ]}
@@ -78,7 +83,7 @@ export function ExerciseQuitModal({
             disabled={isQuitting}
             onPress={onQuit}
             style={({ pressed }) => [
-              exerciseStyles.quitModalAssessmentQuitButton,
+              exerciseStyles.secondaryButton,
               pressed && exerciseStyles.buttonPressed,
               isQuitting && exerciseStyles.quitModalButtonDisabled,
             ]}
@@ -256,7 +261,7 @@ export function ExerciseNoAudioModal({
             disabled={isQuitting}
             onPress={onRedo}
             style={({ pressed }) => [
-              exerciseStyles.noAudioRedoButton,
+              exerciseStyles.primaryButton,
               pressed && exerciseStyles.buttonPressed,
               isQuitting && exerciseStyles.quitModalButtonDisabled,
             ]}
@@ -270,7 +275,7 @@ export function ExerciseNoAudioModal({
             disabled={isQuitting}
             onPress={onQuit}
             style={({ pressed }) => [
-              exerciseStyles.quitModalAssessmentQuitButton,
+              exerciseStyles.secondaryButton,
               pressed && exerciseStyles.buttonPressed,
               isQuitting && exerciseStyles.quitModalButtonDisabled,
             ]}

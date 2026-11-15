@@ -2,7 +2,7 @@ import type {
   ArpeggioSpeedMeasurement,
 } from '@/services/measurement/agility/arpeggioSpeedDrill';
 
-import { clampFinite } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export type ArpeggioSpeedScore = {
   overall: number;

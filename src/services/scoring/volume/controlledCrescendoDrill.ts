@@ -1,7 +1,7 @@
 import type {
   ControlledCrescendoMeasurement,
 } from '@/services/measurement/volume/controlledCrescendoDrill';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import type { VolumeScoreOptions } from './types';
 
 export interface ControlledCrescendoScore {

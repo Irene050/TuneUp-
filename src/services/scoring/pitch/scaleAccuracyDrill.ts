@@ -6,7 +6,7 @@ import type {
 import {
     ScaleAccuracyMeasurement,
 } from '@/services/measurement/pitch/scaleAccuracyDrill';
-import { average } from '@/utils/math';
+import { average } from '@/utils/utils';
 
 export interface ScaleAccuracyScoreResult {
   score: number;

@@ -7,7 +7,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 
 import {
   type LiveAudioFrame,

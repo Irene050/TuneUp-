@@ -48,7 +48,7 @@ import {
   concatenateRepetitions,
   fixedDurationSamples,
   hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
+} from '@/utils/utils';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
   createMusicalNote,
@@ -1597,7 +1597,7 @@ export default function VolumeControlStabilityScreen({
         }
         onRetry={resetExercise}
         onExit={() => {
-          void pauseForExitPrompt();
+          void quitExercise();
         }}
 >
   <View style={exerciseStyles.resultCardVariant4}>

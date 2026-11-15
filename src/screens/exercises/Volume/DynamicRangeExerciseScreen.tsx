@@ -27,8 +27,8 @@ import { measureDynamicRange, type RepetitionInterval } from '@/services/measure
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreDynamicRange } from '@/services/scoring/volume/dynamicRangeExercise';
-import { sleep } from '@/utils/async';
-import { concatenateRepetitions, fixedDurationSamples, hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { sleep } from '@/utils/utils';
+import { concatenateRepetitions, fixedDurationSamples, hasSufficientRecordedSignal } from '@/utils/utils';
 import { normalizeVolumeDbfs } from '@/utils/dsp/volumeAnalysis';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
@@ -626,7 +626,10 @@ export default function DynamicRangeExercise({
     [setPhase],
   );
 
-  const startExercise = useCallback(async (repetitionToRedo?: number) => {
+  const startExercise = useCallback(async (
+    repetitionToRedo?: number,
+    showInstructions = false,
+  ) => {
     if (isLoadingParams || pausedRef.current || quitInProgressRef.current) return;
 
     const runId = ++countdownRunIdRef.current;
@@ -637,6 +640,11 @@ export default function DynamicRangeExercise({
     } else {
       retryingRepetitionRef.current = repetitionToRedo - 1;
       setCurrentRep(repetitionToRedo);
+    }
+
+    if (showInstructions) {
+      setPhase('instructions');
+      return;
     }
 
     try {
@@ -699,7 +707,7 @@ export default function DynamicRangeExercise({
     pausedRef.current = false;
     showQuitModalRef.current = false;
     setShowQuitModal(false);
-    void startExercise();
+    void startExercise(undefined, true);
   }, [startExercise]);
 
   const pauseForExitPrompt = useCallback(() => {
@@ -849,7 +857,7 @@ export default function DynamicRangeExercise({
     setPhase,
   ]);
 
-  const quitExercise = useCallback(async () => {
+  const quitExercise = useCallback(async (returnToExerciseList = false) => {
     if (quitInProgressRef.current) return;
 
     quitInProgressRef.current = true;
@@ -870,7 +878,13 @@ export default function DynamicRangeExercise({
       console.error('[DynamicRange] Quit stop failed:', errorMessage);
     } finally {
       isRecordingRef.current = false;
-      if (mountedRef.current) router.replace('/dashboard?tab=exercises');
+      if (mountedRef.current) {
+        router.replace(
+          returnToExerciseList
+            ? '/exercises/volume'
+            : '/dashboard?tab=exercises',
+        );
+      }
     }
   }, [clearCountdown, stopRecordingSafely]);
 
@@ -1270,7 +1284,9 @@ export default function DynamicRangeExercise({
           </View>
         }
         onRetry={tryAgain}
-        onExit={handleBack}
+        onExit={() => {
+          void quitExercise(true);
+        }}
         children={null}
       />
       {quitModal}

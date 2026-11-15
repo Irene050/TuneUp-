@@ -42,8 +42,10 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreQuickIntervalJump } from '@/services/scoring/agility/quickIntervalJump';
-import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import {
+  hasSufficientRecordedSignal,
+  sleep,
+} from '@/utils/utils';
 import {
     AGILITY_NOTE_START_DELAY_MS,
     getActiveSequenceNoteIndex,
@@ -478,12 +480,6 @@ export default function QuickIntervalJumpScreen() {
         for (const chunk of audioChunks) {
           combinedSamples.set(chunk, offset);
           offset += chunk.length;
-        }
-
-        if (!hasSufficientRecordedSignal(combinedSamples)) {
-          setExercisePhase('listening');
-          setShowNoAudioModal(true);
-          return;
         }
 
         const targetFrequencies = Array.from(
@@ -1481,28 +1477,28 @@ export default function QuickIntervalJumpScreen() {
         </View>
 
         <Pressable
-          style={[
-            exerciseStyles.startButtonPill,
-            exerciseStyles.startButtonPillStandardSpacing,
+          style={({ pressed }) => [
+            exerciseStyles.primaryButton,
+            pressed && exerciseStyles.buttonPressed,
           ]}
-          onPress={() => setConfirmation('tryAgain')}
+          onPress={resetExercise}
           accessibilityRole="button"
           accessibilityLabel="Try the exercise again"
         >
           <Ionicons
             name="refresh"
             size={18}
-            color={COLORS.white}
+            color={COLORS.brown}
           />
-          <Text style={exerciseStyles.startButtonText}>Try Again</Text>
+          <Text style={exerciseStyles.cardTitle}>Try Again</Text>
         </Pressable>
 
         <Pressable
-          style={[
-            exerciseStyles.doneButtonPill,
-            exerciseStyles.doneButtonPillRow,
+          style={({ pressed }) => [
+            exerciseStyles.secondaryButton,
+            pressed && exerciseStyles.buttonPressed,
           ]}
-          onPress={() => void pauseForExitPrompt()}
+          onPress={() => void quitExercise()}
           accessibilityRole="button"
           accessibilityLabel="Back to exercises"
         >
@@ -1511,7 +1507,7 @@ export default function QuickIntervalJumpScreen() {
             size={15}
             color={COLORS.brown}
           />
-          <Text style={exerciseStyles.infoName}>
+          <Text style={exerciseStyles.quitButtonText}>
             Back to Exercises
           </Text>
         </Pressable>

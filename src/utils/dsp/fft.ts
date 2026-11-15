@@ -1,5 +1,3 @@
-import { calcRMS } from '@/utils/dsp/rms';
-
 export function fftComplex(
   real: Float64Array,
   imag: Float64Array,
@@ -94,6 +92,30 @@ export function fftComplex(
   }
 }
 
+function computeFFTMagnitudesWithWorkspace(
+  frame: Float32Array,
+  real: Float64Array,
+  imag: Float64Array,
+): Float32Array {
+  for (let i = 0; i < frame.length; i++) {
+    real[i] = frame[i];
+    imag[i] = 0;
+  }
+
+  fftComplex(real, imag);
+
+  const magnitudes = new Float32Array(frame.length / 2);
+
+  for (let i = 0; i < frame.length / 2; i++) {
+    magnitudes[i] = Math.sqrt(
+      real[i] * real[i] +
+      imag[i] * imag[i],
+    );
+  }
+
+  return magnitudes;
+}
+
 export function computeFFTMagnitudes(
   frame: Float32Array,
 ): Float32Array {
@@ -108,25 +130,11 @@ export function computeFFTMagnitudes(
     );
   }
 
-  const real = new Float64Array(n);
-  const imag = new Float64Array(n);
-
-  for (let i = 0; i < n; i++) {
-    real[i] = frame[i];
-  }
-
-  fftComplex(real, imag);
-
-  const magnitudes = new Float32Array(n / 2);
-
-  for (let i = 0; i < n / 2; i++) {
-    magnitudes[i] = Math.sqrt(
-      real[i] * real[i] +
-      imag[i] * imag[i],
-    );
-  }
-
-  return magnitudes;
+  return computeFFTMagnitudesWithWorkspace(
+    frame,
+    new Float64Array(n),
+    new Float64Array(n),
+  );
 }
 
 export function samplesToFFTFrames(
@@ -156,12 +164,19 @@ export function samplesToFFTFrames(
   }
 
   const frames: Float32Array[] = [];
+  const hannWindow = new Float64Array(fftSize);
+  const windowedFrame = new Float32Array(fftSize);
+  const real = new Float64Array(fftSize);
+  const imag = new Float64Array(fftSize);
 
-  let processedFrames = 0;
-  let skippedQuietFrames = 0;
-  let skippedInvalidFrames = 0;
-  let minObservedRms = Infinity;
-  let maxObservedRms = 0;
+  for (let i = 0; i < fftSize; i++) {
+    hannWindow[i] =
+      0.5 *
+      (1 -
+        Math.cos(
+          (2 * Math.PI * i) / (fftSize - 1),
+        ));
+  }
 
   for (
     let start = 0;
@@ -173,59 +188,45 @@ export function samplesToFFTFrames(
       start + fftSize,
     );
 
-    processedFrames++;
-
     let isFiniteFrame = true;
+    let sumSquares = 0;
 
     for (let i = 0; i < rawFrame.length; i++) {
-      if (!Number.isFinite(rawFrame[i])) {
+      const sample = rawFrame[i];
+
+      if (!Number.isFinite(sample)) {
         isFiniteFrame = false;
         break;
       }
+
+      sumSquares += sample * sample;
     }
 
     if (!isFiniteFrame) {
-      skippedInvalidFrames++;
       continue;
     }
 
-    const frameRms = calcRMS(rawFrame);
+    const frameRms = Math.sqrt(
+      sumSquares / rawFrame.length,
+    );
 
     if (!Number.isFinite(frameRms)) {
-      skippedInvalidFrames++;
       continue;
     }
-
-    minObservedRms = Math.min(
-      minObservedRms,
-      frameRms,
-    );
-
-    maxObservedRms = Math.max(
-      maxObservedRms,
-      frameRms,
-    );
 
     if (frameRms < minFrameRms) {
-      skippedQuietFrames++;
       continue;
     }
 
-    const windowedFrame = new Float32Array(fftSize);
-
     for (let i = 0; i < fftSize; i++) {
-      const window =
-        0.5 *
-        (1 -
-          Math.cos(
-            (2 * Math.PI * i) / (fftSize - 1),
-          ));
-
-      windowedFrame[i] = rawFrame[i] * window;
+      windowedFrame[i] =
+        rawFrame[i] * hannWindow[i];
     }
 
-    const magnitudes = computeFFTMagnitudes(
+    const magnitudes = computeFFTMagnitudesWithWorkspace(
       windowedFrame,
+      real,
+      imag,
     );
 
     let hasValidSpectrum = true;
@@ -241,7 +242,6 @@ export function samplesToFFTFrames(
     }
 
     if (!hasValidSpectrum) {
-      skippedInvalidFrames++;
       continue;
     }
 

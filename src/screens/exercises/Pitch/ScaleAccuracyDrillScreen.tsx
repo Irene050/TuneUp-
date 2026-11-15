@@ -58,13 +58,13 @@ import {
     scoreScaleAccuracyDrill,
     type ScaleAccuracyScoreResult,
 } from '@/services/scoring/pitch/scaleAccuracyDrill';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     calcLiveStability,
     calcPitchAccuracy,
     segmentIntoNotes,
 } from '@/utils/dsp/pitch';
-import { averageFinite } from '@/utils/math';
+import { averageFinite } from '@/utils/utils';
 import {
     disposeNotePlayer,
     playNoteSequence,
@@ -1453,7 +1453,7 @@ export default function ScaleAccuracyDrillScreen({ tier }: Props) {
           scoreMessage={`${result.correctNotes} of ${result.totalNotes} notes matched across all repetitions`}
 
           onRetry={retry}
-          onExit={goBack}
+          onExit={quitExercise}
         >
           <View style={exerciseStyles.resultCard}>
             <Text style={exerciseStyles.resultCardTitle}>Note Accuracy</Text>

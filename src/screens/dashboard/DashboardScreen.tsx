@@ -2,7 +2,12 @@ import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';

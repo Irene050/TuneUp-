@@ -37,7 +37,7 @@ import {
 } from '@/utils/music/notes';
 
 import { detectOnsetOffset } from '@/utils/dsp/onsetOffset';
-import { average, clampPercentage } from '@/utils/math';
+import { average, clampPercentage } from '@/utils/utils';
 
 export type { VocalRange };
 

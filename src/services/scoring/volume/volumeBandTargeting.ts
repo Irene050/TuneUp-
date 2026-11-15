@@ -1,7 +1,7 @@
 import type {
   VolumeBandMeasurement,
 } from '@/services/measurement/volume/volumeBandTargeting';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import type { VolumeScoreOptions } from './types';
 
 const DEFAULT_PASSING_SCORE = 60;

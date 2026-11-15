@@ -1,4 +1,4 @@
-import { average, clamp } from '@/utils/math';
+import { average, clamp } from '@/utils/utils';
 import { calcRMS, rmsToDb } from './rms';
 
 export type VolumeRampDirection = 'crescendo' | 'decrescendo';

@@ -4,9 +4,9 @@ import { Text, View } from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { getPitchDifferenceCents } from '@/utils/music/notes';
-import { formatFrequency } from '@/utils/numberFormatting';
+import { formatFrequency } from '@/utils/utils';
 
 type RecordingNoteSequenceProps =
   | {

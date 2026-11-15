@@ -1,10 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, Text, View } from 'react-native';
+import {
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 
 import { COLORS, VOLUME_RAMP_BAR_COUNT } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-import { clamp } from '@/utils/math';
 import type { VolumeRampDirection } from '@/utils/dsp/volumeAnalysis';
+import { clamp } from '@/utils/utils';
 
 type VolumeVisualizerVariant =
   | 'crescendo'

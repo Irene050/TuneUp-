@@ -53,9 +53,9 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreToneConsistencyExercise } from '@/services/scoring/tone/toneConsistencyExercise';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import {
     disposeNotePlayer,
     playSingleNote,
@@ -64,7 +64,7 @@ import {
     getRandomPitchNote,
     type VocalRange,
 } from '@/utils/music/notes';
-import { formatFrequency } from '@/utils/numberFormatting';
+import { formatFrequency } from '@/utils/utils';
 
 
 type Phase = StandardExercisePhase;
@@ -1486,7 +1486,7 @@ export default function ToneConsistencyExerciseScreen({
               : 'Keep practicing the same target note with a steady and consistent tone.'
           }
           onRetry={retryExercise}
-          onExit={goBack}
+          onExit={quitExercise}
 
         >
           <View style={exerciseStyles.resultCard}>

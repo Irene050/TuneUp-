@@ -1,7 +1,7 @@
 import type {
   VolumeControlStabilityMeasurement,
 } from '@/services/measurement/volume/volumeControlStability';
-import { clampFinite } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 import type { VolumeScoreOptions } from './types';
 
 export interface VolumeControlStabilityScore {

@@ -3,7 +3,7 @@ import {
   trackPitchOverTime,
   type PitchFrame,
 } from '@/utils/dsp/pitch';
-import { median } from '@/utils/math';
+import { median } from '@/utils/utils';
 
 import { frequencyToMidi } from '@/utils/music/notes';
 

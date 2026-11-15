@@ -2,7 +2,7 @@ import {
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
-import { median } from '@/utils/math';
+import { median } from '@/utils/utils';
 
 export interface SustainedNoteStabilityMeasurement {
   stabilityCents: number;

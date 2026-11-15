@@ -9,7 +9,7 @@ import type {
 import {
     calcCrossRepConsistency,
 } from '@/utils/dsp/spectral';
-import { clampScore } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export interface ToneConsistencyScoreResult {
   score: number;
@@ -77,7 +77,7 @@ export function scoreToneConsistencyExercise(
           2) *
           100;
 
-      return Math.round(clampScore(consistency * 0.96));
+      return Math.round(clampFinite(consistency * 0.96));
     },
   );
 
@@ -88,7 +88,7 @@ export function scoreToneConsistencyExercise(
     );
 
   const score = Math.round(
-    clampScore(consistency * 0.96),
+    clampFinite(consistency * 0.96),
   );
 
   return {

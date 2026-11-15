@@ -30,10 +30,59 @@ const DEFAULT_MAX_FREQUENCY = 1000;
 const DEFAULT_MIN_RMS = 0.008;
 const DEFAULT_MIN_CORRELATION = 0.3;
 
+type PitchDetectionWorkspace = {
+  window: Float64Array;
+  processed: Float64Array;
+  prefixEnergy: Float64Array;
+  real: Float64Array;
+  imag: Float64Array;
+  correlations: Float64Array;
+};
+
+function createPitchDetectionWorkspace(
+  length: number,
+): PitchDetectionWorkspace {
+  let fftSize = 1;
+
+  while (fftSize < length * 2 - 1) {
+    fftSize <<= 1;
+  }
+
+  const window = new Float64Array(length);
+
+  for (let i = 0; i < length; i++) {
+    window[i] =
+      0.5 -
+      0.5 * Math.cos((2 * Math.PI * i) / (length - 1));
+  }
+
+  return {
+    window,
+    processed: new Float64Array(length),
+    prefixEnergy: new Float64Array(length + 1),
+    real: new Float64Array(fftSize),
+    imag: new Float64Array(fftSize),
+    correlations: new Float64Array(length + 1),
+  };
+}
+
 export function detectPitchAutocorrelation(
   frame: Float32Array,
   sampleRate: number,
   options: AgilityPitchOptions = {},
+): number | null {
+  return detectPitchAutocorrelationWithWorkspace(
+    frame,
+    sampleRate,
+    options,
+  );
+}
+
+function detectPitchAutocorrelationWithWorkspace(
+  frame: Float32Array,
+  sampleRate: number,
+  options: AgilityPitchOptions,
+  workspace?: PitchDetectionWorkspace,
 ): number | null {
   const minFrequency =
     options.minFrequency ?? DEFAULT_MIN_FREQUENCY;
@@ -86,22 +135,17 @@ export function detectPitchAutocorrelation(
 
   mean /= length;
 
-  const processed = new Float64Array(length);
-  const prefixEnergy = new Float64Array(length + 1);
+  const activeWorkspace =
+    workspace ?? createPitchDetectionWorkspace(length);
+  const { window, processed, prefixEnergy, real, imag, correlations } =
+    activeWorkspace;
+  prefixEnergy[0] = 0;
 
   let totalEnergy = 0;
 
   for (let i = 0; i < length; i++) {
     const centered = frame[i] - mean;
-
-    const window =
-      0.5 -
-      0.5 *
-        Math.cos(
-          (2 * Math.PI * i) / (length - 1),
-        );
-
-    const value = centered * window;
+    const value = centered * window[i];
 
     processed[i] = value;
     totalEnergy += value * value;
@@ -129,20 +173,13 @@ export function detectPitchAutocorrelation(
     return null;
   }
 
-  let fftSize = 1;
-
-  while (fftSize < length * 2 - 1) {
-    fftSize <<= 1;
-  }
-
-  const real = new Float64Array(fftSize);
-  const imag = new Float64Array(fftSize);
-
+  real.fill(0);
+  imag.fill(0);
   real.set(processed);
 
   fftComplex(real, imag);
 
-  for (let i = 0; i < fftSize; i++) {
+  for (let i = 0; i < real.length; i++) {
     const re = real[i];
     const im = imag[i];
 
@@ -152,7 +189,7 @@ export function detectPitchAutocorrelation(
 
   fftComplex(real, imag, true);
 
-  const correlations = new Float64Array(maxLag + 2);
+  correlations.fill(0);
 
   let bestLag = -1;
   let bestCorrelation = -Infinity;
@@ -274,6 +311,7 @@ export function extractAgilityPitchFrames(
     return [];
   }
 
+  const workspace = createPitchDetectionWorkspace(frameSize);
   const frames: AgilityPitchFrame[] = [];
 
   for (
@@ -286,10 +324,11 @@ export function extractAgilityPitchFrames(
       start + frameSize,
     );
 
-    const frequency = detectPitchAutocorrelation(
+    const frequency = detectPitchAutocorrelationWithWorkspace(
       frame,
       sampleRate,
       options,
+      workspace,
     );
 
     if (frequency === null) {

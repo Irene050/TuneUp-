@@ -56,13 +56,13 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreFrequencyZoneStability } from '@/services/scoring/tone/frequencyZoneStability';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     classifyFrequencyZone,
     type FrequencyZone,
 } from '@/utils/dsp/spectral';
-import { clamp } from '@/utils/math';
-import { formatNumber } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/utils';
+import { formatNumber } from '@/utils/utils';
 
 const REST_SECONDS = 2;
 
@@ -1377,7 +1377,7 @@ export default function FrequencyZoneStabilityScreen({
               : 'Try to keep your vocal frequency more consistent.'
           }
           onRetry={handleRetry}
-          onExit={handleBack}
+          onExit={quitExercise}
         >
           <View style={exerciseStyles.resultDetailsCard}>
             <View style={exerciseStyles.resultDetailRow}>

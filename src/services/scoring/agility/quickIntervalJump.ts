@@ -1,7 +1,7 @@
 import type {
   QuickIntervalJumpMeasurement,
 } from '@/services/measurement/agility/quickIntervalJump';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 
 export type QuickIntervalJumpScore = {
   overall: number;

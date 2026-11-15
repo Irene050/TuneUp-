@@ -4,7 +4,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi } from '@/utils/music/notes';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 
 export type VocalRunAccuracyMeasurement = {
   detectedPitches: number[];

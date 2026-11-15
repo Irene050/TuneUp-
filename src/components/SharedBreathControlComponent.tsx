@@ -1,10 +1,10 @@
+import { exerciseStyles } from '@/constants/exerciseStyles';
+import type { LiveVoiceDetection } from '@/utils/utils';
 import {
   Text,
   View,
   type DimensionValue,
 } from 'react-native';
-import type { LiveVoiceDetection } from '@/utils/audioSignal';
-import { exerciseStyles } from '@/constants/exerciseStyles';
 
 export default function LiveVoiceDetectionVisualizer({
   detected,

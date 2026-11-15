@@ -52,9 +52,9 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreArpeggioSpeed } from '@/services/scoring/agility/arpeggioSpeedDrill';
-import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { average } from '@/utils/math';
+import { sleep } from '@/utils/utils';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
+import { average } from '@/utils/utils';
 import {
     AGILITY_NOTE_START_DELAY_MS,
     getActiveSequenceNoteIndex,
@@ -1434,29 +1434,31 @@ const renderRecording = () => {
         </View>
 
         <Pressable
-          style={[
-            exerciseStyles.startButtonPill,
-            exerciseStyles.startButtonPillFixedHeight,
-            exerciseStyles.startButtonPillStandardSpacing,
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            exerciseStyles.primaryButton,
+            pressed && exerciseStyles.buttonPressed,
           ]}
           onPress={resetExercise}
         >
           <Ionicons
             name="refresh"
             size={18}
-            color={COLORS.white}
+            color={COLORS.brown}
           />
 
-          <Text style={exerciseStyles.startButtonText}>
-            Try Again
-          </Text>
+          <Text style={exerciseStyles.cardTitle}>Try Again</Text>
         </Pressable>
 
         <Pressable
-          style={exerciseStyles.doneButtonPill}
-          onPress={pauseForExitPrompt}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            exerciseStyles.secondaryButton,
+            pressed && exerciseStyles.buttonPressed,
+          ]}
+          onPress={() => void quitExercise()}
         >
-          <Text style={exerciseStyles.infoName}>
+          <Text style={exerciseStyles.quitButtonText}>
             Back to Exercises
           </Text>
         </Pressable>

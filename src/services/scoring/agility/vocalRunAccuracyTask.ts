@@ -1,5 +1,5 @@
 import type { VocalRunAccuracyMeasurement } from '@/services/measurement/agility/vocalRunAccuracyTask';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 
 export type VocalRunAccuracyScore = {
   overall: number;

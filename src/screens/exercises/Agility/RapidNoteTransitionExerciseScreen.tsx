@@ -47,8 +47,8 @@ import { measureRapidNoteTransition } from '@/services/measurement/agility/rapid
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreRapidNoteTransition } from '@/services/scoring/agility/rapidNoteTransitionExercise';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { average, clampScore } from '@/utils/math';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
+import { average, clampFinite } from '@/utils/utils';
 import {
     AGILITY_NOTE_START_DELAY_MS,
     disposeNotePlayer,
@@ -530,10 +530,10 @@ export default function RapidNoteTransitionExerciseScreen({
         );
         attempt = {
           repetition: currentRep,
-          overall: clampScore(scored.overall),
-          pitchScore: clampScore(scored.pitchScore),
-          sequenceScore: clampScore(scored.sequenceScore),
-          speedScore: clampScore(scored.speedScore),
+          overall: clampFinite(scored.overall),
+          pitchScore: clampFinite(scored.pitchScore),
+          sequenceScore: clampFinite(scored.sequenceScore),
+          speedScore: clampFinite(scored.speedScore),
           passed: scored.passed,
           analysisFailed: false,
           transitionCount: measurement.transitionCount,
@@ -1005,8 +1005,8 @@ export default function RapidNoteTransitionExerciseScreen({
         scoreSuffix="/ 100"
         resultIcon={result.passed ? 'checkmark-circle-outline' : 'refresh-circle-outline'}
         scoreDetails={`${result.attempts.length} of ${exerciseConfig.repetitions} repetitions completed`}
-        onRetry={() => setConfirmation('tryAgain')}
-        onExit={() => setConfirmation('quit')}
+        onRetry={retryExercise}
+        onExit={() => router.replace('/exercises/agility')}
 
       >
         <View style={exerciseStyles.resultCard}>
@@ -1148,7 +1148,7 @@ function ScoreBar({
   value: number;
   last?: boolean;
 }) {
-  const safeValue = clampScore(value);
+  const safeValue = clampFinite(value);
   return (
     <View style={last ? exerciseStyles.scoreRowLast : exerciseStyles.scoreRow}>
       <View style={exerciseStyles.scoreRowHeader}>

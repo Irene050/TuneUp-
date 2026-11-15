@@ -23,9 +23,9 @@ import { measureNoteMatching } from '@/services/measurement/pitch/noteMatching';
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreNoteMatching } from '@/services/scoring/pitch/noteMatching';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { calcLiveStability, calcPitchAccuracy } from '@/utils/dsp/pitch';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { disposeNotePlayer, playSingleNote } from '@/utils/music/notePlayer';
 import {
     frequencyToNoteName,
@@ -33,7 +33,7 @@ import {
     getRandomPitchNote,
     type VocalRange,
 } from '@/utils/music/notes';
-import { formatFrequency } from '@/utils/numberFormatting';
+import { formatFrequency } from '@/utils/utils';
 
 const RECORDING_DURATION_SECONDS = 4;
 const PITCH_HISTORY_LIMIT = 20;
@@ -1163,7 +1163,7 @@ export default function NoteMatchingScreen({ tier }: Props) {
               : 'Keep practicing your pitch placement across each repetition.'
           }
           onRetry={retryExercise}
-          onExit={goBack}
+          onExit={quitExercise}
         >
           <View style={exerciseStyles.resultCard}>
             <Text style={exerciseStyles.resultCardTitle}>

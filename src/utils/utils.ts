@@ -4,6 +4,10 @@ import {
   VOLUME_DBFS_MIN,
 } from '@/constants/appConstants';
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export interface LiveVoiceDetection {
   detected: boolean;
   level: number;
@@ -74,7 +78,7 @@ export function fixedDurationSamples(
 }
 
 export function concatenateRepetitions(
-  repetitions: Array<Float32Array | null>,
+  repetitions: (Float32Array | null)[],
 ): Float32Array {
   const segments = repetitions.filter(
     (segment): segment is Float32Array => segment !== null,
@@ -92,4 +96,80 @@ export function concatenateRepetitions(
   }
 
   return result;
+}
+
+export function clamp(
+  value: number,
+  min: number,
+  max: number,
+): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function clampFinite(
+  value: number,
+  min = 0,
+  max = 100,
+): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return clamp(value, min, max);
+}
+
+export function clampPercentage(value: number): number {
+  return Math.round(clampFinite(value));
+}
+
+export function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+export function averageFinite(values: number[]): number {
+  const finiteValues = values.filter(Number.isFinite);
+  return average(finiteValues);
+}
+
+export function median(values: number[]): number {
+  const sorted = values
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  if (sorted.length === 0) {
+    return 0;
+  }
+
+  const middle = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+export function formatNumber(
+  value: number,
+  decimals = 1,
+): string {
+  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
+}
+
+export function formatFrequency(
+  frequency: number | null,
+  decimals = 1,
+  fallback = '--',
+): string {
+  if (
+    frequency === null ||
+    !Number.isFinite(frequency) ||
+    frequency <= 0
+  ) {
+    return fallback;
+  }
+
+  return `${formatNumber(frequency, decimals)} Hz`;
 }

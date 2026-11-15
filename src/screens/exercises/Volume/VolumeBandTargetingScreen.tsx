@@ -42,8 +42,8 @@ import {
   fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreVolumeBandTargeting } from '@/services/scoring/volume/volumeBandTargeting';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
-import { clamp } from '@/utils/math';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
+import { clamp } from '@/utils/utils';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import {
   createMusicalNote,
@@ -1284,7 +1284,7 @@ export default function VolumeBandTargeting({
     }
   };
 
-  const startExercise = () => {
+  const startExercise = (showInstructions = false) => {
     if (
       !parametersReady ||
       isRecording ||
@@ -1319,7 +1319,7 @@ export default function VolumeBandTargeting({
     );
 
     pausedRef.current = false;
-    setPhase('countdown');
+    setPhase(showInstructions ? 'instructions' : 'countdown');
   };
 
   useEffect(() => {
@@ -1458,7 +1458,7 @@ export default function VolumeBandTargeting({
             tip="Don't chase the number. Find a comfortable loudness first, then make small adjustments to stay inside the band."
             tier={resolvedTier}
             onBack={pauseForExitPrompt}
-            onStart={startExercise}
+            onStart={() => startExercise()}
             startDisabled={startDisabled}
             startLabel={
               isRecording
@@ -1727,8 +1727,8 @@ export default function VolumeBandTargeting({
               </View>
             </View>
           }
-          onRetry={startExercise}
-          onExit={pauseForExitPrompt}
+          onRetry={() => startExercise(true)}
+          onExit={quitExercise}
         >
           <></>
         </ExerciseResultsScreen>

@@ -57,11 +57,11 @@ import {
     scoreSteadyToneHolding,
     type SteadyToneHoldingScoreResult,
 } from '@/services/scoring/tone/steadyToneHolding';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { frequencyToNoteName } from '@/utils/music/notes';
-import { formatNumber } from '@/utils/numberFormatting';
+import { formatNumber } from '@/utils/utils';
 
 
 type Props = ExerciseTierProps;
@@ -1115,7 +1115,7 @@ export default function SteadyToneHoldingScreen({
               : 'Work on keeping your tone, loudness, and pitch more consistent.'
           }
           onRetry={retry}
-          onExit={goBack}
+          onExit={quitExercise}
 
         >
           <View

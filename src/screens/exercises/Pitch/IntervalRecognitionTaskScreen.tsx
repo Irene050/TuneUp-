@@ -31,10 +31,10 @@ import { measureIntervalRecognition } from '@/services/measurement/pitch/interva
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreIntervalRecognitionTask, type IntervalRecognitionScoreResult } from '@/services/scoring/pitch/intervalRecognitionTask';
-import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { sleep } from '@/utils/utils';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { calcLiveStability, calcPitchAccuracy } from '@/utils/dsp/pitch';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { playNoteSequence } from '@/utils/music/notePlayer';
 import {
     createMusicalNote,
@@ -1653,28 +1653,33 @@ export default function IntervalRecognitionTaskScreen({
             </View>
 
             <Pressable
-              style={[
-                exerciseStyles.startButtonPill,
-                exerciseStyles.startButtonPillFixedHeight,
+              style={({ pressed }) => [
+                exerciseStyles.primaryButton,
+                pressed && exerciseStyles.buttonPressed,
               ]}
               onPress={retry}
+              accessibilityRole="button"
             >
-              <Text style={exerciseStyles.startButtonText}>
+              <Text style={exerciseStyles.cardTitle}>
                 Try Again
               </Text>
 
               <Ionicons
                 name="refresh"
                 size={18}
-                color={COLORS.white}
+                color={COLORS.brown}
               />
             </Pressable>
 
             <Pressable
-              style={exerciseStyles.doneButton}
+              style={({ pressed }) => [
+                exerciseStyles.secondaryButton,
+                pressed && exerciseStyles.buttonPressed,
+              ]}
               onPress={quitExercise}
+              accessibilityRole="button"
             >
-              <Text style={exerciseStyles.componentScore}>Done</Text>
+              <Text style={exerciseStyles.quitButtonText}>Done</Text>
             </Pressable>
           </ScrollView>
         </View>

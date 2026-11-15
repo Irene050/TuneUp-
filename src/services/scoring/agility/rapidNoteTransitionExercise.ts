@@ -1,5 +1,5 @@
 import type { RapidNoteTransitionMeasurement } from '@/services/measurement/agility/rapidNoteTransitionExercise';
-import { clampScore } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export type RapidNoteTransitionScore = {
   overall: number;
@@ -25,7 +25,7 @@ function calculateSpeedScore(
       ? targetSpeed!
       : 3;
 
-  return clampScore(
+  return clampFinite(
     (transitionsPerSecond / safeTargetSpeed) * 100,
   );
 }
@@ -35,10 +35,10 @@ export function scoreRapidNoteTransition(
   targetSpeed?: number,
   accuracyThreshold = 70,
 ): RapidNoteTransitionScore {
-  const threshold = clampScore(accuracyThreshold);
+  const threshold = clampFinite(accuracyThreshold);
 
-  const pitchScore = clampScore(measurement.pitchAccuracy);
-  const sequenceScore = clampScore(measurement.sequenceAccuracy);
+  const pitchScore = clampFinite(measurement.pitchAccuracy);
+  const sequenceScore = clampFinite(measurement.sequenceAccuracy);
 
   const speedScore = calculateSpeedScore(
     measurement.transitionsPerSecond,
@@ -46,7 +46,7 @@ export function scoreRapidNoteTransition(
   );
 
   const overall = Math.round(
-    clampScore(
+    clampFinite(
       pitchScore * 0.4 +
         sequenceScore * 0.3 +
         speedScore * 0.3,

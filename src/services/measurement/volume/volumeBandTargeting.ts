@@ -2,7 +2,7 @@ import {
   calcRMSWindows,
   toDbArray,
 } from '@/utils/dsp/volumeAnalysis';
-import { average, clamp } from '@/utils/math';
+import { average, clamp } from '@/utils/utils';
 
 const DEFAULT_WINDOW_MS = 50;
 

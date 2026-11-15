@@ -4527,24 +4527,28 @@ export const exerciseStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  noAudioRedoButton: {
+  primaryButton: {
     width: '100%',
     minHeight: 50,
     borderRadius: 16,
     backgroundColor: COLORS.pink,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     marginTop: 22,
   },
-  quitModalAssessmentQuitButton: {
+  secondaryButton: {
     width: '100%',
     minHeight: 50,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.white,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     marginTop: 10,
   },
   content_Exercise: {
@@ -5020,30 +5024,6 @@ export const exerciseStyles = StyleSheet.create({
   },
   repetitionBreakdownComponent: {
     minWidth: '40%',
-  },
-  resultsRetryButton: {
-    minHeight: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: COLORS.brown,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  resultsExitButton: {
-    minHeight: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.brown,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  resultsExitText: {
-    fontFamily: 'FredokaSemiBold',
-    fontSize: 15,
-    color: COLORS.white,
   },
   screenVariant2: {
     paddingTop: 100,
@@ -5905,15 +5885,6 @@ export const exerciseStyles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 45,
     alignItems: 'center',
-  },
-  secondaryButton: {
-    width: '100%',
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
   },
   largeVowel: {
     ...textStyleBases.boldBrownText,

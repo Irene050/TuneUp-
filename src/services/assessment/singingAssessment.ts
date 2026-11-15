@@ -1,7 +1,7 @@
-import { sleep } from '@/utils/async';
+import { sleep } from '@/utils/utils';
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
 import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
-import { average, clampFinite, median } from '@/utils/math';
+import { average, clampFinite, median } from '@/utils/utils';
 import { frequencyToMidi } from '@/utils/music/notes';
 
 export const SINGING_ASSESSMENT_BPM = 100;

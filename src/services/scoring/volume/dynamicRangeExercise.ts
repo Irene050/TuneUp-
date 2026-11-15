@@ -1,5 +1,5 @@
 import type { DynamicRangeMeasurement } from '@/services/measurement/volume/dynamicRangeExercise';
-import { clampFinite } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 import type { VolumeScoreOptions } from './types';
 
 export interface DynamicRangeScore {

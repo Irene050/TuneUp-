@@ -1,18 +1,31 @@
 import AppHeader from '@/components/appheader';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  useCallback,
+  useMemo,
+  useState
+} from 'react';
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 
 import type {
   SavedAssessmentResult,
-  SavedSingingAssessmentResult,
 } from '@/services/assessment/assessmentRepository';
+import type {
+  SavedSingingAssessmentResult,
+} from '@/services/assessment/singingAssessmentRepository';
 
 import {
   getRecentAssessments,
-  getRecentSingingAssessments,
 } from '@/services/assessment/assessmentRepository';
+import {
+  getRecentSingingAssessments,
+} from '@/services/assessment/singingAssessmentRepository';
 
 import { auth } from '@/services/firebase/config';
 
@@ -32,7 +45,7 @@ import {
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';
-import { clampPercentage } from '@/utils/math';
+import { clampPercentage } from '@/utils/utils';
 
 type ComponentInfo = {
   id: ComponentId;

@@ -55,7 +55,7 @@ import {
     scoreSustainedNoteStabilityRepetitions,
     type SustainedNoteStabilityScoreResult,
 } from '@/services/scoring/pitch/sustainedNoteStability';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     calcLiveStability,
     calcPitchAccuracy,
@@ -1411,23 +1411,28 @@ export default function SustainedNoteStabilityScreen({
           </View>
 
           <Pressable
-            style={[
-              exerciseStyles.startButtonPill,
-              exerciseStyles.startButtonPillHorizontalPadding,
+            style={({ pressed }) => [
+              exerciseStyles.primaryButton,
+              pressed && exerciseStyles.buttonPressed,
             ]}
             onPress={retry}
+            accessibilityRole="button"
           >
-            <Text style={exerciseStyles.startButtonText}>Try Again</Text>
-            <Ionicons name="refresh" size={18} color={COLORS.white} />
+            <Text style={exerciseStyles.cardTitle}>Try Again</Text>
+            <Ionicons name="refresh" size={18} color={COLORS.brown} />
           </Pressable>
 
           <Pressable
-            style={exerciseStyles.doneButton}
+            style={({ pressed }) => [
+              exerciseStyles.secondaryButton,
+              pressed && exerciseStyles.buttonPressed,
+            ]}
             onPress={() => {
               void quitExercise();
             }}
+            accessibilityRole="button"
           >
-            <Text style={exerciseStyles.componentScore}>Done</Text>
+            <Text style={exerciseStyles.quitButtonText}>Done</Text>
           </Pressable>
         </ScrollView>
       </View>

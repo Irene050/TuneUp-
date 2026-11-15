@@ -68,10 +68,10 @@ import {
     scoreVowelConsistencyExercise,
     type VowelConsistencyScoreResult,
 } from '@/services/scoring/tone/vowelConsistencyExercise';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { samplesToFFTFrames } from '@/utils/dsp/fft';
-import { clamp } from '@/utils/math';
-import { formatNumber } from '@/utils/numberFormatting';
+import { clamp } from '@/utils/utils';
+import { formatNumber } from '@/utils/utils';
 
 const REST_MS = 1200;
 
@@ -1282,21 +1282,20 @@ export default function VowelConsistencyExerciseScreen({
 
             <Pressable
               style={({ pressed }) => [
-                exerciseStyles.startButtonPill,
-                exerciseStyles.startButtonPillResultSpacing,
+                exerciseStyles.primaryButton,
                 pressed && exerciseStyles.buttonPressed,
               ]}
               onPress={retry}
               accessibilityRole="button"
             >
-              <Text style={exerciseStyles.startButtonText}>
+              <Text style={exerciseStyles.cardTitle}>
                 Try Again
               </Text>
 
               <Ionicons
                 name="refresh"
                 size={18}
-                color={COLORS.white}
+                color={COLORS.brown}
               />
             </Pressable>
 
@@ -1305,10 +1304,10 @@ export default function VowelConsistencyExerciseScreen({
                 exerciseStyles.secondaryButton,
                 pressed && exerciseStyles.buttonPressed,
               ]}
-              onPress={goBack}
+              onPress={() => void quitExercise()}
               accessibilityRole="button"
             >
-              <Text style={exerciseStyles.componentScore}>
+              <Text style={exerciseStyles.quitButtonText}>
                 Back to Exercises
               </Text>
             </Pressable>

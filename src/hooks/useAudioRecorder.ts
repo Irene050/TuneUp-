@@ -11,11 +11,8 @@ import {
 } from 'react-native-audio-api';
 
 import { analyzePitchFrame } from '@/utils/dsp/pitch';
+import { calcRMS, rmsToDb } from '@/utils/dsp/rms';
 import { getPitchDifferenceCents } from '@/utils/music/notes';
-import {
-  calcRMS,
-  rmsToDb,
-} from '@/utils/dsp/rms';
 
 const DEFAULT_SAMPLE_RATE = 44100;
 const BUFFER_LENGTH = 2048;

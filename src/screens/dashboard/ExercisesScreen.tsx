@@ -7,11 +7,22 @@ import type {
   ComponentProgressSummary,
 } from '@/services/progress/progressModule';
 import { fetchAllProgress } from '@/services/progress/progressRepo';
-import { clampPercentage } from '@/utils/math';
+import { clampPercentage } from '@/utils/utils';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  useCallback,
+  useMemo,
+  useState
+} from 'react';
+
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View
+} from 'react-native';
 
 const categories = [
   'All',

@@ -31,12 +31,12 @@ import { measureControlledCrescendo } from '@/services/measurement/volume/contro
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledCrescendo } from '@/services/scoring/volume/controlledCrescendoDrill';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     estimateVolumeRampSmoothness,
     normalizeVolumeDbfs,
 } from '@/utils/dsp/volumeAnalysis';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
 
@@ -743,7 +743,7 @@ export default function ControlledCrescendoExercise({
     setPhase,
   ]);
 
-  const startExercise = useCallback(() => {
+  const startExercise = useCallback((showInstructions = false) => {
     if (quitInProgressRef.current) {
       return;
     }
@@ -781,7 +781,7 @@ export default function ControlledCrescendoExercise({
 
     setCountdown(EXERCISE_COUNTDOWN_SECONDS);
     setCountdownReady(true);
-    setPhase('countdown');
+    setPhase(showInstructions ? 'instructions' : 'countdown');
   }, [repetitions, setPhase]);
 
   const pauseForExitPrompt = useCallback(() => {
@@ -950,7 +950,7 @@ export default function ControlledCrescendoExercise({
   }, []);
 
   const tryAgain = useCallback(() => {
-    startExercise();
+    startExercise(true);
   }, [startExercise]);
 
   useEffect(() => {
@@ -1081,7 +1081,7 @@ export default function ControlledCrescendoExercise({
           repetitions={repetitions}
           tip="Sing the reference note while increasing your volume. Keep your pitch comfortable and avoid straining your voice."
           onBack={handleBack}
-          onStart={startExercise}
+          onStart={() => startExercise()}
           errorMessage={errorMessage}
           startLabel="Start Exercise"
         >
@@ -1278,7 +1278,7 @@ export default function ControlledCrescendoExercise({
         }
 
         onRetry={tryAgain}
-        onExit={handleBack}
+        onExit={quitExercise}
       >
         <></>
       </ExerciseResultsScreen>

@@ -28,12 +28,12 @@ import { measureControlledDecrescendo } from '@/services/measurement/volume/cont
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreControlledDecrescendo } from '@/services/scoring/volume/controlledDecrescendoDrill';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     estimateVolumeRampSmoothness,
     normalizeVolumeDbfs,
 } from '@/utils/dsp/volumeAnalysis';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, frequencyToMidi } from '@/utils/music/notes';
 
@@ -817,7 +817,7 @@ export default function ControlledDecrescendoDrill({
     stopRecording,
   ]);
 
-  const startExercise = useCallback(() => {
+  const startExercise = useCallback((showInstructions = false) => {
     setErrorMessage(undefined);
 
     setCurrentRep(1);
@@ -845,7 +845,8 @@ export default function ControlledDecrescendoDrill({
     discardInterruptedStopRef.current = false;
     repetitionSamplesRef.current = [];
 
-    pausedPhaseRef.current = 'countdown';
+    const nextPhase = showInstructions ? 'directions' : 'countdown';
+    pausedPhaseRef.current = nextPhase;
     quitInProgressRef.current = false;
     showQuitModalRef.current = false;
     setShowQuitModal(false);
@@ -853,12 +854,12 @@ export default function ControlledDecrescendoDrill({
 
     setCountdownSeconds(EXERCISE_COUNTDOWN_SECONDS);
 
-    phaseRef.current = 'countdown';
-    setPhase('countdown');
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
   }, [repetitions, setPhase, phaseRef]);
 
   const tryAgain = useCallback(() => {
-    startExercise();
+    startExercise(true);
   }, [startExercise]);
 
   useEffect(() => {
@@ -978,7 +979,7 @@ export default function ControlledDecrescendoDrill({
           repetitions={repetitions}
           tip="Sing the reference note while gradually reducing your volume. Keep your pitch steady and avoid letting the sound fade out too early."
           onBack={openQuitModal}
-          onStart={startExercise}
+          onStart={() => startExercise()}
           errorMessage={errorMessage}
           startLabel="Start Exercise"
         >

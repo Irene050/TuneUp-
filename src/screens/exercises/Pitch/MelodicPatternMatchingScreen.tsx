@@ -25,7 +25,7 @@ import { measureMelodicPatternMatching } from '@/services/measurement/pitch/melo
 import { saveCompletedExercise } from '@/services/progress/exerciseProgressService';
 import { fetchComponentProgress, fetchExerciseRecords } from '@/services/progress/progressRepo';
 import { scoreMelodicPatternMatchingRepetitions, type MelodicPatternScoreResult } from '@/services/scoring/pitch/melodicPatternMatching';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import { segmentIntoNotes } from '@/utils/dsp/pitch';
 import { playSingleNote } from '@/utils/music/notePlayer';
 import { createMusicalNote, getRandomPitchNote, type VocalRange } from '@/utils/music/notes';
@@ -1416,7 +1416,7 @@ export default function MelodicPatternMatchingScreen({
               : 'Focus on pitch accuracy and keeping the melodic sequence consistent.'
           }
           onRetry={retry}
-          onExit={handleBack}
+          onExit={quitExercise}
         >
           <View style={exerciseStyles.resultCardVariant1}>
             <Text style={exerciseStyles.resultCardTitle}>Pattern Results</Text>

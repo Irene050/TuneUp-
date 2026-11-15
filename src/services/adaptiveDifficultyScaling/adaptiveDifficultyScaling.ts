@@ -1,5 +1,5 @@
 import type { Tier } from '@/constants/params';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 
 export interface ParameterBounds {
   min: number;

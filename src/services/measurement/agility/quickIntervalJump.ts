@@ -3,7 +3,7 @@ import {
 } from '@/utils/dsp/agility';
 
 import { frequencyToMidi } from '@/utils/music/notes';
-import { average, clamp } from '@/utils/math';
+import { average, clamp } from '@/utils/utils';
 
 export type QuickIntervalJumpMeasurement = {
   detectedPitches: number[];

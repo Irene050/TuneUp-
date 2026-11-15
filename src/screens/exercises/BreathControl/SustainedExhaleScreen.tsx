@@ -25,7 +25,7 @@ import { scoreSustainedBreath, type SustainedBreathScoreResult } from '@/service
 import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
+} from '@/utils/utils';
 
 import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
@@ -1105,7 +1105,7 @@ export default function SustainedExhaleScreen({
           </View>
         }
         onRetry={retryExercise}
-        onExit={handleBack}
+        onExit={quitExercise}
       >
         <View style={exerciseStyles.infoText}>
           <View style={exerciseStyles.summaryCard}>

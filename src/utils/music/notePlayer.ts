@@ -5,7 +5,7 @@ export interface NoteToPlay {
   durationSec: number;
 }
 
-const PEAK_GAIN = 0.25;
+const PEAK_GAIN = 0.5;
 const ATTACK_SEC = 0.03;
 const RELEASE_SEC = 0.08;
 const GAP_SEC = 0.12;

@@ -9,7 +9,7 @@ import type {
 import {
     calcOverallToneQuality,
 } from '@/utils/dsp/spectral';
-import { clampScore } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export interface SteadyToneHoldingScoreResult {
   score: number;
@@ -21,7 +21,7 @@ export function scoreSteadyToneHolding(
   params: SteadyToneHoldingParams,
 ): SteadyToneHoldingScoreResult {
   const quality =
-    clampScore(
+    clampFinite(
       calcOverallToneQuality(
         measurement.smoothnessPct,
         measurement.amplitudeStabilityPct,
@@ -31,7 +31,7 @@ export function scoreSteadyToneHolding(
 
   const durationScore =
     params.durationSec > 0
-      ? clampScore(
+      ? clampFinite(
           (measurement.durationSec /
             params.durationSec) *
             100,

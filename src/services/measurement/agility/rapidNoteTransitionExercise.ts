@@ -2,7 +2,7 @@ import {
   extractAgilityNotes,
   extractAgilityPitchFrames,
 } from '@/utils/dsp/agility';
-import { clampFinite } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 import {
   frequencyToMidi,

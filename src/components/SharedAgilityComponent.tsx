@@ -1,6 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import {
+  useEffect,
+  useRef,
+  useState
+} from 'react';
+
+import {
+  ScrollView,
+  Text,
+  View
+} from 'react-native';
 
 import { COLORS } from '@/constants/appConstants';
 import { exerciseStyles } from '@/constants/exerciseStyles';

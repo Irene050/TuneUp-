@@ -43,8 +43,8 @@ import {
     fetchExerciseRecords,
 } from '@/services/progress/progressRepo';
 import { scoreRapidScaleTrill } from '@/services/scoring/agility/rapidScaleTrill';
-import { sleep } from '@/utils/async';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { sleep } from '@/utils/utils';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     AGILITY_NOTE_START_DELAY_MS,
     getActiveSequenceNoteIndex,
@@ -1496,8 +1496,8 @@ export default function RapidScaleTrillScreen() {
           </Text>
         }
 
-        onRetry={() => setCurrentConfirmation('tryAgain')}
-        onExit={pauseForExitPrompt}
+        onRetry={resetExercise}
+        onExit={quitExercise}
       >
         <View style={exerciseStyles.referenceCardVariant1}>
           <Text style={exerciseStyles.cardTitleVariant1}>

@@ -51,7 +51,7 @@ import {
 import {
     getLiveVoiceDetection,
     hasSufficientRecordedSignal,
-} from '@/utils/audioSignal';
+} from '@/utils/utils';
 
 import LiveVoiceDetectionVisualizer from '../../../components/SharedBreathControlComponent';
 
@@ -751,7 +751,7 @@ export default function DiaphragmaticBreathingScreen({
     setExitPromptVisible,
   ]);
 
-  const retryExercise = useCallback(() => {
+  const retryExercise = useCallback((showInstructions = false) => {
     if (!paramsReady || leavingRef.current) return;
 
     cancellingRef.current = true;
@@ -769,12 +769,18 @@ export default function DiaphragmaticBreathingScreen({
     setExitPromptVisible(false);
 
     cancellingRef.current = false;
-    startCountdownRef.current?.();
+
+    if (showInstructions) {
+      setPhase('instructions');
+    } else {
+      startCountdownRef.current?.();
+    }
   }, [
     clearTimers,
     paramsReady,
     resetRepetitionResults,
     setExitPromptVisible,
+    setPhase,
   ]);
 
   const handleBack = useCallback(() => {
@@ -1172,7 +1178,7 @@ export default function DiaphragmaticBreathingScreen({
                   : 'Keep practicing!'
           }
 
-          onRetry={retryExercise}
+          onRetry={() => retryExercise(true)}
           onExit={quitExercise}
         >
           <View>

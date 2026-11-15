@@ -3,7 +3,7 @@ import {
   filterByClarity,
   trackPitchOverTime,
 } from '@/utils/dsp/pitch';
-import { average, median } from '@/utils/math';
+import { average, median } from '@/utils/utils';
 
 export interface ScaleAccuracyMeasurement {
   detectedFreqs: number[];

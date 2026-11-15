@@ -1,4 +1,4 @@
-import { average } from '@/utils/math';
+import { average } from '@/utils/utils';
 import {
   frequencyToNoteName,
   getPitchDifferenceCents,

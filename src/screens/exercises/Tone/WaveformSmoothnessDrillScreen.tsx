@@ -69,11 +69,11 @@ import {
     scoreWaveformSmoothnessDrill,
     type WaveformSmoothnessScoreResult,
 } from '@/services/scoring/tone/waveformSmoothnessDrill';
-import { hasSufficientRecordedSignal } from '@/utils/audioSignal';
+import { hasSufficientRecordedSignal } from '@/utils/utils';
 import {
     samplesToFFTFrames,
 } from '@/utils/dsp/fft';
-import { clamp } from '@/utils/math';
+import { clamp } from '@/utils/utils';
 import {
     disposeNotePlayer,
     playSingleNote,
@@ -84,7 +84,7 @@ import {
     getSemitoneDistance,
     type VocalRange,
 } from '@/utils/music/notes';
-import { formatNumber } from '@/utils/numberFormatting';
+import { formatNumber } from '@/utils/utils';
 
 type Props = ExerciseTierProps;
 
@@ -842,7 +842,7 @@ export default function WaveformSmoothnessDrillScreen({
     setPhase('countdown');
   }, [clearTimers, isLoadingParams, setPhase, targetNote]);
 
-  const retryExercise = useCallback(() => {
+  const retryExercise = useCallback((showInstructions = false) => {
     clearTimers();
 
     pausedRef.current = false;
@@ -887,7 +887,7 @@ export default function WaveformSmoothnessDrillScreen({
     recordingStopRequestedRef.current = false;
     setShowQuitModal(false);
     setIsQuitting(false);
-    setPhase('countdown');
+    setPhase(showInstructions ? 'instructions' : 'countdown');
   }, [clearTimers, setPhase]);
 
   const pauseForExitPrompt = useCallback(() => {
@@ -1322,8 +1322,8 @@ export default function WaveformSmoothnessDrillScreen({
             </View>
           </View>
         }
-        onRetry={retryExercise}
-        onExit={handleBack}
+        onRetry={() => retryExercise(true)}
+        onExit={quitExercise}
       />
       {quitModal}
     </>

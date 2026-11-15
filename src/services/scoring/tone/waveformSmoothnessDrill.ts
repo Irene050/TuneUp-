@@ -5,7 +5,7 @@ import type {
 import type {
   WaveformSmoothnessMeasurement,
 } from '@/services/measurement/tone/waveformSmoothnessDrill';
-import { clampScore } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export interface WaveformSmoothnessScoreResult {
   score: number;
@@ -16,11 +16,11 @@ export function scoreWaveformSmoothnessDrill(
   measurement: WaveformSmoothnessMeasurement,
   params: WaveformSmoothnessParams,
 ): WaveformSmoothnessScoreResult {
-  const centroidSmoothnessScore = clampScore(
+  const centroidSmoothnessScore = clampFinite(
     measurement.centroidSmoothnessPct,
   );
 
-  const amplitudeStabilityScore = clampScore(
+  const amplitudeStabilityScore = clampFinite(
     measurement.amplitudeStabilityPct,
   );
 
@@ -40,7 +40,7 @@ export function scoreWaveformSmoothnessDrill(
     score >= 60;
 
   return {
-    score: clampScore(score),
+    score: clampFinite(score),
     passed,
   };
 }

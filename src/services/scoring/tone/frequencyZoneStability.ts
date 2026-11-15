@@ -5,7 +5,7 @@ import type {
 import type {
   FrequencyZoneStabilityMeasurement,
 } from '@/services/measurement/tone/frequencyZoneStability';
-import { clampScore } from '@/utils/math';
+import { clampFinite } from '@/utils/utils';
 
 export interface FrequencyZoneStabilityScoreResult {
   score: number;
@@ -16,17 +16,17 @@ export function scoreFrequencyZoneStability(
   measurement: FrequencyZoneStabilityMeasurement,
   params: FrequencyZoneStabilityParams,
 ): FrequencyZoneStabilityScoreResult {
-  const stabilityScore = clampScore(
+  const stabilityScore = clampFinite(
     measurement.stabilityPct,
   );
 
-  const coverageScore = clampScore(
+  const coverageScore = clampFinite(
     measurement.detectionCoveragePct,
   );
 
   const durationScore =
     params.durationSec > 0
-      ? clampScore(
+      ? clampFinite(
           (measurement.durationSec /
             params.durationSec) *
             100,
@@ -39,7 +39,7 @@ export function scoreFrequencyZoneStability(
     durationScore * 0.1;
 
   const score = Math.round(
-    clampScore(rawScore),
+    clampFinite(rawScore),
   );
 
   const enoughPitchData =
